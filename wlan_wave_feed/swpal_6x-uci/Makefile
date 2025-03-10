@@ -60,7 +60,7 @@ define Package/$(PKG_NAME)
   TITLE:=MaxLinear SWPAL
   URL:=http://www.maxlinear.com
   MAINTAINER:=MaxLinear Inc
-  DEPENDS:= $(PKG_DEPENDS) +uci +libsafec3
+  DEPENDS:= $(PKG_DEPENDS) +uci +libsafec3 +libubus
   MENU:=1
   VARIANT:=release
   PROVIDES:=libspal
@@ -83,7 +83,7 @@ endef
 
 define Package/$(PKG_NAME)-base
 $(call Package/$(PKG_NAME))
-  DEPENDS:= +libuci +safeclibs3
+  DEPENDS:= +libuci +safeclibs3 +libubus
   VARIANT:=base
 endef
 
@@ -93,7 +93,7 @@ endef
 
 define Package/$(PKG_NAME)-prpl
 $(call Package/$(PKG_NAME))
-  DEPENDS:= +libuci +safeclibs3
+  DEPENDS:= +libuci +safeclibs3 +libubus
   VARIANT:=prpl
 endef
 
@@ -103,7 +103,7 @@ endef
 
 define Package/$(PKG_NAME)-prpl-debug
 $(call Package/$(PKG_NAME))
-  DEPENDS:= +libuci +safeclibs3
+  DEPENDS:= +libuci +safeclibs3 +libubus
   VARIANT:=prpl-debug
 endef
 
