@@ -1,4 +1,4 @@
-From f96a1753a6b86bb525d72a27cbcd0d236ae2ed0d Mon Sep 17 00:00:00 2001
+From 0de66b3a710528efa86fcd128e2ae18356aa5b35 Mon Sep 17 00:00:00 2001
 From: mvuls <mvuls@maxlinear.com>
 Date: Thu, 9 Nov 2023 21:35:19 +0200
 Subject: [PATCH] WLANRTSYS-50839: MXL Repeater DFS
@@ -24,7 +24,7 @@ Subject: [PATCH] WLANRTSYS-50839: MXL Repeater DFS
  create mode 100644 wpa_supplicant/mxl_supplicant_config.h
 
 diff --git a/hostapd/mxl_config.c b/hostapd/mxl_config.c
-index b2f56e4b3..6ecb3e8ba 100644
+index 3804360fa..a300a4b27 100644
 --- a/hostapd/mxl_config.c
 +++ b/hostapd/mxl_config.c
 @@ -105,6 +105,13 @@ int mxl_hostapd_config_fill (struct hostapd_config *conf,
@@ -57,7 +57,7 @@ index 0bd050ab3..7e4bd5310 100644
  
  int hostapd_dfs_radar_detected(struct hostapd_iface *iface, int freq,
 diff --git a/src/ap/mxl_config.h b/src/ap/mxl_config.h
-index aa98d2fef..0f8a55071 100644
+index 9b4cfde49..2d31b10c3 100644
 --- a/src/ap/mxl_config.h
 +++ b/src/ap/mxl_config.h
 @@ -30,6 +30,7 @@ struct mxl_hostapd_config {
@@ -69,7 +69,7 @@ index aa98d2fef..0f8a55071 100644
  
  /**
 diff --git a/src/ap/mxl_dfs_common.c b/src/ap/mxl_dfs_common.c
-index eef9aac33..443af3eed 100644
+index 2dac86b1c..31ee80bec 100644
 --- a/src/ap/mxl_dfs_common.c
 +++ b/src/ap/mxl_dfs_common.c
 @@ -22,6 +22,8 @@
@@ -121,7 +121,7 @@ index eef9aac33..443af3eed 100644
 +		mxl_hostapd_process_slave_event(hapd->iface, radar);
 +}
 diff --git a/src/ap/mxl_dfs_common.h b/src/ap/mxl_dfs_common.h
-index c47ec627b..7ce444d8d 100644
+index 86a361f71..af590f311 100644
 --- a/src/ap/mxl_dfs_common.h
 +++ b/src/ap/mxl_dfs_common.h
 @@ -46,5 +46,8 @@ void mxl_hostapd_clear_rbm(void *ctx);
@@ -134,7 +134,7 @@ index c47ec627b..7ce444d8d 100644
  
  #endif /* MXL_DFS_COMMON_H */
 diff --git a/src/ap/mxl_events.c b/src/ap/mxl_events.c
-index 28bfb28b0..566e89aeb 100644
+index 39adff638..96c70e9bf 100644
 --- a/src/ap/mxl_events.c
 +++ b/src/ap/mxl_events.c
 @@ -15,9 +15,11 @@
@@ -212,7 +212,7 @@ index 28bfb28b0..566e89aeb 100644
 +	mxl_process_event(ctx, EVENT_MXL_RADAR, &event);
 +}
 diff --git a/src/common/mxl_vendor.h b/src/common/mxl_vendor.h
-index 759de7208..5a0d15bc7 100644
+index 529d89c8e..c6959b9d9 100644
 --- a/src/common/mxl_vendor.h
 +++ b/src/common/mxl_vendor.h
 @@ -23,16 +23,24 @@
@@ -246,7 +246,7 @@ index 759de7208..5a0d15bc7 100644
  
  #endif /* MXL_VENDOR_H */
 diff --git a/src/common/mxl_wpa_ctrl.h b/src/common/mxl_wpa_ctrl.h
-index 3218a1970..7d059e762 100644
+index 351d83519..0484a7db4 100644
 --- a/src/common/mxl_wpa_ctrl.h
 +++ b/src/common/mxl_wpa_ctrl.h
 @@ -17,4 +17,6 @@
@@ -257,7 +257,7 @@ index 3218a1970..7d059e762 100644
 +
  #endif /* MXL_WPA_CTRL_H */
 diff --git a/src/common/vendor_cmds_copy.h b/src/common/vendor_cmds_copy.h
-index 8b1b0e2ab..6e77d4312 100644
+index 5e860bcbe..1da76dfcf 100644
 --- a/src/common/vendor_cmds_copy.h
 +++ b/src/common/vendor_cmds_copy.h
 @@ -434,4 +434,13 @@ struct mxl_ml_sta_info {
@@ -355,13 +355,13 @@ index 02139e6b2..14055bb79 100644
  	 *
 diff --git a/wpa_supplicant/mxl_events.c b/wpa_supplicant/mxl_events.c
 new file mode 100644
-index 000000000..e5c1be6c0
+index 000000000..db815d05f
 --- /dev/null
 +++ b/wpa_supplicant/mxl_events.c
 @@ -0,0 +1,41 @@
 +/******************************************************************************
 +
-+         Copyright (c) 2023 - 2024, MaxLinear, Inc.
++         Copyright (c) 2020 - 2025, MaxLinear, Inc.
 +         Copyright 2016 - 2020 Intel Corporation
 +         Copyright 2015 - 2016 Lantiq Beteiligungs-GmbH & Co. KG
 +         Copyright 2009 - 2014 Lantiq Deutschland GmbH
@@ -402,13 +402,13 @@ index 000000000..e5c1be6c0
 +}
 diff --git a/wpa_supplicant/mxl_supplicant_config.h b/wpa_supplicant/mxl_supplicant_config.h
 new file mode 100644
-index 000000000..448042c6d
+index 000000000..65c92e531
 --- /dev/null
 +++ b/wpa_supplicant/mxl_supplicant_config.h
 @@ -0,0 +1,21 @@
 +/******************************************************************************
 +
-+         Copyright (c) 2023 - 2024, MaxLinear, Inc.
++         Copyright (c) 2020 - 2025, MaxLinear, Inc.
 +         Copyright 2016 - 2020 Intel Corporation
 +         Copyright 2015 - 2016 Lantiq Beteiligungs-GmbH & Co. KG
 +         Copyright 2009 - 2014 Lantiq Deutschland GmbH

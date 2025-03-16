@@ -1,4 +1,4 @@
-From 7c46994abed6f249c2dfb9b84a4aa2aa9737633f Mon Sep 17 00:00:00 2001
+From 592ebc61c6a698dec26ddfb98f4f4526380e173d Mon Sep 17 00:00:00 2001
 From: Jurijs Soloveckis <jsoloveckis@maxlinear.com>
 Date: Tue, 14 Feb 2023 13:14:19 +0100
 Subject: [PATCH] WLANRTSYS-53043: Get last Assoc Request

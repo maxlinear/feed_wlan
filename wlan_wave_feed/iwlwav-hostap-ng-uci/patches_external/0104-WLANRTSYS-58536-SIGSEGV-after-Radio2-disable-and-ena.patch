@@ -1,4 +1,4 @@
-From 9e938409c06c1ff96ac3ba98050414b8bb21737a Mon Sep 17 00:00:00 2001
+From 52a6a8e005425e01693fe3191438d82459f17596 Mon Sep 17 00:00:00 2001
 From: Dmitrijs Martinovs <dmartinovs@maxlinear.com>
 Date: Tue, 12 Sep 2023 13:44:12 +0200
 Subject: [PATCH] WLANRTSYS-58536: SIGSEGV after Radio2 disable and enable

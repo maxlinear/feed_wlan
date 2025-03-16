@@ -1,4 +1,4 @@
-From 0d9d8cbe793dd4a46995be2f4c4c5f8d0102882c Mon Sep 17 00:00:00 2001
+From cd13fffb818c0a1d6c1d2a3a22d821f2355533ae Mon Sep 17 00:00:00 2001
 From: Jurijs Soloveckis <jsoloveckis@maxlinear.com>
 Date: Wed, 17 May 2023 15:52:54 +0200
 Subject: [PATCH] WLANRTSYS-55314: Align HT capabilities
@@ -397,7 +397,7 @@ index 25007d7ef..6739b7d5f 100644
  
   	pos += sizeof(*cap);
 diff --git a/src/ap/mxl_hostapd.c b/src/ap/mxl_hostapd.c
-index a5b123b56..c390908cd 100644
+index 7388adae1..542ee0407 100644
 --- a/src/ap/mxl_hostapd.c
 +++ b/src/ap/mxl_hostapd.c
 @@ -454,6 +454,30 @@ enum oper_chan_width mxl_get_oper_width(int width)
@@ -432,7 +432,7 @@ index a5b123b56..c390908cd 100644
  {
  	mxl_hostapd_dfs_history_deinit(iface);
 diff --git a/src/ap/mxl_hostapd.h b/src/ap/mxl_hostapd.h
-index 17760b206..f8e641c6c 100644
+index 92e7088a9..caa238783 100644
 --- a/src/ap/mxl_hostapd.h
 +++ b/src/ap/mxl_hostapd.h
 @@ -147,8 +147,10 @@ void mxl_hostapd_driver_init(struct hostapd_iface *iface, struct wpa_init_params
@@ -482,7 +482,7 @@ index 79a83d88b..8ba020ca7 100644
  #define TX_BF_CAP_CHANNEL_ESTIMATION_CAP_MASK ((u32) (BIT(27) | BIT(28)))
  #define TX_BF_CAP_CHANNEL_ESTIMATION_CAP_OFFSET 27
 diff --git a/src/common/vendor_cmds_copy.h b/src/common/vendor_cmds_copy.h
-index 4a9ceb153..2d30b6d69 100644
+index 55bc416f4..e35569dd9 100644
 --- a/src/common/vendor_cmds_copy.h
 +++ b/src/common/vendor_cmds_copy.h
 @@ -610,6 +610,12 @@ struct intel_vendor_channel_switch_cfg {

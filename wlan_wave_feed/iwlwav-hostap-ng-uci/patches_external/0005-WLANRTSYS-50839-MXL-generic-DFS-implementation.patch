@@ -1,4 +1,4 @@
-From 2e8087928663056bd77201a0c3e5016fce2c39e5 Mon Sep 17 00:00:00 2001
+From e1444eaf3453d2207dfa187fd09f3f19b7722ac9 Mon Sep 17 00:00:00 2001
 From: mvuls <mvuls@maxlinear.com>
 Date: Fri, 27 Oct 2023 17:39:37 +0300
 Subject: [PATCH] WLANRTSYS-50839: MXL generic DFS implementation
@@ -13,7 +13,7 @@ Subject: [PATCH] WLANRTSYS-50839: MXL generic DFS implementation
  hostapd/ctrl_iface.c               |   4 +
  hostapd/hostapd_cli.c              |   6 +
  hostapd/main.c                     |   4 +
- hostapd/mxl_config.c               |  13 +-
+ hostapd/mxl_config.c               |  11 +-
  hostapd/mxl_ctrl_iface.c           | 234 +++++++++++++++++++++++++++++
  hostapd/mxl_ctrl_iface.h           |  22 +++
  hostapd/mxl_hostapd_cli.c          |  95 ++++++++++++
@@ -37,7 +37,7 @@ Subject: [PATCH] WLANRTSYS-50839: MXL generic DFS implementation
  src/drivers/mxl_driver_nl80211.h   |  27 ++++
  src/drivers/mxl_nl80211.h          |  74 +++++++++
  src/drivers/nl80211_copy.h         |  15 ++
- 28 files changed, 1300 insertions(+), 9 deletions(-)
+ 28 files changed, 1299 insertions(+), 8 deletions(-)
  create mode 100644 hostapd/mxl_ctrl_iface.c
  create mode 100644 hostapd/mxl_ctrl_iface.h
  create mode 100644 hostapd/mxl_hostapd_cli.c
@@ -118,16 +118,10 @@ index c95cf8a71..b821b2a4a 100644
  	params.bridge = os_calloc(hapd->iface->num_bss, sizeof(char *));
  	if (params.bridge == NULL)
 diff --git a/hostapd/mxl_config.c b/hostapd/mxl_config.c
-index 36aa6c5ab..c7616d7c4 100644
+index a9a5ab3ff..e29c2f608 100644
 --- a/hostapd/mxl_config.c
 +++ b/hostapd/mxl_config.c
-@@ -1,13 +1,13 @@
- /******************************************************************************
- 
--         Copyright (c) 2023, MaxLinear, Inc.
-+         Copyright (c) 2023 - 2024, MaxLinear, Inc.
-          Copyright 2016 - 2020 Intel Corporation
-          Copyright 2015 - 2016 Lantiq Beteiligungs-GmbH & Co. KG
+@@ -6,8 +6,8 @@
           Copyright 2009 - 2014 Lantiq Deutschland GmbH
           Copyright 2007 - 2008 Infineon Technologies AG
  
@@ -154,13 +148,13 @@ index 36aa6c5ab..c7616d7c4 100644
  	return 1;
 diff --git a/hostapd/mxl_ctrl_iface.c b/hostapd/mxl_ctrl_iface.c
 new file mode 100644
-index 000000000..99f63d88f
+index 000000000..bca3bc283
 --- /dev/null
 +++ b/hostapd/mxl_ctrl_iface.c
 @@ -0,0 +1,234 @@
 +/******************************************************************************
 +
-+         Copyright (c) 2023 - 2024, MaxLinear, Inc.
++         Copyright (c) 2020 - 2025, MaxLinear, Inc.
 +         Copyright 2016 - 2020 Intel Corporation
 +         Copyright 2015 - 2016 Lantiq Beteiligungs-GmbH & Co. KG
 +         Copyright 2009 - 2014 Lantiq Deutschland GmbH
@@ -394,13 +388,13 @@ index 000000000..99f63d88f
 +}
 diff --git a/hostapd/mxl_ctrl_iface.h b/hostapd/mxl_ctrl_iface.h
 new file mode 100644
-index 000000000..62a730225
+index 000000000..c659a9d8f
 --- /dev/null
 +++ b/hostapd/mxl_ctrl_iface.h
 @@ -0,0 +1,22 @@
 +/******************************************************************************
 +
-+         Copyright (c) 2023 - 2024, MaxLinear, Inc.
++         Copyright (c) 2020 - 2025, MaxLinear, Inc.
 +         Copyright 2016 - 2020 Intel Corporation
 +         Copyright 2015 - 2016 Lantiq Beteiligungs-GmbH & Co. KG
 +         Copyright 2009 - 2014 Lantiq Deutschland GmbH
@@ -422,13 +416,13 @@ index 000000000..62a730225
 +#endif /* MXL_CTRL_IFACE_H */
 diff --git a/hostapd/mxl_hostapd_cli.c b/hostapd/mxl_hostapd_cli.c
 new file mode 100644
-index 000000000..ce24ad4d1
+index 000000000..fe9dc731a
 --- /dev/null
 +++ b/hostapd/mxl_hostapd_cli.c
 @@ -0,0 +1,95 @@
 +/******************************************************************************
 +
-+         Copyright (c) 2023 - 2024, MaxLinear, Inc.
++         Copyright (c) 2020 - 2025, MaxLinear, Inc.
 +         Copyright 2016 - 2020 Intel Corporation
 +         Copyright 2015 - 2016 Lantiq Beteiligungs-GmbH & Co. KG
 +         Copyright 2009 - 2014 Lantiq Deutschland GmbH
@@ -523,13 +517,13 @@ index 000000000..ce24ad4d1
 +}
 diff --git a/hostapd/mxl_hostapd_cli.h b/hostapd/mxl_hostapd_cli.h
 new file mode 100644
-index 000000000..3fc9dd8cc
+index 000000000..a1143df53
 --- /dev/null
 +++ b/hostapd/mxl_hostapd_cli.h
 @@ -0,0 +1,34 @@
 +/******************************************************************************
 +
-+         Copyright (c) 2023 - 2024, MaxLinear, Inc.
++         Copyright (c) 2020 - 2025, MaxLinear, Inc.
 +         Copyright 2016 - 2020 Intel Corporation
 +         Copyright 2015 - 2016 Lantiq Beteiligungs-GmbH & Co. KG
 +         Copyright 2009 - 2014 Lantiq Deutschland GmbH
@@ -813,7 +807,7 @@ index ac718015d..82a39b426 100644
  int hostapd_get_hw_features(struct hostapd_iface *iface)
  {
 diff --git a/src/ap/mxl_config.h b/src/ap/mxl_config.h
-index cdd506147..aa013a358 100644
+index 2a47da32b..4e132e465 100644
 --- a/src/ap/mxl_config.h
 +++ b/src/ap/mxl_config.h
 @@ -26,6 +26,8 @@ struct mxl_hostapd_config {
@@ -827,13 +821,13 @@ index cdd506147..aa013a358 100644
  /**
 diff --git a/src/ap/mxl_dfs_common.c b/src/ap/mxl_dfs_common.c
 new file mode 100644
-index 000000000..0dae4e510
+index 000000000..8c68ab042
 --- /dev/null
 +++ b/src/ap/mxl_dfs_common.c
 @@ -0,0 +1,229 @@
 +/******************************************************************************
 +
-+         Copyright (c) 2023 - 2024, MaxLinear, Inc.
++         Copyright (c) 2020 - 2025, MaxLinear, Inc.
 +         Copyright 2016 - 2020 Intel Corporation
 +         Copyright 2015 - 2016 Lantiq Beteiligungs-GmbH & Co. KG
 +         Copyright 2009 - 2014 Lantiq Deutschland GmbH
@@ -1062,13 +1056,13 @@ index 000000000..0dae4e510
 +}
 diff --git a/src/ap/mxl_dfs_common.h b/src/ap/mxl_dfs_common.h
 new file mode 100644
-index 000000000..b8bdb234b
+index 000000000..984806cd6
 --- /dev/null
 +++ b/src/ap/mxl_dfs_common.h
 @@ -0,0 +1,43 @@
 +/******************************************************************************
 +
-+         Copyright (c) 2023 - 2024, MaxLinear, Inc.
++         Copyright (c) 2020 - 2025, MaxLinear, Inc.
 +         Copyright 2016 - 2020 Intel Corporation
 +         Copyright 2015 - 2016 Lantiq Beteiligungs-GmbH & Co. KG
 +         Copyright 2009 - 2014 Lantiq Deutschland GmbH
@@ -1110,7 +1104,7 @@ index 000000000..b8bdb234b
 +
 +#endif /* MXL_DFS_COMMON_H */
 diff --git a/src/ap/mxl_hostapd.c b/src/ap/mxl_hostapd.c
-index 2fb84e182..73ff72827 100644
+index a243115ee..09a8d078b 100644
 --- a/src/ap/mxl_hostapd.c
 +++ b/src/ap/mxl_hostapd.c
 @@ -209,3 +209,164 @@ bool mxl_hostapd_is_recovery(struct hostapd_iface *iface)
@@ -1279,7 +1273,7 @@ index 2fb84e182..73ff72827 100644
 +	return -1; /* should never happen */
 +}
 diff --git a/src/ap/mxl_hostapd.h b/src/ap/mxl_hostapd.h
-index 6f71be805..ea653dc47 100644
+index ea7d45f8e..74077978c 100644
 --- a/src/ap/mxl_hostapd.h
 +++ b/src/ap/mxl_hostapd.h
 @@ -15,6 +15,7 @@
@@ -1379,13 +1373,13 @@ index 8cca094e8..d437d3b0a 100644
  #define WPA_CIPHER_WEP104 BIT(2)
 diff --git a/src/common/mxl_defs.h b/src/common/mxl_defs.h
 new file mode 100644
-index 000000000..af45247dc
+index 000000000..a54dfb0bb
 --- /dev/null
 +++ b/src/common/mxl_defs.h
 @@ -0,0 +1,32 @@
 +/******************************************************************************
 +
-+         Copyright (c) 2023 - 2024, MaxLinear, Inc.
++         Copyright (c) 2020 - 2025, MaxLinear, Inc.
 +         Copyright 2016 - 2020 Intel Corporation
 +         Copyright 2015 - 2016 Lantiq Beteiligungs-GmbH & Co. KG
 +         Copyright 2009 - 2014 Lantiq Deutschland GmbH
@@ -1417,13 +1411,13 @@ index 000000000..af45247dc
 +#endif /* MXL_DEFS_H */
 diff --git a/src/common/mxl_ieee802_11_defs.h b/src/common/mxl_ieee802_11_defs.h
 new file mode 100644
-index 000000000..045ec91e2
+index 000000000..aea8f1ebf
 --- /dev/null
 +++ b/src/common/mxl_ieee802_11_defs.h
 @@ -0,0 +1,69 @@
 +/******************************************************************************
 +
-+         Copyright (c) 2023 - 2024, MaxLinear, Inc.
++         Copyright (c) 2020 - 2025, MaxLinear, Inc.
 +         Copyright 2016 - 2020 Intel Corporation
 +         Copyright 2015 - 2016 Lantiq Beteiligungs-GmbH & Co. KG
 +         Copyright 2009 - 2014 Lantiq Deutschland GmbH
@@ -1530,13 +1524,13 @@ index dd6c3d929..ba378bf6e 100644
  			   "received", event_type);
 diff --git a/src/drivers/mxl_driver_nl80211.c b/src/drivers/mxl_driver_nl80211.c
 new file mode 100644
-index 000000000..5dbddb1be
+index 000000000..74af556cd
 --- /dev/null
 +++ b/src/drivers/mxl_driver_nl80211.c
 @@ -0,0 +1,87 @@
 +/******************************************************************************
 +
-+         Copyright (c) 2023 - 2024, MaxLinear, Inc.
++         Copyright (c) 2020 - 2025, MaxLinear, Inc.
 +         Copyright 2016 - 2020 Intel Corporation
 +         Copyright 2015 - 2016 Lantiq Beteiligungs-GmbH & Co. KG
 +         Copyright 2009 - 2014 Lantiq Deutschland GmbH
@@ -1623,13 +1617,13 @@ index 000000000..5dbddb1be
 +}
 diff --git a/src/drivers/mxl_driver_nl80211.h b/src/drivers/mxl_driver_nl80211.h
 new file mode 100644
-index 000000000..8e0575ab1
+index 000000000..654d63ed9
 --- /dev/null
 +++ b/src/drivers/mxl_driver_nl80211.h
 @@ -0,0 +1,27 @@
 +/******************************************************************************
 +
-+         Copyright (c) 2023 - 2024, MaxLinear, Inc.
++         Copyright (c) 2020 - 2025, MaxLinear, Inc.
 +         Copyright 2016 - 2020 Intel Corporation
 +         Copyright 2015 - 2016 Lantiq Beteiligungs-GmbH & Co. KG
 +         Copyright 2009 - 2014 Lantiq Deutschland GmbH
@@ -1656,13 +1650,13 @@ index 000000000..8e0575ab1
 +#endif /* MXL_DRIVER_NL80211_H */
 diff --git a/src/drivers/mxl_nl80211.h b/src/drivers/mxl_nl80211.h
 new file mode 100644
-index 000000000..8d297a62e
+index 000000000..afac2bbfc
 --- /dev/null
 +++ b/src/drivers/mxl_nl80211.h
 @@ -0,0 +1,74 @@
 +/******************************************************************************
 +
-+         Copyright (c) 2023 - 2024, MaxLinear, Inc.
++         Copyright (c) 2020 - 2025, MaxLinear, Inc.
 +         Copyright 2016 - 2020 Intel Corporation
 +         Copyright 2015 - 2016 Lantiq Beteiligungs-GmbH & Co. KG
 +         Copyright 2009 - 2014 Lantiq Deutschland GmbH

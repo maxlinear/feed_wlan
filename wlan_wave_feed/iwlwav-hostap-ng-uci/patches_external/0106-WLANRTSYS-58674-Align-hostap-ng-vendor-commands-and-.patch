@@ -1,4 +1,4 @@
-From 57384b1adcc179cac933565df2206f7502c7ba0b Mon Sep 17 00:00:00 2001
+From e1ae80e1e8b04a3073460138880925c939d5e2e3 Mon Sep 17 00:00:00 2001
 From: Dmitrijs Martinovs <dmartinovs@maxlinear.com>
 Date: Thu, 14 Sep 2023 12:02:51 +0200
 Subject: [PATCH] WLANRTSYS-58674: Align hostap-ng vendor commands and events
@@ -9,7 +9,7 @@ Subject: [PATCH] WLANRTSYS-58674: Align hostap-ng vendor commands and events
  1 file changed, 1 insertion(+), 1 deletion(-)
 
 diff --git a/src/common/vendor_cmds_copy.h b/src/common/vendor_cmds_copy.h
-index 95f164979..cb6eaafd3 100644
+index 16b479a9d..904fcdf4c 100644
 --- a/src/common/vendor_cmds_copy.h
 +++ b/src/common/vendor_cmds_copy.h
 @@ -425,7 +425,7 @@ enum ltq_nl80211_vendor_events {

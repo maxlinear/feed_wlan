@@ -1,4 +1,4 @@
-From c064f2eb51ad0778a7e58c068daa4e393bae3a44 Mon Sep 17 00:00:00 2001
+From 303cd0fdd84fcababf85efde62094e18555527ed Mon Sep 17 00:00:00 2001
 From: Jurijs Soloveckis <jsoloveckis@maxlinear.com>
 Date: Fri, 9 Jun 2023 09:04:57 +0200
 Subject: [PATCH] WLANRTSYS-55941: Add support for he_phy_channel_width_set

@@ -1,4 +1,4 @@
-From 4286e1e67d2d21e0b0ac28a7bbe0b1248594d09c Mon Sep 17 00:00:00 2001
+From 47d5deb466357825b8a1c170601f4a51de639075 Mon Sep 17 00:00:00 2001
 From: Dmitrijs Martinovs <dmartinovs@maxlinear.com>
 Date: Thu, 8 Jun 2023 14:09:42 +0200
 Subject: [PATCH] WLANRTSYS-56024: Map MXL proprietary configuration to

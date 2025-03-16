@@ -1,4 +1,4 @@
-From e479a1baa3d1e862baf4cc5799744127e7fd6aec Mon Sep 17 00:00:00 2001
+From e65a962e3aafa70f739492be2b4b5c4c53287e07 Mon Sep 17 00:00:00 2001
 From: Jurijs Soloveckis <jsoloveckis@maxlinear.com>
 Date: Wed, 16 Aug 2023 13:25:12 +0200
 Subject: [PATCH] WLANRTSYS-57940: Implement HE vendor extension:

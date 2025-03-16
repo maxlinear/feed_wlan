@@ -1,4 +1,4 @@
-From 22ab928e7f8b19311eee9b391d78babfb80deb75 Mon Sep 17 00:00:00 2001
+From 2ac45c1d0af392da2f4056b93360d09d75d3933f Mon Sep 17 00:00:00 2001
 From: mvulsx <mvuls@maxlinear.com>
 Date: Mon, 3 Jul 2023 11:14:38 +0000
 Subject: [PATCH] WLANRTSYS-56651: Implement CoC Power saving
@@ -105,7 +105,7 @@ index 0eeeae37b..c2a390c39 100644
  		      const u8 *ht_capab)
  {
 diff --git a/src/ap/mxl_hostapd.c b/src/ap/mxl_hostapd.c
-index 983377a6d..8b78ebefb 100644
+index 925cd9c4d..b3bf77f96 100644
 --- a/src/ap/mxl_hostapd.c
 +++ b/src/ap/mxl_hostapd.c
 @@ -21,6 +21,7 @@

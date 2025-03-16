@@ -1,4 +1,4 @@
-From 400b3ac94ed768cb59cc4c9ac906c4a830d38ef1 Mon Sep 17 00:00:00 2001
+From a9a2f57958166bcf151fc69ff44ad75d3eec75f1 Mon Sep 17 00:00:00 2001
 From: Jurijs Soloveckis <jsoloveckis@maxlinear.com>
 Date: Tue, 16 May 2023 17:30:58 +0200
 Subject: [PATCH] WLANRTSYS-55139: HE BSS color

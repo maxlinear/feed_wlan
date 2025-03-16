@@ -1,4 +1,4 @@
-From 92f791b5f6192c0f67a1d9b680ed0ca0b9e3afb4 Mon Sep 17 00:00:00 2001
+From e06760846f330a41832790173b7c69e52113f904 Mon Sep 17 00:00:00 2001
 From: Jurijs Soloveckis <jsoloveckis@maxlinear.com>
 Date: Thu, 17 Nov 2022 14:58:35 +0100
 Subject: [PATCH] WLANRTSYS-50088: hostapd: additional implementation for 20-40
@@ -79,13 +79,13 @@ index 7cf0ccfbe..dfb34fa1d 100644
  			   "Line %d: unknown configuration item '%s'",
 diff --git a/hostapd/mxl_config.c b/hostapd/mxl_config.c
 new file mode 100644
-index 000000000..36aa6c5ab
+index 000000000..a9a5ab3ff
 --- /dev/null
 +++ b/hostapd/mxl_config.c
 @@ -0,0 +1,123 @@
 +/******************************************************************************
 +
-+         Copyright (c) 2023, MaxLinear, Inc.
++         Copyright (c) 2020 - 2025, MaxLinear, Inc.
 +         Copyright 2016 - 2020 Intel Corporation
 +         Copyright 2015 - 2016 Lantiq Beteiligungs-GmbH & Co. KG
 +         Copyright 2009 - 2014 Lantiq Deutschland GmbH
@@ -417,13 +417,13 @@ index f90f1254e..25007d7ef 100644
  }
 diff --git a/src/ap/mxl_coexistence.c b/src/ap/mxl_coexistence.c
 new file mode 100644
-index 000000000..596645dd2
+index 000000000..14824cc61
 --- /dev/null
 +++ b/src/ap/mxl_coexistence.c
 @@ -0,0 +1,114 @@
 +/******************************************************************************
 +
-+         Copyright (c) 2023 - 2024, MaxLinear, Inc.
++         Copyright (c) 2020 - 2025, MaxLinear, Inc.
 +         Copyright 2016 - 2020 Intel Corporation
 +         Copyright 2015 - 2016 Lantiq Beteiligungs-GmbH & Co. KG
 +         Copyright 2009 - 2014 Lantiq Deutschland GmbH
@@ -537,13 +537,13 @@ index 000000000..596645dd2
 +}
 diff --git a/src/ap/mxl_coexistence.h b/src/ap/mxl_coexistence.h
 new file mode 100644
-index 000000000..68e480b24
+index 000000000..677d98360
 --- /dev/null
 +++ b/src/ap/mxl_coexistence.h
 @@ -0,0 +1,28 @@
 +/******************************************************************************
 +
-+         Copyright (c) 2023 - 2024, MaxLinear, Inc.
++         Copyright (c) 2020 - 2025, MaxLinear, Inc.
 +         Copyright 2016 - 2020 Intel Corporation
 +         Copyright 2015 - 2016 Lantiq Beteiligungs-GmbH & Co. KG
 +         Copyright 2009 - 2014 Lantiq Deutschland GmbH
@@ -571,13 +571,13 @@ index 000000000..68e480b24
 +#endif /* MXL_COEXISTENCE_H */
 diff --git a/src/ap/mxl_config.h b/src/ap/mxl_config.h
 new file mode 100644
-index 000000000..cdd506147
+index 000000000..2a47da32b
 --- /dev/null
 +++ b/src/ap/mxl_config.h
 @@ -0,0 +1,65 @@
 +/******************************************************************************
 +
-+         Copyright (c) 2023 - 2024, MaxLinear, Inc.
++         Copyright (c) 2020 - 2025, MaxLinear, Inc.
 +         Copyright 2016 - 2020 Intel Corporation
 +         Copyright 2015 - 2016 Lantiq Beteiligungs-GmbH & Co. KG
 +         Copyright 2009 - 2014 Lantiq Deutschland GmbH
@@ -641,7 +641,7 @@ index 000000000..cdd506147
 +
 +#endif /* MXL_CONFIG_H */
 diff --git a/src/ap/mxl_hostapd.c b/src/ap/mxl_hostapd.c
-index 68c3f0504..2fb84e182 100644
+index 1ab18e3b0..a243115ee 100644
 --- a/src/ap/mxl_hostapd.c
 +++ b/src/ap/mxl_hostapd.c
 @@ -20,6 +20,7 @@
@@ -713,13 +713,13 @@ index 57b5a8e23..9484592c7 100644
  				    affected_end)) {
 diff --git a/src/common/mxl_ieee802_11_common.c b/src/common/mxl_ieee802_11_common.c
 new file mode 100644
-index 000000000..f4bc645ee
+index 000000000..744b50d96
 --- /dev/null
 +++ b/src/common/mxl_ieee802_11_common.c
 @@ -0,0 +1,31 @@
 +/******************************************************************************
 +
-+         Copyright (c) 2023 - 2024, MaxLinear, Inc.
++         Copyright (c) 2020 - 2025, MaxLinear, Inc.
 +         Copyright 2016 - 2020 Intel Corporation
 +         Copyright 2015 - 2016 Lantiq Beteiligungs-GmbH & Co. KG
 +         Copyright 2009 - 2014 Lantiq Deutschland GmbH
@@ -750,13 +750,13 @@ index 000000000..f4bc645ee
 +}
 diff --git a/src/common/mxl_ieee802_11_common.h b/src/common/mxl_ieee802_11_common.h
 new file mode 100644
-index 000000000..bd710d1a1
+index 000000000..8f0df8db3
 --- /dev/null
 +++ b/src/common/mxl_ieee802_11_common.h
 @@ -0,0 +1,22 @@
 +/******************************************************************************
 +
-+         Copyright (c) 2023 - 2024, MaxLinear, Inc.
++         Copyright (c) 2020 - 2025, MaxLinear, Inc.
 +         Copyright 2016 - 2020 Intel Corporation
 +         Copyright 2015 - 2016 Lantiq Beteiligungs-GmbH & Co. KG
 +         Copyright 2009 - 2014 Lantiq Deutschland GmbH
@@ -778,13 +778,13 @@ index 000000000..bd710d1a1
 +#endif /* MXL_IEEE802_11_COMMON_H */
 diff --git a/src/common/mxl_wpa_ctrl.h b/src/common/mxl_wpa_ctrl.h
 new file mode 100644
-index 000000000..3218a1970
+index 000000000..351d83519
 --- /dev/null
 +++ b/src/common/mxl_wpa_ctrl.h
 @@ -0,0 +1,20 @@
 +/******************************************************************************
 +
-+         Copyright (c) 2023 - 2024, MaxLinear, Inc.
++         Copyright (c) 2020 - 2025, MaxLinear, Inc.
 +         Copyright 2016 - 2020 Intel Corporation
 +         Copyright 2015 - 2016 Lantiq Beteiligungs-GmbH & Co. KG
 +         Copyright 2009 - 2014 Lantiq Deutschland GmbH
@@ -857,13 +857,13 @@ index 2adbeb348..c359ef02c 100644
  		return -1;
 diff --git a/src/drivers/mxl_driver.h b/src/drivers/mxl_driver.h
 new file mode 100644
-index 000000000..f502c541d
+index 000000000..e0e4a405f
 --- /dev/null
 +++ b/src/drivers/mxl_driver.h
 @@ -0,0 +1,21 @@
 +/******************************************************************************
 +
-+         Copyright (c) 2023 - 2024, MaxLinear, Inc.
++         Copyright (c) 2020 - 2025, MaxLinear, Inc.
 +         Copyright 2016 - 2020 Intel Corporation
 +         Copyright 2015 - 2016 Lantiq Beteiligungs-GmbH & Co. KG
 +         Copyright 2009 - 2014 Lantiq Deutschland GmbH
@@ -883,7 +883,7 @@ index 000000000..f502c541d
 +
 +#endif /* MXL_DRIVER_H */
 diff --git a/src/utils/mxl_common.h b/src/utils/mxl_common.h
-index dadbd8ee6..121f55f93 100644
+index f6cf71282..ae3ccb8bd 100644
 --- a/src/utils/mxl_common.h
 +++ b/src/utils/mxl_common.h
 @@ -14,6 +14,10 @@

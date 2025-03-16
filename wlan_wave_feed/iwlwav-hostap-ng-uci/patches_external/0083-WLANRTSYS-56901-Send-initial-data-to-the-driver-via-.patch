@@ -1,4 +1,4 @@
-From dbeff2e6e567334d3023845f8152dc74df9b787f Mon Sep 17 00:00:00 2001
+From df2352a000baa4fccc0d920c4c40280439801530 Mon Sep 17 00:00:00 2001
 From: Dmitrijs Martinovs <dmartinovs@maxlinear.com>
 Date: Wed, 12 Jul 2023 16:40:36 +0200
 Subject: [PATCH] WLANRTSYS-56901: Send initial data to the driver via vendor
@@ -183,7 +183,7 @@ index 4620b667c..7a61c07e2 100644
  		p = hostapd_eid_he_capab(hapd, p, IEEE80211_MODE_AP);
  		p = hostapd_eid_he_operation(hapd, p);
 diff --git a/src/common/vendor_cmds_copy.h b/src/common/vendor_cmds_copy.h
-index e6f761570..4b7e42fba 100644
+index aaea09eb2..b435e1e5b 100644
 --- a/src/common/vendor_cmds_copy.h
 +++ b/src/common/vendor_cmds_copy.h
 @@ -446,6 +446,9 @@ struct mxl_ml_sta_info {

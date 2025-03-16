@@ -1,4 +1,4 @@
-From da8b8aa49efb9a84b65978b144c4076d597d5997 Mon Sep 17 00:00:00 2001
+From b87b5d39804a23d75574d764f35a0d1fb8832faf Mon Sep 17 00:00:00 2001
 From: Jurijs Soloveckis <jsoloveckis@maxlinear.com>
 Date: Wed, 30 Aug 2023 10:43:53 +0200
 Subject: [PATCH] WLANRTSYS-58236: Implement missed CTL interface and CLI APIs
@@ -260,7 +260,7 @@ index 24aefc04b..81112c6ed 100644
  };
  
 diff --git a/hostapd/mxl_hostapd_cli.c b/hostapd/mxl_hostapd_cli.c
-index 7d272d50d..dd4e565c9 100644
+index 595f223fc..913e1765e 100644
 --- a/hostapd/mxl_hostapd_cli.c
 +++ b/hostapd/mxl_hostapd_cli.c
 @@ -27,6 +27,22 @@ int mxl_hostapd_cli_cmd_deny_macacl(struct wpa_ctrl *ctrl, int argc,
@@ -287,7 +287,7 @@ index 7d272d50d..dd4e565c9 100644
  {
  	char cmd[256];
 diff --git a/hostapd/mxl_hostapd_cli.h b/hostapd/mxl_hostapd_cli.h
-index 162c9bd13..d0101ee10 100644
+index 7978adf9e..1bc1e0bf8 100644
 --- a/hostapd/mxl_hostapd_cli.h
 +++ b/hostapd/mxl_hostapd_cli.h
 @@ -67,6 +67,14 @@ int mxl_wpa_ctrl_command(struct wpa_ctrl *ctrl, const char *cmd);

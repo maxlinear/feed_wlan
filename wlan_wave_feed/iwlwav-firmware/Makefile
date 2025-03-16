@@ -12,8 +12,8 @@ PKG_SOURCE_NAME:=wave_fw_bin.git
 PKG_SOURCE_PROTO:=git
 CONFIG_UGW_PKG_SOURCE_URL:=ssh://git@git.maxlinear.com
 PKG_SOURCE_URL:=$(CONFIG_UGW_PKG_SOURCE_URL)/$(PKG_PROJECT)/$(PKG_SOURCE_NAME)
-PKG_VERSION:=8069b4
-PKG_SOURCE_VERSION:=wlan_7.2.60@r597+a+41-8069b4
+PKG_VERSION:=6f5afc
+PKG_SOURCE_VERSION:=wlan_7.2.60_updk@r597+a+41+a+17-6f5afc
 PKG_MIRROR_HASH:=aaaf1933970d65737cadfc5ccf5245e2f2213d8eaec082d24534259e6ab47254
 #package_source
 # fw source url needed for gci automation

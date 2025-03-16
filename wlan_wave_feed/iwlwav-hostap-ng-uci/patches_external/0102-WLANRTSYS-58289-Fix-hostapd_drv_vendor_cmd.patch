@@ -1,4 +1,4 @@
-From 95994576f9f8fcbb4951de49b3f15ab4302f2872 Mon Sep 17 00:00:00 2001
+From 1f36bbad19c9174976f770476c2f1764120f7c38 Mon Sep 17 00:00:00 2001
 From: Dmitrijs Martinovs <dmartinovs@maxlinear.com>
 Date: Mon, 11 Sep 2023 14:45:42 +0200
 Subject: [PATCH] WLANRTSYS-58289: Fix hostapd_drv_vendor_cmd

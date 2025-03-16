@@ -1,4 +1,4 @@
-From 6eb87b2f27cd7983c3a4ccc0894babd85799f5c8 Mon Sep 17 00:00:00 2001
+From 38a5521ea2161e32ead5758c6833c3fed6c40e09 Mon Sep 17 00:00:00 2001
 From: Jurijs Soloveckis <jsoloveckis@maxlinear.com>
 Date: Wed, 17 May 2023 15:55:41 +0200
 Subject: [PATCH] WLANRTSYS-55314: Align HT capabilities

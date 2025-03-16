@@ -1,4 +1,4 @@
-From 95ef17d44d5ae126e7768b0c01de45db227507df Mon Sep 17 00:00:00 2001
+From 117c699cb1321ef36bba8d04da47a5bcb215b0f6 Mon Sep 17 00:00:00 2001
 From: mvulsx <mvuls@maxlinear.com>
 Date: Fri, 30 Jun 2023 05:34:27 +0000
 Subject: [PATCH] WLANRTSYS-56610: Reject AssocReq with zero length supported

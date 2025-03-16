@@ -1,4 +1,4 @@
-From 772d1c36e1e8d1637817844b7e7858433e5419b3 Mon Sep 17 00:00:00 2001
+From aa2b0398a1575b94eb22086765d9e904dd9b0d12 Mon Sep 17 00:00:00 2001
 From: Jurijs Soloveckis <jsoloveckis@maxlinear.com>
 Date: Thu, 20 Jul 2023 13:54:30 +0200
 Subject: [PATCH] WLANRTSYS-57048: Integrate WDS commits
@@ -49,7 +49,7 @@ index 745a3814d..c4e0407ad 100644
  		int val = atoi(pos);
  
 diff --git a/hostapd/mxl_config.c b/hostapd/mxl_config.c
-index 0c7cf7c7e..a75bf88a1 100644
+index 39401500d..14ed9e433 100644
 --- a/hostapd/mxl_config.c
 +++ b/hostapd/mxl_config.c
 @@ -89,6 +89,50 @@ int mxl_hostapd_config_fill (struct hostapd_config *conf,
@@ -203,7 +203,7 @@ index 7633bc468..33cb6975e 100644
 +
  #endif /* IEEE802_11_H */
 diff --git a/src/ap/mxl_config.h b/src/ap/mxl_config.h
-index 1ed72f1a3..e363aef04 100644
+index 22315a6c6..dafb1eea5 100644
 --- a/src/ap/mxl_config.h
 +++ b/src/ap/mxl_config.h
 @@ -16,6 +16,8 @@
@@ -226,7 +226,7 @@ index 1ed72f1a3..e363aef04 100644
  
  struct hostapd_config;
 diff --git a/src/ap/mxl_events.c b/src/ap/mxl_events.c
-index f49be32ae..a7e21dcb8 100644
+index f29d86447..184940b1f 100644
 --- a/src/ap/mxl_events.c
 +++ b/src/ap/mxl_events.c
 @@ -16,12 +16,15 @@
@@ -304,13 +304,13 @@ index f49be32ae..a7e21dcb8 100644
 +}
 diff --git a/src/ap/mxl_wds.c b/src/ap/mxl_wds.c
 new file mode 100644
-index 000000000..13a9774ea
+index 000000000..aa6798aa5
 --- /dev/null
 +++ b/src/ap/mxl_wds.c
 @@ -0,0 +1,491 @@
 +/******************************************************************************
 +
-+         Copyright (c) 2023 - 2024, MaxLinear, Inc.
++         Copyright (c) 2020 - 2025 MaxLinear, Inc.
 +         Copyright 2016 - 2020 Intel Corporation
 +         Copyright 2015 - 2016 Lantiq Beteiligungs-GmbH & Co. KG
 +         Copyright 2009 - 2014 Lantiq Deutschland GmbH
@@ -801,13 +801,13 @@ index 000000000..13a9774ea
 +}
 diff --git a/src/ap/mxl_wds.h b/src/ap/mxl_wds.h
 new file mode 100644
-index 000000000..cdd82120e
+index 000000000..7b9a9c2a8
 --- /dev/null
 +++ b/src/ap/mxl_wds.h
 @@ -0,0 +1,21 @@
 +/******************************************************************************
 +
-+         Copyright (c) 2023 - 2024, MaxLinear, Inc.
++         Copyright (c) 2020 - 2025, MaxLinear, Inc.
 +         Copyright 2016 - 2020 Intel Corporation
 +         Copyright 2015 - 2016 Lantiq Beteiligungs-GmbH & Co. KG
 +         Copyright 2009 - 2014 Lantiq Deutschland GmbH
@@ -828,7 +828,7 @@ index 000000000..cdd82120e
 +#endif /* MXL_WDS_H */
 \ No newline at end of file
 diff --git a/src/common/mxl_vendor.h b/src/common/mxl_vendor.h
-index 05b6bbd3c..fbe327c16 100644
+index 171f04efc..921676509 100644
 --- a/src/common/mxl_vendor.h
 +++ b/src/common/mxl_vendor.h
 @@ -44,5 +44,7 @@ MXL_EXPORT_EVENT_API(mxl_drv_event_radar)
@@ -840,7 +840,7 @@ index 05b6bbd3c..fbe327c16 100644
  
  #endif /* MXL_VENDOR_H */
 diff --git a/src/common/vendor_cmds_copy.h b/src/common/vendor_cmds_copy.h
-index 4b7e42fba..82854f8d1 100644
+index b435e1e5b..84beeb0e8 100644
 --- a/src/common/vendor_cmds_copy.h
 +++ b/src/common/vendor_cmds_copy.h
 @@ -677,6 +677,22 @@ struct intel_vendor_unconnected_sta {

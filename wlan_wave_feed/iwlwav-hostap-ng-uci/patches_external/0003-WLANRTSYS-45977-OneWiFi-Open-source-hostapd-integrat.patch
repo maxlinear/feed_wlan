@@ -1,4 +1,4 @@
-From 126000a8e7a82ac7215e2f4f3c15cde1b6cd48fa Mon Sep 17 00:00:00 2001
+From 27c687dc4f532445039f9e7c59b5dd384bef02f2 Mon Sep 17 00:00:00 2001
 From: Jurijs Soloveckis <jsoloveckis@maxlinear.com>
 Date: Fri, 2 Sep 2022 17:14:55 +0300
 Subject: [PATCH] WLANRTSYS-45977: OneWiFi - Open source hostapd integration
@@ -110,13 +110,13 @@ index 0fcc4378c..bd28f4290 100644
 +#endif /* CONFIG_VENDOR_MXL */
 diff --git a/src/ap/mxl_events.c b/src/ap/mxl_events.c
 new file mode 100644
-index 000000000..28bfb28b0
+index 000000000..39adff638
 --- /dev/null
 +++ b/src/ap/mxl_events.c
 @@ -0,0 +1,93 @@
 +/******************************************************************************
 +
-+         Copyright (c) 2023 - 2024, MaxLinear, Inc.
++         Copyright (c) 2020 - 2025, MaxLinear, Inc.
 +         Copyright 2016 - 2020 Intel Corporation
 +         Copyright 2015 - 2016 Lantiq Beteiligungs-GmbH & Co. KG
 +         Copyright 2009 - 2014 Lantiq Deutschland GmbH
@@ -208,7 +208,7 @@ index 000000000..28bfb28b0
 +	mxl_process_event(ctx, EVENT_MXL_FLUSH_STATIONS_RX, &event);
 +}
 diff --git a/src/ap/mxl_hostapd.c b/src/ap/mxl_hostapd.c
-index 66d7df46b..68c3f0504 100644
+index 3c48ef3a1..1ab18e3b0 100644
 --- a/src/ap/mxl_hostapd.c
 +++ b/src/ap/mxl_hostapd.c
 @@ -51,6 +51,9 @@ int mxl_hostapd_get_aid(struct hostapd_data *hapd, struct sta_info *sta)
@@ -232,7 +232,7 @@ index 66d7df46b..68c3f0504 100644
 +	return (mxl_iface->stas_free_reason == MXL_STA_FREE_REASON_RECOVERY);
 +}
 diff --git a/src/ap/mxl_hostapd.h b/src/ap/mxl_hostapd.h
-index 26fb39a81..6f71be805 100644
+index c7e351295..ea7d45f8e 100644
 --- a/src/ap/mxl_hostapd.h
 +++ b/src/ap/mxl_hostapd.h
 @@ -22,8 +22,13 @@
@@ -291,13 +291,13 @@ index 67e6774e3..8b28a5285 100644
  		}
 diff --git a/src/common/mxl_vendor.h b/src/common/mxl_vendor.h
 new file mode 100644
-index 000000000..759de7208
+index 000000000..529d89c8e
 --- /dev/null
 +++ b/src/common/mxl_vendor.h
 @@ -0,0 +1,38 @@
 +/******************************************************************************
 +
-+         Copyright (c) 2023 - 2024, MaxLinear, Inc.
++         Copyright (c) 2020 - 2025, MaxLinear, Inc.
 +         Copyright 2016 - 2020 Intel Corporation
 +         Copyright 2015 - 2016 Lantiq Beteiligungs-GmbH & Co. KG
 +         Copyright 2009 - 2014 Lantiq Deutschland GmbH
@@ -334,7 +334,7 @@ index 000000000..759de7208
 +
 +#endif /* MXL_VENDOR_H */
 diff --git a/src/common/vendor_cmds_copy.h b/src/common/vendor_cmds_copy.h
-index 2e5949488..8b1b0e2ab 100644
+index 9dfff192c..5e860bcbe 100644
 --- a/src/common/vendor_cmds_copy.h
 +++ b/src/common/vendor_cmds_copy.h
 @@ -31,6 +31,9 @@

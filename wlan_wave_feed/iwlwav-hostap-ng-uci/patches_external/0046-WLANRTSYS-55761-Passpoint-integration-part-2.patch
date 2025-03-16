@@ -1,4 +1,4 @@
-From e587f6f729726f5c38f65d7f596b42d12901ff42 Mon Sep 17 00:00:00 2001
+From 91a37466493b339fd35fbfa5ce093409292fc09f Mon Sep 17 00:00:00 2001
 From: Dmitrijs Martinovs <dmartinovs@maxlinear.com>
 Date: Tue, 30 May 2023 15:47:20 +0300
 Subject: [PATCH] WLANRTSYS-55761: Passpoint integration part 2
@@ -256,7 +256,7 @@ index e08187d26..e4968223c 100644
  	{ "mbo_bss_assoc_disallow", hostapd_cli_cmd_mbo_bss_assoc_disallow, NULL,
  	  " = set mbo bss assoc disallow"},
 diff --git a/hostapd/mxl_config.c b/hostapd/mxl_config.c
-index 77e00ecdb..0c7cf7c7e 100644
+index 131923c01..39401500d 100644
 --- a/hostapd/mxl_config.c
 +++ b/hostapd/mxl_config.c
 @@ -232,6 +232,8 @@ void mxl_hostapd_config_defaults(struct hostapd_config *conf)

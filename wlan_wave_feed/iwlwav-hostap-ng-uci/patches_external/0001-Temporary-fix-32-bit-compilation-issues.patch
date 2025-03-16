@@ -1,4 +1,4 @@
-From baa18a9e272ec8fba022959f786cb8702f75f60b Mon Sep 17 00:00:00 2001
+From 53e7a7a617462626c6123647c17bd0dee57b1c05 Mon Sep 17 00:00:00 2001
 From: fromans <fromans@maxlinear.com>
 Date: Fri, 17 Nov 2023 12:46:12 +0200
 Subject: [PATCH] Temporary: fix 32 bit compilation issues

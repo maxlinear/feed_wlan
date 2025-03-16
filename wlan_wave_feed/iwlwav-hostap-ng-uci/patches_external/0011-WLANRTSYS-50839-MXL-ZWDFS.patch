@@ -1,4 +1,4 @@
-From 9fad4fb38e94edea5c349ca440c63bed5d8e0b85 Mon Sep 17 00:00:00 2001
+From 6372c76d74594981bb1ad42de72768d2fc179bf2 Mon Sep 17 00:00:00 2001
 From: mvuls <mvuls@maxlinear.com>
 Date: Thu, 9 Nov 2023 11:39:24 +0200
 Subject: [PATCH] WLANRTSYS-50839: MXL ZWDFS
@@ -82,7 +82,7 @@ index b821b2a4a..76a369c5a 100644
  		/*
  		 * Use default extended capa values from per-radio information
 diff --git a/hostapd/mxl_config.c b/hostapd/mxl_config.c
-index 6ecb3e8ba..8d0b816ae 100644
+index a300a4b27..1d41c5221 100644
 --- a/hostapd/mxl_config.c
 +++ b/hostapd/mxl_config.c
 @@ -112,6 +112,13 @@ int mxl_hostapd_config_fill (struct hostapd_config *conf,
@@ -100,7 +100,7 @@ index 6ecb3e8ba..8d0b816ae 100644
  		return 0;
  	return 1;
 diff --git a/hostapd/mxl_ctrl_iface.c b/hostapd/mxl_ctrl_iface.c
-index 84b722a86..5730c626b 100644
+index 9caa69b95..bc32a3d8e 100644
 --- a/hostapd/mxl_ctrl_iface.c
 +++ b/hostapd/mxl_ctrl_iface.c
 @@ -257,6 +257,35 @@ static int mxl_hostapd_ctrl_iface_get_dfs_stats(struct hostapd_iface *iface, con
@@ -153,7 +153,7 @@ index 84b722a86..5730c626b 100644
  		return 0;
  	}
 diff --git a/hostapd/mxl_hostapd_cli.c b/hostapd/mxl_hostapd_cli.c
-index 585a9d5b2..5d7b7f34d 100644
+index e461ff653..5b0da1982 100644
 --- a/hostapd/mxl_hostapd_cli.c
 +++ b/hostapd/mxl_hostapd_cli.c
 @@ -112,3 +112,34 @@ int mxl_hostapd_cli_cmd_get_dfs_stats(struct wpa_ctrl *ctrl, int argc, char *arg
@@ -192,7 +192,7 @@ index 585a9d5b2..5d7b7f34d 100644
 +	return mxl_wpa_ctrl_command(ctrl, cmd);
 +}
 diff --git a/hostapd/mxl_hostapd_cli.h b/hostapd/mxl_hostapd_cli.h
-index 57d868288..1906d5893 100644
+index e4e715e2d..0ee125f71 100644
 --- a/hostapd/mxl_hostapd_cli.h
 +++ b/hostapd/mxl_hostapd_cli.h
 @@ -28,10 +28,16 @@ int mxl_wpa_ctrl_command(struct wpa_ctrl *ctrl, const char *cmd);
@@ -284,7 +284,7 @@ index 7acd4bccd..20456c605 100644
  		if (!iface->bss)
  			break;
 diff --git a/src/ap/mxl_config.h b/src/ap/mxl_config.h
-index 0f8a55071..4de64cb11 100644
+index 2d31b10c3..7b93a5cb9 100644
 --- a/src/ap/mxl_config.h
 +++ b/src/ap/mxl_config.h
 @@ -31,6 +31,7 @@ struct mxl_hostapd_config {
@@ -296,7 +296,7 @@ index 0f8a55071..4de64cb11 100644
  
  /**
 diff --git a/src/ap/mxl_dfs_common.c b/src/ap/mxl_dfs_common.c
-index 443af3eed..5d5bb4062 100644
+index 31ee80bec..708c81839 100644
 --- a/src/ap/mxl_dfs_common.c
 +++ b/src/ap/mxl_dfs_common.c
 @@ -25,12 +25,6 @@
@@ -322,7 +322,7 @@ index 443af3eed..5d5bb4062 100644
  	int j;
  	int flag;
 diff --git a/src/ap/mxl_dfs_common.h b/src/ap/mxl_dfs_common.h
-index 7ce444d8d..8ee962d7d 100644
+index af590f311..c4e5a5fa7 100644
 --- a/src/ap/mxl_dfs_common.h
 +++ b/src/ap/mxl_dfs_common.h
 @@ -16,6 +16,13 @@
@@ -348,7 +348,7 @@ index 7ce444d8d..8ee962d7d 100644
  
  #endif /* MXL_DFS_COMMON_H */
 diff --git a/src/ap/mxl_events.c b/src/ap/mxl_events.c
-index 566e89aeb..19fce4377 100644
+index 96c70e9bf..4e075ec8a 100644
 --- a/src/ap/mxl_events.c
 +++ b/src/ap/mxl_events.c
 @@ -20,6 +20,7 @@
@@ -428,7 +428,7 @@ index 566e89aeb..19fce4377 100644
 +	mxl_process_event(ctx, EVENT_MXL_COC, &event);
 +}
 diff --git a/src/ap/mxl_hostapd.c b/src/ap/mxl_hostapd.c
-index 73ff72827..dde8405b8 100644
+index 09a8d078b..003fc5911 100644
 --- a/src/ap/mxl_hostapd.c
 +++ b/src/ap/mxl_hostapd.c
 @@ -13,14 +13,21 @@
@@ -545,7 +545,7 @@ index 73ff72827..dde8405b8 100644
 +	eloop_cancel_timeout(mxl_ap_max_nss_omn_elem_timeout, iface, NULL);
 +}
 diff --git a/src/ap/mxl_hostapd.h b/src/ap/mxl_hostapd.h
-index b75d7ee4a..7a2d3b30d 100644
+index dca4b31b7..d83444cae 100644
 --- a/src/ap/mxl_hostapd.h
 +++ b/src/ap/mxl_hostapd.h
 @@ -17,6 +17,7 @@
@@ -579,13 +579,13 @@ index b75d7ee4a..7a2d3b30d 100644
  #endif /* MXL_HOSTAPD_H */
 diff --git a/src/ap/mxl_zwdfs.c b/src/ap/mxl_zwdfs.c
 new file mode 100644
-index 000000000..cf33fdd4b
+index 000000000..074feff9f
 --- /dev/null
 +++ b/src/ap/mxl_zwdfs.c
 @@ -0,0 +1,312 @@
 +/******************************************************************************
 +
-+         Copyright (c) 2023 - 2024, MaxLinear, Inc.
++         Copyright (c) 2020 - 2025, MaxLinear, Inc.
 +         Copyright 2016 - 2020 Intel Corporation
 +         Copyright 2015 - 2016 Lantiq Beteiligungs-GmbH & Co. KG
 +         Copyright 2009 - 2014 Lantiq Deutschland GmbH
@@ -897,13 +897,13 @@ index 000000000..cf33fdd4b
 +}
 diff --git a/src/ap/mxl_zwdfs.h b/src/ap/mxl_zwdfs.h
 new file mode 100644
-index 000000000..91be0cf98
+index 000000000..b7aa1ce9b
 --- /dev/null
 +++ b/src/ap/mxl_zwdfs.h
 @@ -0,0 +1,29 @@
 +/******************************************************************************
 +
-+         Copyright (c) 2023 - 2024, MaxLinear, Inc.
++         Copyright (c) 2020 - 2025, MaxLinear, Inc.
 +         Copyright 2016 - 2020 Intel Corporation
 +         Copyright 2015 - 2016 Lantiq Beteiligungs-GmbH & Co. KG
 +         Copyright 2009 - 2014 Lantiq Deutschland GmbH
@@ -945,7 +945,7 @@ index 9e3771318..247ba283c 100644
  /* IEEE 802.11 defines */
  
 diff --git a/src/common/mxl_ieee802_11_defs.h b/src/common/mxl_ieee802_11_defs.h
-index 045ec91e2..78f96573f 100644
+index aea8f1ebf..9e6e431d8 100644
 --- a/src/common/mxl_ieee802_11_defs.h
 +++ b/src/common/mxl_ieee802_11_defs.h
 @@ -18,6 +18,7 @@
@@ -957,7 +957,7 @@ index 045ec91e2..78f96573f 100644
  #define RNR_INFO_TBTT_HDR_FILTERED	0x04
  #define RNR_INFO_TBTT_HDR_COLOC		0x08
 diff --git a/src/common/mxl_vendor.h b/src/common/mxl_vendor.h
-index 5a0d15bc7..3ea990862 100644
+index c6959b9d9..4758ccf14 100644
 --- a/src/common/mxl_vendor.h
 +++ b/src/common/mxl_vendor.h
 @@ -42,5 +42,6 @@
@@ -968,7 +968,7 @@ index 5a0d15bc7..3ea990862 100644
  
  #endif /* MXL_VENDOR_H */
 diff --git a/src/common/mxl_wpa_ctrl.h b/src/common/mxl_wpa_ctrl.h
-index 7d059e762..0b969c8ea 100644
+index 0484a7db4..9557c59d2 100644
 --- a/src/common/mxl_wpa_ctrl.h
 +++ b/src/common/mxl_wpa_ctrl.h
 @@ -19,4 +19,8 @@
@@ -981,7 +981,7 @@ index 7d059e762..0b969c8ea 100644
 +
  #endif /* MXL_WPA_CTRL_H */
 diff --git a/src/common/vendor_cmds_copy.h b/src/common/vendor_cmds_copy.h
-index 6e77d4312..3f175ddff 100644
+index 1da76dfcf..c70b1042f 100644
 --- a/src/common/vendor_cmds_copy.h
 +++ b/src/common/vendor_cmds_copy.h
 @@ -443,4 +443,11 @@ struct intel_vendor_radar {
@@ -1064,7 +1064,7 @@ index a1736995d..d450efd28 100644
  			wpa_printf(MSG_DEBUG, "nl80211: Ignore unsupported MXL vendor event %u", subcmd);
  			break;
 diff --git a/src/drivers/mxl_driver.h b/src/drivers/mxl_driver.h
-index 93eb08d6f..79971ed95 100644
+index 895641aa3..61985d8e5 100644
 --- a/src/drivers/mxl_driver.h
 +++ b/src/drivers/mxl_driver.h
 @@ -26,4 +26,7 @@ struct mxl_chan_data {
@@ -1076,7 +1076,7 @@ index 93eb08d6f..79971ed95 100644
 +
  #endif /* MXL_DRIVER_H */
 diff --git a/src/drivers/mxl_driver_nl80211.c b/src/drivers/mxl_driver_nl80211.c
-index 5dbddb1be..61739c2ba 100644
+index 74af556cd..2c827b2de 100644
 --- a/src/drivers/mxl_driver_nl80211.c
 +++ b/src/drivers/mxl_driver_nl80211.c
 @@ -85,3 +85,9 @@ int mxl_nl80211_set_channel_dfs_state(void *priv, enum nl80211_dfs_state dfs_sta
@@ -1090,7 +1090,7 @@ index 5dbddb1be..61739c2ba 100644
 +		capa->mxl_flags |= MXL_WPA_DRIVER_FLAGS_BACKGROUND_CAC;
 +}
 diff --git a/src/drivers/mxl_driver_nl80211.h b/src/drivers/mxl_driver_nl80211.h
-index 8e0575ab1..d64e1e47d 100644
+index 654d63ed9..fb8b7db08 100644
 --- a/src/drivers/mxl_driver_nl80211.h
 +++ b/src/drivers/mxl_driver_nl80211.h
 @@ -23,5 +23,6 @@

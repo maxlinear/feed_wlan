@@ -1,4 +1,4 @@
-From bf0278f5a5fb7ef1c03fb8b1e801b32902b5f99d Mon Sep 17 00:00:00 2001
+From e0f27cca2cf2154c693f0e951c6c83da6fb85539 Mon Sep 17 00:00:00 2001
 From: Jurijs Soloveckis <jsoloveckis@maxlinear.com>
 Date: Thu, 2 Feb 2023 15:33:24 +0100
 Subject: [PATCH] WLANRTSYS-48299: RM capabilities in opensource hostapd: full
@@ -2250,7 +2250,7 @@ index 6ffaf87e3..996ed3b4b 100644
  };
  
 diff --git a/hostapd/mxl_ctrl_iface.c b/hostapd/mxl_ctrl_iface.c
-index 77cced187..6e42295dc 100644
+index 1d56c7a2f..2fda5d841 100644
 --- a/hostapd/mxl_ctrl_iface.c
 +++ b/hostapd/mxl_ctrl_iface.c
 @@ -28,6 +28,8 @@
@@ -4720,7 +4720,7 @@ index 77cced187..6e42295dc 100644
  { return hostapd_ctrl_iface_acl_add_mac (acl, num, cmd); }
  int mxl_hostapd_ctrl_iface_acl_del_mac(struct mac_acl_entry **acl, int *num, const char *txtaddr)
 diff --git a/hostapd/mxl_ctrl_iface.h b/hostapd/mxl_ctrl_iface.h
-index adb1537eb..41a8284c4 100644
+index 03b537e5c..3be5b9d67 100644
 --- a/hostapd/mxl_ctrl_iface.h
 +++ b/hostapd/mxl_ctrl_iface.h
 @@ -25,5 +25,6 @@ int mxl_hostapd_ctrl_iface_receive_process(struct hostapd_data *hapd,
@@ -4731,7 +4731,7 @@ index adb1537eb..41a8284c4 100644
  
  #endif /* MXL_CTRL_IFACE_H */
 diff --git a/hostapd/mxl_hostapd_cli.c b/hostapd/mxl_hostapd_cli.c
-index e9f5700f4..7d272d50d 100644
+index 6549ba576..595f223fc 100644
 --- a/hostapd/mxl_hostapd_cli.c
 +++ b/hostapd/mxl_hostapd_cli.c
 @@ -224,3 +224,132 @@ int mxl_hostapd_cli_cmd_get_sta_softblock(struct wpa_ctrl *ctrl, int argc, char
@@ -4868,7 +4868,7 @@ index e9f5700f4..7d272d50d 100644
 +	return mxl_hostapd_cli_cmd(ctrl, "REPORT_STA_STATISTICS", 7, argc, argv);
 +}
 diff --git a/hostapd/mxl_hostapd_cli.h b/hostapd/mxl_hostapd_cli.h
-index 8db2056c0..162c9bd13 100644
+index 05af65db0..7978adf9e 100644
 --- a/hostapd/mxl_hostapd_cli.h
 +++ b/hostapd/mxl_hostapd_cli.h
 @@ -44,6 +44,29 @@ int mxl_wpa_ctrl_command(struct wpa_ctrl *ctrl, const char *cmd);
@@ -5588,7 +5588,7 @@ index 22ae1a9d3..7d1aa9341 100644
 +
  #endif /* IEEE802_11_AUTH_H */
 diff --git a/src/ap/mxl_dfs_common.c b/src/ap/mxl_dfs_common.c
-index 5d5bb4062..7bcc36f85 100644
+index 708c81839..9efee7227 100644
 --- a/src/ap/mxl_dfs_common.c
 +++ b/src/ap/mxl_dfs_common.c
 @@ -42,7 +42,7 @@ int mxl_hostapd_set_chan_dfs_state(struct hostapd_iface *iface, enum nl80211_dfs
@@ -5601,7 +5601,7 @@ index 5d5bb4062..7bcc36f85 100644
  	int ret;
  	u32 rx_ant = iface->mxl_iface.failsafe.rx_ant;
 diff --git a/src/ap/mxl_dfs_common.h b/src/ap/mxl_dfs_common.h
-index 8ee962d7d..5fd123fbd 100644
+index c4e5a5fa7..25bc2bb20 100644
 --- a/src/ap/mxl_dfs_common.h
 +++ b/src/ap/mxl_dfs_common.h
 @@ -23,7 +23,7 @@ enum mxl_hostapd_cac_finished_stat {
@@ -5614,7 +5614,7 @@ index 8ee962d7d..5fd123fbd 100644
  struct hostapd_channel_data *
  mxl_dfs_get_valid_channel_failsafe(struct hostapd_iface *iface,
 diff --git a/src/ap/mxl_hostapd.c b/src/ap/mxl_hostapd.c
-index e743055d3..55182610e 100644
+index 61657fa08..cb714ca73 100644
 --- a/src/ap/mxl_hostapd.c
 +++ b/src/ap/mxl_hostapd.c
 @@ -513,3 +513,13 @@ void mxl_hostapd_alloc_bss_data(struct hostapd_data *hapd)
@@ -5632,7 +5632,7 @@ index e743055d3..55182610e 100644
 +	return hapd->mxl_data.action_ssi_signal;
 +}
 diff --git a/src/ap/mxl_hostapd.h b/src/ap/mxl_hostapd.h
-index 586a2247d..aad961b10 100644
+index 10a2ed54b..8570b4232 100644
 --- a/src/ap/mxl_hostapd.h
 +++ b/src/ap/mxl_hostapd.h
 @@ -74,6 +74,8 @@ struct mxl_hostapd_iface {
@@ -5667,13 +5667,13 @@ index 586a2247d..aad961b10 100644
  #endif /* MXL_HOSTAPD_H */
 diff --git a/src/ap/mxl_rrm.c b/src/ap/mxl_rrm.c
 new file mode 100644
-index 000000000..468f3ac7d
+index 000000000..43f14b1f4
 --- /dev/null
 +++ b/src/ap/mxl_rrm.c
 @@ -0,0 +1,2113 @@
 +/******************************************************************************
 +
-+         Copyright (c) 2023 - 2024, MaxLinear, Inc.
++         Copyright (c) 2020 - 2025, MaxLinear, Inc.
 +         Copyright 2016 - 2020 Intel Corporation
 +         Copyright 2015 - 2016 Lantiq Beteiligungs-GmbH & Co. KG
 +         Copyright 2009 - 2014 Lantiq Deutschland GmbH
@@ -7786,13 +7786,13 @@ index 000000000..468f3ac7d
 +
 diff --git a/src/ap/mxl_rrm.h b/src/ap/mxl_rrm.h
 new file mode 100644
-index 000000000..4086750a7
+index 000000000..7c00b70fa
 --- /dev/null
 +++ b/src/ap/mxl_rrm.h
 @@ -0,0 +1,90 @@
 +/******************************************************************************
 +
-+         Copyright (c) 2023 - 2024, MaxLinear, Inc.
++         Copyright (c) 2020 - 2025, MaxLinear, Inc.
 +         Copyright 2016 - 2020 Intel Corporation
 +         Copyright 2015 - 2016 Lantiq Beteiligungs-GmbH & Co. KG
 +         Copyright 2009 - 2014 Lantiq Deutschland GmbH
@@ -8304,7 +8304,7 @@ index f27a901cc..58f5073cb 100644
  #define WLAN_BEACON_REQUEST_SUBELEM_VENDOR	221
  
 diff --git a/src/common/mxl_ieee802_11_defs.h b/src/common/mxl_ieee802_11_defs.h
-index beb7b95fc..c8de3b659 100644
+index e235fa9fe..482a90ce2 100644
 --- a/src/common/mxl_ieee802_11_defs.h
 +++ b/src/common/mxl_ieee802_11_defs.h
 @@ -44,13 +44,13 @@
@@ -8396,7 +8396,7 @@ index beb7b95fc..c8de3b659 100644
  #endif /* MXL_IEEE802_11_DEFS_H */
  
 diff --git a/src/common/mxl_wpa_ctrl.h b/src/common/mxl_wpa_ctrl.h
-index 6c51f80a2..9feec5d4b 100644
+index 8d807cd35..1e4b57fb7 100644
 --- a/src/common/mxl_wpa_ctrl.h
 +++ b/src/common/mxl_wpa_ctrl.h
 @@ -26,4 +26,20 @@
@@ -8421,7 +8421,7 @@ index 6c51f80a2..9feec5d4b 100644
 +
  #endif /* MXL_WPA_CTRL_H */
 diff --git a/src/common/vendor_cmds_copy.h b/src/common/vendor_cmds_copy.h
-index 1fedfb07b..cba34f198 100644
+index 80f3b835e..b43f93536 100644
 --- a/src/common/vendor_cmds_copy.h
 +++ b/src/common/vendor_cmds_copy.h
 @@ -446,6 +446,9 @@ struct mxl_ml_sta_info {
@@ -8866,7 +8866,7 @@ index e67027e60..e33a3c464 100644
  			wpa_printf(MSG_DEBUG, "nl80211: Ignore unsupported MXL vendor event %u", subcmd);
  			break;
 diff --git a/src/utils/mxl_common.h b/src/utils/mxl_common.h
-index fdfb487de..1c6251e45 100644
+index 01637eb5c..751d41a62 100644
 --- a/src/utils/mxl_common.h
 +++ b/src/utils/mxl_common.h
 @@ -17,6 +17,10 @@

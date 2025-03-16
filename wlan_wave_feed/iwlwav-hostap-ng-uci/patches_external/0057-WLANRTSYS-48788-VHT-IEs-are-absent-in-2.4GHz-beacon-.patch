@@ -1,4 +1,4 @@
-From e24cc1f6e79678996390f8a65bf66b8bffa015ff Mon Sep 17 00:00:00 2001
+From 9b4fd253d55b820570ac1b9176c1e3cf632c9f59 Mon Sep 17 00:00:00 2001
 From: Jurijs Soloveckis <jsoloveckis@maxlinear.com>
 Date: Tue, 13 Jun 2023 13:23:09 +0200
 Subject: [PATCH] WLANRTSYS-48788: VHT IEs are absent in 2.4GHz beacon from
@@ -8,6 +8,8 @@ Subject: [PATCH] WLANRTSYS-48788: VHT IEs are absent in 2.4GHz beacon from
  hostapd/config_file.c          |  3 +++
  src/ap/ap_config.c             |  4 ++--
  src/ap/beacon.c                | 12 ++++++------
+ src/ap/greylist.c              | 19 ++++++++++++-------
+ src/ap/greylist.h              | 19 ++++++++++++-------
  src/ap/hw_features.c           | 19 +++++++++++++++++++
  src/ap/ieee802_11.c            | 13 ++++++++++---
  src/ap/ieee802_11.h            |  2 ++
@@ -16,7 +18,7 @@ Subject: [PATCH] WLANRTSYS-48788: VHT IEs are absent in 2.4GHz beacon from
  src/ap/sta_info.h              |  1 +
  src/common/ieee802_11_common.c |  3 ++-
  src/common/ieee802_11_defs.h   |  1 +
- 11 files changed, 77 insertions(+), 12 deletions(-)
+ 13 files changed, 101 insertions(+), 26 deletions(-)
 
 diff --git a/hostapd/config_file.c b/hostapd/config_file.c
 index 2b3c2298f..0878a7415 100644
@@ -112,6 +114,60 @@ index 0e42acb28..1ddefe72e 100644
  		tailpos = hostapd_eid_vendor_vht(hapd, tailpos);
  #endif /* CONFIG_IEEE80211AC */
  
+diff --git a/src/ap/greylist.c b/src/ap/greylist.c
+index 00b105131..904ee5e4c 100644
+--- a/src/ap/greylist.c
++++ b/src/ap/greylist.c
+@@ -1,10 +1,15 @@
+-/*
+- * hostapd / RADIUS Greylist Access Control
+- * Copyright 2023 MaxLinear
+- *
+- * This software may be distributed under the terms of the BSD license.
+- * See README for more details.
+- */
++/******************************************************************************
++
++         Copyright (c) 2020 - 2025, MaxLinear, Inc.
++         Copyright 2016 - 2020 Intel Corporation
++         Copyright 2015 - 2016 Lantiq Beteiligungs-GmbH & Co. KG
++         Copyright 2009 - 2014 Lantiq Deutschland GmbH
++         Copyright 2007 - 2008 Infineon Technologies AG
++
++  This software may be distributed under the terms of the BSD license.
++  See README for more details.
++
++*******************************************************************************/
+ 
+ #define __USE_XOPEN
+ #define _GNU_SOURCE
+diff --git a/src/ap/greylist.h b/src/ap/greylist.h
+index 04d661e07..a374817a1 100644
+--- a/src/ap/greylist.h
++++ b/src/ap/greylist.h
+@@ -1,10 +1,15 @@
+-/*
+- * hostapd / RADIUS Greylist Access Control
+- * Copyright 2023 MaxLinear
+- *
+- * This software may be distributed under the terms of the BSD license.
+- * See README for more details.
+- */
++/******************************************************************************
++
++         Copyright (c) 2020 - 2025, MaxLinear, Inc.
++         Copyright 2016 - 2020 Intel Corporation
++         Copyright 2015 - 2016 Lantiq Beteiligungs-GmbH & Co. KG
++         Copyright 2009 - 2014 Lantiq Deutschland GmbH
++         Copyright 2007 - 2008 Infineon Technologies AG
++
++  This software may be distributed under the terms of the BSD license.
++  See README for more details.
++
++*******************************************************************************/
+ 
+ #ifndef GREYLIST_H
+ #define GREYLIST_H
 diff --git a/src/ap/hw_features.c b/src/ap/hw_features.c
 index 21039486c..b1d47cdad 100644
 --- a/src/ap/hw_features.c
@@ -242,7 +298,7 @@ index db615a38b..e61e136c4 100644
  u8 * hostapd_eid_vendor_vht(struct hostapd_data *hapd, u8 *eid)
  {
 diff --git a/src/ap/mxl_config.h b/src/ap/mxl_config.h
-index 94417505e..1ed72f1a3 100644
+index 3eae4014c..22315a6c6 100644
 --- a/src/ap/mxl_config.h
 +++ b/src/ap/mxl_config.h
 @@ -35,6 +35,7 @@ struct mxl_hostapd_config {

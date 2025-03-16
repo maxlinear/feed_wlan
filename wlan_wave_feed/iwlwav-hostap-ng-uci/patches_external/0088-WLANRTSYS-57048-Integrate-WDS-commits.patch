@@ -1,4 +1,4 @@
-From 302ca1b377e17a666d7bcae69f40dbbab442e0be Mon Sep 17 00:00:00 2001
+From d0b984d6d0c68c1b46d98d35aeeec119bce971db Mon Sep 17 00:00:00 2001
 From: Jurijs Soloveckis <jsoloveckis@maxlinear.com>
 Date: Fri, 21 Jul 2023 12:38:22 +0200
 Subject: [PATCH] WLANRTSYS-57048: Integrate WDS commits
@@ -18,8 +18,8 @@ Subject: [PATCH] WLANRTSYS-57048: Integrate WDS commits
  src/ap/mxl_wds.h              |   1 +
  src/ap/sta_info.c             |   7 +
  src/ap/sta_info.h             |   1 +
- src/ap/wds_wpa.c              | 586 ++++++++++++++++++++++++++++++++++
- src/ap/wds_wpa.h              |   8 +
+ src/ap/wds_wpa.c              | 598 ++++++++++++++++++++++++++++++++++
+ src/ap/wds_wpa.h              |  20 ++
  src/ap/wpa_auth_ie.c          |  23 ++
  src/ap/wpa_auth_ie.h          |   3 +
  src/common/vendor_cmds_copy.h |   4 +
@@ -27,8 +27,8 @@ Subject: [PATCH] WLANRTSYS-57048: Integrate WDS commits
  src/common/wpa_common.h       |   3 +
  src/drivers/driver.h          |  11 +
  src/drivers/driver_nl80211.c  |  31 ++
- wpa_supplicant/Makefile       |  36 +++
- 23 files changed, 998 insertions(+), 5 deletions(-)
+ wpa_supplicant/Makefile       |  36 ++
+ 23 files changed, 1022 insertions(+), 5 deletions(-)
  create mode 100644 src/ap/wds_wpa.c
  create mode 100644 src/ap/wds_wpa.h
 
@@ -373,7 +373,7 @@ index a7579a443..d777be7c8 100644
  			    sizeof(*hdr) + datalen);
  		return;
 diff --git a/src/ap/mxl_wds.c b/src/ap/mxl_wds.c
-index 13a9774ea..146314010 100644
+index aa6798aa5..a30cdfdf3 100644
 --- a/src/ap/mxl_wds.c
 +++ b/src/ap/mxl_wds.c
 @@ -25,7 +25,7 @@
@@ -386,7 +386,7 @@ index 13a9774ea..146314010 100644
  {
  	struct wmm_information_element *wmm;
 diff --git a/src/ap/mxl_wds.h b/src/ap/mxl_wds.h
-index cdd82120e..77de95d19 100644
+index 7b9a9c2a8..f443b924c 100644
 --- a/src/ap/mxl_wds.h
 +++ b/src/ap/mxl_wds.h
 @@ -17,5 +17,6 @@
@@ -436,10 +436,22 @@ index afdef6021..10281562f 100644
  	int vlan_id; /* 0: none, >0: VID */
 diff --git a/src/ap/wds_wpa.c b/src/ap/wds_wpa.c
 new file mode 100644
-index 000000000..e260cd742
+index 000000000..88a33a520
 --- /dev/null
 +++ b/src/ap/wds_wpa.c
-@@ -0,0 +1,586 @@
+@@ -0,0 +1,598 @@
++/******************************************************************************
++
++         Copyright (c) 2020 - 2025, MaxLinear, Inc.
++         Copyright 2016 - 2020 Intel Corporation
++         Copyright 2015 - 2016 Lantiq Beteiligungs-GmbH & Co. KG
++         Copyright 2009 - 2014 Lantiq Deutschland GmbH
++         Copyright 2007 - 2008 Infineon Technologies AG
++
++  This software may be distributed under the terms of the BSD license.
++  See README for more details.
++
++*******************************************************************************/
 +#include "includes.h"
 +#include "common.h"
 +#include "drivers/driver.h"
@@ -1028,10 +1040,22 @@ index 000000000..e260cd742
 +}
 diff --git a/src/ap/wds_wpa.h b/src/ap/wds_wpa.h
 new file mode 100644
-index 000000000..a19872339
+index 000000000..078d3aec7
 --- /dev/null
 +++ b/src/ap/wds_wpa.h
-@@ -0,0 +1,8 @@
+@@ -0,0 +1,20 @@
++/******************************************************************************
++
++         Copyright (c) 2020 - 2025, MaxLinear, Inc.
++         Copyright 2016 - 2020 Intel Corporation
++         Copyright 2015 - 2016 Lantiq Beteiligungs-GmbH & Co. KG
++         Copyright 2009 - 2014 Lantiq Deutschland GmbH
++         Copyright 2007 - 2008 Infineon Technologies AG
++
++  This software may be distributed under the terms of the BSD license.
++  See README for more details.
++
++*******************************************************************************/
 +#ifndef WDS_WPA_H
 +#define WDS_WPA_H
 +
@@ -1085,7 +1109,7 @@ index 527f92c3c..edf799234 100644
  
  #endif /* WPA_AUTH_IE_H */
 diff --git a/src/common/vendor_cmds_copy.h b/src/common/vendor_cmds_copy.h
-index 82854f8d1..5e0478d1e 100644
+index 84beeb0e8..1aee2976e 100644
 --- a/src/common/vendor_cmds_copy.h
 +++ b/src/common/vendor_cmds_copy.h
 @@ -626,6 +626,10 @@ struct mxl_vendor_prop_phy_cap {

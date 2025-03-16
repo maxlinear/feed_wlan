@@ -1,4 +1,4 @@
-From 572741aaaf84cfdb1bf47aafe5b93192394ea7cc Mon Sep 17 00:00:00 2001
+From 6e3efb15f69af8269cafb0fc897dd3c772cfa7f1 Mon Sep 17 00:00:00 2001
 From: Jurijs Soloveckis <jsoloveckis@maxlinear.com>
 Date: Tue, 25 Apr 2023 15:38:28 +0200
 Subject: [PATCH] WLANRTSYS-54640: Fix Tag: Tx Power Envelope
@@ -6,9 +6,9 @@ Subject: [PATCH] WLANRTSYS-54640: Fix Tag: Tx Power Envelope
 ---
  hostapd/Makefile        |   1 +
  src/ap/beacon.c         |  23 ++++
- src/ap/mxl_ieee802_11.c | 246 ++++++++++++++++++++++++++++++++++++++++
- src/ap/mxl_ieee802_11.h |  17 +++
- 4 files changed, 287 insertions(+)
+ src/ap/mxl_ieee802_11.c | 250 ++++++++++++++++++++++++++++++++++++++++
+ src/ap/mxl_ieee802_11.h |  21 ++++
+ 4 files changed, 295 insertions(+)
  create mode 100644 src/ap/mxl_ieee802_11.c
  create mode 100644 src/ap/mxl_ieee802_11.h
 
@@ -90,13 +90,17 @@ index b5022b07e..ce7faa33c 100644
  	tailpos = hostapd_eid_wb_chsw_wrapper(hapd, tailpos);
 diff --git a/src/ap/mxl_ieee802_11.c b/src/ap/mxl_ieee802_11.c
 new file mode 100644
-index 000000000..a68499db8
+index 000000000..36fdeb6c4
 --- /dev/null
 +++ b/src/ap/mxl_ieee802_11.c
-@@ -0,0 +1,246 @@
+@@ -0,0 +1,250 @@
 +/******************************************************************************
 +
-+         Copyright (c) 2023 - 2024, MaxLinear, Inc.
++         Copyright (c) 2020 - 2025, MaxLinear, Inc.
++         Copyright 2016 - 2020 Intel Corporation
++         Copyright 2015 - 2016 Lantiq Beteiligungs-GmbH & Co. KG
++         Copyright 2009 - 2014 Lantiq Deutschland GmbH
++         Copyright 2007 - 2008 Infineon Technologies AG
 +
 +  This software may be distributed under the terms of the BSD license.
 +  See README for more details.
@@ -342,13 +346,17 @@ index 000000000..a68499db8
 +#endif /* CONFIG_NATIVE_WINDOWS */
 diff --git a/src/ap/mxl_ieee802_11.h b/src/ap/mxl_ieee802_11.h
 new file mode 100644
-index 000000000..d1e8ccf43
+index 000000000..52061d417
 --- /dev/null
 +++ b/src/ap/mxl_ieee802_11.h
-@@ -0,0 +1,17 @@
+@@ -0,0 +1,21 @@
 +/******************************************************************************
 +
-+         Copyright (c) 2023 - 2024, MaxLinear, Inc.
++         Copyright (c) 2020 - 2025, MaxLinear, Inc.
++         Copyright 2016 - 2020 Intel Corporation
++         Copyright 2015 - 2016 Lantiq Beteiligungs-GmbH & Co. KG
++         Copyright 2009 - 2014 Lantiq Deutschland GmbH
++         Copyright 2007 - 2008 Infineon Technologies AG
 +
 +  This software may be distributed under the terms of the BSD license.
 +  See README for more details.

@@ -1,4 +1,4 @@
-From bb5f022ad52d83dd29d049087175b7c919ba6e1b Mon Sep 17 00:00:00 2001
+From 03884a924bf9585b51e5f6dd773c93ece3333b19 Mon Sep 17 00:00:00 2001
 From: mvuls <mvuls@maxlinear.com>
 Date: Wed, 8 Nov 2023 17:12:30 +0200
 Subject: [PATCH] WLANRTSYS-50839: MXL DFS ETSI clear for life
@@ -32,7 +32,7 @@ index ba7be1ac1..b03f4c1e4 100644
  
  include ../src/drivers/drivers.mak
 diff --git a/hostapd/mxl_config.c b/hostapd/mxl_config.c
-index 0c456ef9d..f54bbf8d8 100644
+index e79dbe459..00c9798a0 100644
 --- a/hostapd/mxl_config.c
 +++ b/hostapd/mxl_config.c
 @@ -103,6 +103,8 @@ int mxl_hostapd_config_fill (struct hostapd_config *conf,
@@ -136,7 +136,7 @@ index 82a39b426..17718e8b0 100644
  	switch (hostapd_check_chans(iface)) {
  	case HOSTAPD_CHAN_VALID:
 diff --git a/src/ap/mxl_config.h b/src/ap/mxl_config.h
-index de28f2e7f..aa98d2fef 100644
+index 2ea876aa6..9b4cfde49 100644
 --- a/src/ap/mxl_config.h
 +++ b/src/ap/mxl_config.h
 @@ -29,6 +29,7 @@ struct mxl_hostapd_config {
@@ -149,13 +149,13 @@ index de28f2e7f..aa98d2fef 100644
  /**
 diff --git a/src/ap/mxl_dfs_file.c b/src/ap/mxl_dfs_file.c
 new file mode 100644
-index 000000000..55190c9db
+index 000000000..0237819d3
 --- /dev/null
 +++ b/src/ap/mxl_dfs_file.c
 @@ -0,0 +1,216 @@
 +/******************************************************************************
 +
-+         Copyright (c) 2023 - 2024, MaxLinear, Inc.
++         Copyright (c) 2020 - 2025, MaxLinear, Inc.
 +         Copyright 2016 - 2020 Intel Corporation
 +         Copyright 2015 - 2016 Lantiq Beteiligungs-GmbH & Co. KG
 +         Copyright 2009 - 2014 Lantiq Deutschland GmbH
@@ -371,13 +371,13 @@ index 000000000..55190c9db
 +}
 diff --git a/src/ap/mxl_dfs_file.h b/src/ap/mxl_dfs_file.h
 new file mode 100644
-index 000000000..35fb5f578
+index 000000000..e76757618
 --- /dev/null
 +++ b/src/ap/mxl_dfs_file.h
 @@ -0,0 +1,21 @@
 +/******************************************************************************
 +
-+         Copyright (c) 2023 - 2024, MaxLinear, Inc.
++         Copyright (c) 2020 - 2025, MaxLinear, Inc.
 +         Copyright 2016 - 2020 Intel Corporation
 +         Copyright 2015 - 2016 Lantiq Beteiligungs-GmbH & Co. KG
 +         Copyright 2009 - 2014 Lantiq Deutschland GmbH
@@ -397,7 +397,7 @@ index 000000000..35fb5f578
 +
 +#endif /* MXL_DFS_FILE_H */
 diff --git a/src/ap/mxl_hostapd.h b/src/ap/mxl_hostapd.h
-index 9f560192c..b75d7ee4a 100644
+index b84ce55df..dca4b31b7 100644
 --- a/src/ap/mxl_hostapd.h
 +++ b/src/ap/mxl_hostapd.h
 @@ -67,6 +67,7 @@ struct mxl_hostapd_iface {
@@ -437,7 +437,7 @@ index 8e033ceb0..847631bfb 100644
  		chan->chan = channel;
  	else
 diff --git a/src/drivers/mxl_driver.h b/src/drivers/mxl_driver.h
-index 0001a03ca..93eb08d6f 100644
+index 349a8c908..895641aa3 100644
 --- a/src/drivers/mxl_driver.h
 +++ b/src/drivers/mxl_driver.h
 @@ -22,4 +22,8 @@ struct mxl_csa_settings {

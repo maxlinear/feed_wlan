@@ -1,4 +1,4 @@
-From 7a2b1e11fb264e3d89ff45ab721d0c40868e151e Mon Sep 17 00:00:00 2001
+From 4c1113b1aa0cd6811fe7d3e2b3d80be39031c887 Mon Sep 17 00:00:00 2001
 From: fromans <fromans@maxlinear.com>
 Date: Fri, 17 Nov 2023 13:27:39 +0200
 Subject: [PATCH] WLANRTSYS-60081: Compatibility stub for ATF configuration
@@ -8,7 +8,7 @@ Subject: [PATCH] WLANRTSYS-60081: Compatibility stub for ATF configuration
  1 file changed, 2 insertions(+)
 
 diff --git a/hostapd/mxl_config.c b/hostapd/mxl_config.c
-index 46579e1f7..77e00ecdb 100644
+index c8194c728..131923c01 100644
 --- a/hostapd/mxl_config.c
 +++ b/hostapd/mxl_config.c
 @@ -112,6 +112,8 @@ int mxl_hostapd_config_fill (struct hostapd_config *conf,

@@ -1,4 +1,4 @@
-From d93a7532f539af1030bd820708b048a802d496c2 Mon Sep 17 00:00:00 2001
+From 165f28efc5da615693d7164e9d1dfe20eaf3fee7 Mon Sep 17 00:00:00 2001
 From: Jurijs Soloveckis <jsoloveckis@maxlinear.com>
 Date: Fri, 3 Mar 2023 10:34:24 +0100
 Subject: [PATCH] WLANRTSYS-53529: 802.11ax: Add support for the broadcast TWT
@@ -455,7 +455,7 @@ index 516927deb..744b17e2c 100644
 +
  #endif /* IEEE802_11_DEFS_H */
 diff --git a/src/common/vendor_cmds_copy.h b/src/common/vendor_cmds_copy.h
-index cba34f198..c21761d22 100644
+index b43f93536..bd12b595c 100644
 --- a/src/common/vendor_cmds_copy.h
 +++ b/src/common/vendor_cmds_copy.h
 @@ -574,6 +574,23 @@ struct intel_vendor_steer_cfg {

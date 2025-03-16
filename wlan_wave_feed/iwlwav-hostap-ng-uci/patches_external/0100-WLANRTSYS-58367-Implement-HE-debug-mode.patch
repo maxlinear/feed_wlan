@@ -1,4 +1,4 @@
-From e74b47f7e2dfe94b1429ad0a08b8407b74377d13 Mon Sep 17 00:00:00 2001
+From b708ba95c09a0f68e7f660b1d9c49810f0b11697 Mon Sep 17 00:00:00 2001
 From: fromans <fromans@maxlinear.com>
 Date: Tue, 10 Oct 2023 13:41:14 +0300
 Subject: [PATCH] WLANRTSYS-58367: Implement HE debug mode
@@ -38,7 +38,7 @@ Subject: [PATCH] WLANRTSYS-58367: Implement HE debug mode
  11 files changed, 1625 insertions(+), 2 deletions(-)
 
 diff --git a/hostapd/mxl_config.c b/hostapd/mxl_config.c
-index a75bf88a1..a00a1449b 100644
+index 14ed9e433..a52a2452a 100644
 --- a/hostapd/mxl_config.c
 +++ b/hostapd/mxl_config.c
 @@ -16,6 +16,640 @@
@@ -764,7 +764,7 @@ index f7f66e6ed..7638d7a2a 100644
  static u8 ieee80211_he_ppet_size(u8 ppe_thres_hdr, const u8 *phy_cap_info)
  {
 diff --git a/src/ap/mxl_config.h b/src/ap/mxl_config.h
-index e363aef04..18e205d6d 100644
+index dafb1eea5..db3dd2d9f 100644
 --- a/src/ap/mxl_config.h
 +++ b/src/ap/mxl_config.h
 @@ -15,6 +15,125 @@
@@ -912,7 +912,7 @@ index e363aef04..18e205d6d 100644
  
  /**
 diff --git a/src/ap/mxl_hostapd.c b/src/ap/mxl_hostapd.c
-index 8b78ebefb..54c5dba7f 100644
+index b3bf77f96..558c79140 100644
 --- a/src/ap/mxl_hostapd.c
 +++ b/src/ap/mxl_hostapd.c
 @@ -22,6 +22,8 @@
@@ -1618,7 +1618,7 @@ index 8b78ebefb..54c5dba7f 100644
  			unsigned int vendor_id, unsigned int subcmd,
  			void *input_data, size_t input_data_size,
 diff --git a/src/ap/mxl_hostapd.h b/src/ap/mxl_hostapd.h
-index f8e641c6c..ee6d93dfc 100644
+index caa238783..2a223dda1 100644
 --- a/src/ap/mxl_hostapd.h
 +++ b/src/ap/mxl_hostapd.h
 @@ -140,6 +140,7 @@ int hostapd_chan_to_freq(int channel, bool op_class_6g);
@@ -1653,7 +1653,7 @@ index 63e5bc97f..4dd686e06 100644
   * HE MAC Capabilities Information field defines
   */
 diff --git a/src/common/mxl_ieee802_11_defs.h b/src/common/mxl_ieee802_11_defs.h
-index c8de3b659..e4e88a208 100644
+index 482a90ce2..8325220f4 100644
 --- a/src/common/mxl_ieee802_11_defs.h
 +++ b/src/common/mxl_ieee802_11_defs.h
 @@ -123,5 +123,147 @@ struct dmg_link_adaptation_ack {
@@ -1805,7 +1805,7 @@ index c8de3b659..e4e88a208 100644
  #endif /* MXL_IEEE802_11_DEFS_H */
  
 diff --git a/src/common/vendor_cmds_copy.h b/src/common/vendor_cmds_copy.h
-index 5e0478d1e..95f164979 100644
+index 1aee2976e..16b479a9d 100644
 --- a/src/common/vendor_cmds_copy.h
 +++ b/src/common/vendor_cmds_copy.h
 @@ -631,6 +631,16 @@ struct intel_vendor_mac_addr_list_cfg {

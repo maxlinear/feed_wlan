@@ -1,4 +1,4 @@
-From d5e208003d2f16b0f202182badf8596a1cdcc5c2 Mon Sep 17 00:00:00 2001
+From c5ef1127fba66179af02bfaf42b836fb8bc5f203 Mon Sep 17 00:00:00 2001
 From: Jurijs Soloveckis <jsoloveckis@maxlinear.com>
 Date: Thu, 22 Jun 2023 14:43:10 +0200
 Subject: [PATCH] WLANRTSYS-56407: ifconfig support

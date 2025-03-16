@@ -1,4 +1,4 @@
-From 904c0e77a0f87e2124ce7c15dbd43d4280f3b019 Mon Sep 17 00:00:00 2001
+From cb5b7ae8f4614c5880b2a7a73c25b9bd93abc2d0 Mon Sep 17 00:00:00 2001
 From: Dmitrijs Martinovs <dmartinovs@maxlinear.com>
 Date: Tue, 5 Sep 2023 10:31:33 +0200
 Subject: [PATCH] WLANRTSYS-58387: Add support for neighbor report anqp element

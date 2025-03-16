@@ -1,4 +1,4 @@
-From b0750b4721d0c0d31f5f8ddab2332a3b709537a0 Mon Sep 17 00:00:00 2001
+From 641369951895da87e1cc59f71e2a998b01567aaa Mon Sep 17 00:00:00 2001
 From: Jurijs Soloveckis <jsoloveckis@maxlinear.com>
 Date: Mon, 12 Jun 2023 08:06:15 +0200
 Subject: [PATCH] WLANRTSYS-55993: Implement support for WHM: part2
@@ -354,7 +354,7 @@ index aaf458616..e4487be78 100644
 +
  #endif /* HOSTAPD_H */
 diff --git a/src/ap/mxl_zwdfs.c b/src/ap/mxl_zwdfs.c
-index ae7746f07..a79124858 100644
+index 97d3d46c9..3ba0d206d 100644
 --- a/src/ap/mxl_zwdfs.c
 +++ b/src/ap/mxl_zwdfs.c
 @@ -261,6 +261,7 @@ int mxl_hostapd_set_zwdfs_antenna(struct hostapd_data *hapd, int enable)
@@ -366,7 +366,7 @@ index ae7746f07..a79124858 100644
  	}
  	else
 diff --git a/src/common/vendor_cmds_copy.h b/src/common/vendor_cmds_copy.h
-index 2d30b6d69..27f027d06 100644
+index e35569dd9..c158892c8 100644
 --- a/src/common/vendor_cmds_copy.h
 +++ b/src/common/vendor_cmds_copy.h
 @@ -657,4 +657,34 @@ struct intel_vendor_unconnected_sta {

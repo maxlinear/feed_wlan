@@ -1,4 +1,4 @@
-From ddde01b8c6e57aed4cccd7fec5610987f2efcfee Mon Sep 17 00:00:00 2001
+From abc536c674c60a91c79d2f45fe1062869c44858e Mon Sep 17 00:00:00 2001
 From: mvuls <mvuls@maxlinear.com>
 Date: Wed, 8 Nov 2023 15:19:44 +0200
 Subject: [PATCH] WLANRTSYS-50839: MXL Sub Band DFS
@@ -39,7 +39,7 @@ index 839cd99b8..ba7be1ac1 100644
  
  include ../src/drivers/drivers.mak
 diff --git a/hostapd/mxl_config.c b/hostapd/mxl_config.c
-index c7616d7c4..0c456ef9d 100644
+index e29c2f608..e79dbe459 100644
 --- a/hostapd/mxl_config.c
 +++ b/hostapd/mxl_config.c
 @@ -96,6 +96,13 @@ int mxl_hostapd_config_fill (struct hostapd_config *conf,
@@ -57,7 +57,7 @@ index c7616d7c4..0c456ef9d 100644
  		return 0;
  	return 1;
 diff --git a/hostapd/mxl_ctrl_iface.c b/hostapd/mxl_ctrl_iface.c
-index 99f63d88f..84b722a86 100644
+index bca3bc283..9caa69b95 100644
 --- a/hostapd/mxl_ctrl_iface.c
 +++ b/hostapd/mxl_ctrl_iface.c
 @@ -214,6 +214,49 @@ static int mxl_hostapd_ctrl_iface_get_failsafe_chan(struct hostapd_iface *iface,
@@ -120,7 +120,7 @@ index 99f63d88f..84b722a86 100644
  		return 0;
  	}
 diff --git a/hostapd/mxl_hostapd_cli.c b/hostapd/mxl_hostapd_cli.c
-index ce24ad4d1..585a9d5b2 100644
+index fe9dc731a..e461ff653 100644
 --- a/hostapd/mxl_hostapd_cli.c
 +++ b/hostapd/mxl_hostapd_cli.c
 @@ -93,3 +93,22 @@ int mxl_hostapd_cli_cmd_get_failsafe_chan(struct wpa_ctrl *ctrl, int argc, char
@@ -147,7 +147,7 @@ index ce24ad4d1..585a9d5b2 100644
 +	return mxl_wpa_ctrl_command(ctrl, cmd);
 +}
 diff --git a/hostapd/mxl_hostapd_cli.h b/hostapd/mxl_hostapd_cli.h
-index 3fc9dd8cc..57d868288 100644
+index a1143df53..e4e715e2d 100644
 --- a/hostapd/mxl_hostapd_cli.h
 +++ b/hostapd/mxl_hostapd_cli.h
 @@ -26,9 +26,12 @@ int mxl_wpa_ctrl_command(struct wpa_ctrl *ctrl, const char *cmd);
@@ -259,7 +259,7 @@ index 5bb0de77f..4598218aa 100644
  	return 0;
  }
 diff --git a/src/ap/mxl_config.h b/src/ap/mxl_config.h
-index aa013a358..de28f2e7f 100644
+index 4e132e465..2ea876aa6 100644
 --- a/src/ap/mxl_config.h
 +++ b/src/ap/mxl_config.h
 @@ -28,6 +28,7 @@ struct mxl_hostapd_config {
@@ -271,7 +271,7 @@ index aa013a358..de28f2e7f 100644
  
  /**
 diff --git a/src/ap/mxl_dfs_common.c b/src/ap/mxl_dfs_common.c
-index 81626b96e..912506740 100644
+index 6b6085c8a..160d631e5 100644
 --- a/src/ap/mxl_dfs_common.c
 +++ b/src/ap/mxl_dfs_common.c
 @@ -20,6 +20,7 @@
@@ -310,7 +310,7 @@ index 81626b96e..912506740 100644
  		return false;
  
 diff --git a/src/ap/mxl_dfs_common.h b/src/ap/mxl_dfs_common.h
-index d63de6e51..137e8aa26 100644
+index 1dd5f700c..04a100da0 100644
 --- a/src/ap/mxl_dfs_common.h
 +++ b/src/ap/mxl_dfs_common.h
 @@ -38,10 +38,12 @@ struct hostapd_channel_data * mxl_dfs_get_valid_channel(struct hostapd_iface *if
@@ -328,7 +328,7 @@ index d63de6e51..137e8aa26 100644
  
  #endif /* MXL_DFS_COMMON_H */
 diff --git a/src/ap/mxl_hostapd.h b/src/ap/mxl_hostapd.h
-index ea653dc47..9f560192c 100644
+index 74077978c..b84ce55df 100644
 --- a/src/ap/mxl_hostapd.h
 +++ b/src/ap/mxl_hostapd.h
 @@ -16,6 +16,7 @@
@@ -349,13 +349,13 @@ index ea653dc47..9f560192c 100644
  
 diff --git a/src/ap/mxl_sub_band_dfs.c b/src/ap/mxl_sub_band_dfs.c
 new file mode 100644
-index 000000000..5b6c354e8
+index 000000000..60d15dea5
 --- /dev/null
 +++ b/src/ap/mxl_sub_band_dfs.c
 @@ -0,0 +1,625 @@
 +/******************************************************************************
 +
-+         Copyright (c) 2023 - 2024, MaxLinear, Inc.
++         Copyright (c) 2020 - 2025, MaxLinear, Inc.
 +         Copyright 2016 - 2020 Intel Corporation
 +         Copyright 2015 - 2016 Lantiq Beteiligungs-GmbH & Co. KG
 +         Copyright 2009 - 2014 Lantiq Deutschland GmbH
@@ -980,13 +980,13 @@ index 000000000..5b6c354e8
 +}
 diff --git a/src/ap/mxl_sub_band_dfs.h b/src/ap/mxl_sub_band_dfs.h
 new file mode 100644
-index 000000000..e578c06a6
+index 000000000..f43fede84
 --- /dev/null
 +++ b/src/ap/mxl_sub_band_dfs.h
 @@ -0,0 +1,49 @@
 +/******************************************************************************
 +
-+         Copyright (c) 2023 - 2024, MaxLinear, Inc.
++         Copyright (c) 2020 - 2025 MaxLinear, Inc.
 +         Copyright 2016 - 2020 Intel Corporation
 +         Copyright 2015 - 2016 Lantiq Beteiligungs-GmbH & Co. KG
 +         Copyright 2009 - 2014 Lantiq Deutschland GmbH
@@ -1079,7 +1079,7 @@ index c359ef02c..31ad8fb28 100644
  
  fail:
 diff --git a/src/drivers/mxl_driver.h b/src/drivers/mxl_driver.h
-index f502c541d..0001a03ca 100644
+index e0e4a405f..349a8c908 100644
 --- a/src/drivers/mxl_driver.h
 +++ b/src/drivers/mxl_driver.h
 @@ -18,4 +18,8 @@ struct mxl_scan_cfg {
@@ -1092,7 +1092,7 @@ index f502c541d..0001a03ca 100644
 +
  #endif /* MXL_DRIVER_H */
 diff --git a/src/drivers/mxl_nl80211.h b/src/drivers/mxl_nl80211.h
-index 8d297a62e..56dc68748 100644
+index afac2bbfc..31d68e227 100644
 --- a/src/drivers/mxl_nl80211.h
 +++ b/src/drivers/mxl_nl80211.h
 @@ -71,4 +71,12 @@

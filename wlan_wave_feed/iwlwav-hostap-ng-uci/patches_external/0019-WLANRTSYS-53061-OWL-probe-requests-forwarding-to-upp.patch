@@ -1,4 +1,4 @@
-From 3389641ee561785197fc51f08c9bf63a7c1b17f4 Mon Sep 17 00:00:00 2001
+From ef55532e3f2e87769f1d9faa067da372198f2ecf Mon Sep 17 00:00:00 2001
 From: Jurijs Soloveckis <jsoloveckis@maxlinear.com>
 Date: Wed, 15 Feb 2023 08:21:43 +0100
 Subject: [PATCH] WLANRTSYS-53061: OWL: probe requests forwarding to upper

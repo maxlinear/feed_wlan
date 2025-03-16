@@ -1,4 +1,4 @@
-From 67624ca6779cee05c54993d5ca6f22829aa06a92 Mon Sep 17 00:00:00 2001
+From fb68b99a9a94e2431f266e5baff618b12bffbf42 Mon Sep 17 00:00:00 2001
 From: mvulsx <mvuls@maxlinear.com>
 Date: Thu, 6 Jul 2023 14:46:27 +0000
 Subject: [PATCH] WLANRTSYS-56767: Add additional info on STA

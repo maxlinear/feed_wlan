@@ -1,4 +1,4 @@
-From 7627fb07facd5d59cf42cd9d88ab5cd8a1d684e2 Mon Sep 17 00:00:00 2001
+From 8b9742d9f7d19dc68247356bb1bd318456c3f3a5 Mon Sep 17 00:00:00 2001
 From: mvulsx <mvuls@maxlinear.com>
 Date: Tue, 4 Jul 2023 09:59:14 +0000
 Subject: [PATCH] WLANRTSYS-56685: wpa_supplicant: extend vendor_elem params to

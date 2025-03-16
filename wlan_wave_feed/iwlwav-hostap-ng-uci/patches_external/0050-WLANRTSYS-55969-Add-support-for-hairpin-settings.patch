@@ -1,4 +1,4 @@
-From 6adaa3616274627fa60f57f1def95cd3d0b78e3a Mon Sep 17 00:00:00 2001
+From 45ee51d931871bcca988e2932a929fd03a35349d Mon Sep 17 00:00:00 2001
 From: Jurijs Soloveckis <jsoloveckis@maxlinear.com>
 Date: Fri, 9 Jun 2023 09:10:11 +0200
 Subject: [PATCH] WLANRTSYS-55969: Add support for hairpin settings

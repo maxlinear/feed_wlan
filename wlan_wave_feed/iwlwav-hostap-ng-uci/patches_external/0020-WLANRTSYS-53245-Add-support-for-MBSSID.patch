@@ -1,4 +1,4 @@
-From 56dc6d7c2e9070cb9c99729474b785f235aaec52 Mon Sep 17 00:00:00 2001
+From 8842ebe091ebf06d24ad45382c2ed8d17e30ea0a Mon Sep 17 00:00:00 2001
 From: Jurijs Soloveckis <jsoloveckis@maxlinear.com>
 Date: Thu, 23 Feb 2023 13:05:20 +0100
 Subject: [PATCH] WLANRTSYS-53245: Add support for MBSSID
@@ -988,7 +988,7 @@ index eaeeba43e..277baf44d 100644
 +	return eid;
 +}
 diff --git a/src/ap/mxl_hostapd.c b/src/ap/mxl_hostapd.c
-index 55182610e..a34c837dd 100644
+index cb714ca73..651face30 100644
 --- a/src/ap/mxl_hostapd.c
 +++ b/src/ap/mxl_hostapd.c
 @@ -133,6 +133,7 @@ int mxl_hostapd_get_aid(struct hostapd_data *hapd, struct sta_info *sta)

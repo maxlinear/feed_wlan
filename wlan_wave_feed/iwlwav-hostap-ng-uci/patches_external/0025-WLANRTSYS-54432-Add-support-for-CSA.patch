@@ -1,4 +1,4 @@
-From e2fbd81a5d53547264b3226fe3dac243ff7b8788 Mon Sep 17 00:00:00 2001
+From 049faf02ecd93458a0bb9d8b0343c5311390f912 Mon Sep 17 00:00:00 2001
 From: mvuls <mvuls@maxlinear.com>
 Date: Wed, 1 Nov 2023 14:39:32 +0200
 Subject: [PATCH] WLANRTSYS-54432: Add support for CSA
@@ -420,7 +420,7 @@ index 02a79f7af..62f48972b 100644
  				struct hostapd_freq_params *freq_params);
  int hostapd_switch_channel(struct hostapd_data *hapd,
 diff --git a/src/ap/mxl_hostapd.c b/src/ap/mxl_hostapd.c
-index a34c837dd..a5b123b56 100644
+index 651face30..7388adae1 100644
 --- a/src/ap/mxl_hostapd.c
 +++ b/src/ap/mxl_hostapd.c
 @@ -391,7 +391,7 @@ void mxl_hostapd_setup_interface_pre(struct hostapd_iface *iface)
@@ -470,7 +470,7 @@ index a34c837dd..a5b123b56 100644
  {
  	switch (width) {
 diff --git a/src/ap/mxl_hostapd.h b/src/ap/mxl_hostapd.h
-index aad961b10..17760b206 100644
+index 8570b4232..92e7088a9 100644
 --- a/src/ap/mxl_hostapd.h
 +++ b/src/ap/mxl_hostapd.h
 @@ -146,6 +146,7 @@ int mxl_hostapd_setup_bss_post(struct hostapd_data *hapd);
@@ -482,7 +482,7 @@ index aad961b10..17760b206 100644
  enum oper_chan_width mxl_get_oper_width(int width);
  struct hostapd_data * mxl_get_hapd_bssid(struct hostapd_iface *iface, const u8 *bssid);
 diff --git a/src/ap/mxl_sub_band_dfs.c b/src/ap/mxl_sub_band_dfs.c
-index 5b6c354e8..102f47615 100644
+index 60d15dea5..63d19b6d9 100644
 --- a/src/ap/mxl_sub_band_dfs.c
 +++ b/src/ap/mxl_sub_band_dfs.c
 @@ -533,6 +533,9 @@ mxl_hostapd_sub_dfs_switch_chan(struct hostapd_iface *iface, u8 rbm, int chan, i
@@ -496,7 +496,7 @@ index 5b6c354e8..102f47615 100644
  		err = hostapd_switch_channel(iface->bss[i], &csa_settings);
  		if (err)
 diff --git a/src/ap/mxl_zwdfs.c b/src/ap/mxl_zwdfs.c
-index cf33fdd4b..ae7746f07 100644
+index 074feff9f..97d3d46c9 100644
 --- a/src/ap/mxl_zwdfs.c
 +++ b/src/ap/mxl_zwdfs.c
 @@ -187,6 +187,8 @@ int mxl_hostapd_zwdfs_switch(struct hostapd_iface *iface, int cac_status,
@@ -776,7 +776,7 @@ index b2fa78912..8c9cb71c6 100644
 +
  #endif /* WPA_AUTH_I_H */
 diff --git a/src/common/vendor_cmds_copy.h b/src/common/vendor_cmds_copy.h
-index c21761d22..4a9ceb153 100644
+index bd12b595c..55bc416f4 100644
 --- a/src/common/vendor_cmds_copy.h
 +++ b/src/common/vendor_cmds_copy.h
 @@ -448,6 +448,17 @@ struct mxl_ml_sta_info {

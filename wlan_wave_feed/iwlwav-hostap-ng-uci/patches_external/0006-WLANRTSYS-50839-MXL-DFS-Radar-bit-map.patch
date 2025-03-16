@@ -1,4 +1,4 @@
-From 386e9de007504e7e30abf94aa730eee1ef01a7e7 Mon Sep 17 00:00:00 2001
+From a22ee67be9d32208f3ae375ca985ce2aa5586f5e Mon Sep 17 00:00:00 2001
 From: mvuls <mvuls@maxlinear.com>
 Date: Wed, 8 Nov 2023 10:39:02 +0200
 Subject: [PATCH] WLANRTSYS-50839: MXL DFS Radar bit map
@@ -48,7 +48,7 @@ index 738158db8..ac5af55ae 100644
  	/* Proceed only if DFS is not offloaded to the driver */
  	if (iface->drv_flags & WPA_DRIVER_FLAGS_DFS_OFFLOAD)
 diff --git a/src/ap/mxl_dfs_common.c b/src/ap/mxl_dfs_common.c
-index 0dae4e510..81626b96e 100644
+index 8c68ab042..6b6085c8a 100644
 --- a/src/ap/mxl_dfs_common.c
 +++ b/src/ap/mxl_dfs_common.c
 @@ -227,3 +227,26 @@ bool mxl_hostapd_handle_radar(struct hostapd_iface *iface)
@@ -79,7 +79,7 @@ index 0dae4e510..81626b96e 100644
 +	hapd->iface->mxl_iface.rbm = 0;
 +}
 diff --git a/src/ap/mxl_dfs_common.h b/src/ap/mxl_dfs_common.h
-index b8bdb234b..d63de6e51 100644
+index 984806cd6..1dd5f700c 100644
 --- a/src/ap/mxl_dfs_common.h
 +++ b/src/ap/mxl_dfs_common.h
 @@ -39,5 +39,9 @@ struct hostapd_channel_data * mxl_dfs_get_valid_channel(struct hostapd_iface *if

@@ -1,4 +1,4 @@
-From 730f6b3cf6a57010af61a1d9c6999c1fed5b8ba8 Mon Sep 17 00:00:00 2001
+From a67f2a565112a0b4c461103d88fe0a381a4303cc Mon Sep 17 00:00:00 2001
 From: mvulsx <mvuls@maxlinear.com>
 Date: Fri, 30 Jun 2023 07:33:43 +0000
 Subject: [PATCH] WLANRTSYS-56617: Add support for new events: Multiple

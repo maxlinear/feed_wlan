@@ -1,4 +1,4 @@
-From 46650c27cdbfec6dd04c499df03967d3d2a3d8c6 Mon Sep 17 00:00:00 2001
+From ec3492ef1e351a4e74a04f1e711986c723db6c1d Mon Sep 17 00:00:00 2001
 From: Jurijs Soloveckis <jsoloveckis@maxlinear.com>
 Date: Mon, 23 Jan 2023 16:19:20 +0100
 Subject: [PATCH] WLANRTSYS-48299: RM capabilities in opensource hostapd: only
@@ -12,7 +12,7 @@ Subject: [PATCH] WLANRTSYS-48299: RM capabilities in opensource hostapd: only
  4 files changed, 38 insertions(+)
 
 diff --git a/hostapd/mxl_config.c b/hostapd/mxl_config.c
-index d0a0862d6..46579e1f7 100644
+index 5a6359f21..c8194c728 100644
 --- a/hostapd/mxl_config.c
 +++ b/hostapd/mxl_config.c
 @@ -170,6 +170,29 @@ int mxl_hostapd_config_fill (struct hostapd_config *conf,
@@ -75,7 +75,7 @@ index 4642e4927..9bf2473ea 100644
  #ifdef CONFIG_FILS
  	if (!dl_list_empty(&hapd->conf->fils_realms) ||
 diff --git a/src/ap/mxl_config.h b/src/ap/mxl_config.h
-index 4cb52f268..94417505e 100644
+index 3909a249e..3eae4014c 100644
 --- a/src/ap/mxl_config.h
 +++ b/src/ap/mxl_config.h
 @@ -52,6 +52,8 @@ struct mxl_hostapd_bss_config {

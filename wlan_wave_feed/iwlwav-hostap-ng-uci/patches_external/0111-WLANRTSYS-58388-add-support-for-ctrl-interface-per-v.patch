@@ -1,4 +1,4 @@
-From 4b3e9bbc84dfb1850685300587ca0cb89f8b311c Mon Sep 17 00:00:00 2001
+From 309ed927f8f14522676f9b5306ffe0c7e2cb01de Mon Sep 17 00:00:00 2001
 From: rportnikh <rportnikh@maxlinear.com>
 Date: Tue, 5 Sep 2023 12:57:56 +0300
 Subject: [PATCH] 
@@ -870,7 +870,7 @@ index 0ebb66053..7526723eb 100644
  	{ "mbo_bss_assoc_disallow", hostapd_cli_cmd_mbo_bss_assoc_disallow, NULL,
  	  " = set mbo bss assoc disallow"},
 diff --git a/hostapd/mxl_ctrl_iface.c b/hostapd/mxl_ctrl_iface.c
-index 6e42295dc..10cff2d3e 100644
+index 2fda5d841..323869f99 100644
 --- a/hostapd/mxl_ctrl_iface.c
 +++ b/hostapd/mxl_ctrl_iface.c
 @@ -31,31 +31,42 @@
@@ -1013,7 +1013,7 @@ index 6e42295dc..10cff2d3e 100644
  				is_softblock = os_strstr(buf_start, "TIMER");
  				if (is_softblock) { /* softblock deny list */
 diff --git a/hostapd/mxl_ctrl_iface.h b/hostapd/mxl_ctrl_iface.h
-index 41a8284c4..39e56532e 100644
+index 3be5b9d67..49e4c49e6 100644
 --- a/hostapd/mxl_ctrl_iface.h
 +++ b/hostapd/mxl_ctrl_iface.h
 @@ -19,7 +19,7 @@ void mxl_hostapd_ctrl_iface_acl_clear_list(struct mac_acl_entry **acl, int *num)
@@ -1026,7 +1026,7 @@ index 41a8284c4..39e56532e 100644
  					      char *buf, char *reply,
  					      int reply_size,
 diff --git a/hostapd/mxl_hostapd_cli.c b/hostapd/mxl_hostapd_cli.c
-index dd4e565c9..37522cacd 100644
+index 913e1765e..526835ddd 100644
 --- a/hostapd/mxl_hostapd_cli.c
 +++ b/hostapd/mxl_hostapd_cli.c
 @@ -18,13 +18,21 @@
@@ -1054,7 +1054,7 @@ index dd4e565c9..37522cacd 100644
  
  #ifdef CONFIG_ACS
 diff --git a/hostapd/mxl_hostapd_cli.h b/hostapd/mxl_hostapd_cli.h
-index d0101ee10..68d0cb71b 100644
+index 1bc1e0bf8..712ca81d5 100644
 --- a/hostapd/mxl_hostapd_cli.h
 +++ b/hostapd/mxl_hostapd_cli.h
 @@ -19,6 +19,14 @@ int mxl_hostapd_cli_cmd_accept_macacl(struct wpa_ctrl *ctrl, int argc, char *arg
@@ -1163,7 +1163,7 @@ index 2f734599e..46cc39696 100644
  
  	if (hwaddr_aton(txtaddr, addr))
 diff --git a/src/ap/mxl_wds.c b/src/ap/mxl_wds.c
-index 146314010..3787d592e 100644
+index a30cdfdf3..bad64feda 100644
 --- a/src/ap/mxl_wds.c
 +++ b/src/ap/mxl_wds.c
 @@ -241,6 +241,7 @@ void mxl_wds_event_connect(struct hostapd_data *hapd,

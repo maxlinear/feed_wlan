@@ -1,4 +1,4 @@
-From 49909f42d88d6ae9108e6b37ecab92dc903c0e8a Mon Sep 17 00:00:00 2001
+From cd648cd513a7b5887889b63791a7377628947ad3 Mon Sep 17 00:00:00 2001
 From: Gal Savion <gsavion@maxlinear.com>
 Date: Wed, 12 Jul 2023 18:26:40 +0300
 Subject: [PATCH] WLANRTSYS-54118: Client connection disruption when

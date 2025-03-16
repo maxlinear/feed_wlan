@@ -1,4 +1,4 @@
-From 047a87b46e12c6f76646e48f95585699afc88fa9 Mon Sep 17 00:00:00 2001
+From 03e8fada2093da07d0dbb7a703babccef8c8c587 Mon Sep 17 00:00:00 2001
 From: Jurijs Soloveckis <jsoloveckis@maxlinear.com>
 Date: Fri, 9 Jun 2023 09:15:06 +0200
 Subject: [PATCH] WLANRTSYS-55991: Add support for Operating Mode Notification

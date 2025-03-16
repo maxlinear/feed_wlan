@@ -1,4 +1,4 @@
-From f8bb1d9b0a3e2d60e939e9a3406ec5129b36089e Mon Sep 17 00:00:00 2001
+From 78a061365bf141834302bf31563967374069a0fc Mon Sep 17 00:00:00 2001
 From: mvulsx <mvuls@maxlinear.com>
 Date: Tue, 4 Jul 2023 11:59:19 +0000
 Subject: [PATCH] WLANRTSYS-56697: wpa_supplicant: Beerock implementation
@@ -28,7 +28,7 @@ Signed-off-by: mvulsx <mvuls@maxlinear.com>
  create mode 100644 wpa_supplicant/mxl_supplicant.h
 
 diff --git a/src/common/vendor_cmds_copy.h b/src/common/vendor_cmds_copy.h
-index 27f027d06..e6f761570 100644
+index c158892c8..aaea09eb2 100644
 --- a/src/common/vendor_cmds_copy.h
 +++ b/src/common/vendor_cmds_copy.h
 @@ -620,6 +620,15 @@ struct mxl_vendor_prop_phy_cap {
@@ -751,13 +751,13 @@ index a72ece681..9ecbbeb50 100644
  				"cca_color:%u cca_count:%u ifname:%s BSSID=" MACSTR,
 diff --git a/wpa_supplicant/mxl_supplicant.c b/wpa_supplicant/mxl_supplicant.c
 new file mode 100644
-index 000000000..bb10cdd26
+index 000000000..3985aa7e2
 --- /dev/null
 +++ b/wpa_supplicant/mxl_supplicant.c
 @@ -0,0 +1,74 @@
 +/******************************************************************************
 +
-+         Copyright (c) 2023 - 2024, MaxLinear, Inc.
++         Copyright (c) 2020 - 2025, MaxLinear, Inc.
 +         Copyright 2016 - 2020 Intel Corporation
 +         Copyright 2015 - 2016 Lantiq Beteiligungs-GmbH & Co. KG
 +         Copyright 2009 - 2014 Lantiq Deutschland GmbH
@@ -831,13 +831,13 @@ index 000000000..bb10cdd26
 +}
 diff --git a/wpa_supplicant/mxl_supplicant.h b/wpa_supplicant/mxl_supplicant.h
 new file mode 100644
-index 000000000..04a62f48c
+index 000000000..ac31d082b
 --- /dev/null
 +++ b/wpa_supplicant/mxl_supplicant.h
 @@ -0,0 +1,28 @@
 +/******************************************************************************
 +
-+         Copyright (c) 2023 - 2024, MaxLinear, Inc.
++         Copyright (c) 2020 - 2025, MaxLinear, Inc.
 +         Copyright 2016 - 2020 Intel Corporation
 +         Copyright 2015 - 2016 Lantiq Beteiligungs-GmbH & Co. KG
 +         Copyright 2009 - 2014 Lantiq Deutschland GmbH

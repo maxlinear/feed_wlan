@@ -1,4 +1,4 @@
-From 76f5c7eb65302ba55a450d4a2efaa17f7da45312 Mon Sep 17 00:00:00 2001
+From bc0805313a36afd7ac3d52da205e459d7fbc08f2 Mon Sep 17 00:00:00 2001
 From: mvulsx <mvuls@maxlinear.com>
 Date: Fri, 30 Jun 2023 12:18:22 +0000
 Subject: [PATCH] WLANRTSYS-56626: Add support for Supplicant 4-addr (wds) mode
