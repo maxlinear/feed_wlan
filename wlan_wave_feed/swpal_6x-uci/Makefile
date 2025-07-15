@@ -9,7 +9,7 @@ include $(INCLUDE_DIR)/kernel.mk
 
 #### Package Info ############################### 
 PKG_NAME:=swpal_6x-uci
-PKG_REV:=068f92ebec2a0953e05ad09fea01b619cd9396a5
+PKG_REV:=38e9aa85b0b0a119f59ebc35014e9de3ed5df408
 PKG_VERSION:=1.0.0.1
 PKG_RELEASE:=$(PKG_REV)
 PKG_BASE_NAME:=$(PKG_NAME)
@@ -18,10 +18,10 @@ PKG_PROJECT:=maxlinear
 PKG_SOURCE_NAME:=swpal.git
 CONFIG_UGW_PKG_SOURCE_URL:=ssh://git@github.com
 PKG_SOURCE_URL:=$(CONFIG_UGW_PKG_SOURCE_URL)/$(PKG_PROJECT)/$(PKG_SOURCE_NAME)
-PKG_SOURCE_VERSION:=r597+a+41+a+17
+PKG_SOURCE_VERSION:=r1044+a+57
 PKG_SOURCE_SUBDIR:=$(PKG_BASE_NAME)-$(PKG_VERSION)
 PKG_SOURCE_PROTO:=git
-PKG_MIRROR_HASH:=249b44bc04dd7e029fffec346c2235d18b279a4f00b6d3764263fe86bb925a1f
+PKG_MIRROR_HASH:=c29182080f706daa48e5c370667b3618277d04473b74cd8680d74a7712ed2931
 #PKG_MD5SUM:=40b89c61036add0c2dd1fc10767d3b5f
 
 PKG_BUILD_DIR:=$(BUILD_DIR)/$(PKG_NAME)-$(BUILD_VARIANT)/$(PKG_BASE_NAME)-$(PKG_VERSION)
@@ -143,7 +143,7 @@ IFX_CFLAGS += -fstack-protector-strong -O2 -D_FORTIFY_SOURCE=2 -Wformat -Wformat
 IFX_LDFLAGS += -Wl,-z,noexecstack -Wl,-z,now -Wl,-z,relro
 endif 
 
-ifeq ($(BUILD_VARIANT), $(filter debug prpl-debug, $(BUILD_VARIANT)))
+ifeq ($(BUILD_VARIANT), $(filter prpl debug prpl-debug, $(BUILD_VARIANT)))
 TARGET_CFLAGS += -DCONFIG_WAVE_DEBUG
 define Build/Compile
 	$(TARGET_CC) ${TARGET_CFLAGS} ${TARGET_LDFLAGS} $(PKG_BUILD_DIR)/src/lite_nc/nc_lite.c $(PKG_BUILD_DIR)/src/lite_nc/nc_help_lite.c $(PKG_BUILD_DIR)/src/lite_nc/nc_help_lite.h -o $(PKG_BUILD_DIR)/src/lite_nc/lite_nc
@@ -210,10 +210,14 @@ endif
 
 ifeq ($(BUILD_VARIANT), $(filter prpl prpl-debug, $(BUILD_VARIANT)))
 	$(INSTALL_BIN) $(PKG_BUILD_DIR)/files/scripts/$(NETIFD_VERSION_DIR)/lib/netifd/netifd-wireless.sh $(1)/lib/netifd/swpal-netifd-wireless.sh
+	$(INSTALL_BIN) $(PKG_BUILD_DIR)/files/scripts/$(NETIFD_VERSION_DIR)/lib/wifi/platform_dependent_updk.sh $(1)/lib/wifi/platform_dependent.sh
+	$(INSTALL_BIN) $(PKG_BUILD_DIR)/files/scripts/$(NETIFD_VERSION_DIR)/lib/netifd/sigma-ap_updk.sh $(1)/lib/netifd/sigma-ap.sh
+else
+	$(INSTALL_BIN) $(PKG_BUILD_DIR)/files/scripts/$(NETIFD_VERSION_DIR)/lib/wifi/platform_dependent_ugw.sh $(1)/lib/wifi/platform_dependent.sh
+	$(INSTALL_BIN) $(PKG_BUILD_DIR)/files/scripts/$(NETIFD_VERSION_DIR)/lib/netifd/sigma-ap.sh $(1)/lib/netifd/
 endif
 	$(INSTALL_BIN) $(PKG_BUILD_DIR)/files/scripts/$(NETIFD_VERSION_DIR)/lib/netifd/hostapd.sh $(1)/lib/netifd/
 	$(INSTALL_BIN) $(PKG_BUILD_DIR)/files/scripts/$(NETIFD_VERSION_DIR)/lib/netifd/wireless/* $(1)/lib/netifd/wireless/
-	$(INSTALL_BIN) $(PKG_BUILD_DIR)/files/scripts/$(NETIFD_VERSION_DIR)/lib/netifd/sigma-ap.sh $(1)/lib/netifd/
 	$(INSTALL_BIN) $(PKG_BUILD_DIR)/files/scripts/$(NETIFD_VERSION_DIR)/lib/netifd/sigma-start.sh $(1)/lib/netifd/
 	$(INSTALL_BIN) $(PKG_BUILD_DIR)/files/scripts/$(NETIFD_VERSION_DIR)/lib/netifd/sigmaManagerDaemon.sh $(1)/lib/netifd/
 	$(INSTALL_BIN) $(PKG_BUILD_DIR)/files/scripts/$(NETIFD_VERSION_DIR)/lib/netifd/sigma_mbo_daemon.sh $(1)/lib/netifd/
@@ -222,10 +226,10 @@ endif
 	$(INSTALL_BIN) $(PKG_BUILD_DIR)/files/scripts/$(NETIFD_VERSION_DIR)/lib/netifd/sigmaManagerDaemon_static.sh $(1)/lib/netifd/
 	$(INSTALL_BIN) $(PKG_BUILD_DIR)/files/scripts/$(NETIFD_VERSION_DIR)/lib/netifd/terminate_radio_after.sh $(1)/lib/netifd/
 	$(INSTALL_BIN) $(PKG_BUILD_DIR)/files/scripts/$(NETIFD_VERSION_DIR)/lib/wifi/mac80211.sh $(1)/lib/wifi/
-	$(INSTALL_BIN) $(PKG_BUILD_DIR)/files/scripts/$(NETIFD_VERSION_DIR)/lib/wifi/platform_dependent_ugw.sh $(1)/lib/wifi/platform_dependent.sh
 	$(INSTALL_BIN) $(PKG_BUILD_DIR)/files/scripts/$(NETIFD_VERSION_DIR)/lib/wifi/platform_dependent_common.sh $(1)/lib/wifi/
 
 	$(INSTALL_BIN) $(PKG_BUILD_DIR)/files/scripts/$(NETIFD_VERSION_DIR)/etc/wave/scripts/load_dut.sh $(1)/opt/intel/wave/scripts/
+	$(INSTALL_BIN) $(PKG_BUILD_DIR)/files/scripts/$(NETIFD_VERSION_DIR)/etc/wave/scripts/wl-wifi.sh $(1)/opt/intel/wave/scripts/
 	$(INSTALL_BIN) $(PKG_BUILD_DIR)/files/scripts/$(NETIFD_VERSION_DIR)/etc/wave/scripts/flash_file_saver.sh $(1)/opt/intel/wave/scripts/
 	$(INSTALL_BIN) $(PKG_BUILD_DIR)/files/scripts/$(NETIFD_VERSION_DIR)/etc/wave/scripts/wave_factory_reset.sh $(1)/opt/intel/wave/scripts/
 	$(INSTALL_BIN) $(PKG_BUILD_DIR)/files/scripts/$(NETIFD_VERSION_DIR)/etc/wave/scripts/wave_factory_reset_ex.sh $(1)/opt/intel/wave/scripts/
@@ -255,7 +259,7 @@ else
 	ln -s /opt/intel/wave/scripts/wave_complete_recovery_ugw.sh $(1)/opt/intel/wave/scripts/wave_complete_recovery.sh
 endif
 
-ifeq ($(BUILD_VARIANT), $(filter debug prpl-debug, $(BUILD_VARIANT)))
+ifeq ($(BUILD_VARIANT), $(filter prpl debug prpl-debug, $(BUILD_VARIANT)))
 	$(INSTALL_DIR) $(1)/$(VENDOR_PATH)/usr/lib
 	$(INSTALL_DIR) $(1)/etc/config
 	$(INSTALL_DIR) $(1)/lib/wifi

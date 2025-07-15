@@ -1,0 +1,45 @@
+From 553f98bcf3e7080ffe331e1bce8fce308ef64519 Mon Sep 17 00:00:00 2001
+From: mj <mj@maxlinear.com>
+Date: Thu, 27 Mar 2025 11:22:34 +0530
+Subject: [PATCH] WLANRTSYS-86687 BSS critical update support for Modification
+ of the Spatial Reuse Parameter Set element
+
+Fix : Enable critical update flag in the beacon frame if spatial reuse parameter set via
+hostapd_cli command.
+---
+ hostapd/ctrl_iface.c | 15 ++++++++++++++-
+ 1 file changed, 14 insertions(+), 1 deletion(-)
+
+diff --git a/hostapd/ctrl_iface.c b/hostapd/ctrl_iface.c
+index 94cfab8bb..7e543c9cf 100644
+--- a/hostapd/ctrl_iface.c
++++ b/hostapd/ctrl_iface.c
+@@ -3387,11 +3387,24 @@ static int hostapd_ctrl_iface_set_he_spatial_reuse_parameter(struct hostapd_ifac
+ 
+ 	iface->conf->spr = sr_params;
+ 
++#ifdef CONFIG_IEEE80211BE_MXL_MLO
++	for (int i = 0; i < iface->num_bss; i++) {
++		if (!mxl_is_mlo_enabled(iface->bss[i]->conf)) {
++			mxl_ml_send_bss_critical_update_info(iface->bss[i],
++				BSS_CRITICAL_UPDATE_COMMON, 0, 0);
++			if (iface->bss[i]->beacon_set_done && iface->bss[i]->started)
++				ieee802_11_set_beacon(iface->bss[i]);
++			}
++		else {
++			mxl_ml_handle_critical_update(iface->bss[i]);
++		}
++	}
++#else
+ 	if (ieee802_11_update_beacons(iface) < 0) {
+ 		wpa_printf(MSG_ERROR, "Failed to update beacons with HE Spatial Reuse Parameters");
+ 		return -1;
+ 	}
+-
++#endif /* CONFIG_IEEE80211BE_MXL_MLO */
+ 	wpa_printf(MSG_DEBUG, "Updated beacons with HE Spatial Reuse Parameters");
+ 	return 0;
+ }
+-- 
+2.43.0
+

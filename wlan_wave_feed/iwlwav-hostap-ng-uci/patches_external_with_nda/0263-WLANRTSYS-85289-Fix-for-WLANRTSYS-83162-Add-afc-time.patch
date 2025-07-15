@@ -1,0 +1,162 @@
+From 632a220083e51645d28a16cfafae53ab4f968796 Mon Sep 17 00:00:00 2001
+From: "Ross-Ashikyan, William" <washikyan@maxlinear.com>
+Date: Tue, 3 Dec 2024 10:32:04 -0800
+Subject: [PATCH] WLANRTSYS-85289 Fix for WLANRTSYS-83162 Add afc timeout logic
+ to afc send request command
+
+Issue: AFC send request is a feature added upon the open source afc source code
+to allow multiple requests before older afc timeouts are triggered. The
+original version directly made the request but did not handle canceling the old
+timeout and setting a new one.
+
+Fix: Using a wrapper similar to open source, add afc timeout reschulding logic
+
+Fixup: WLANRTSYS-83162 Ported afcd and composite mode changes from legacy hostapd
+---
+ hostapd/mxl_ctrl_iface.c |  2 +-
+ src/ap/afc.c             | 18 +++++++++++++++-
+ src/ap/mxl_afc.c         | 46 ++++++++++++++++++++++++++++++++++++++++
+ src/ap/mxl_afc.h         |  5 +++++
+ 4 files changed, 69 insertions(+), 2 deletions(-)
+
+diff --git a/hostapd/mxl_ctrl_iface.c b/hostapd/mxl_ctrl_iface.c
+index 3753300f4..7b578a6e8 100644
+--- a/hostapd/mxl_ctrl_iface.c
++++ b/hostapd/mxl_ctrl_iface.c
+@@ -85,7 +85,7 @@ static int mxl_hostapd_ctrl_iface_send_afcd_request(struct hostapd_iface *iface,
+ 					     char *buf, size_t buflen)
+ {
+ 	mxl_hostapd_afc_delete_data_from_server(iface);
+-	return mxl_hostapd_afc_send_receive(iface);
++	return mxl_hostapd_afc_handle_request(iface);
+ }
+ #endif /* CONFIG_AFC */
+ 
+diff --git a/src/ap/afc.c b/src/ap/afc.c
+index abc40a876..50e81b14d 100644
+--- a/src/ap/afc.c
++++ b/src/ap/afc.c
+@@ -21,8 +21,9 @@
+ #ifdef CONFIG_VENDOR_MXL
+ #include "mxl_afc.h"
+ #endif /* CONFIG_VENDOR_MXL */
+-
++#ifndef CONFIG_VENDOR_MXL
+ #define HOSTAPD_AFC_RETRY_TIMEOUT	180
++#endif /* CONFIG_VENDOR_MXL */
+ #define HOSTAPD_AFC_TIMEOUT		86400 /* 24h */
+ #define HOSTAPD_AFC_BUFSIZE		8192
+ 
+@@ -646,6 +647,9 @@ static int hostad_afc_get_timeout(struct json_object *obj)
+ 	t = mktime(&tm);
+ 	time(&now);
+ 
++#ifdef CONFIG_VENDOR_MXL
++	wpa_printf(MSG_INFO, "AFC device local time is %d and AFC system expiry time is %d.", (int)now, (int)t);
++#endif /* CONFIG_VENDOR_MXL */
+ 	return now > t ? HOSTAPD_AFC_RETRY_TIMEOUT : (t - now) * 80 / 100;
+ }
+ 
+@@ -777,6 +781,12 @@ static int hostapd_afc_parse_reply(struct hostapd_iface *iface, char *reply)
+ 	iface->afc.timeout = request_timeout;
+ 	if (iface->afc.timeout < 0)
+ 		iface->afc.timeout = HOSTAPD_AFC_RETRY_TIMEOUT;
++#ifdef CONFIG_VENDOR_MXL
++	if (iface->afc.timeout <= HOSTAPD_AFC_RETRY_TIMEOUT)
++		wpa_printf(MSG_WARNING, "AFC short retry timer set for %d seconds", iface->afc.timeout);
++	else
++		wpa_printf(MSG_INFO, "AFC long retry timer set for %d seconds", iface->afc.timeout);
++#endif /* CONFIG_VENDOR_MXL */
+ 
+ 	return ret;
+ }
+@@ -1083,4 +1093,10 @@ void hostap_afc_disable_channels(struct hostapd_iface *iface)
+ int mxl_hostapd_afc_send_receive(struct hostapd_iface *iface) { return hostapd_afc_send_receive(iface); }
+ void mxl_hostapd_afc_delete_data_from_server(struct hostapd_iface *iface) { hostapd_afc_delete_data_from_server(iface); }
+ int mxl_hostapd_afc_parse_reply(struct hostapd_iface *iface, char *reply) { return hostapd_afc_parse_reply(iface, reply); }
++void mxl_hostapd_afc_resched_timeout(void *eloop_data, unsigned int secs)
++{
++	eloop_cancel_timeout(hostapd_afc_timeout_handler, eloop_data, NULL);
++	eloop_register_timeout(secs, 0,
++			       hostapd_afc_timeout_handler, eloop_data, NULL);
++}
+ #endif /* CONFIG_VENDOR_MXL */
+diff --git a/src/ap/mxl_afc.c b/src/ap/mxl_afc.c
+index 3c0561e81..3af468714 100644
+--- a/src/ap/mxl_afc.c
++++ b/src/ap/mxl_afc.c
+@@ -271,3 +271,49 @@ int mxl_hostad_afc_update_chan_info(struct afc_chan_info_elem **chan_list,
+ 
+ 	return 0;
+ }
++
++/*  Reduced wrapper for tracking send_afc_request command. Compared with open
++ *  source we may request an AFC report anytime, even if not immediately used,
++ *  and the MXL driver handles triggering ACS after an AFC report is recieved,
++ *  parsed, and the regdomain is loaded in the driver.
++ */
++int mxl_hostapd_afc_handle_request(struct hostapd_iface *iface)
++{
++	struct hostapd_config *iconf = iface->conf;
++	int ret = 0;
++
++	if (!is_6ghz_op_class(iconf->op_class) || !is_6ghz_freq(iface->freq))
++		return -1;
++
++	/* Do not attempt another AFC request while ACS is running */
++	if (iface->state == HAPD_IFACE_ACS)
++		return -1;
++
++	ret = mxl_hostapd_afc_send_receive(iface);
++	if (ret < 0) {
++		/*
++		 * If the connection to the AFCD failed, resched for a
++		 * future attempt.
++		 */
++		wpa_printf(MSG_ERROR, "AFC connection failed: %d", ret);
++		iface->afc.timeout = HOSTAPD_AFC_RETRY_TIMEOUT;
++		if (ret == -EIO)
++			ret = -1;
++		goto resched;
++	}
++
++	/* Check if AFC has usable rules, if not reschedule */
++	if (iface->afc.data_valid == false  ||
++	    (iface->afc.num_freq_range == 0 &&
++	     iface->afc.num_chan_info  == 0) ) {
++		wpa_printf(MSG_ERROR, "AFC has no valid rules");
++		iface->afc.timeout = HOSTAPD_AFC_RETRY_TIMEOUT;
++		ret = -1;
++		goto resched;
++	}
++
++resched:
++	mxl_hostapd_afc_resched_timeout(iface, iface->afc.timeout);
++
++	return ret;
++}
+\ No newline at end of file
+diff --git a/src/ap/mxl_afc.h b/src/ap/mxl_afc.h
+index 3edf186c2..f2454ae96 100644
+--- a/src/ap/mxl_afc.h
++++ b/src/ap/mxl_afc.h
+@@ -13,6 +13,8 @@
+ #include <json-c/json.h>
+ #include "drivers/nl80211_copy.h"
+ 
++#define HOSTAPD_AFC_RETRY_TIMEOUT	180
++
+ /* TODO: Move into vendor_cmds_copy.h after driver fix */
+ struct ieee80211_freq_range {
+ 	uint32_t  start_freq_khz;
+@@ -73,4 +75,7 @@ void mxl_hostapd_afc_delete_data_from_server(struct hostapd_iface *iface);
+ int mxl_hostapd_afc_send_receive(struct hostapd_iface *iface);
+ int mxl_hostad_afc_update_chan_info(struct afc_chan_info_elem **chan_list,
+ 				    int *chan_list_size, u8 op_class, int center_chan, int power);
++int mxl_hostapd_afc_handle_request(struct hostapd_iface *iface);
++void mxl_hostapd_afc_resched_timeout(void *eloop_data, unsigned int secs);
++
+ #endif /* MXL_AFC_H */
+-- 
+2.43.0
+

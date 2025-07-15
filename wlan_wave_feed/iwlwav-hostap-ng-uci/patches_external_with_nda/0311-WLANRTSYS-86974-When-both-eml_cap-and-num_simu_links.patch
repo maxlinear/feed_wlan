@@ -1,0 +1,54 @@
+From 8db857231b9c0b7c148ea3b698b20f7f6c2abd46 Mon Sep 17 00:00:00 2001
+From: stheinan <stheinan@maxlinear.com>
+Date: Tue, 25 Feb 2025 11:08:15 +0530
+Subject: [PATCH] WLANRTSYS-86974 When both eml_cap and num_simu_links are set
+ in assoc request consider the STA as MLSR/EMLSR
+
+Issue:
+Regression occured as part of commit 41b54c8ef2e, since the EMSLR Transition delay is by default added,
+so all the STA's are added as EMLSR after this commit.Also WDS connection should be allowed as STR.
+
+Fix:
+Added different flag check to confirm the EMLSR cap is sent in assoc request and avoid the check for WDS STA.
+
+FIXUP to WLANRTSYS-62845 MLO changes in iwlwav-hostap-ng:
+AP MLD Auth Assoc and eapol changes.
+---
+ src/ap/mxl_mld.c | 13 +++++++------
+ 1 file changed, 7 insertions(+), 6 deletions(-)
+
+diff --git a/src/ap/mxl_mld.c b/src/ap/mxl_mld.c
+index 77cc461fb..519f1a18c 100644
+--- a/src/ap/mxl_mld.c
++++ b/src/ap/mxl_mld.c
+@@ -1519,11 +1519,6 @@ int mxl_ml_sta_add(struct hostapd_data *hapd, struct sta_info *sta)
+ 	if (linked_sta) {
+ 		sibling_link_id = hapd->mxl_data.sibling_hapd->conf->mxl_bss_conf.link_id;
+ 
+-		/* Populate EMLSR transition timeout from config param */
+-		if (hapd->mxl_data.sibling_hapd->conf->mxl_bss_conf.eml_transition_timeout) {
+-			ml_sta_params->eml_capab |= (hapd->mxl_data.sibling_hapd->conf->mxl_bss_conf.eml_transition_timeout << MLO_TRANSITION_TIMEOUT_MASK);
+-		}
+-
+ 		/* Populate EMLSR Support from STA eml cabap */
+ 		ml_sta_params->eml_capab |= (sta->mxl_sta_info.sta_ml_capab.eml_capab & MLO_EMLSR);
+ 
+@@ -1542,8 +1537,14 @@ int mxl_ml_sta_add(struct hostapd_data *hapd, struct sta_info *sta)
+ 		memcpy_s(ml_sta_addr, ETH_ALEN, linked_sta->addr, ETH_ALEN);
+ 
+ 		/*when STA sends both EMLSR cap set and num simultaneous link as 1 , consider it as EMSLR STA*/
+-		if(ml_sta_params->num_of_sim_links && ml_sta_params->eml_capab)
++		if(!(sta->mxl_sta_info.ext_flags & WLAN_STA_MLD_WDS_STR_STA) && ml_sta_params->num_of_sim_links && ml_sta_params->eml_capab) {
+ 			ml_sta_params->num_of_sim_links = 0;
++		}
++
++		/* Populate EMLSR transition timeout from config param */
++		if (hapd->mxl_data.sibling_hapd->conf->mxl_bss_conf.eml_transition_timeout) {
++			ml_sta_params->eml_capab |= (hapd->mxl_data.sibling_hapd->conf->mxl_bss_conf.eml_transition_timeout << MLO_TRANSITION_TIMEOUT_MASK);
++		}
+ 
+ 		if (ml_sta_params->num_of_sim_links) /* STR */
+ 			ml_sta_params->eml_capab = 0;
+-- 
+2.43.0
+

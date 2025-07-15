@@ -10,16 +10,16 @@ include $(TOPDIR)/rules.mk
 include $(INCLUDE_DIR)/kernel.mk
 
 PKG_NAME:=iwlwav-iw
-PKG_REV:=e7e06f973cd3c1659e87fb17f9c04130e52245fb
+PKG_REV:=85c13888f6a73d23f38217e9bd1456e815cfcadd
 PKG_VERSION:=4.14
 PKG_SOURCE:=$(PKG_NAME)-$(PKG_VERSION).tar.bz2
 PKG_PROJECT:=maxlinear
 PKG_SOURCE_NAME:=iwlwav-iw.git
 CONFIG_UGW_PKG_SOURCE_URL:=ssh://git@github.com
 PKG_SOURCE_URL:=$(CONFIG_UGW_PKG_SOURCE_URL)/$(PKG_PROJECT)/$(PKG_SOURCE_NAME)
-PKG_SOURCE_VERSION:=r597+a+41+a+17
+PKG_SOURCE_VERSION:=r1044+a+57
 PKG_SOURCE_PROTO:=git
-PKG_MIRROR_HASH:=fc4fb9a59c8ea32fef9e1528e0b492fd7599707f7e91f48fcc6ef96a0087d337
+PKG_MIRROR_HASH:=59ee05a3b7f81d905929d7a190d2a04822da9c2e229c78ac4bfebd3c924fd8f2
 PKG_BUILD_DIR:=$(BUILD_DIR)/iwlwav-iw-$(BUILD_VARIANT)/iwlwav-iw-$(PKG_VERSION)
 PKG_BUILD_DEPENDS:=libnl safec3 PACKAGE_iw:iw iwlwav-driver-uci
 
@@ -69,13 +69,18 @@ define Build/Compile
 	../iwlwav-driver-uci/files/check_shared_headers.sh $(PKG_NAME) $(PKG_VERSION) $(BUILD_DIR) $(BUILD_VARIANT) $(RELATIVE_NLV_PKG_HEADER_PATH) $(RELATIVE_NL_PKG_HEADER_PATH)
 	$(MAKE) -C $(PKG_BUILD_DIR) clean
 	$(MAKE) $(TARGET_CONFIGURE_OPTS) -C $(PKG_BUILD_DIR) \
-		IFX_CFLAGS="$(IFX_CFLAGS)" IFX_LDFLAGS="$(IFX_LDFLAGS)"
+		IFX_CFLAGS="$(IFX_CFLAGS)" IFX_LDFLAGS="$(IFX_LDFLAGS)" \
+		CONFIG_MXL_WLAN_OSS_BUILD=$(CONFIG_MXL_WLAN_OSS_BUILD)
 endef
 
 define Package/iwlwav-iw/install
 	$(INSTALL_DIR) $(1)/usr/sbin
 	$(INSTALL_DIR) -p $(1)/etc
+ifeq ($(CONFIG_MXL_WLAN_OSS_BUILD),y)
+	$(INSTALL_BIN) $(PKG_BUILD_DIR)/iw-mxl $(1)/usr/sbin/
+else
 	$(INSTALL_BIN) $(PKG_BUILD_DIR)/iw $(1)/usr/sbin/
+endif
 	echo -e "iwlwav_iw_hash=\"$(PKG_REV)\"\niwlwav_iw_tag=\"$(PKG_REV)\"" > $(1)/etc/iwlwav_iw.ver
 endef
 Package/iwlwav-iw-debug/install = $(Package/iwlwav-iw/install)

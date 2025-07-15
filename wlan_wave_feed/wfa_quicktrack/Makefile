@@ -7,16 +7,16 @@ include $(TOPDIR)/rules.mk
 
 #### Package Info ###############################
 PKG_NAME:=wfa_quicktrack
-PKG_REV:=8e801e46a2f4d0ff705612be321b6eb914a0a093
+PKG_REV:=c39204dbb086410462124696ac09a6bceff2b867
 PKG_VERSION:=1.0.6
 PKG_SOURCE:=$(PKG_NAME)-$(PKG_VERSION).tar.bz2
 PKG_PROJECT:=maxlinear
 PKG_SOURCE_NAME:=wfa_quicktrack.git
 CONFIG_UGW_PKG_SOURCE_URL:=ssh://git@github.com
 PKG_SOURCE_URL:=$(CONFIG_UGW_PKG_SOURCE_URL)/$(PKG_PROJECT)/$(PKG_SOURCE_NAME)
-PKG_SOURCE_VERSION:=r597+a+41+a+17
+PKG_SOURCE_VERSION:=r1044+a+57
 PKG_SOURCE_PROTO:=git
-PKG_MIRROR_HASH:=1e604facaa31be39e5f0e9980cbc4b06b248d7c4c019da0258e9938f3e456834
+PKG_MIRROR_HASH:=fbf6990373daf7df9cd1b8add859b88c8dceccec3080256c649d21c7db228964
 PKG_BUILD_DIR:=$(BUILD_DIR)/${PKG_NAME}-$(BUILD_VARIANT)/wfa_quicktrack-$(PKG_VERSION)
 
 PKG_MAINTAINER:=MaxLinear
@@ -68,16 +68,25 @@ ifeq ($(CONFIG_BUILD_SDK),"prplos")
 IFX_CFLAGS += -DUPDK
 endif
 
+AFC_CFLAGS += AFC
+
 define Build/Compile
 	$(MAKE) -C $(PKG_BUILD_DIR) clean
 	$(MAKE) $(TARGET_CONFIGURE_OPTS) -C $(PKG_BUILD_DIR) \
 		EXTRA_CFLAGS="$(IFX_CFLAGS)" IFX_LDFLAGS="$(IFX_LDFLAGS)"
+	$(MAKE) -C $(PKG_BUILD_DIR) clean
+	$(MAKE) $(TARGET_CONFIGURE_OPTS) -C $(PKG_BUILD_DIR) \
+		EXTRA_CFLAGS="$(IFX_CFLAGS)" IFX_LDFLAGS="$(IFX_LDFLAGS)" \
+		AFC_CFLAG="${AFC_CFLAGS}"
 endef
 
 define Package/$(PKG_NAME)/install
 	$(INSTALL_DIR) $(1)/usr/sbin
 	$(INSTALL_BIN) $(PKG_BUILD_DIR)/app $(1)/usr/sbin/wfa_quicktrack
 	chmod 555 $(1)/usr/sbin/wfa_quicktrack
+	$(INSTALL_DIR) $(1)/usr/sbin
+	$(INSTALL_BIN) $(PKG_BUILD_DIR)/app_afc $(1)/usr/sbin/wfa_quicktrack_afc
+	chmod 555 $(1)/usr/sbin/wfa_quicktrack_afc
 
 	$(INSTALL_DIR) $(1)/opt/intel/wave/scripts/QuickTrack/
 	$(INSTALL_BIN) $(PKG_BUILD_DIR)/mxl_files/* $(1)/opt/intel/wave/scripts/QuickTrack/

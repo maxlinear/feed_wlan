@@ -1,0 +1,37 @@
+From 2a7eb1af52820904e6e02072f83df67af31702b0 Mon Sep 17 00:00:00 2001
+From: mj <mj@maxlinear.com>
+Date: Thu, 7 Nov 2024 13:31:04 +0530
+Subject: [PATCH] WLANRTSYS-80442 prevent sending EHT IE in assoc response if
+ STA support HE capability
+
+---
+ src/ap/ieee802_11.c | 6 ++++--
+ 1 file changed, 4 insertions(+), 2 deletions(-)
+
+diff --git a/src/ap/ieee802_11.c b/src/ap/ieee802_11.c
+index 4f59b99e6..463c8a9ce 100644
+--- a/src/ap/ieee802_11.c
++++ b/src/ap/ieee802_11.c
+@@ -5226,7 +5226,8 @@ static u16 send_assoc_resp(struct hostapd_data *hapd, struct sta_info *sta,
+ 		buflen += 5 + sta->dpp_pfs->curve->prime_len;
+ #endif /* CONFIG_DPP2 */
+ #ifdef CONFIG_IEEE80211BE
+-	if (hapd->iconf->ieee80211be && !hapd->conf->disable_11be) {
++	if (hapd->iconf->ieee80211be && !hapd->conf->disable_11be &&
++		(sta && (sta->flags & WLAN_STA_EHT))) {
+ 		buflen += hostapd_eid_eht_capab_len(hapd, IEEE80211_MODE_AP);
+ 		buflen += 3 + sizeof(struct ieee80211_eht_operation);
+ 		if (hapd->iconf->punct_bitmap)
+@@ -5414,7 +5415,8 @@ rsnxe_done:
+ #endif /* CONFIG_TESTING_OPTIONS */
+ 
+ #ifdef CONFIG_IEEE80211BE
+-	if (hapd->iconf->ieee80211be && !hapd->conf->disable_11be) {
++	if (hapd->iconf->ieee80211be && !hapd->conf->disable_11be &&
++		(sta && (sta->flags & WLAN_STA_EHT))) {
+ 		if (hapd->conf->mld_ap)
+ 			p = hostapd_eid_eht_ml_assoc(hapd, sta, p);
+ 		p = hostapd_eid_eht_capab(hapd, p, IEEE80211_MODE_AP);
+-- 
+2.43.0
+

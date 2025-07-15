@@ -1,0 +1,476 @@
+From 9292a2cff10fe86044e210ca9d0e7322c2b21b2a Mon Sep 17 00:00:00 2001
+From: nchernikov <nchernikov@maxlinear.com>
+Date: Sat, 29 Mar 2025 15:00:16 +0300
+Subject: [PATCH] WLANRTSYS-88555 Adapt MBSSID to support reconf
+
+ - Update bss_idx only when bss removed and preserve on reconf
+ - Reference from bss_idx 1 instead of bss at MULTIBSS_REFERENCE_BSS_IDX for MBSSID
+ - Start bss in MBSSID radio in order of bss_idx instead of internal bss list
+
+FIXUP to WLANRTSYS-63078 Multi BSS changes for MLO
+
+Signed-off-by: nchernikov <nchernikov@maxlinear.com>
+---
+ src/ap/beacon.c            | 16 +++++++++----
+ src/ap/ctrl_iface_ap.c     | 11 +++++++++
+ src/ap/hostapd.c           | 37 +++++++++++++++++++-----------
+ src/ap/ieee802_11_shared.c | 19 +++++++++++----
+ src/ap/mxl_beacon.c        | 17 +++++++++++---
+ src/ap/mxl_hostapd.c       | 47 +++++++++++++++++++++++++++++++++++---
+ src/ap/mxl_hostapd.h       | 12 +++++++++-
+ src/ap/mxl_mld.c           | 14 ++++++++----
+ 8 files changed, 141 insertions(+), 32 deletions(-)
+
+diff --git a/src/ap/beacon.c b/src/ap/beacon.c
+index 314329a98..ec1d37962 100644
+--- a/src/ap/beacon.c
++++ b/src/ap/beacon.c
+@@ -743,7 +743,8 @@ static size_t hostapd_probe_resp_elems_len(struct hostapd_data *hapd,
+ 	if (hapd->iconf->multibss_enable) {
+ 		if (params->req || (MULTIBSS_REFERENCE_BSS_IDX == hapd->conf->bss_idx)) {
+ 			if (MULTIBSS_REFERENCE_BSS_IDX != hapd->conf->bss_idx) {
+-				hapd = hapd->iface->bss[MULTIBSS_REFERENCE_BSS_IDX];
++				size_t tx_bss_idx = mxl_hostapd_get_mbssid_tx_bss_idx(hapd->iface);
++				hapd = hapd->iface->bss[tx_bss_idx];
+ 			}
+ 			buflen += multiple_bssid_ie_get_len(hapd, false, params->probe_req_mle,
+ 							    params->probe_req_mle_len);
+@@ -827,7 +828,8 @@ static u8 * hostapd_probe_resp_fill_elems(struct hostapd_data *hapd,
+ 		if (params->req || (MULTIBSS_REFERENCE_BSS_IDX == hapd->conf->bss_idx)) {
+ 			if (MULTIBSS_REFERENCE_BSS_IDX != hapd->conf->bss_idx) {
+ 				is_req_non_transmit_vap = true;
+-				hapd = hapd->iface->bss[MULTIBSS_REFERENCE_BSS_IDX];
++				size_t tx_bss_idx = mxl_hostapd_get_mbssid_tx_bss_idx(hapd->iface);
++				hapd = hapd->iface->bss[tx_bss_idx];
+ 			}
+ 			multiple_bssid_ie_len = multiple_bssid_ie_get_len(hapd, false, params->probe_req_mle,
+ 									  params->probe_req_mle_len);
+@@ -1104,7 +1106,8 @@ void hostapd_gen_probe_resp(struct hostapd_data *hapd,
+ 		if (params->req || (MULTIBSS_REFERENCE_BSS_IDX == hapd->conf->bss_idx)) {
+ 			int multiple_bssid_ie_len = -1;
+ 			if (MULTIBSS_REFERENCE_BSS_IDX != hapd->conf->bss_idx) {
+-				hapd = hapd->iface->bss[MULTIBSS_REFERENCE_BSS_IDX];
++				size_t tx_bss_idx = mxl_hostapd_get_mbssid_tx_bss_idx(hapd->iface);
++				hapd = hapd->iface->bss[tx_bss_idx];
+ 			}
+ 			multiple_bssid_ie_len = multiple_bssid_ie_get_len(hapd, false,
+ 									  params->probe_req_mle,
+@@ -1587,6 +1590,7 @@ void handle_probe_req(struct hostapd_data *hapd,
+ 	const u8 *ie;
+ 	size_t ie_len;
+ 	size_t i;
++	size_t tx_bss_idx = MULTIBSS_REFERENCE_BSS_IDX;
+ 	int noack;
+ 	enum ssid_match_result res;
+ 	int ret;
+@@ -1928,7 +1932,11 @@ void handle_probe_req(struct hostapd_data *hapd,
+ 			((u8 *)params.resp)[hapd->cca_c_off_proberesp] = 0;
+ 	}
+ 
+-	ret = hostapd_drv_send_mlme(hapd->iconf->multibss_enable ? hapd->iface->bss[MULTIBSS_REFERENCE_BSS_IDX] : hapd,
++	if (hapd->iconf->multibss_enable) {
++		tx_bss_idx = mxl_hostapd_get_mbssid_tx_bss_idx(hapd->iface);
++	}
++
++	ret = hostapd_drv_send_mlme(hapd->iconf->multibss_enable ? hapd->iface->bss[tx_bss_idx] : hapd,
+ 				    params.resp, params.resp_len, noack,
+ 				    csa_offs_len ? csa_offs : NULL,
+ 				    csa_offs_len, 0);
+diff --git a/src/ap/ctrl_iface_ap.c b/src/ap/ctrl_iface_ap.c
+index b95492124..32729c6f3 100644
+--- a/src/ap/ctrl_iface_ap.c
++++ b/src/ap/ctrl_iface_ap.c
+@@ -1059,6 +1059,17 @@ int hostapd_ctrl_iface_status(struct hostapd_data *hapd, char *buf,
+ 			return len;
+ 		len += ret;
+ 
++#ifdef CONFIG_VENDOR_MXL
++		if (iface->conf->multibss_enable) {
++			ret = os_snprintf(buf + len, buflen - len,
++					  "bss_idx[%d]=%d\n",
++					  (int) i, bss->conf->bss_idx);
++			if (os_snprintf_error(buflen - len, ret))
++				return len;
++			len += ret;
++		}
++#endif /* CONFIG_VENDOR_MXL */
++
+ #ifdef CONFIG_IEEE80211BE
+ 		if (bss->conf->mld_ap) {
+ 			ret = os_snprintf(buf + len, buflen - len,
+diff --git a/src/ap/hostapd.c b/src/ap/hostapd.c
+index 179038833..f745529cb 100644
+--- a/src/ap/hostapd.c
++++ b/src/ap/hostapd.c
+@@ -1422,6 +1422,7 @@ static bool hostapd_validate_multibssid_mac_addr(struct hostapd_data *hapd)
+ 	u8 tx_vap_last_octet;
+ 	u8 expected_last_octet;
+ 	u8 bssid_offset;
++	size_t tx_bss_idx = mxl_hostapd_get_mbssid_tx_bss_idx(hapd->iface);
+ 	const u8 max_n = 8;
+ 	if (MASTER_VAP_BSS_IDX == bss_idx)
+ 		return true;
+@@ -1435,7 +1436,7 @@ static bool hostapd_validate_multibssid_mac_addr(struct hostapd_data *hapd)
+ 	}
+ 	
+ 	max_bssid = 1 << n;
+-	memcpy_s(tx_vap_addr, ETH_ALEN, hapd->iface->bss[MULTIBSS_REFERENCE_BSS_IDX]->own_addr, ETH_ALEN);
++	memcpy_s(tx_vap_addr, ETH_ALEN, hapd->iface->bss[tx_bss_idx]->own_addr, ETH_ALEN);
+ 	tx_vap_last_octet = tx_vap_addr[ETH_ALEN - 1];
+ 	mbssid_index = ((hapd->own_addr[ETH_ALEN - 1] - tx_vap_last_octet) + max_bssid) % max_bssid;
+ 	/*
+@@ -1459,7 +1460,7 @@ static bool hostapd_validate_multibssid_mac_addr(struct hostapd_data *hapd)
+ 						   " but Expected MAC addr is " MACSTR
+ 						   " for bss_idx %d",
+ 						   max_bssid,
+-						   MAC2STR(hapd->iface->bss[MULTIBSS_REFERENCE_BSS_IDX]->own_addr),
++						   MAC2STR(hapd->iface->bss[tx_bss_idx]->own_addr),
+ 						   MAC2STR(hapd->own_addr), MAC2STR(exp_addr), bss_idx);
+ 	return false;
+ }
+@@ -1585,6 +1586,7 @@ bool hostapd_can_send_btwt_config(struct hostapd_data *hapd)
+ #define BTWT_DEFAULT_PERSISTENCE_VALUE 5
+ 	struct hostapd_hw_modes *mode = hapd->iface->current_mode;
+ 	int persistence = BTWT_DEFAULT_PERSISTENCE_VALUE;
++	size_t tx_bss_idx = mxl_hostapd_get_mbssid_tx_bss_idx(hapd->iface);
+ 
+ 	if ((hapd->conf->bcast_twt_config_enable) &&
+ 		(hapd->conf->bss_idx == MULTIBSS_REFERENCE_BSS_IDX) &&
+@@ -1594,14 +1596,14 @@ bool hostapd_can_send_btwt_config(struct hostapd_data *hapd)
+ 		return true;
+ 	} else if ((hapd->iconf->num_bss > MIN_NUM_BSS_IN_NON_MBSSID_SET) &&
+ 			(!hapd->iconf->multibss_enable) &&
+-			(hapd->iconf->bss[MULTIBSS_REFERENCE_BSS_IDX]->bcast_twt_config_sent)) {
+-		if (hostapd_drv_vendor_cmd(hapd->iface->bss[MULTIBSS_REFERENCE_BSS_IDX], OUI_LTQ,
++			(hapd->iconf->bss[tx_bss_idx]->bcast_twt_config_sent)) {
++		if (hostapd_drv_vendor_cmd(hapd->iface->bss[tx_bss_idx], OUI_LTQ,
+ 			LTQ_NL80211_VENDOR_SUBCMD_TERMINATE_BTWT_SCHEDULE,
+ 			(const u8 *)&persistence, sizeof(int),
+ 			NESTED_ATTR_NOT_USED, NULL)) {
+ 			wpa_printf(MSG_ERROR, "send LTQ_NL80211_VENDOR_SUBCMD_TERMINATE_BTWT_SCHEDULE failed!!!");
+ 		} else {
+-			hapd->iconf->bss[MULTIBSS_REFERENCE_BSS_IDX]->bcast_twt_config_sent = false;
++			hapd->iconf->bss[tx_bss_idx]->bcast_twt_config_sent = false;
+ 		}
+ 	}
+ 	return false;
+@@ -3472,7 +3474,15 @@ static int hostapd_setup_interface_complete_sync(struct hostapd_iface *iface,
+ 		wpa_printf(MSG_ERROR, "hostapd_get_psd_val failed");
+ 
+ 	for (j = 0; j < iface->num_bss; j++) {
++#ifdef CONFIG_VENDOR_MXL
++		/*	When MBSSID is conifgured - TX bss should always start first
++			Start BSS in the order of bss_idx because bss list order may change
++			due to reconf
++		*/
++		hapd = (iface->conf->multibss_enable ? mxl_hostapd_get_setup_mbssid_bss(iface, j) : iface->bss[j]);
++#else
+ 		hapd = iface->bss[j];
++#endif /* CONFIG_VENDOR_MXL */
+ 		if (j)
+ 			os_memcpy(hapd->own_addr, prev_addr, ETH_ALEN);
+ 		if (hostapd_setup_bss(hapd, j == 0, !iface->conf->mbssid)) {
+@@ -5046,14 +5056,7 @@ static int hostapd_remove_bss(struct hostapd_iface *iface, unsigned int idx)
+ 
+ 	iface->conf->num_bss--;
+ 	for (i = idx; i < iface->conf->num_bss; i++)
+-#ifdef CONFIG_IEEE80211BE_MXL_MLO
+-	{
+-#endif /* CONFIG_IEEE80211BE_MXL_MLO */
+ 		iface->conf->bss[i] = iface->conf->bss[i + 1];
+-#ifdef CONFIG_IEEE80211BE_MXL_MLO
+-		iface->bss[i]->conf->bss_idx--;
+-	}
+-#endif /* CONFIG_IEEE80211BE_MXL_MLO */
+ 
+ 	return 0;
+ }
+@@ -6237,7 +6240,15 @@ void mxl_hostapd_bss_deinit(struct hostapd_data *hapd)
+ 
+ int mxl_hostapd_remove_bss(struct hostapd_iface *iface, unsigned int idx)
+ {
+-	return hostapd_remove_bss(iface, idx);
++	int res = hostapd_remove_bss(iface, idx);
++	size_t i;
++
++#ifdef CONFIG_IEEE80211BE_MXL_MLO
++	for (i = idx; i < iface->conf->num_bss; i++)
++		iface->bss[i]->conf->bss_idx--;
++#endif /* CONFIG_IEEE80211BE_MXL_MLO */
++
++	return res;
+ }
+ 
+ void mxl_hostapd_clear_drv_priv(struct hostapd_data *hapd)
+diff --git a/src/ap/ieee802_11_shared.c b/src/ap/ieee802_11_shared.c
+index 1b4dc8452..487d5b5d4 100644
+--- a/src/ap/ieee802_11_shared.c
++++ b/src/ap/ieee802_11_shared.c
+@@ -1278,6 +1278,7 @@ static int get_non_tx_bss_len(struct hostapd_data *bss, bool is_beacon,
+ 			      u8 *probe_req_mle, size_t probe_req_mle_len)
+ {
+ 	int len = MIN_MBSSID_IE_NON_TX_BSS_ELEM_LEN;
++	size_t tx_bss_idx = mxl_hostapd_get_mbssid_tx_bss_idx(bss->iface);
+ 	if (is_beacon)
+ 		len = len + MBSSID_DTIM_LEN;
+ #ifdef CONFIG_IEEE80211AX
+@@ -1289,7 +1290,7 @@ static int get_non_tx_bss_len(struct hostapd_data *bss, bool is_beacon,
+ 		len = len + bss->conf->ssid.ssid_len;
+ 	}
+ 
+-	if (is_security_ie_required(bss, bss->iface->bss[MULTIBSS_REFERENCE_BSS_IDX])) {
++	if (is_security_ie_required(bss, bss->iface->bss[tx_bss_idx])) {
+ 		len = len + WPA_IE_MAX_LEN;
+ 	}
+ 
+@@ -1305,7 +1306,7 @@ static int get_non_tx_bss_len(struct hostapd_data *bss, bool is_beacon,
+ 	/* check for Non Inheritance of TWT IE */
+ #ifdef CONFIG_IEEE80211AX
+ 	non_inherit_ie_for_twt = (is_beacon &&
+-		hostapd_can_send_btwt_config(bss->iface->bss[MULTIBSS_REFERENCE_BSS_IDX]));
++		hostapd_can_send_btwt_config(bss->iface->bss[tx_bss_idx]));
+ #endif /* CONFIG_IEEE80211AX */
+ 	non_inherit_ie_for_owe = mxl_hostapd_check_non_inherit_rsnxe(bss);
+ 
+@@ -1366,8 +1367,13 @@ int multiple_bssid_ie_get_len(struct hostapd_data *hapd, bool is_beacon,
+ 	int tot_len = MIN_MBSSID_IE_ELEM_LEN;
+ 	int mbssid_ie_len = MIN_MBSSID_IE_ELEM_LEN;
+     /* Iterate over each BSS */
+-    for (i = MULTIBSS_REFERENCE_BSS_IDX + 1; i < hapd->iface->num_bss; i++) {
++    for (i = MULTIBSS_REFERENCE_BSS_IDX; i < hapd->iface->num_bss; i++) {
+         struct hostapd_data *bss = hapd->iface->bss[i];
++
++		/* On BSS iteration skip TX BSS when building MBSSID IE */
++		if (mxl_hostapd_mbssid_is_tx_bss(bss->conf->bss_idx))
++			continue;
++
+ 		int non_tx_bss_len = get_non_tx_bss_len(bss, is_beacon, probe_req_mle,
+ 							probe_req_mle_len);
+ 		if(non_tx_bss_len >= MAX_MBSSID_IE_TAG_LEN) {
+@@ -1451,8 +1457,13 @@ u8 * hostapd_eid_multiple_bssid(struct hostapd_data *hapd, u8 *eid, bool is_beac
+ 	}
+ 	*eid++ = max_idx;
+ 	/* Iterate over each BSS */
+-	for (i = MULTIBSS_REFERENCE_BSS_IDX + 1; i < hapd->iface->num_bss; i++) {
++	for (i = MULTIBSS_REFERENCE_BSS_IDX; i < hapd->iface->num_bss; i++) {
+ 		struct hostapd_data *bss = hapd->iface->bss[i];
++
++		/* On BSS iteration skip TX BSS when building MBSSID IE */
++		if (mxl_hostapd_mbssid_is_tx_bss(bss->conf->bss_idx))
++			continue;
++
+ 		/* Separate MBSSID IE will be created if size is more than MAX_MBSSID_IE_ELEM_LEN */
+ 		if ((get_non_tx_bss_len(bss, is_beacon,
+ 					probe_req_mle, probe_req_mle_len) + ie_len)  > MAX_MBSSID_IE_ELEM_LEN) {
+diff --git a/src/ap/mxl_beacon.c b/src/ap/mxl_beacon.c
+index 298085f68..120ebfa71 100644
+--- a/src/ap/mxl_beacon.c
++++ b/src/ap/mxl_beacon.c
+@@ -131,7 +131,8 @@ bool mxl_check_ml_probe_type_address_check(struct hostapd_data *hapd, const stru
+ 		return true;
+ 	}
+ 	else if (hapd->iconf->multibss_enable) {
+-			struct hostapd_data *bss = hapd->iface->bss[MULTIBSS_REFERENCE_BSS_IDX];
++			size_t tx_bss_idx = mxl_hostapd_get_mbssid_tx_bss_idx(hapd->iface);
++			struct hostapd_data *bss = hapd->iface->bss[tx_bss_idx];
+ 			if (bss && bss->conf->mxl_bss_conf.mlo_enable &&
+ 					(!os_memcmp(bss->own_addr, mgmt->da, ETH_ALEN) ||
+ 					 !os_memcmp(bss->own_addr, mgmt->bssid, ETH_ALEN)))
+@@ -334,8 +335,13 @@ static u8 * mxl_create_rnr_vap(u8 **pos, int radio, struct hostapd_data *hapd, b
+ 				}
+ 			}
+ 			/* For NonTx BSS */
+-			for (int i = (MULTIBSS_REFERENCE_BSS_IDX + 1); i < hapd->iconf->num_bss; i++)  {
++			for (int i = MULTIBSS_REFERENCE_BSS_IDX; i < hapd->iconf->num_bss; i++)  {
+ 				struct hostapd_data *bss = hapd->iface->bss[i];
++
++				/* On BSS iteration skip TX BSS when building RNR IE */
++				if (bss && mxl_hostapd_mbssid_is_tx_bss(bss->conf->bss_idx))
++					continue;
++
+ 				if (bss && bss->conf->mxl_bss_conf.mlo_enable && bss->mxl_data.sibling_hapd) {
+ 					if (!os_memcmp(hapd->iconf->mxl_conf.coloc_6g_ap_info[radio].bss_info[j].bssid,
+ 								bss->mxl_data.sibling_hapd->own_addr, ETH_ALEN)) {
+@@ -546,8 +552,13 @@ u8 * mxl_hostapd_eid_rnr(struct hostapd_data *hapd, u8 *eid)
+ 			len = mxl_create_rnr_mld (&pos, hapd, true, len);
+ 
+ 		/* For NonTx BSS */
+-		for (i = (MULTIBSS_REFERENCE_BSS_IDX + 1); i < hapd->iconf->num_bss; i++)  {
++		for (i = MULTIBSS_REFERENCE_BSS_IDX; i < hapd->iconf->num_bss; i++)  {
+ 			struct hostapd_data *bss = hapd->iface->bss[i];
++
++			/* On BSS iteration skip TX BSS when building RNR IE */
++			if (bss && mxl_hostapd_mbssid_is_tx_bss(bss->conf->bss_idx))
++				continue;
++
+ 			if (bss && bss->conf->mxl_bss_conf.mlo_enable) {
+ 				len = mxl_create_rnr_mld (&pos, bss, false, len);
+ 			}
+diff --git a/src/ap/mxl_hostapd.c b/src/ap/mxl_hostapd.c
+index 4a1fd3e79..6e274334c 100644
+--- a/src/ap/mxl_hostapd.c
++++ b/src/ap/mxl_hostapd.c
+@@ -3086,7 +3086,8 @@ int mxl_hostapd_send_protected_disassoc(struct hostapd_data *hapd, int reason)
+ 
+ bool mxl_hostapd_check_non_inherit_rsnxe(struct hostapd_data *bss)
+ {
+-	struct hostapd_data *hapd = bss->iface->bss[MULTIBSS_REFERENCE_BSS_IDX];
++	size_t tx_bss_idx = mxl_hostapd_get_mbssid_tx_bss_idx(bss->iface);
++	struct hostapd_data *hapd = bss->iface->bss[tx_bss_idx];
+ 
+ 	if (!(hapd->conf->wpa_key_mgmt & (WPA_KEY_MGMT_SAE | WPA_KEY_MGMT_FT_SAE)))
+ 		return false;
+@@ -3104,10 +3105,10 @@ u8 * mxl_hostapd_eid_non_inheritance(struct hostapd_data *hapd, u8 *eid, bool is
+ 	u8 *pos = eid;
+ 	u8 eid_len = 0, eid_ext_len = 0;
+ 	u8 *eid_len_ptr, *eid_ext_len_ptr, *ie_len_ptr, *data_pos;
+-
++	size_t tx_bss_idx = mxl_hostapd_get_mbssid_tx_bss_idx(hapd->iface);
+ #ifdef CONFIG_IEEE80211AX
+ 	non_inherit_ie_for_twt = (is_beacon &&
+-		hostapd_can_send_btwt_config(hapd->iface->bss[MULTIBSS_REFERENCE_BSS_IDX]));
++		hostapd_can_send_btwt_config(hapd->iface->bss[tx_bss_idx]));
+ #endif /* CONFIG_IEEE80211AX */
+ 	non_inherit_ie_for_owe = mxl_hostapd_check_non_inherit_rsnxe(hapd);
+ 
+@@ -3497,3 +3498,43 @@ int mxl_hostapd_check_and_reorder_bss_conf(struct hostapd_iface *iface, struct h
+ 
+ 	return 0;
+ }
++
++struct hostapd_data *mxl_hostapd_get_setup_mbssid_bss(struct hostapd_iface *iface, size_t idx)
++{
++	struct hostapd_data *bss;
++	size_t i;
++
++	/*	To ensure correct bss init when mbssid is configured
++		Start bss in the order of bss_idx so that the transmitting BSS is always started first
++
++		After reconf the bss list may be re-arranged and TX bss is no longer bss[1], so when MBSSID
++		is enabeled this function is used to return hapd context in the order of bss_idx
++		which does not change and guaranteed that bss_idx=1 is the TX bss
++	*/
++	for (i = 0; i < iface->num_bss; i++) {
++		bss = iface->bss[i];
++		if (bss->conf->bss_idx == idx) {
++			return bss;
++		}
++	}
++	return iface->bss[idx];
++}
++
++size_t mxl_hostapd_get_mbssid_tx_bss_idx(struct hostapd_iface *iface)
++{
++	struct hostapd_data *tx_bss;
++	size_t i;
++
++	/* 	bss_idx is always the same - regardless of bss order
++		bss_idx = MULTIBSS_REFERENCE_BSS_IDX indicates that this is the TX BSS in MBSSID set
++		Find the TX BSS in the BSS list
++	*/
++	for (i = MULTIBSS_REFERENCE_BSS_IDX; i < iface->num_bss; i++) {
++		tx_bss = iface->bss[i];
++		if (tx_bss->conf->bss_idx == MULTIBSS_REFERENCE_BSS_IDX) {
++			return i;
++		}
++	}
++
++	return MULTIBSS_REFERENCE_BSS_IDX;
++}
+diff --git a/src/ap/mxl_hostapd.h b/src/ap/mxl_hostapd.h
+index fd891b530..53130e588 100644
+--- a/src/ap/mxl_hostapd.h
++++ b/src/ap/mxl_hostapd.h
+@@ -69,7 +69,7 @@ struct hostapd_failsafe_freq_params {
+ 
+ struct mxl_hostapd_iface {
+ 	u32 sta_aid_link[MXL_AID_WORDS];
+-  s8 stas_free_reason; /* the reason for all stations remove */
++	s8 stas_free_reason; /* the reason for all stations remove */
+ 	int acs_user_config_cw;
+ 	int acs_user_config_op_class;
+ 	int allow_scan_during_cac;
+@@ -172,6 +172,14 @@ int mxl_hostapd_drv_get_vendor_data_at_least(struct hostapd_data *hapd,
+ #define MXL_DRV_VENDOR_GET_AT_LEAST(cmd__, in_ptr__, in_size__, out_ptr__, in_out_size_ptr__) \
+ 	mxl_hostapd_drv_get_vendor_data_at_least(hapd, OUI_LTQ, (cmd__), (void*)(in_ptr__), (in_size__), (void*)(out_ptr__), (in_out_size_ptr__))
+ 
++/*	Used to check if specific bss is the TX bss in MBSSID by providing the bss_idx
++	In MBSSID the TX BSS is always with bss_idx = MULTIBSS_REFERENCE_BSS_IDX
++*/
++static inline bool mxl_hostapd_mbssid_is_tx_bss(int bss_idx)
++{
++    return (bss_idx == MULTIBSS_REFERENCE_BSS_IDX);
++}
++
+ struct hostapd_iface;
+ struct sta_info;
+ struct hapd_interfaces;
+@@ -259,4 +267,6 @@ bool mxl_hostapd_prune_sta(struct hostapd_data *hapd, const u8 *addr, struct sta
+ void mxl_parse_rnr(struct ieee802_11_elems *elems, struct dl_list *rnr_scan_6g_ap_info);
+ void mxl_hostapd_check_limit_reached(struct hostapd_data *hapd, const u8 *sta_addr, u16 *resp);
+ int mxl_hostapd_check_and_reorder_bss_conf(struct hostapd_iface *iface, struct hostapd_config *newconf);
++struct hostapd_data *mxl_hostapd_get_setup_mbssid_bss(struct hostapd_iface *iface, size_t idx);
++size_t mxl_hostapd_get_mbssid_tx_bss_idx(struct hostapd_iface *iface);
+ #endif /* MXL_HOSTAPD_H */
+diff --git a/src/ap/mxl_mld.c b/src/ap/mxl_mld.c
+index aae625ff0..3a9500fb2 100644
+--- a/src/ap/mxl_mld.c
++++ b/src/ap/mxl_mld.c
+@@ -271,6 +271,7 @@ static int mxl_setup_link(struct p_ap_mld *mld)
+ 	struct _mxl_vendor_mld_link_info *mld_link_info;
+ 	struct hostapd_data *hapd = NULL;
+ 	u8 multibss_vap_mode = NON_MULTIBSS_VAP_MODE;
++	size_t link1_tx_bss_idx, link2_tx_bss_idx;
+ 	int ret = -1;
+ 
+ 	if (!link1 || !link2)
+@@ -375,14 +376,16 @@ static int mxl_setup_link(struct p_ap_mld *mld)
+ 		goto err;
+ 
+ 	if (link1->iconf->multibss_enable && (MULTIBSS_REFERENCE_BSS_IDX != link1->conf->bss_idx)) {
+-		hapd = link1->iface->bss[MULTIBSS_REFERENCE_BSS_IDX];
++		link1_tx_bss_idx = mxl_hostapd_get_mbssid_tx_bss_idx(link1->iface);
++		hapd = link1->iface->bss[link1_tx_bss_idx];
+ 		ieee802_11_set_beacon(hapd);
+ 		if (hapd->mxl_data.sibling_hapd)
+ 			ieee802_11_set_beacon(hapd->mxl_data.sibling_hapd);
+ 
+ 	}
+ 	if (link2->iconf->multibss_enable && (MULTIBSS_REFERENCE_BSS_IDX != link2->conf->bss_idx)) {
+-		hapd = link2->iface->bss[MULTIBSS_REFERENCE_BSS_IDX];
++		link2_tx_bss_idx = mxl_hostapd_get_mbssid_tx_bss_idx(link2->iface);
++		hapd = link2->iface->bss[link2_tx_bss_idx];
+ 		ieee802_11_set_beacon(hapd);
+ 		if (hapd->mxl_data.sibling_hapd)
+ 			ieee802_11_set_beacon(hapd->mxl_data.sibling_hapd);
+@@ -1676,6 +1679,7 @@ int mxl_ml_handle_critical_update(struct hostapd_data *hapd)
+ {
+ 	struct hostapd_data *hapd_tx = NULL, *sib_hapd = NULL, *sib_hapd_tx = NULL;
+ 	int flags = BSS_CRITICAL_UPDATE_COMMON; /* Bit6 */
++	size_t tx_bss_idx, sib_tx_bss_idx;
+ 
+ 	hapd->parameter_set_count++;
+ 
+@@ -1698,7 +1702,8 @@ int mxl_ml_handle_critical_update(struct hostapd_data *hapd)
+ 		if ((hapd->iconf->multibss_enable) && (MULTIBSS_REFERENCE_BSS_IDX != hapd->conf->bss_idx)) {
+ 			/* Set Non-Tx Critical Update */
+ 			hapd->mxl_data.ml_non_tx_critical_update = true;
+-			hapd_tx = hapd->iface->bss[MULTIBSS_REFERENCE_BSS_IDX];
++			tx_bss_idx = mxl_hostapd_get_mbssid_tx_bss_idx(hapd->iface);
++			hapd_tx = hapd->iface->bss[tx_bss_idx];
+ 			flags |= NON_TX_BSS_CRITICAL_UPDATE_COMMON; /* Bit7 */
+ 		}
+ 
+@@ -1715,7 +1720,8 @@ int mxl_ml_handle_critical_update(struct hostapd_data *hapd)
+ 		    && (MULTIBSS_REFERENCE_BSS_IDX != sib_hapd->conf->bss_idx)) {
+ 			/* Set Non-Tx Critical Update */
+ 			sib_hapd->mxl_data.ml_non_tx_critical_update = true;
+-			sib_hapd_tx = sib_hapd->iface->bss[MULTIBSS_REFERENCE_BSS_IDX];
++			sib_tx_bss_idx = mxl_hostapd_get_mbssid_tx_bss_idx(sib_hapd->iface);
++			sib_hapd_tx = sib_hapd->iface->bss[sib_tx_bss_idx];
+ 			flags |= NON_TX_BSS_CRITICAL_UPDATE_COMMON; /* Bit7 */
+ 		}
+ 
+-- 
+2.43.0
+

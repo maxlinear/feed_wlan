@@ -1,0 +1,31 @@
+From 84d004eb038714f30eb32dd3ecf1744a9181c66a Mon Sep 17 00:00:00 2001
+From: Jouni Malinen <quic_jouni@quicinc.com>
+Date: Wed, 11 Oct 2023 12:43:11 +0300
+Subject: [PATCH] Define WFA vendor specific element types for RSNE/RSNXE
+ overriding
+
+Signed-off-by: Jouni Malinen <quic_jouni@quicinc.com>
+---
+ src/common/ieee802_11_defs.h | 6 ++++++
+ 1 file changed, 6 insertions(+)
+
+diff --git a/src/common/ieee802_11_defs.h b/src/common/ieee802_11_defs.h
+index f339b4c40..e5fbc373a 100644
+--- a/src/common/ieee802_11_defs.h
++++ b/src/common/ieee802_11_defs.h
+@@ -1507,6 +1507,12 @@ struct auth_fail_list {
+ #define QM_IE_OUI_TYPE 0x22
+ #define WFA_CAPA_IE_VENDOR_TYPE 0x506f9a23
+ #define WFA_CAPA_OUI_TYPE 0x23
++#define WFA_RSNE_OVERRIDE_OUI_TYPE 0x29
++#define WFA_RSNE_OVERRIDE_2_OUI_TYPE 0x2a
++#define WFA_RSNXE_OVERRIDE_OUI_TYPE 0x2b
++#define RSNE_OVERRIDE_IE_VENDOR_TYPE 0x506f9a29
++#define RSNE_OVERRIDE_2_IE_VENDOR_TYPE 0x506f9a2a
++#define RSNXE_OVERRIDE_IE_VENDOR_TYPE 0x506f9a2b
+ 
+ #define MULTI_AP_SUB_ELEM_TYPE 0x06
+ #define MULTI_AP_PROFILE_SUB_ELEM_TYPE 0x07
+-- 
+2.43.0
+

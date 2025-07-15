@@ -1,0 +1,42 @@
+From 160e16d6a17b672aeef922f609f7f190d36cda41 Mon Sep 17 00:00:00 2001
+From: Venkatasaiprudhvi Sannidhi <vsannidhi@maxlinear.com>
+Date: Wed, 23 Apr 2025 17:55:51 +0530
+Subject: [PATCH] WLANRTSYS-89045 [WiFi-7 certification: 4.46.2] [UPDK]:
+ Critical Update Flag is not set to 0 for Tx VAP in Fixed parameter.
+
+Issue: When the command to set the critical flag is issued for a non Tx VAP, the expectation is that in Fixed parameters only the Non-Transmitted BSSIDs Critical Update Flag (Bit7) should be set.
+and Critical Update Flag (Bit6) should not be set.
+
+Fix: Set only Non-Transmitted BSSIDs Critical Update Flag in this
+scenario.
+
+Unit test: Pass
+---
+ src/ap/mxl_mld.c | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/src/ap/mxl_mld.c b/src/ap/mxl_mld.c
+index 88e661bb4..71e2cd72d 100644
+--- a/src/ap/mxl_mld.c
++++ b/src/ap/mxl_mld.c
+@@ -1704,7 +1704,7 @@ int mxl_ml_handle_critical_update(struct hostapd_data *hapd)
+ 			hapd->mxl_data.ml_non_tx_critical_update = true;
+ 			tx_bss_idx = mxl_hostapd_get_mbssid_tx_bss_idx(hapd->iface);
+ 			hapd_tx = hapd->iface->bss[tx_bss_idx];
+-			flags |= NON_TX_BSS_CRITICAL_UPDATE_COMMON; /* Bit7 */
++			flags = NON_TX_BSS_CRITICAL_UPDATE_COMMON; /* Bit7 */
+ 		}
+ 
+ 		/* Send BSS critical update vendor cmd on link A */
+@@ -1722,7 +1722,7 @@ int mxl_ml_handle_critical_update(struct hostapd_data *hapd)
+ 			sib_hapd->mxl_data.ml_non_tx_critical_update = true;
+ 			sib_tx_bss_idx = mxl_hostapd_get_mbssid_tx_bss_idx(sib_hapd->iface);
+ 			sib_hapd_tx = sib_hapd->iface->bss[sib_tx_bss_idx];
+-			flags |= NON_TX_BSS_CRITICAL_UPDATE_COMMON; /* Bit7 */
++			flags = NON_TX_BSS_CRITICAL_UPDATE_COMMON; /* Bit7 */
+ 		}
+ 
+ 		/* Send BSS critical update vendor cmd on link B */
+-- 
+2.43.0
+

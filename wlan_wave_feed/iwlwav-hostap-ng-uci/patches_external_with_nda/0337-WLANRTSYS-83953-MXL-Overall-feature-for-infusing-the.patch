@@ -1,0 +1,763 @@
+From 17c5061bd0b33bfa5da1d0ce05542721cf9d627c Mon Sep 17 00:00:00 2001
+From: rmunjewar <rmunjewar@maxlinear.com>
+Date: Tue, 5 Nov 2024 12:16:43 +0530
+Subject: [PATCH] WLANRTSYS-83953 [MXL] Overall feature for infusing the
+ puncturing into the acs in SP/ISP modes.
+
+WLANRTSYS-83953 [MXL] Addign user config parameter acs_6g_punct_mode
+
+WLANRTSYS-83953 [MXL] Seperating check channel and set channel in ACS flow
+
+WLANRTSYS-83953 [MXL] creating pri subband mask
+
+WLANRTSYS-83953 [MXL] Adding tx calculation for ranking
+
+WLANRTSYS-83953 [MXL] cleaning and setting bitmap in driver and hostap conf varaibles
+
+WLANRTSYS-83953 [MXL] Calculating the sec sub band tx power
+
+WLANRTSYS-83953 [MXL] Correcting the pri_20 and sec_20 values based on afc database
+---
+ hostapd/mxl_config_proprietary.c      |  13 +-
+ hostapd/mxl_ctrl_iface.c              |   8 +
+ hostapd/mxl_ctrl_iface_proprietary.c  |   6 +-
+ hostapd/mxl_hostapd_cli_proprietary.c |   6 +-
+ src/ap/mxl_acs.c                      | 369 +++++++++++++++++++++++---
+ src/ap/mxl_acs.h                      |   8 +-
+ src/ap/mxl_common_proprietary.c       |   6 +-
+ src/ap/mxl_dfs_debug.c                |   2 +-
+ src/ap/mxl_dfs_debug.h                |   2 +-
+ src/ap/mxl_hostapd_proprietary.c      |   6 +-
+ 10 files changed, 387 insertions(+), 39 deletions(-)
+
+diff --git a/hostapd/mxl_config_proprietary.c b/hostapd/mxl_config_proprietary.c
+index 3f10876c7..db26afb02 100644
+--- a/hostapd/mxl_config_proprietary.c
++++ b/hostapd/mxl_config_proprietary.c
+@@ -1,6 +1,10 @@
+ /******************************************************************************
+ 
+-         Copyright (c) 2024, MaxLinear, Inc.
++         Copyright (c) 2020 - 2025, MaxLinear, Inc.
++         Copyright 2016 - 2020 Intel Corporation
++         Copyright 2015 - 2016 Lantiq Beteiligungs-GmbH & Co. KG
++         Copyright 2009 - 2014 Lantiq Deutschland GmbH
++         Copyright 2007 - 2008 Infineon Technologies AG
+ 
+   For licensing information, see the file 'LICENSE' in the root folder of
+   this software module.
+@@ -402,6 +406,13 @@ int mxl_config_check_smart_acs_config(struct hostapd_config *conf, struct hostap
+ 			return 1;
+ 		}
+ 		mxl_conf->acs_eht_mode = (enum acs_eht_modes)val;
++	} else if ((os_strcmp(buf, "acs_6g_punct_mode") == 0 && is_6ghz_op_class(conf->op_class))) {
++		int val = atoi(pos);
++		if(!IS_VALID_BOOL_RANGE(val)) {
++			wpa_printf(MSG_ERROR, "Line %d: invalid 6G ACS fused puncturing value %d, range is 0..1", line, val);
++			return 0;
++		}
++		mxl_conf->acs_6g_punct_mode = val;
+ 	} else if (os_strcmp(buf, "scan_timeout") == 0) {
+ 		int val = atoi(pos);
+ 		if (!IS_VALID_RANGE(val, SCAN_TIMEOUT_MIN, SCAN_TIMEOUT_MAX)) {
+diff --git a/hostapd/mxl_ctrl_iface.c b/hostapd/mxl_ctrl_iface.c
+index ee798a467..8fad15bb5 100644
+--- a/hostapd/mxl_ctrl_iface.c
++++ b/hostapd/mxl_ctrl_iface.c
+@@ -3799,6 +3799,14 @@ int mxl_hostapd_ctrl_iface_set_power_mode(struct hostapd_iface *iface, const cha
+ 		mxl_hostapd_afc_clear_and_load_lpi(iface);
+ 		mxl_hostap_afc_construct_regrule_from_afc_data(iface);
+ 	}
++#ifdef CONFIG_VENDOR_MXL_PROPRIETARY
++	else if (val == HE_REG_INFO_6GHZ_AP_TYPE_INDOOR) {
++		if (iface->conf->mxl_conf.acs_6g_punct_mode) {
++			mxl_hostapd_set_eht_punct_bitmap(iface->bss[0], 0);
++			iface->conf->punct_bitmap = 0;
++		}
++	}
++#endif /* CONFIG_VENDOR_MXL_PROPRIETARY */
+ #endif /* CONFIG_AFC */
+ 
+ 	return os_snprintf(buf, buflen, "Power Mode=%s\n", mxl_he_6ghz_pwr_mode_text(val));
+diff --git a/hostapd/mxl_ctrl_iface_proprietary.c b/hostapd/mxl_ctrl_iface_proprietary.c
+index 2fa600c13..9c574e13e 100644
+--- a/hostapd/mxl_ctrl_iface_proprietary.c
++++ b/hostapd/mxl_ctrl_iface_proprietary.c
+@@ -1,6 +1,10 @@
+ /******************************************************************************
+ 
+-         Copyright (c) 2024, MaxLinear, Inc.
++         Copyright (c) 2020 - 2025, MaxLinear, Inc.
++         Copyright 2016 - 2020 Intel Corporation
++         Copyright 2015 - 2016 Lantiq Beteiligungs-GmbH & Co. KG
++         Copyright 2009 - 2014 Lantiq Deutschland GmbH
++         Copyright 2007 - 2008 Infineon Technologies AG
+ 
+   For licensing information, see the file 'LICENSE' in the root folder of
+   this software module.
+diff --git a/hostapd/mxl_hostapd_cli_proprietary.c b/hostapd/mxl_hostapd_cli_proprietary.c
+index c5d61a43d..d54560131 100644
+--- a/hostapd/mxl_hostapd_cli_proprietary.c
++++ b/hostapd/mxl_hostapd_cli_proprietary.c
+@@ -1,6 +1,10 @@
+ /******************************************************************************
+ 
+-         Copyright (c) 2024, MaxLinear, Inc.
++         Copyright (c) 2020 - 2025, MaxLinear, Inc.
++         Copyright 2016 - 2020 Intel Corporation
++         Copyright 2015 - 2016 Lantiq Beteiligungs-GmbH & Co. KG
++         Copyright 2009 - 2014 Lantiq Deutschland GmbH
++         Copyright 2007 - 2008 Infineon Technologies AG
+ 
+   For licensing information, see the file 'LICENSE' in the root folder of
+   this software module.
+diff --git a/src/ap/mxl_acs.c b/src/ap/mxl_acs.c
+index 3078b82b6..b44b4841c 100644
+--- a/src/ap/mxl_acs.c
++++ b/src/ap/mxl_acs.c
+@@ -1,6 +1,6 @@
+ /******************************************************************************
+ 
+-         Copyright (c) 2023 - 2024, MaxLinear, Inc.
++         Copyright (c) 2020 - 2025, MaxLinear, Inc.
+          Copyright 2016 - 2020 Intel Corporation
+          Copyright 2015 - 2016 Lantiq Beteiligungs-GmbH & Co. KG
+          Copyright 2009 - 2014 Lantiq Deutschland GmbH
+@@ -34,6 +34,16 @@
+ 
+ #define NZ_MIN(a, b) (((a) == 0) ? (b) : (((b) == 0) ? (a) : (((a) < (b)) ? (a) : (b))))
+ 
++#define COUNT_SET_BITS(n) ({             \
++    int _count = 0;                      \
++    unsigned int _num = (unsigned int)(n);  \
++    while (_num) {                       \
++        _num &= (_num - 1);              \
++        _count++;                        \
++    }                                    \
++    _count;                              \
++})
++
+ #define FILS_FIXED_LEN 12
+ #define MXL_OUI_LEN 3
+ #define FILS_PRIMARY_CHANNEL_OFFSET 1
+@@ -2448,7 +2458,6 @@ typedef struct {
+ 	int ex_rank_util_primary;
+ } calibration_group;
+ 
+-
+ #ifndef MIN
+ #define MIN(x,y) ((x)<(y)?(x):(y))
+ #endif
+@@ -2457,7 +2466,6 @@ typedef struct {
+ #define MAX(x,y) ((x)>(y)?(x):(y))
+ #endif
+ 
+-
+ static int get_secondary_offset(int primary, int secondary)
+ {
+ 	if (secondary)
+@@ -2571,7 +2579,6 @@ int mxl_acs_do_switch_channel(struct hostapd_iface *iface, int block_tx)
+ 	return 0;
+ }
+ 
+-
+ void acs_print_info_header(int level)
+ {
+ 	wpa_printf(level, " #  1y  2y freq  BW    R#   RB# u_p u_bw l_p l_s ls40 ls80 ls160 bss  pri aff rdr Ovl int40 c_p c_s cs40 cs80 cs160 tx_p tx_s tx40 tx80 tx160");
+@@ -2701,8 +2708,20 @@ const char *sw_reasons[] = {
+ 	"periodic update",
+ };
+ 
++static bool mxl_acs_set_new_chan_if_ok(struct hostapd_iface *iface, int min_rank_cand_idx)
++{
++	struct acs_candidate_table *candidates = iface->mxl_iface.candidates;
++	/* set the new channel */
++	iface->conf->channel = candidates[min_rank_cand_idx].primary;
++	iface->freq = hostapd_hw_get_freq(iface->bss[0], iface->conf->channel);
++	iface->conf->secondary_channel = get_secondary_offset(candidates[min_rank_cand_idx].primary, candidates[min_rank_cand_idx].secondary);
++	iface->mxl_iface.selected_candidate = min_rank_cand_idx;
++	hostapd_set_oper_chwidth(iface->conf, mxl_get_oper_width(candidates[min_rank_cand_idx].width));
++	acs_smart_adjust_center_freq(iface, candidates[min_rank_cand_idx].chan);
++	return true;
++}
+ 
+-int acs_set_new_chan_if_ok(struct hostapd_iface *iface, int min_rank_cand_idx, int switch_reason, FILE *fp_hist)
++static bool mxl_acs_check_new_chan_is_ok(struct hostapd_iface *iface, int min_rank_cand_idx, int switch_reason, FILE *fp_hist)
+ {
+ 	struct acs_candidate_table *candidates = iface->mxl_iface.candidates;
+ 	int actual_width, selected_cand_rank;
+@@ -2761,20 +2780,13 @@ int acs_set_new_chan_if_ok(struct hostapd_iface *iface, int min_rank_cand_idx, i
+ 			wpa_printf(MSG_DEBUG, "ACS going from candidate %d to %d as current candidate rank is better", iface->mxl_iface.selected_candidate, min_rank_cand_idx);
+ 			acs_print_cand_no(MSG_DEBUG, iface, min_rank_cand_idx);
+ 			acs_print_cand_no_file(fp_hist, iface, min_rank_cand_idx);
+-
+-			/* set the new channel */
+-			iface->conf->channel = candidates[min_rank_cand_idx].primary;
+-			iface->freq = hostapd_hw_get_freq(iface->bss[0], iface->conf->channel);
+-			iface->conf->secondary_channel = get_secondary_offset(candidates[min_rank_cand_idx].primary, candidates[min_rank_cand_idx].secondary);
+-			iface->mxl_iface.selected_candidate = min_rank_cand_idx;
+-			hostapd_set_oper_chwidth(iface->conf, mxl_get_oper_width(candidates[min_rank_cand_idx].width));
+-			acs_smart_adjust_center_freq(iface, candidates[min_rank_cand_idx].chan);
+ 			res = true;
+ 		}
+ 	}
+ 
+ 	return res;
+ }
++
+ #ifndef CONFIG_NO_STDOUT_DEBUG
+ static const char * acs_penalty_fact_to_str(int penalty_factor)
+ {
+@@ -3072,6 +3084,21 @@ static bool mxl_acs_is_freq_rule_present_parse_power(struct hostapd_iface *iface
+ 	return false;
+ }
+ 
++static void mxl_acs_if_afc_rule_present_parse_power(struct hostapd_iface *iface, int center_chan_idx, int bw_start, int bw_end, int bw, int *tx)
++{
++	if (!mxl_acs_is_chan_rule_present_parse_power(iface, center_chan_idx, tx)) {
++		mxl_acs_is_freq_rule_present_parse_power(iface, bw_start, bw_end, bw, tx);
++	}
++}
++
++static int mxl_acs_if_afc_rule_present_parse_power_pri20(struct hostapd_iface *iface, int pri)
++{
++	int tx = 0;
++	int pri_freq = hostapd_chan_to_freq(pri, true);
++	mxl_acs_if_afc_rule_present_parse_power(iface, pri, pri_freq-10, pri_freq+10, 20, &tx);
++	return tx;
++}
++
+ static int mxl_acs_get_chan_id_freq_range_sec_tx(struct hostapd_iface *iface, int freq, int pri, int sec_bw, int *new_freq) {
+ 	int start_freq = freq - 10;
+ 	int mid_freq = start_freq + sec_bw;
+@@ -3094,9 +3121,7 @@ static int mxl_acs_get_chan_id_freq_range_sec_tx(struct hostapd_iface *iface, in
+ 	if(sec_bw_center_chan_idx == -1)
+ 		return tx;
+ 
+-	if (!mxl_acs_is_chan_rule_present_parse_power(iface, sec_bw_center_chan_idx, &tx)) {
+-		mxl_acs_is_freq_rule_present_parse_power(iface, sec_bw_start, sec_bw_end, sec_bw, &tx);
+-	}
++	mxl_acs_if_afc_rule_present_parse_power(iface, sec_bw_center_chan_idx, sec_bw_start, sec_bw_end, sec_bw, &tx);
+ 
+ 	return tx;
+ }
+@@ -3107,6 +3132,7 @@ static void mxl_acs_tx_power_update(struct hostapd_iface *iface)
+ 	struct acs_candidate_table *candidates = iface->mxl_iface.candidates;
+ 
+ 	for (i = 0; (i < iface->mxl_iface.num_candidates && i < MAX_CANDIDATES); i++) {
++		int new_power;
+ 		if (candidates[i].width ==  320) {
+ 			candidates[i].tx_power[SEC_MAX_160] = mxl_acs_get_chan_id_freq_range_sec_tx(iface, candidates[i].freq, candidates[i].primary, 160, &sub_freq);
+ 			candidates[i].tx_power[SEC_MAX_160] += 9; /* compensation factor eight channels */
+@@ -3114,18 +3140,276 @@ static void mxl_acs_tx_power_update(struct hostapd_iface *iface)
+ 			candidates[i].tx_power[SEC_MAX_80] += 6; /* compensation factor four channels */
+ 			candidates[i].tx_power[SEC_MAX_40] = mxl_acs_get_chan_id_freq_range_sec_tx(iface, sub_freq, candidates[i].primary, 40, &sub_freq);
+ 			candidates[i].tx_power[SEC_MAX_40] += 3; /* compensation factor two channels */
++			if ((new_power = mxl_acs_get_chan_id_freq_range_sec_tx(iface, sub_freq, candidates[i].primary, 20, &sub_freq)) != 0) candidates[i].tx_power[SEC_20] = new_power;
+ 		}
+ 		if (candidates[i].width ==  160) {
+ 			candidates[i].tx_power[SEC_MAX_80] = mxl_acs_get_chan_id_freq_range_sec_tx(iface, candidates[i].freq, candidates[i].primary, 80, &sub_freq);
+ 			candidates[i].tx_power[SEC_MAX_80] += 6; /* compensation factor four channels */
+ 			candidates[i].tx_power[SEC_MAX_40] = mxl_acs_get_chan_id_freq_range_sec_tx(iface, sub_freq, candidates[i].primary, 40, &sub_freq);
+ 			candidates[i].tx_power[SEC_MAX_40] += 3; /* compensation factor two channels */
++			if ((new_power = mxl_acs_get_chan_id_freq_range_sec_tx(iface, sub_freq, candidates[i].primary, 20, &sub_freq)) != 0) candidates[i].tx_power[SEC_20] = new_power;
+ 		}
+ 		if (candidates[i].width ==  80) {
+ 			candidates[i].tx_power[SEC_MAX_40] = mxl_acs_get_chan_id_freq_range_sec_tx(iface, candidates[i].freq, candidates[i].primary, 40, &sub_freq);
+ 			candidates[i].tx_power[SEC_MAX_40] += 3; /* compensation factor two channels */
++			if ((new_power = mxl_acs_get_chan_id_freq_range_sec_tx(iface, sub_freq, candidates[i].primary, 20, &sub_freq)) != 0) candidates[i].tx_power[SEC_20] = new_power;
++		}
++		if (candidates[i].width ==  40) {
++			if ((new_power = mxl_acs_get_chan_id_freq_range_sec_tx(iface, sub_freq, candidates[i].primary, 20, &sub_freq)) != 0) candidates[i].tx_power[SEC_20] = new_power;
++		}
++		if ((new_power = mxl_acs_if_afc_rule_present_parse_power_pri20(iface, candidates[i].primary)) != 0) candidates[i].tx_power[PRI_20] = new_power;
++	}
++}
++
++
++/* IEEE P802.11be/D3.0, Table 36-30 - Definition of the Punctured Channel
++ * Information field in the U-SIG for an EHT MU PPDU using non-OFDMA
++ * transmissions */
++static const u16 punct_bitmap_80[] = { 0xF, 0xE, 0xD, 0xB, 0x7 };
++
++static const u16 punct_bitmap_160[] = {
++	0xFF, 0xFE, 0xFD, 0xFB, 0xF7, 0xEF, 0xDF, 0xBF,
++	0x7F, 0xFC, 0xF3, 0xCF, 0x3F
++};
++
++static const u16 punct_bitmap_320[] = {
++	0xFFFF, 0xFFFC, 0xFFF3, 0xFFCF, 0xFF3F, 0xFCFF, 0xF3FF, 0xCFFF,
++	0x3FFF, 0xFFF0, 0xFF0F, 0xF0FF, 0x0FFF, 0xFFC0, 0xFF30, 0xFCF0,
++	0xF3F0, 0xCFF0, 0x3FF0, 0x0FFC, 0x0FF3, 0x0FCF, 0x0F3F, 0x0CFF,
++	0x03FF
++};
++
++static u16 mxl_acs_get_valid_pri_mask(struct hostapd_iface *iface, int min_rank_cand_idx)
++{
++	struct acs_candidate_table *candidates = iface->mxl_iface.candidates;
++	int width = candidates[min_rank_cand_idx].width;
++	int start_freq = candidates[min_rank_cand_idx].freq - 10;
++	int pri_freq = hostapd_chan_to_freq(candidates[min_rank_cand_idx].primary, true);
++	u16 valid_pri_mask = 0;
++
++	/* checking primary sub-band */
++	bool is_lower_half = (pri_freq > start_freq) && (pri_freq < (start_freq + (width / 2)));
++
++	/* mask with primary sub-band */
++	switch (width) {
++	case 80:
++		valid_pri_mask = is_lower_half ? 0x3 : 0xC;
++		break;
++	case 160:
++		valid_pri_mask = is_lower_half ? 0x0F : 0xF0;
++		break;
++	case 320:
++		valid_pri_mask = is_lower_half ? 0x00FF : 0xFF00;
++		break;
++	}
++
++	return valid_pri_mask;
++}
++
++static void mxl_acs_check_and_update_valid_patterns(struct hostapd_iface *iface, u16 *valid_punct_bitmap, int min_rank_cand_idx)
++{
++	struct acs_candidate_table *candidates = iface->mxl_iface.candidates;
++	int bw = candidates[min_rank_cand_idx].width;
++	const u16 *valid_bitmaps;
++	int count = 0;
++	u16 valid_pri_mask;
++
++	/* Determine valid bitmaps and count based on bandwidth (bw) */
++	switch (bw) {
++	case 80:
++		valid_bitmaps = punct_bitmap_80;
++		count = ARRAY_SIZE(punct_bitmap_80);
++		break;
++	case 160:
++		valid_bitmaps = punct_bitmap_160;
++		count = ARRAY_SIZE(punct_bitmap_160);
++		break;
++	case 320:
++		valid_bitmaps = punct_bitmap_320;
++		count = ARRAY_SIZE(punct_bitmap_320);
++		break;
++	default:
++		return;  /* Exit if unsupported bandwidth */
++	}
++
++	/* Get the valid primary channel mask
++	 * As puncturing not allowed in primary sub-band
++	 */
++	valid_pri_mask = mxl_acs_get_valid_pri_mask(iface, min_rank_cand_idx);
++
++	/* Update the valid_punct_bitmap array with valid patterns */
++	for (int i = 0, j = 0; i < count; i++) {
++		if ((valid_bitmaps[i] & valid_pri_mask) == valid_pri_mask) {
++			valid_punct_bitmap[j] = valid_bitmaps[i];
++			j++;
++		}
++	}
++}
++
++#define ACS_PUNCT_RANK_FACTOR1	12
++#define ACS_PUNCT_RANK_FACTOR2	38
++#define ACS_PUNCT_RANK_FACTOR3	25
++#define ACS_PUNCT_RANK_FACTOR_INVALID	0
++
++static int mxl_acs_get_sub_candidate_factor(struct acs_candidate_table sub_candidate, u16 bitmap)
++{
++	switch (sub_candidate.width){
++	case 320:
++		switch(COUNT_SET_BITS(bitmap)){
++		case 10: return ACS_PUNCT_RANK_FACTOR1;
++		case 14: return ACS_PUNCT_RANK_FACTOR2;
++		case 12: return ACS_PUNCT_RANK_FACTOR3;
++		}
++	case 160:
++		switch(COUNT_SET_BITS(bitmap)){
++		case 7: return ACS_PUNCT_RANK_FACTOR2;
++		case 6: return ACS_PUNCT_RANK_FACTOR3;
++		}
++	case 80:
++		return ACS_PUNCT_RANK_FACTOR3;
++	case 40:
++	case 20:
++	default:
++		return ACS_PUNCT_RANK_FACTOR_INVALID;
++	}
++}
++
++static int mxl_acs_chan_rule_parse_power_20(struct hostapd_iface *iface, int center_idx)
++{
++	/* checking 20MHz database */
++	for (int chan_idx = 0; chan_idx < iface->afc.num_chan_info; chan_idx++) {
++		if(center_idx == iface->afc.chan_info_list[chan_idx].chan){
++			return iface->afc.chan_info_list[chan_idx].power;
+ 		}
+ 	}
++	/* TODO : if not found update the chan_idx and check in higher BW database */
++
++	return 0;
++}
++
++static int mxl_acs_freq_rule_parse_power_20(struct hostapd_iface *iface, int start_freq, int end_freq)
++{
++	/* Considering AFC only has 20MHz Frequency ranges */
++	for (int freq_idx = 0; freq_idx < iface->afc.num_freq_range; freq_idx++) {
++		if(start_freq >= iface->afc.freq_range[freq_idx].low_freq && end_freq <= iface->afc.freq_range[freq_idx].high_freq) {
++			return  mxl_afc_calculate_psd_to_eirp(iface->afc.freq_range[freq_idx].max_psd, 20);
++		}
++	}
++	return 0;
++}
++
++static int mxl_acs_update_max_sub_band_tx(struct hostapd_iface *iface, int freq, int pri, int bw, u16 bitmap)
++{
++	int sec_bw = bw/2;
++	int start_freq = freq - 10;
++	int mid_freq = start_freq + sec_bw;
++	int end_freq = mid_freq + sec_bw;
++	int pri_freq = hostapd_chan_to_freq(pri, true);
++	int sec_bw_start = 0, sec_bw_end = 0;
++	int tx = 0;
++	int s_freq = 0;
++	int bits = 0;
++	u16 mask = 0;
++
++	switch(bw){
++	case 80:  bits = 2; mask = 0x3; break;
++	case 160:  bits = 4; mask = 0xF; break;
++	case 320:  bits = 8; mask = 0xFF; break;
++	}
++
++	if (start_freq < pri_freq && pri_freq < mid_freq) {
++		sec_bw_start = mid_freq;
++		sec_bw_end = mid_freq + sec_bw;
++		bitmap >>= bits;
++	} else if (mid_freq < pri_freq && pri_freq < end_freq) {
++		sec_bw_end = mid_freq;
++		sec_bw_start = mid_freq - sec_bw;
++		bitmap &= mask;
++	}
++	s_freq = sec_bw_start;
++	while(s_freq <= sec_bw_end){
++		if(bitmap & 0x1){
++			int chan_idx = ((s_freq + 10) - WAVE_6G_STARTING_FREQ) / 5;
++			int temp_tx = mxl_acs_chan_rule_parse_power_20(iface, chan_idx);
++			if(temp_tx <= 0)
++				temp_tx = mxl_acs_freq_rule_parse_power_20(iface, s_freq, s_freq + 20);
++			tx = NZ_MIN(tx, temp_tx);
++		}
++		s_freq += 20;
++		bitmap >>= 1;
++	}
++	return tx;
++}
++
++static int mxl_acs_rank_sub_candidate(struct hostapd_iface *iface, int min_rank_cand_idx, u16 bitmap)
++{
++	struct acs_candidate_table sub_candidate = iface->mxl_iface.candidates[min_rank_cand_idx];
++	int tx_power_rank, chan_load_rank, cwi_rank, bw_factor, sub_bw_factor;
++	int sec_max = 0, rank_base = 0;
++
++	/* Base sec_max and base rank depending on width */
++	switch (sub_candidate.width) {
++	case 80:  sec_max = SEC_MAX_40; rank_base = sub_candidate.rank40; break;
++	case 160: sec_max = SEC_MAX_80; rank_base = sub_candidate.rank80; break;
++	case 320: sec_max = SEC_MAX_160; rank_base = sub_candidate.rank160; break;
++	}
++
++	sub_candidate.tx_power[sec_max] = mxl_acs_update_max_sub_band_tx(iface, sub_candidate.freq, sub_candidate.primary, sub_candidate.width, bitmap);
++	/* Apply penalty factors */
++	tx_power_rank = acs_apply_penalty_factor(iface, K_TX_POWER,
++		MIN(100, ((iface->mxl_iface.max_tx_power - sub_candidate.tx_power[sec_max]) * 10 / 8)));
++
++	chan_load_rank = acs_apply_penalty_factor(iface, K_CL, sub_candidate.channel_load[sec_max]);
++
++	cwi_rank = acs_apply_penalty_factor(iface, K_CWI, acs_get_cwi_penalty(sub_candidate.cwi_noise[sec_max]));
++
++	bw_factor = acs_get_rank_bw_factor(sub_candidate.width, sec_max);
++	sub_bw_factor = mxl_acs_get_sub_candidate_factor(sub_candidate, bitmap);
++
++	/* Rank calculation */
++	sub_candidate.rank = rank_base +
++			(sub_bw_factor * (chan_load_rank + cwi_rank + tx_power_rank) / 100) +
++			((bw_factor - sub_bw_factor) * (100 * 100 + 0 + 100 * 16) / 100);
++	/* customer penalty */
++	sub_candidate.rank = iface->conf->mxl_conf.acs_chan_cust_penalty[sub_candidate.chan] * sub_candidate.rank / 100;
++	return sub_candidate.rank;
++}
++
++static u16 mxl_acs_rank_punct_pattern_best_candidate(struct hostapd_iface *iface, int min_rank_cand_idx)
++{
++	struct acs_candidate_table *candidate = &iface->mxl_iface.candidates[min_rank_cand_idx];
++	int rank = candidate->rank;
++	int no_of_valid_pattern;
++	u16 best_bitmap = 0;
++	int temp_rank;
++
++	/* number of valid patterns */
++	switch (candidate->width) {
++	case 320: no_of_valid_pattern = 9; break;
++	case 160: no_of_valid_pattern = 7; break;
++	case 80:  no_of_valid_pattern = 3; break;
++	case 40:
++	case 20:
++	default:
++		wpa_printf(MSG_ERROR, "ACS puncturing not supported in current bandwidth %d ", candidate->width);
++		return 0;
++	}
++
++	u16 valid_punct_bitmap[no_of_valid_pattern];
++
++	/* Populate the valid_punct_bitmap i.e puncture only secondary sub-band */
++	mxl_acs_check_and_update_valid_patterns(iface, valid_punct_bitmap, min_rank_cand_idx);
++
++	/* Find the best bitmap by comparing ranks */
++	for (int i = 1; i < no_of_valid_pattern; i++) { /* Skipping first bitmap as all 20MHz channels are enabled in it */
++		wpa_printf(MSG_DEBUG, "ACS : puncture pattern 0x%04x inversed pattern 0x%04x", valid_punct_bitmap[i], ~valid_punct_bitmap[i] & 0xFFFF); /* punctured 20MHz channel bit are set*/
++		temp_rank = mxl_acs_rank_sub_candidate(iface, min_rank_cand_idx, valid_punct_bitmap[i]);
++		if (temp_rank < rank){
++			rank = temp_rank;
++			best_bitmap = ~valid_punct_bitmap[i] & 0xFFFF; // inverse into proper 16 bit
++		}
++	}
++	return (rank < candidate->rank) ? best_bitmap : 0;
+ }
+ #endif
+ 
+@@ -3208,12 +3492,6 @@ int mxl_acs_recalc_ranks_and_set_chan (struct hostapd_iface *iface, int switch_r
+ 			wpa_printf(MSG_DEBUG, "ACS calc rank for tx power(%d) and max tx power(%d): %d",
+ 				   candidates[i].tx_power[PRI_20], iface->mxl_iface.max_tx_power, tx_power_rank);
+ 
+-			if (iface->mxl_iface.max_num_bss_pen)
+-				num_bss_rank = acs_apply_penalty_factor(iface, K_NUMOFBSS,
+-						candidates[i].num_bss_pen * 100 / iface->mxl_iface.max_num_bss_pen);
+-			wpa_printf(MSG_DEBUG, "ACS calc rank for num BSSes(%d), pen sum(%d), pen max(%d): %d",
+-				   candidates[i].num_bss, candidates[i].num_bss_pen, iface->mxl_iface.max_num_bss_pen, num_bss_rank);
+-
+ 			chan_load_rank = acs_apply_penalty_factor(iface, K_CL, candidates[i].channel_load[PRI_20]);
+ 			wpa_printf(MSG_DEBUG, "ACS calc primary rank for channel load(%d): %d",
+ 				   candidates[i].channel_load[PRI_20], chan_load_rank);
+@@ -3221,7 +3499,7 @@ int mxl_acs_recalc_ranks_and_set_chan (struct hostapd_iface *iface, int switch_r
+ 			cwi_rank = acs_apply_penalty_factor(iface, K_CWI, acs_get_cwi_penalty(candidates[i].cwi_noise[PRI_20]));
+ 			wpa_printf(MSG_DEBUG, "ACS calc primary rank for CWI(%d): %d", candidates[i].cwi_noise[PRI_20], cwi_rank);
+ 
+-			candidates[i].rank = cwi_rank + tx_power_rank + num_bss_rank + chan_load_rank;
++			candidates[i].rank = cwi_rank + tx_power_rank + chan_load_rank;
+ 			rank_util_primary = chan_load_rank + cwi_rank;
+ 
+ 			if (candidates[i].width > 20) {
+@@ -3239,6 +3517,7 @@ int mxl_acs_recalc_ranks_and_set_chan (struct hostapd_iface *iface, int switch_r
+ 					   candidates[i].cwi_noise[SEC_20], cwi_rank);
+ 
+ 				candidates[i].rank += acs_get_rank_bw_factor(candidates[i].width, SEC_20) * (chan_load_rank + cwi_rank + tx_power_rank) / 100;
++				candidates[i].rank40 = candidates[i].rank;
+ 			}
+ 
+ 			if (candidates[i].width > 40) {
+@@ -3256,6 +3535,7 @@ int mxl_acs_recalc_ranks_and_set_chan (struct hostapd_iface *iface, int switch_r
+ 					   candidates[i].cwi_noise[SEC_MAX_40], cwi_rank);
+ 
+ 				candidates[i].rank += acs_get_rank_bw_factor(candidates[i].width, SEC_MAX_40) * (chan_load_rank + cwi_rank + tx_power_rank) / 100;
++				candidates[i].rank80 = candidates[i].rank;
+ 			}
+ 
+ 			if (candidates[i].width > 80) {
+@@ -3273,6 +3553,7 @@ int mxl_acs_recalc_ranks_and_set_chan (struct hostapd_iface *iface, int switch_r
+ 					   candidates[i].cwi_noise[SEC_MAX_80], cwi_rank);
+ 
+ 				candidates[i].rank += acs_get_rank_bw_factor(candidates[i].width, SEC_MAX_80) * (chan_load_rank + cwi_rank + tx_power_rank) / 100;
++				candidates[i].rank160 = candidates[i].rank;
+ 			}
+ 
+ 			if (candidates[i].width > 160) {
+@@ -3292,6 +3573,13 @@ int mxl_acs_recalc_ranks_and_set_chan (struct hostapd_iface *iface, int switch_r
+ 				candidates[i].rank += acs_get_rank_bw_factor(candidates[i].width, SEC_MAX_160) * (chan_load_rank + cwi_rank + tx_power_rank) / 100;
+ 			}
+ 
++			if (iface->mxl_iface.max_num_bss_pen)
++				num_bss_rank = acs_apply_penalty_factor(iface, K_NUMOFBSS,
++						candidates[i].num_bss_pen * 100 / iface->mxl_iface.max_num_bss_pen);
++			wpa_printf(MSG_DEBUG, "ACS calc rank for num BSSes(%d), pen sum(%d), pen max(%d): %d",
++				   candidates[i].num_bss, candidates[i].num_bss_pen, iface->mxl_iface.max_num_bss_pen, num_bss_rank);
++			candidates[i].rank += num_bss_rank;
++
+ 			candidates[i].rank = iface->conf->mxl_conf.acs_chan_cust_penalty[candidates[i].chan] * candidates[i].rank / 100;
+ 			candidates[i].bw_comp_rank = candidates[i].rank - tx_power_rank - num_bss_rank;
+ 			acs_calculate_rank_utilization(&candidates[i], rank_util_primary);
+@@ -3396,7 +3684,11 @@ int mxl_acs_recalc_ranks_and_set_chan (struct hostapd_iface *iface, int switch_r
+ 		/* comparison between bandwidth categories - pick up the one with the best rank */
+ 		if ((iface->conf->mxl_conf.acs_bw_comparison) &&
+ 		    (iface->conf->mxl_conf.acs_policy == ACS_POLICY_THROUGHPUT) &&
+-		    ((prio + 1) < ACS_NUM_GRP_PRIORITIES)) /* for the last category, there will be no rank to compare with */
++		    ((prio + 1) < ACS_NUM_GRP_PRIORITIES) &&
++		    !(iface->conf->mxl_conf.acs_6g_punct_mode &&
++			he_reg_is_sp(iface->conf->he_6ghz_reg_pwr_type) &&
++			is_6ghz_op_class(iface->conf->op_class)))
++		/* for the last category, there will be no rank to compare with */
+ 		{
+ 			if ((-1 == bw_comp_util) || (-1 == cg[grp_map[prio + 1]].bw_comp_util))
+ 				continue;
+@@ -3412,8 +3704,27 @@ int mxl_acs_recalc_ranks_and_set_chan (struct hostapd_iface *iface, int switch_r
+ 
+ set_chan:
+ 		wpa_printf(MSG_DEBUG, "ACS: exit recalculate, selected prio %d min_rank_cand_idx %d", prio, min_rank_cand_idx);
+-		res = acs_set_new_chan_if_ok(iface, min_rank_cand_idx, switch_reason, fp_hist);
+-		if (res) {
++		res = mxl_acs_check_new_chan_is_ok(iface, min_rank_cand_idx, switch_reason, fp_hist);
++#ifdef CONFIG_AFC
++		/* In SP/ISP, we will rank the best candidate + valid punctured pattern
++		 * If rank of any punctured pattern + best candidate is higher than rank of original puncture pattern
++		 * we will apply that puncture pattern with the best candidate
++		 * else stick to original best candidate
++		 */
++		if (res && iface->conf->mxl_conf.acs_6g_punct_mode && he_reg_is_sp(iface->conf->he_6ghz_reg_pwr_type) && is_6ghz_op_class(iface->conf->op_class))
++		{
++			u16 bitmap = mxl_acs_rank_punct_pattern_best_candidate(iface, min_rank_cand_idx);
++			if(bitmap == 0) {
++				wpa_printf(MSG_INFO, "ACS + Punct : Selected candidate has best rank without any puncture pattern, NO PUNCTURING");
++			}
++			else {
++				wpa_printf(MSG_INFO, "ACS + Punct: Selected candidate that has best rank with punture pattern 0x%04x", bitmap);
++			}
++			mxl_hostapd_set_eht_punct_bitmap(iface->bss[0], bitmap);
++			iface->conf->punct_bitmap = bitmap;
++		}
++#endif
++		if (res && mxl_acs_set_new_chan_if_ok(iface, min_rank_cand_idx)) {
+ 			int width = mxl_hostapd_get_num_width(hostapd_get_oper_chwidth(iface->conf), candidates[min_rank_cand_idx].secondary);
+ 			int seg0_idx = hostapd_get_oper_centr_freq_seg0_idx(iface->conf);
+ 			int seg1_idx = hostapd_get_oper_centr_freq_seg1_idx(iface->conf);
+@@ -3468,7 +3779,6 @@ end:
+ 	return res;
+ }
+ 
+-
+ static int bt_find_clean_channel(struct hostapd_iface *iface, int width)
+ {
+ 	struct hostapd_hw_modes *mode;
+@@ -3751,7 +4061,6 @@ void mxl_acs_update_intolerant_channels(struct hostapd_iface *iface, u8 chan)
+ 	}
+ }
+ 
+-
+ void mxl_acs_update_radar(struct hostapd_iface *iface)
+ {
+ 	struct acs_candidate_table *candidates = iface->mxl_iface.candidates;
+@@ -3873,6 +4182,7 @@ enum acs_failsafe_bw
+ 
+ 	FAILSAFE_NUM_BW,
+ };
++
+ struct acs_failsafe_table
+ {
+ 	int index_rank[FAILSAFE_NUM_BW];
+@@ -4374,7 +4684,6 @@ void mxl_event_scan_results(struct hostapd_data *hapd, union wpa_event_data *dat
+ 	}
+ }
+ 
+-
+ void mxl_acs_init_defaults(struct hostapd_iface *iface)
+ {
+ 	int i;
+@@ -4430,7 +4739,6 @@ int mxl_hostapd_get_chan_data_from_candidates_5g(int primary_chan, enum oper_cha
+ 	return 1;
+ }
+ 
+-
+ int mxl_hostapd_drv_abort_scan(struct hostapd_data *hapd)
+ {
+ 	if (hapd->driver && hapd->driver->abort_scan)
+@@ -4438,7 +4746,6 @@ int mxl_hostapd_drv_abort_scan(struct hostapd_data *hapd)
+ 	return -1;
+ }
+ 
+-
+ int mxl_hostapd_check_and_abort_scan(struct hostapd_iface *iface)
+ {
+ 	if (nl80211_scan_running(iface->bss[0]->drv_priv)) {
+diff --git a/src/ap/mxl_acs.h b/src/ap/mxl_acs.h
+index f8eb73d89..325d2761a 100644
+--- a/src/ap/mxl_acs.h
++++ b/src/ap/mxl_acs.h
+@@ -1,6 +1,6 @@
+ /******************************************************************************
+ 
+-         Copyright (c) 2023 - 2024, MaxLinear, Inc.
++         Copyright (c) 2020 - 2025, MaxLinear, Inc.
+          Copyright 2016 - 2020 Intel Corporation
+          Copyright 2015 - 2016 Lantiq Beteiligungs-GmbH & Co. KG
+          Copyright 2009 - 2014 Lantiq Deutschland GmbH
+@@ -125,6 +125,12 @@ typedef struct acs_candidate_table
+ 	u32 filled_mask;
+ 	char exclude_reason;
+ 	bool scanned; /* Set only if width is 20 MHz */
++
++	/* temporary rank */
++	int rank40;
++	int rank80;
++	int rank160;
++
+ } acs_candidate_table;
+ 
+ enum {
+diff --git a/src/ap/mxl_common_proprietary.c b/src/ap/mxl_common_proprietary.c
+index fc806497a..4809acb67 100644
+--- a/src/ap/mxl_common_proprietary.c
++++ b/src/ap/mxl_common_proprietary.c
+@@ -1,6 +1,10 @@
+ /******************************************************************************
+ 
+-         Copyright (c) 2024, MaxLinear, Inc.
++         Copyright (c) 2020 - 2025, MaxLinear, Inc.
++         Copyright 2016 - 2020 Intel Corporation
++         Copyright 2015 - 2016 Lantiq Beteiligungs-GmbH & Co. KG
++         Copyright 2009 - 2014 Lantiq Deutschland GmbH
++         Copyright 2007 - 2008 Infineon Technologies AG
+ 
+   For licensing information, see the file 'LICENSE' in the root folder of
+   this software module.
+diff --git a/src/ap/mxl_dfs_debug.c b/src/ap/mxl_dfs_debug.c
+index 74cc27f7d..261868a3b 100644
+--- a/src/ap/mxl_dfs_debug.c
++++ b/src/ap/mxl_dfs_debug.c
+@@ -1,6 +1,6 @@
+ /******************************************************************************
+ 
+-         Copyright (c) 2023 - 2024, MaxLinear, Inc.
++         Copyright (c) 2020 - 2025, MaxLinear, Inc.
+          Copyright 2016 - 2020 Intel Corporation
+          Copyright 2015 - 2016 Lantiq Beteiligungs-GmbH & Co. KG
+          Copyright 2009 - 2014 Lantiq Deutschland GmbH
+diff --git a/src/ap/mxl_dfs_debug.h b/src/ap/mxl_dfs_debug.h
+index 98c29bcd9..7c56bac88 100644
+--- a/src/ap/mxl_dfs_debug.h
++++ b/src/ap/mxl_dfs_debug.h
+@@ -1,6 +1,6 @@
+ /******************************************************************************
+ 
+-         Copyright (c) 2023 - 2024, MaxLinear, Inc.
++         Copyright (c) 2020 - 2025, MaxLinear, Inc.
+          Copyright 2016 - 2020 Intel Corporation
+          Copyright 2015 - 2016 Lantiq Beteiligungs-GmbH & Co. KG
+          Copyright 2009 - 2014 Lantiq Deutschland GmbH
+diff --git a/src/ap/mxl_hostapd_proprietary.c b/src/ap/mxl_hostapd_proprietary.c
+index f44e13d90..0a9d83a3a 100644
+--- a/src/ap/mxl_hostapd_proprietary.c
++++ b/src/ap/mxl_hostapd_proprietary.c
+@@ -1,6 +1,10 @@
+ /******************************************************************************
+ 
+-         Copyright (c) 2024, MaxLinear, Inc.
++         Copyright (c) 2020 - 2025, MaxLinear, Inc.
++         Copyright 2016 - 2020 Intel Corporation
++         Copyright 2015 - 2016 Lantiq Beteiligungs-GmbH & Co. KG
++         Copyright 2009 - 2014 Lantiq Deutschland GmbH
++         Copyright 2007 - 2008 Infineon Technologies AG
+ 
+   For licensing information, see the file 'LICENSE' in the root folder of
+   this software module.
+-- 
+2.43.0
+

@@ -1,0 +1,34 @@
+From 3cfc8425a6c32214506eeb9f8e302a120a9374f6 Mon Sep 17 00:00:00 2001
+From: Bharath Paidupati <bpaidupati@maxlinear.com>
+Date: Tue, 28 Jan 2025 11:52:27 +0530
+Subject: [PATCH] WLANRTSYS-87462 Added 320Mhz logging support
+
+Fixup: WLANRTSYS-85470 Increase the log level for AFC to get logs in the console without enabling cdebug logs
+---
+ src/ap/mxl_afc.c | 8 ++++++--
+ 1 file changed, 6 insertions(+), 2 deletions(-)
+
+diff --git a/src/ap/mxl_afc.c b/src/ap/mxl_afc.c
+index 8d6a71307..f15bd1837 100644
+--- a/src/ap/mxl_afc.c
++++ b/src/ap/mxl_afc.c
+@@ -54,10 +54,14 @@ static void mxl_hostap_afc_parse_chan_regrule(struct hostapd_iface *iface, struc
+ 	uint32_t bw_mhz;
+ 	uint32_t start_freq_mhz, center_freq_mhz, end_freq_mhz;
+ 	uint32_t max_eirp;
+-	u8 op_class;
++	u8 op_class, bw_6ghz;
+ 
+ 	for (chan_idx = 0; chan_idx < iface->afc.num_chan_info; chan_idx++) {
+-		op_class = HOSTAP_6GHZ_20MHZ_OP_CLASS + center_idx_to_bw_6ghz(iface->afc.chan_info_list[chan_idx].chan);
++		bw_6ghz = center_idx_to_bw_6ghz(iface->afc.chan_info_list[chan_idx].chan);
++		op_class = HOSTAP_6GHZ_20MHZ_OP_CLASS + bw_6ghz;
++		/* For BW320 137 is opclass. So assigning 320MHz opclass if bw_6ghz is 4 */
++		if (bw_6ghz == 4)
++			op_class = HOSTAP_6GHZ_320MHZ_OP_CLASS;
+ 		bw_mhz = op_class_to_bandwidth(op_class);
+ 
+ 		center_freq_mhz = hostapd_chan_to_freq(iface->afc.chan_info_list[chan_idx].chan, true);
+-- 
+2.43.0
+

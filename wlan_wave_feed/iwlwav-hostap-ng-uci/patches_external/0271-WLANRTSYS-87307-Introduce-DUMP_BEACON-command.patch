@@ -1,0 +1,116 @@
+From 0dfeb3fc7f8435d95370f06d97d4c00dda29784a Mon Sep 17 00:00:00 2001
+From: Marek Puzyniak <marek.puzyniak@gmail.com>
+Date: Wed, 9 Oct 2024 10:15:02 +0200
+Subject: [PATCH] WLANRTSYS-87307 Introduce DUMP_BEACON command
+
+Occasionally, external applications require information about AP
+configurations and capabilities. One potentially useful source for this
+is the Beacon frame content. To support this need, introduce a new
+control interface command: DUMP_BEACON. This return a hexdump of the
+Beacon frame template, i.e., IEEE 802.11 frame header and frame body
+with the TIM element missing since it is added by the driver and some of
+the fields like the Timestamp field left to all zeros since they will be
+filled in by the driver/hardware.
+
+This can be fetched with hostapd_cli:
+
+hostapd_cli -i wlxxx raw DUMP_BEACON
+80000000ffffffffffff...
+7f080400000200000040dd180050f2020101010003a4000027a4000042435e0062322f00
+
+Signed-off-by: Marek Puzyniak <marek.puzyniak@holisticon.pl>
+---
+ hostapd/ctrl_iface.c | 33 +++++++++++++++++++++++++++++++++
+ src/ap/hostapd.c     |  4 ++--
+ src/ap/hostapd.h     |  2 ++
+ 3 files changed, 37 insertions(+), 2 deletions(-)
+
+diff --git a/hostapd/ctrl_iface.c b/hostapd/ctrl_iface.c
+index e26967eaa..fb13b037f 100644
+--- a/hostapd/ctrl_iface.c
++++ b/hostapd/ctrl_iface.c
+@@ -3789,6 +3789,7 @@ static int hostapd_ctrl_iface_log_level(struct hostapd_data *hapd, char *cmd,
+ 
+ 
+ #ifdef NEED_AP_MLME
++
+ static int hostapd_ctrl_iface_track_sta_list(struct hostapd_data *hapd,
+ 					     char *buf, size_t buflen)
+ {
+@@ -3822,6 +3823,35 @@ static int hostapd_ctrl_iface_track_sta_list(struct hostapd_data *hapd,
+ 
+ 	return pos - buf;
+ }
++
++
++static int hostapd_ctrl_iface_dump_beacon(struct hostapd_data *hapd,
++					  char *buf, size_t buflen)
++{
++	struct beacon_data beacon;
++	char *pos, *end;
++	int ret;
++
++	if (hostapd_build_beacon_data(hapd, &beacon) < 0)
++		return -1;
++
++	if (2 * (beacon.head_len + beacon.tail_len) > buflen)
++		return -1;
++
++	pos = buf;
++	end = buf + buflen;
++
++	ret = wpa_snprintf_hex(pos, end - pos, beacon.head, beacon.head_len);
++	pos += ret;
++
++	ret = wpa_snprintf_hex(pos, end - pos, beacon.tail, beacon.tail_len);
++	pos += ret;
++
++	free_beacon_data(&beacon);
++
++	return pos - buf;
++}
++
+ #endif /* NEED_AP_MLME */
+ 
+ 
+@@ -6520,6 +6550,9 @@ static int hostapd_ctrl_iface_receive_process(struct hostapd_data *hapd,
+ 	} else if (os_strcmp(buf, "TRACK_STA_LIST") == 0) {
+ 		reply_len = hostapd_ctrl_iface_track_sta_list(
+ 			hapd, reply, reply_size);
++	} else if (os_strcmp(buf, "DUMP_BEACON") == 0) {
++		reply_len = hostapd_ctrl_iface_dump_beacon(hapd, reply,
++							   reply_size);
+ #endif /* NEED_AP_MLME */
+ 	} else if (os_strcmp(buf, "PMKSA") == 0) {
+ 		reply_len = hostapd_ctrl_iface_pmksa_list(hapd, reply,
+diff --git a/src/ap/hostapd.c b/src/ap/hostapd.c
+index f47d7dd83..114a7f1a0 100644
+--- a/src/ap/hostapd.c
++++ b/src/ap/hostapd.c
+@@ -5293,8 +5293,8 @@ void free_beacon_data(struct beacon_data *beacon)
+ }
+ 
+ 
+-static int hostapd_build_beacon_data(struct hostapd_data *hapd,
+-				     struct beacon_data *beacon)
++int hostapd_build_beacon_data(struct hostapd_data *hapd,
++			      struct beacon_data *beacon)
+ {
+ 	struct wpabuf *beacon_extra, *proberesp_extra, *assocresp_extra;
+ 	struct wpa_driver_ap_params params;
+diff --git a/src/ap/hostapd.h b/src/ap/hostapd.h
+index 88af990eb..aafdc51f7 100644
+--- a/src/ap/hostapd.h
++++ b/src/ap/hostapd.h
+@@ -924,6 +924,8 @@ struct hostapd_data * hostapd_mld_get_link_bss(struct hostapd_data *hapd,
+ 					       u8 link_id);
+ int hostapd_link_remove(struct hostapd_data *hapd, u32 count);
+ 
++int hostapd_build_beacon_data(struct hostapd_data *hapd,
++			      struct beacon_data *beacon);
+ void free_beacon_data(struct beacon_data *beacon);
+ 
+ #ifdef CONFIG_IEEE80211BE
+-- 
+2.43.0
+

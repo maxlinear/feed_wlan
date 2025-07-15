@@ -1,0 +1,113 @@
+From 83f22d445432d745bc73b6e14b996ddc573af968 Mon Sep 17 00:00:00 2001
+From: Sai Pratyusha Magam <quic_smagam@quicinc.com>
+Date: Fri, 3 Jan 2025 11:23:22 +0530
+Subject: [PATCH] RSNO: Generate IGTK if any of the RSN variants has PMF
+ enabled
+
+With RSN overriding enabled, AP can be configured to set MFPC to 0 and
+MFPR to 0 in the RSNE and MFPC to 1 and MFPR to 1 in the RSNOE and
+RSNO2E. IGTK generation, configuration to the driver, and inclusion of
+the IGTK KDE in 4-way handshake should also take into account the
+management frame protection settings in the override variants.
+
+Signed-off-by: Sai Pratyusha Magam <quic_smagam@quicinc.com>
+---
+ src/ap/hostapd.c     | 2 +-
+ src/ap/hostapd.h     | 7 +++++++
+ src/ap/wpa_auth.c    | 6 +++---
+ src/ap/wpa_auth.h    | 7 +++++++
+ src/ap/wpa_auth_ie.c | 2 +-
+ 5 files changed, 19 insertions(+), 5 deletions(-)
+
+diff --git a/src/ap/hostapd.c b/src/ap/hostapd.c
+index ffb7010a5..509ce2744 100644
+--- a/src/ap/hostapd.c
++++ b/src/ap/hostapd.c
+@@ -460,7 +460,7 @@ static void hostapd_broadcast_key_clear_iface(struct hostapd_data *hapd,
+ 				   ifname, i);
+ 		}
+ 	}
+-	if (hapd->conf->ieee80211w) {
++	if (ap_pmf_enabled(hapd->conf)) {
+ 		for (i = NUM_WEP_KEYS; i < NUM_WEP_KEYS + 2; i++) {
+ 			if (hostapd_drv_set_key(ifname, hapd, WPA_ALG_NONE,
+ 						NULL, i, 0, 0, NULL,
+diff --git a/src/ap/hostapd.h b/src/ap/hostapd.h
+index aafdc51f7..0de8fce2c 100644
+--- a/src/ap/hostapd.h
++++ b/src/ap/hostapd.h
+@@ -954,4 +954,11 @@ void hostapd_handle_acs_whm_warning (struct hostapd_iface *iface);
+ bool hostapd_is_unii4_freq (int freq);
+ void hostapd_unconnected_sta_scan_fail_handle_cb (void *eloop_ctx, void *timeout_ctx);
+ 
++static inline bool ap_pmf_enabled(struct hostapd_bss_config *conf)
++{
++	return conf->ieee80211w != NO_MGMT_FRAME_PROTECTION ||
++		conf->rsn_override_mfp != NO_MGMT_FRAME_PROTECTION ||
++		conf->rsn_override_mfp_2 != NO_MGMT_FRAME_PROTECTION;
++}
++
+ #endif /* HOSTAPD_H */
+diff --git a/src/ap/wpa_auth.c b/src/ap/wpa_auth.c
+index 122a04bd4..52f84387c 100644
+--- a/src/ap/wpa_auth.c
++++ b/src/ap/wpa_auth.c
+@@ -5099,7 +5099,7 @@ static int wpa_gtk_update(struct wpa_authenticator *wpa_auth,
+ 	wpa_hexdump_key(MSG_DEBUG, "GTK",
+ 			group->GTK[group->GN - 1], group->GTK_len);
+ 
+-	if (conf->ieee80211w != NO_MGMT_FRAME_PROTECTION) {
++	if (wpa_auth_pmf_enabled(conf)) {
+ 		len = wpa_cipher_key_len(conf->group_mgmt_cipher);
+ 		os_memcpy(group->GNonce, group->Counter, WPA_NONCE_LEN);
+ 		inc_byte_array(group->Counter, WPA_NONCE_LEN);
+@@ -5112,7 +5112,7 @@ static int wpa_gtk_update(struct wpa_authenticator *wpa_auth,
+ 	}
+ 
+ 	if (!wpa_auth->non_tx_beacon_prot &&
+-	    conf->ieee80211w == NO_MGMT_FRAME_PROTECTION)
++	     !wpa_auth_pmf_enabled(conf))
+ 		return ret;
+ 	if (!conf->beacon_prot)
+ 		return ret;
+@@ -5384,7 +5384,7 @@ static int wpa_group_config_group_keys(struct wpa_authenticator *wpa_auth,
+ 			     KEY_FLAG_GROUP_TX_DEFAULT) < 0)
+ 		ret = -1;
+ 
+-	if (conf->ieee80211w != NO_MGMT_FRAME_PROTECTION) {
++	if (wpa_auth_pmf_enabled(conf)) {
+ 		enum wpa_alg alg;
+ 		size_t len;
+ 
+diff --git a/src/ap/wpa_auth.h b/src/ap/wpa_auth.h
+index a68da14d6..e6c112d45 100644
+--- a/src/ap/wpa_auth.h
++++ b/src/ap/wpa_auth.h
+@@ -677,4 +677,11 @@ void wpa_auth_ml_get_key_info(struct wpa_authenticator *a,
+ 			      struct wpa_auth_ml_link_key_info *info,
+ 			      bool mgmt_frame_prot, bool beacon_prot);
+ 
++static inline bool wpa_auth_pmf_enabled(struct wpa_auth_config *conf)
++{
++	return conf->ieee80211w != NO_MGMT_FRAME_PROTECTION ||
++		conf->rsn_override_mfp != NO_MGMT_FRAME_PROTECTION ||
++		conf->rsn_override_mfp_2 != NO_MGMT_FRAME_PROTECTION;
++}
++
+ #endif /* WPA_AUTH_H */
+diff --git a/src/ap/wpa_auth_ie.c b/src/ap/wpa_auth_ie.c
+index ae1527ed5..c4b2eebe9 100644
+--- a/src/ap/wpa_auth_ie.c
++++ b/src/ap/wpa_auth_ie.c
+@@ -1096,7 +1096,7 @@ wpa_validate_wpa_ie(struct wpa_authenticator *wpa_auth,
+ 	}
+ #endif /* CONFIG_OCV */
+ 
+-	if (wpa_auth->conf.ieee80211w == NO_MGMT_FRAME_PROTECTION ||
++	if (!wpa_auth_pmf_enabled(conf) ||
+ 	    !(data.capabilities & WPA_CAPABILITY_MFPC))
+ 		sm->mgmt_frame_prot = 0;
+ 	else
+-- 
+2.43.0
+

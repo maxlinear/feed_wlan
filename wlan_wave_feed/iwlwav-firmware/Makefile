@@ -12,8 +12,8 @@ PKG_SOURCE_NAME:=wave_fw_bin.git
 PKG_SOURCE_PROTO:=git
 CONFIG_UGW_PKG_SOURCE_URL:=ssh://git@github.com
 PKG_SOURCE_URL:=$(CONFIG_UGW_PKG_SOURCE_URL)/$(PKG_PROJECT)/$(PKG_SOURCE_NAME)
-PKG_VERSION:=6f5afc
-PKG_SOURCE_VERSION:=wlan_7.2.60_updk@r597+a+41+a+17-6f5afc
+PKG_VERSION:=wlan_7.2.150@r1044+a+57-a6a7bd
+PKG_SOURCE_VERSION:=wlan_7.2.150@r1044+a+57-a6a7bd
 PKG_MIRROR_HASH:=33a30fb0917d288c05ebf0c0c561a93f4ee201a16a81a75bf1c4ca1fca6d5748
 #package_source
 # fw source url needed for gci automation

@@ -1,0 +1,29 @@
+From 298f7dad2e06f29bff802d649616a84d7d7f2e4a Mon Sep 17 00:00:00 2001
+From: mujiburrahimank <mujiburrahimank@maxlinear.com>
+Date: Thu, 23 Jan 2025 15:04:11 +0800
+Subject: [PATCH] WLANRTSYS-82406 : AFCD Init script
+
+When afc daemon is running if there is no server response during LPI Composite Mode, it has a default response and the transmission is stopped untill server response is back.
+In the above case a timer is being registered but not cancelled before registering again in the callback.
+So added cancel timer callback before registering a new one.
+---
+ src/ap/mxl_hostapd.c | 3 +++
+ 1 file changed, 3 insertions(+)
+
+diff --git a/src/ap/mxl_hostapd.c b/src/ap/mxl_hostapd.c
+index 46f0522b3..4152cbea7 100644
+--- a/src/ap/mxl_hostapd.c
++++ b/src/ap/mxl_hostapd.c
+@@ -2612,6 +2612,9 @@ int mxl_hostapd_interface_update_power_regd(struct hostapd_data *hapd, int he_6g
+ 		eloop_register_timeout(fallback_timer, 0, mxl_check_6ghz_power_mode_fallback,
+ 				       hapd->iface, NULL);
+ #ifdef CONFIG_AFC
++	if (eloop_is_timeout_registered(mxl_check_6ghz_power_mode_composite, hapd->iface, NULL)) {
++		eloop_cancel_timeout(mxl_check_6ghz_power_mode_composite, hapd->iface, NULL);
++	}
+ 	if(he_6ghz_pwr_mode == HE_REG_INFO_6GHZ_AP_TYPE_INDOOR_SP) {
+ #define COMPOSITE_NO_IR_TIMER_IN_SEC 5 /* Composite must pass through NO_IR once before LPI is re-enabled. */
+ 		fallback_timer = COMPOSITE_NO_IR_TIMER_IN_SEC;
+-- 
+2.43.0
+

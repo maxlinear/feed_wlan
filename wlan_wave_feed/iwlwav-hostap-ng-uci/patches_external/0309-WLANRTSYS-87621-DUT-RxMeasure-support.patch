@@ -1,0 +1,39 @@
+From 996bf838a974124326103288796ced0bf54e3a65 Mon Sep 17 00:00:00 2001
+From: Udhayakumar Mahendiran <umahendiran@maxlinear.com>
+Date: Fri, 28 Feb 2025 16:07:17 +0800
+Subject: [PATCH] WLANRTSYS-87621 DUT RxMeasure support
+
+ * Added support for Rx measure to capture RSSI, RCPI, NOISE floor,
+EVM and SNR values from PHY. Vendor event updated.
+---
+ src/common/vendor_cmds_copy.h | 9 +++++++++
+ 1 file changed, 9 insertions(+)
+
+diff --git a/src/common/vendor_cmds_copy.h b/src/common/vendor_cmds_copy.h
+index e434ddc44..339ec8703 100644
+--- a/src/common/vendor_cmds_copy.h
++++ b/src/common/vendor_cmds_copy.h
+@@ -451,6 +451,7 @@ enum ltq_nl80211_vendor_events {
+   LTQ_NL80211_VENDOR_EVENT_WHM                 = 15,
+   LTQ_NL80211_VENDOR_EVENT_CSI_STATS           = 16,
+   LTQ_NL80211_VENDOR_EVENT_REGDB_INFO_UPDATE   = 18,
++  LTQ_NL80211_VENDOR_EVENT_RX_MEASURE          = 19,
+ };
+ 
+ 
+@@ -901,4 +902,12 @@ struct mxl_ml_sta_reassoc_notify {
+   u16 aid;
+ } __attribute__ ((packed));
+ 
++struct mxl_rx_measure_report {
++  s8 rcpi[4];
++  s8 rssi[4];
++  s8 noise[4];
++  u32 snr[4];
++  u32 captures_rem;
++  u8 evm[4];
++} __attribute__ ((packed));
+ #endif /* _VENDOR_CMDS_H_ */
+-- 
+2.43.0
+

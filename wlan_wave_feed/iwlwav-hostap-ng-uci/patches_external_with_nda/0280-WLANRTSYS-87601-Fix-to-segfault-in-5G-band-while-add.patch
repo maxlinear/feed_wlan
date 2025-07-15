@@ -1,0 +1,35 @@
+From cacbf17f2e0ff9db9341701bcdeee4f4c0799a9a Mon Sep 17 00:00:00 2001
+From: spatel <spatel@maxlinear.com>
+Date: Thu, 30 Jan 2025 09:03:52 +0530
+Subject: [PATCH] WLANRTSYS-87601 Fix to segfault in 5G band while adding new
+ VAP or toggling interface
+
+Fix: Null check against hw_features as temporary fix, Ideal fix should be in Pwhm.
+
+Fixup: WLANRTSYS-60843 MLO changes: AP MLD configuration
+---
+ src/ap/mxl_mld.c | 8 +++++++-
+ 1 file changed, 7 insertions(+), 1 deletion(-)
+
+diff --git a/src/ap/mxl_mld.c b/src/ap/mxl_mld.c
+index 8e9f6bd63..0a6752ce8 100644
+--- a/src/ap/mxl_mld.c
++++ b/src/ap/mxl_mld.c
+@@ -149,7 +149,13 @@ int mxl_update_mld_config_iface(struct hostapd_iface *iface, void *ctx)
+ void mxl_hostapd_set_eml_capab(struct hostapd_iface *iface)
+ {
+ 	struct hostapd_hw_modes *mode = iface->hw_features;
+-	iface->conf->mxl_conf.mlo_supported = mode->eml_capa.ml_support;
++	/* To Do: Need to remove the check once it is fixed in Pwhm */
++	if(mode != NULL)
++		iface->conf->mxl_conf.mlo_supported = mode->eml_capa.ml_support;
++	else {
++		wpa_printf(MSG_ERROR,"Invalid hwmode while eml capability set");
++		return;
++	}
+ }
+ 
+ void mxl_hosatpd_mld_free_from_affiliated_link(struct hostapd_data *hapd)
+-- 
+2.43.0
+

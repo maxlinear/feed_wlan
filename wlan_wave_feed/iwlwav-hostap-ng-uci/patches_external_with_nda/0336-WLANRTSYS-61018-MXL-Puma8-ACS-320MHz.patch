@@ -1,0 +1,1845 @@
+From 5a466725823a1ce1bdb49884b319859ca51e20aa Mon Sep 17 00:00:00 2001
+From: spatel <spatel@maxlinear.com>
+Date: Thu, 10 Oct 2024 23:18:26 +0530
+Subject: [PATCH] WLANRTSYS-61018 [MXL] Puma8: ACS 320MHz
+
+    - Implemented 320MHz support based on EHT Operation IE parsing
+    - Fixed seg0/seg1 interpretation for 2.4GHz and 5GHz
+    - Fixed secondary frequency calculation for all frequency bands
+---
+ hostapd/mxl_config_proprietary.c     |   12 +-
+ hostapd/mxl_ctrl_iface_proprietary.c |    2 +-
+ src/ap/mxl_acs.c                     | 1037 ++++++++++++++++++++++----
+ src/ap/mxl_acs.h                     |   26 +-
+ src/ap/mxl_config.h                  |   16 +-
+ 5 files changed, 919 insertions(+), 174 deletions(-)
+
+diff --git a/hostapd/mxl_config_proprietary.c b/hostapd/mxl_config_proprietary.c
+index e13d97d9d..3f10876c7 100644
+--- a/hostapd/mxl_config_proprietary.c
++++ b/hostapd/mxl_config_proprietary.c
+@@ -394,6 +394,14 @@ int mxl_config_check_smart_acs_config(struct hostapd_config *conf, struct hostap
+ 		mxl_conf->acs_chanlist_all_chans = val;
+ 	} else if (os_strcmp(buf, "acs_scan_mode") == 0) {
+ 		mxl_conf->acs_scan_mode = atoi(pos);
++	} else if (os_strcmp(buf, "acs_eht_mode") == 0) {
++		int val = atoi(pos);
++		if(!IS_VALID_RANGE(val, ACS_EHT_MODE_MIN, ACS_EHT_MODE_MAX)) {
++			wpa_printf(MSG_ERROR, "Invalid EHT mode, "
++				"must be in range %i..%i", ACS_EHT_MODE_MIN, ACS_EHT_MODE_MAX);
++			return 1;
++		}
++		mxl_conf->acs_eht_mode = (enum acs_eht_modes)val;
+ 	} else if (os_strcmp(buf, "scan_timeout") == 0) {
+ 		int val = atoi(pos);
+ 		if (!IS_VALID_RANGE(val, SCAN_TIMEOUT_MIN, SCAN_TIMEOUT_MAX)) {
+@@ -427,8 +435,8 @@ int mxl_hostapd_acs_config_defaults(struct hostapd_config *conf)
+ {
+ #ifdef CONFIG_ACS
+ 	int i;
+-	int grp_priorities_throughput[ACS_NUM_GRP_PRIORITIES] = { 3, 2, 1, 0 };
+-	int grp_priorities_reach[ACS_NUM_GRP_PRIORITIES] = { 0, 1, 2, 3 };
++	int grp_priorities_throughput[ACS_NUM_GRP_PRIORITIES] = { 4, 3, 2, 1, 0 };
++	int grp_priorities_reach[ACS_NUM_GRP_PRIORITIES] = { 0, 1, 2, 3, 4 };
+ 	int acs_penalty_factors[ACS_NUM_PENALTY_FACTORS] = {ACS_PEN_DEFAULT, ACS_PEN_DEFAULT, ACS_PEN_DEFAULT, ACS_PEN_DEFAULT_WBSS};
+ 	struct hostapd_bss_config *bss = conf->bss[0];
+ #endif /* CONFIG_ACS */
+diff --git a/hostapd/mxl_ctrl_iface_proprietary.c b/hostapd/mxl_ctrl_iface_proprietary.c
+index 3de573258..2fa600c13 100644
+--- a/hostapd/mxl_ctrl_iface_proprietary.c
++++ b/hostapd/mxl_ctrl_iface_proprietary.c
+@@ -65,7 +65,7 @@ static int mxl_hostapd_ctrl_iface_acs_report(struct hostapd_iface *iface,
+ 
+ 		if (candidates[i].filled_mask & CHDATA_TX_POWER) {
+ 			ret = sprintf_s(buf + len, buflen - len, " pow=%d",
+-					candidates[i].tx_power);
++					candidates[i].tx_power[PRI_20]);
+ 			if (ret <= 0)
+ 				break;
+ 			len += ret;
+diff --git a/src/ap/mxl_acs.c b/src/ap/mxl_acs.c
+index 2715d98af..3078b82b6 100644
+--- a/src/ap/mxl_acs.c
++++ b/src/ap/mxl_acs.c
+@@ -32,8 +32,7 @@
+ #include "mxl_afc.h"
+ #endif
+ 
+-#define HOSTAPD_CHAN_NO_80MHZ   0x20000000
+-#define HOSTAPD_CHAN_NO_160MHZ  0x40000000
++#define NZ_MIN(a, b) (((a) == 0) ? (b) : (((b) == 0) ? (a) : (((a) < (b)) ? (a) : (b))))
+ 
+ #define FILS_FIXED_LEN 12
+ #define MXL_OUI_LEN 3
+@@ -49,6 +48,11 @@
+ #define FILS_SSID_LEN ((u8) (BIT(0) | BIT(1) | BIT(2) | BIT(3) | BIT(4)))
+ #define FILS_BSS_OPERATING_CHANNEL_WIDTH ((u8) (BIT(2) | BIT(3) | BIT(4)))
+ 
++#define SEC_20_CH_OFFSET      4  /* Shift to 20 MHz channel in secondary 20 Mhz band */
++#define SEC_MAX_40_CH_OFFSET  6  /* Shift to 20 MHz channel in secondary 40 Mhz band */
++#define SEC_MAX_80_CH_OFFSET  10 /* Shift to 20 MHz channel in secondary 80 Mhz band */
++#define SEC_MAX_160_CH_OFFSET 18 /* Shift to 20 MHz channel in secondary 160 Mhz band */
++
+ enum {
+ 	ACS_POLICY_THROUGHPUT,
+ 	ACS_POLICY_REACH
+@@ -66,7 +70,8 @@ enum {
+ 	CALIB_20,
+ 	CALIB_40,
+ 	CALIB_80,
+-	CALIB_160
++	CALIB_160,
++	CALIB_320
+ };
+ 
+ enum {
+@@ -124,7 +129,11 @@ channel_pair g_channel_pairs_40_5G[NUM_CHAN_PAIRS_40_5G] =
+ 	{ 149,153 },
+ 	{ 153,149 },
+ 	{ 157,161 },
+-	{ 161,157 }
++	{ 161,157 },
++	{ 165,169 },
++	{ 169,165 },
++	{ 173,177 },
++	{ 177,173 },
+ };
+ 
+ mxl_acs_chan g_channels80[NUM_CHAN_PAIRS_80] =
+@@ -157,7 +166,12 @@ mxl_acs_chan g_channels80[NUM_CHAN_PAIRS_80] =
+ 	{ 155, 149, 153, 5000 + 149 * 5 },
+ 	{ 155, 153, 149, 5000 + 149 * 5 },
+ 	{ 155, 157, 161, 5000 + 149 * 5 },
+-	{ 155, 161, 157, 5000 + 149 * 5 }
++	{ 155, 161, 157, 5000 + 149 * 5 },
++
++	{ 171, 165, 169, 5000 + 165 * 5 },
++	{ 171, 169, 165, 5000 + 165 * 5 },
++	{ 171, 173, 177, 5000 + 165 * 5 },
++	{ 171, 177, 173, 5000 + 165 * 5 },
+ };
+ 
+ mxl_acs_chan g_channels160[NUM_CHAN_PAIRS_160] =
+@@ -178,7 +192,16 @@ mxl_acs_chan g_channels160[NUM_CHAN_PAIRS_160] =
+ 	{ 114, 116, 120, 5000 + 100 * 5 },
+ 	{ 114, 120, 116, 5000 + 100 * 5 },
+ 	{ 114, 124, 128, 5000 + 100 * 5 },
+-	{ 114, 128, 124, 5000 + 100 * 5 }
++	{ 114, 128, 124, 5000 + 100 * 5 },
++
++	{ 163, 149, 153, 5000 + 149 * 5 },
++	{ 163, 153, 149, 5000 + 149 * 5 },
++	{ 163, 157, 161, 5000 + 149 * 5 },
++	{ 163, 161, 157, 5000 + 149 * 5 },
++	{ 163, 165, 169, 5000 + 149 * 5 },
++	{ 163, 169, 165, 5000 + 149 * 5 },
++	{ 163, 173, 177, 5000 + 149 * 5 },
++	{ 163, 177, 173, 5000 + 149 * 5 },
+ };
+ 
+ channel_pair g_channel_pairs_40_6G[NUM_CHAN_PAIRS_40_6G] =
+@@ -353,17 +376,125 @@ mxl_acs_chan g_channels160_6G[NUM_CHAN_PAIRS_160_6G] =
+ 	{ 207, 221, 217, STARTING_6G_FREQ_IN_MHZ + 193*5 }
+ };
+ 
++mxl_acs_chan g_channels320_1_6G[NUM_CHAN_PAIRS_320_6G] =
++{
++	{ 31,  1,  5, STARTING_6G_FREQ_IN_MHZ + 1*5 },
++	{ 31,  9, 13, STARTING_6G_FREQ_IN_MHZ + 1*5 },
++	{ 31, 17, 21, STARTING_6G_FREQ_IN_MHZ + 1*5 },
++	{ 31, 25, 29, STARTING_6G_FREQ_IN_MHZ + 1*5 },
++	{ 31, 33, 37, STARTING_6G_FREQ_IN_MHZ + 1*5 },
++	{ 31, 41, 45, STARTING_6G_FREQ_IN_MHZ + 1*5 },
++	{ 31, 49, 53, STARTING_6G_FREQ_IN_MHZ + 1*5 },
++	{ 31, 57, 61, STARTING_6G_FREQ_IN_MHZ + 1*5 },
++	{ 31,  5,  1, STARTING_6G_FREQ_IN_MHZ + 1*5 },
++	{ 31, 13,  9, STARTING_6G_FREQ_IN_MHZ + 1*5 },
++	{ 31, 21, 17, STARTING_6G_FREQ_IN_MHZ + 1*5 },
++	{ 31, 29, 25, STARTING_6G_FREQ_IN_MHZ + 1*5 },
++	{ 31, 37, 33, STARTING_6G_FREQ_IN_MHZ + 1*5 },
++	{ 31, 45, 41, STARTING_6G_FREQ_IN_MHZ + 1*5 },
++	{ 31, 53, 49, STARTING_6G_FREQ_IN_MHZ + 1*5 },
++	{ 31, 61, 57, STARTING_6G_FREQ_IN_MHZ + 1*5 },
++
++	{ 95,  65,  69, STARTING_6G_FREQ_IN_MHZ + 65*5 },
++	{ 95,  73,  77, STARTING_6G_FREQ_IN_MHZ + 65*5 },
++	{ 95,  81,  85, STARTING_6G_FREQ_IN_MHZ + 65*5 },
++	{ 95,  89,  93, STARTING_6G_FREQ_IN_MHZ + 65*5 },
++	{ 95,  97, 101, STARTING_6G_FREQ_IN_MHZ + 65*5 },
++	{ 95, 105, 109, STARTING_6G_FREQ_IN_MHZ + 65*5 },
++	{ 95, 113, 117, STARTING_6G_FREQ_IN_MHZ + 65*5 },
++	{ 95, 121, 125, STARTING_6G_FREQ_IN_MHZ + 65*5 },
++	{ 95,  69,  65, STARTING_6G_FREQ_IN_MHZ + 65*5 },
++	{ 95,  77,  73, STARTING_6G_FREQ_IN_MHZ + 65*5 },
++	{ 95,  85,  81, STARTING_6G_FREQ_IN_MHZ + 65*5 },
++	{ 95,  93,  89, STARTING_6G_FREQ_IN_MHZ + 65*5 },
++	{ 95, 101,  97, STARTING_6G_FREQ_IN_MHZ + 65*5 },
++	{ 95, 109, 105, STARTING_6G_FREQ_IN_MHZ + 65*5 },
++	{ 95, 117, 113, STARTING_6G_FREQ_IN_MHZ + 65*5 },
++	{ 95, 125, 121, STARTING_6G_FREQ_IN_MHZ + 65*5 },
++
++	{ 159, 129, 133, STARTING_6G_FREQ_IN_MHZ + 129*5 },
++	{ 159, 137, 141, STARTING_6G_FREQ_IN_MHZ + 129*5 },
++	{ 159, 145, 149, STARTING_6G_FREQ_IN_MHZ + 129*5 },
++	{ 159, 153, 157, STARTING_6G_FREQ_IN_MHZ + 129*5 },
++	{ 159, 161, 165, STARTING_6G_FREQ_IN_MHZ + 129*5 },
++	{ 159, 169, 173, STARTING_6G_FREQ_IN_MHZ + 129*5 },
++	{ 159, 177, 181, STARTING_6G_FREQ_IN_MHZ + 129*5 },
++	{ 159, 185, 189, STARTING_6G_FREQ_IN_MHZ + 129*5 },
++	{ 159, 133, 129, STARTING_6G_FREQ_IN_MHZ + 129*5 },
++	{ 159, 141, 137, STARTING_6G_FREQ_IN_MHZ + 129*5 },
++	{ 159, 149, 145, STARTING_6G_FREQ_IN_MHZ + 129*5 },
++	{ 159, 157, 153, STARTING_6G_FREQ_IN_MHZ + 129*5 },
++	{ 159, 165, 161, STARTING_6G_FREQ_IN_MHZ + 129*5 },
++	{ 159, 173, 169, STARTING_6G_FREQ_IN_MHZ + 129*5 },
++	{ 159, 181, 177, STARTING_6G_FREQ_IN_MHZ + 129*5 },
++	{ 159, 189, 185, STARTING_6G_FREQ_IN_MHZ + 129*5 },
++};
++
++mxl_acs_chan g_channels320_2_6G[NUM_CHAN_PAIRS_320_6G] =
++{
++	{ 63, 33, 37, STARTING_6G_FREQ_IN_MHZ + 33*5 },
++	{ 63, 41, 45, STARTING_6G_FREQ_IN_MHZ + 33*5 },
++	{ 63, 49, 53, STARTING_6G_FREQ_IN_MHZ + 33*5 },
++	{ 63, 57, 61, STARTING_6G_FREQ_IN_MHZ + 33*5 },
++	{ 63, 65, 69, STARTING_6G_FREQ_IN_MHZ + 33*5 },
++	{ 63, 73, 77, STARTING_6G_FREQ_IN_MHZ + 33*5 },
++	{ 63, 81, 85, STARTING_6G_FREQ_IN_MHZ + 33*5 },
++	{ 63, 89, 93, STARTING_6G_FREQ_IN_MHZ + 33*5 },
++	{ 63, 37, 33, STARTING_6G_FREQ_IN_MHZ + 33*5 },
++	{ 63, 45, 41, STARTING_6G_FREQ_IN_MHZ + 33*5 },
++	{ 63, 53, 49, STARTING_6G_FREQ_IN_MHZ + 33*5 },
++	{ 63, 61, 57, STARTING_6G_FREQ_IN_MHZ + 33*5 },
++	{ 63, 69, 65, STARTING_6G_FREQ_IN_MHZ + 33*5 },
++	{ 63, 77, 73, STARTING_6G_FREQ_IN_MHZ + 33*5 },
++	{ 63, 85, 81, STARTING_6G_FREQ_IN_MHZ + 33*5 },
++	{ 63, 93, 89, STARTING_6G_FREQ_IN_MHZ + 33*5 },
++
++	{ 127,  97, 101, STARTING_6G_FREQ_IN_MHZ + 97*5 },
++	{ 127, 105, 109, STARTING_6G_FREQ_IN_MHZ + 97*5 },
++	{ 127, 113, 117, STARTING_6G_FREQ_IN_MHZ + 97*5 },
++	{ 127, 121, 125, STARTING_6G_FREQ_IN_MHZ + 97*5 },
++	{ 127, 129, 133, STARTING_6G_FREQ_IN_MHZ + 97*5 },
++	{ 127, 137, 141, STARTING_6G_FREQ_IN_MHZ + 97*5 },
++	{ 127, 145, 149, STARTING_6G_FREQ_IN_MHZ + 97*5 },
++	{ 127, 153, 157, STARTING_6G_FREQ_IN_MHZ + 97*5 },
++	{ 127, 101,  97, STARTING_6G_FREQ_IN_MHZ + 97*5 },
++	{ 127, 109, 105, STARTING_6G_FREQ_IN_MHZ + 97*5 },
++	{ 127, 117, 113, STARTING_6G_FREQ_IN_MHZ + 97*5 },
++	{ 127, 125, 121, STARTING_6G_FREQ_IN_MHZ + 97*5 },
++	{ 127, 133, 129, STARTING_6G_FREQ_IN_MHZ + 97*5 },
++	{ 127, 141, 137, STARTING_6G_FREQ_IN_MHZ + 97*5 },
++	{ 127, 149, 145, STARTING_6G_FREQ_IN_MHZ + 97*5 },
++	{ 127, 157, 153, STARTING_6G_FREQ_IN_MHZ + 97*5 },
++
++	{ 191, 161, 165, STARTING_6G_FREQ_IN_MHZ + 161*5 },
++	{ 191, 169, 173, STARTING_6G_FREQ_IN_MHZ + 161*5 },
++	{ 191, 177, 181, STARTING_6G_FREQ_IN_MHZ + 161*5 },
++	{ 191, 185, 189, STARTING_6G_FREQ_IN_MHZ + 161*5 },
++	{ 191, 193, 197, STARTING_6G_FREQ_IN_MHZ + 161*5 },
++	{ 191, 201, 205, STARTING_6G_FREQ_IN_MHZ + 161*5 },
++	{ 191, 209, 213, STARTING_6G_FREQ_IN_MHZ + 161*5 },
++	{ 191, 217, 221, STARTING_6G_FREQ_IN_MHZ + 161*5 },
++	{ 191, 165, 161, STARTING_6G_FREQ_IN_MHZ + 161*5 },
++	{ 191, 173, 169, STARTING_6G_FREQ_IN_MHZ + 161*5 },
++	{ 191, 181, 177, STARTING_6G_FREQ_IN_MHZ + 161*5 },
++	{ 191, 189, 185, STARTING_6G_FREQ_IN_MHZ + 161*5 },
++	{ 191, 197, 193, STARTING_6G_FREQ_IN_MHZ + 161*5 },
++	{ 191, 205, 201, STARTING_6G_FREQ_IN_MHZ + 161*5 },
++	{ 191, 213, 209, STARTING_6G_FREQ_IN_MHZ + 161*5 },
++	{ 191, 221, 217, STARTING_6G_FREQ_IN_MHZ + 161*5 },
++};
++
+ static void acs_push_chandef(struct hostapd_iface *iface, mxl_acs_chandef *chan);
+ static void acs_pop_chandef(struct hostapd_iface *iface, mxl_acs_chandef *chan);
+ enum hostapd_chan_status mxl_hostapd_check_chans(struct hostapd_iface *iface);
+ void mxl_hostapd_notify_bad_chans(struct hostapd_iface *iface);
+-struct hostapd_channel_data * mxl_hostapd_get_mode_channel(struct hostapd_iface *iface, unsigned int freq);
+ 
+ /* Defines to parse 6GHz HE Oper IE or FILS frames from neighbor BSSes */
+ #define HE_OPER_CHANWIDTH_20	0
+ #define HE_OPER_CHANWIDTH_40	1
+ #define HE_OPER_CHANWIDTH_80	2
+ #define HE_OPER_CHANWIDTH_160	3
++#define EHT_OPER_CHANWIDTH_320	4
+ 
+ #define CF0_AND_CF1_IDX_DIFF_IN_160_MHZ 8
+ 
+@@ -521,19 +652,6 @@ static FILE * acs_write_file(const char *name, bool append)
+ 	return fp;
+ }
+ 
+-static enum oper_chan_width get_oper_width(int width)
+-{
+-	switch (width) {
+-		case 20:
+-		case 40:  return CONF_OPER_CHWIDTH_USE_HT;
+-		case 80:  return CONF_OPER_CHWIDTH_80MHZ;
+-		case 160: return CONF_OPER_CHWIDTH_160MHZ;
+-		default: wpa_printf(MSG_ERROR, "ACS: wrong or unsupported channel width %d", width);
+-	}
+-
+-	return -1; /* should never happen */
+-}
+-
+ static inline unsigned acs_freq_to_chan(int freq)
+ {
+ 	u8 chan;
+@@ -544,34 +662,59 @@ static inline unsigned acs_freq_to_chan(int freq)
+ static u32 acs_get_center_chan_index(struct hostapd_iface *iface)
+ {
+ 	int i;
+-	u32 primary, secondary;
++	int primary, secondary;
++	mxl_acs_chan *mxl_chan = NULL, *mxl_chan1 = NULL;
++	unsigned mxl_chan_num = 0, mxl_chan_num1 = 0;
++	bool is_6ghz = is_6ghz_op_class(iface->conf->op_class);
+ 
+ 	primary   = iface->conf->channel;
+ 	secondary = iface->conf->secondary_channel ? iface->conf->channel + iface->conf->secondary_channel * 4 : 0;
+ 
+-	if (hostapd_get_oper_chwidth(iface->conf) == CONF_OPER_CHWIDTH_80MHZ) {
+-		if (is_6ghz_op_class(iface->conf->op_class)) {
+-			for(i = 0; i < ARRAY_SIZE(g_channels80_6G); i++)
+-				if (g_channels80_6G[i].primary == primary && g_channels80_6G[i].secondary == secondary)
+-					return g_channels80_6G[i].chan_no;
+-		}
+-		else {
+-			for(i = 0; i < ARRAY_SIZE(g_channels80); i++)
+-				if (g_channels80[i].primary == primary && g_channels80[i].secondary == secondary)
+-					return g_channels80[i].chan_no;
+-		}
++	switch(hostapd_get_oper_chwidth(iface->conf)) {
++		case CONF_OPER_CHWIDTH_80MHZ:
++			mxl_chan = g_channels80;
++			mxl_chan_num = ARRAY_SIZE(g_channels80);
++			if (is_6ghz) {
++				mxl_chan = g_channels80_6G;
++				mxl_chan_num = ARRAY_SIZE(g_channels80_6G);
++			}
++			break;
++		case CONF_OPER_CHWIDTH_160MHZ:
++			mxl_chan = g_channels160;
++			mxl_chan_num = ARRAY_SIZE(g_channels160);
++			if (is_6ghz) {
++				mxl_chan = g_channels160_6G;
++				mxl_chan_num = ARRAY_SIZE(g_channels160_6G);
++			}
++			break;
++		case CONF_OPER_CHWIDTH_320MHZ:
++			if (iface->conf->mxl_conf.acs_eht_mode == ACS_EHT_MODE_320_2) {
++				mxl_chan = g_channels320_2_6G;
++				mxl_chan_num = ARRAY_SIZE(g_channels320_2_6G);
++			} else if (iface->conf->mxl_conf.acs_eht_mode == ACS_EHT_MODE_320_1) {
++				mxl_chan = g_channels320_1_6G;
++				mxl_chan_num = ARRAY_SIZE(g_channels320_1_6G);
++			} else {
++				mxl_chan = g_channels320_1_6G;
++				mxl_chan_num = ARRAY_SIZE(g_channels320_1_6G);
++				mxl_chan1 = g_channels320_2_6G;
++				mxl_chan_num1 = ARRAY_SIZE(g_channels320_2_6G);
++			}
++			break;
++		default:
++			break;
+ 	}
+-	else if (hostapd_get_oper_chwidth(iface->conf) == CONF_OPER_CHWIDTH_160MHZ) {
+-		if (is_6ghz_op_class(iface->conf->op_class)) {
+-			for(i = 0; i < ARRAY_SIZE(g_channels160_6G); i++)
+-				if (g_channels160_6G[i].primary == primary && g_channels160_6G[i].secondary == secondary)
+-					return g_channels160_6G[i].chan_no;
+-		}
+-		else {
+-			for(i = 0; i < ARRAY_SIZE(g_channels160); i++)
+-				if (g_channels160[i].primary == primary && g_channels160[i].secondary == secondary)
+-					return g_channels160[i].chan_no;
+-		}
++
++	if (mxl_chan != NULL) {
++		for(i = 0; i < mxl_chan_num; i++, mxl_chan++)
++			if (mxl_chan->primary == primary && mxl_chan->secondary == secondary)
++				return mxl_chan->chan_no;
++	}
++
++	if (mxl_chan1 != NULL) {
++		for(i = 0; i < mxl_chan_num1; i++, mxl_chan1++)
++			if (mxl_chan1->primary == primary && mxl_chan1->secondary == secondary)
++				return mxl_chan1->chan_no;
+ 	}
+ 
+ 	wpa_printf(MSG_ERROR, "didn't find center channel index from primary channel "
+@@ -591,13 +734,15 @@ static void acs_smart_adjust_center_freq(struct hostapd_iface *iface, unsigned c
+ 	case CONF_OPER_CHWIDTH_80MHZ:
+ 	/* fall through */
+ 	case CONF_OPER_CHWIDTH_160MHZ:
++	/* fall through */
++	case CONF_OPER_CHWIDTH_320MHZ:
+ 		/* For ACS fallback channel case */
+ 		if (!center_chan_index)
+ 			center_chan_index = acs_get_center_chan_index(iface);
+ 
+ 		break;
+ 	default:
+-		wpa_printf(MSG_ERROR, "ACS SMART: Only 20/40/80/160 is supported at the moment");
++		wpa_printf(MSG_ERROR, "ACS SMART: Only 20/40/80/160/320 is supported at the moment");
+ 		return;
+ 	}
+ 
+@@ -605,7 +750,12 @@ static void acs_smart_adjust_center_freq(struct hostapd_iface *iface, unsigned c
+ 
+ 	/* In case Fallback channel or reduced BW from BW comparison algo update OP class */
+ 	if (is_6ghz_op_class(iface->conf->op_class))
++	{
+ 		iface->conf->op_class = HOSTAP_6GHZ_20MHZ_OP_CLASS + center_idx_to_bw_6ghz(center_chan_index);
++		if (hostapd_get_oper_chwidth(iface->conf) == CONF_OPER_CHWIDTH_320MHZ) {
++			iface->conf->op_class = HOSTAP_6GHZ_320MHZ_OP_CLASS;
++		}
++	}
+ }
+ 
+ static FILE* acs_fopen(const char *fname, bool append, const char *name)
+@@ -1057,6 +1207,7 @@ void acs_smart_record_bsses(struct hostapd_iface *iface, struct wpa_scan_results
+ 		struct ieee80211_ht_operation *ht_oper = NULL;
+ 		struct ieee80211_vht_operation *vht_oper = NULL;
+ 		struct ieee80211_he_operation *he_oper = NULL;
++		struct ieee80211_eht_operation *eht_oper = NULL;
+ 		int bss_sec_freq = 0;
+ 		int bss_center_freq0 = bss->freq;
+ 		int bss_center_freq1 = 0;
+@@ -1069,22 +1220,42 @@ void acs_smart_record_bsses(struct hostapd_iface *iface, struct wpa_scan_results
+ 		u8 he_6ghz_pri_chan = 0;
+ 		u8 he_6ghz_seg0_offset = 0;
+ 		u8 he_6ghz_seg1_offset = 0;
+-		int sec_offset = 0;
+ 		u8 len = 0, fopclass = 0;
+ 		u16 fd = 0;
+ 		bool is_short_ssid = false;
+ 		u8 ssid_len;
+-		char ssid_string[SSID_MAX_LEN];
++		char ssid_string[SSID_MAX_LEN + 1];
++		u8 eht_ccfs0 = 0, eht_ccfs1 = 0;
++		struct wpa_ssid_value unknown = { .ssid={'U', 'N', 'K', 'N', 'O', 'W', 'N' }, .ssid_len = (sizeof("UNKNOWN") - 1) };
+ 
+ 		if (!mxl_acs_find_chan(iface, bss->freq))
+ 			continue;
+ 		ieee802_11_parse_elems((u8 *)(bss + 1), bss->ie_len, &elems, 0);
+ 
++		if (!elems.ssid_len || !elems.ssid) {
++			elems.ssid = unknown.ssid;
++			elems.ssid_len = unknown.ssid_len;
++		}
++
+ 		if (bss->level < iface->conf->mxl_conf.ScanRssiTh) {
+ 			wpa_printf(MSG_DEBUG, "Skip due to low BSS:%-32.*s RSSI:%d", elems.ssid_len, elems.ssid, bss->level);
+ 			continue;
+ 		}
+ 
++		/*
++		 * General note for HT/VHT/HE/EHT IEs parsing:
++		 * For ACS correct work we need to extract from scan results and provide to ACS the following:
++		 * Primary channel number  : The primary channel number of reported BSS
++		 * Secondary channel number: Secondary channel number of reported BSS
++		 * BandWidth               : Operating bandwidth of reported BSS
++		 * Center0                 : Operating center segment of the whole Bandwidth of reported BSS
++		 * Center1                 : Always 0 except 80+80 case, where Center1 is a center segment of the second 80MHz of reported BSS
++		 * RSSI                    : Extracted from bss->level and is not related to IE parsing
++		 *
++		 * Unit test: After ACS is complete check ACS history file for wlanX to observe the values are correct.
++		 *
++		 */
++
+ 		/* get the HT capabilities element, needed later when we analyze each channel */
+ 		if (elems.ht_capabilities)
+ 			ht_cap = (struct ieee80211_ht_capabilities *) elems.ht_capabilities;
+@@ -1121,39 +1292,41 @@ void acs_smart_record_bsses(struct hostapd_iface *iface, struct wpa_scan_results
+ 				bss_center_freq0 = 5000 + 5 * vht_oper->vht_op_info_chan_center_freq_seg0_idx;
+ 
+ 				switch (bss_width) {
+-				case VHT_OPER_CHANWIDTH_80_160_80P80MHZ:
+-					if (vht_oper->vht_op_info_chan_center_freq_seg1_idx) {
+-						bss_center_freq1 = 5000 + 5 * vht_oper->vht_op_info_chan_center_freq_seg1_idx;
+-
+-						/* IEEE802.11-2016, 9.4.2.159 VHT Operation IE, Table 9-253 */
+-						if (abs(vht_oper->vht_op_info_chan_center_freq_seg1_idx -
+-							vht_oper->vht_op_info_chan_center_freq_seg0_idx) == CF0_AND_CF1_IDX_DIFF_IN_160_MHZ) {
+-							bss_printable_width = "160";
+-							num_width = 160;
+-						}
+-						else {
+-							bss_printable_width = "80+80";
++					case VHT_OPER_CHANWIDTH_80_160_80P80MHZ:
++						if (vht_oper->vht_op_info_chan_center_freq_seg1_idx) {
++							bss_center_freq1 = 5000 + 5 * vht_oper->vht_op_info_chan_center_freq_seg1_idx;
++
++							/* IEEE802.11-2016, 9.4.2.159 VHT Operation IE, Table 9-253 */
++							if (abs(vht_oper->vht_op_info_chan_center_freq_seg1_idx -
++								vht_oper->vht_op_info_chan_center_freq_seg0_idx) == CF0_AND_CF1_IDX_DIFF_IN_160_MHZ) {
++								bss_printable_width = "160";
++								bss_center_freq0 = bss_center_freq1;
++								num_width = 160;
++							} else {
++								bss_printable_width = "80+80";
++							}
+ 						}
+-					}
+-					break;
+-				case VHT_OPER_CHANWIDTH_160MHZ: /* Deprecated format */
+-					bss_printable_width = "160";
+-					num_width = 160;
+-					break;
+-				case VHT_OPER_CHANWIDTH_80P80MHZ: /* Deprecated format */
+-					bss_center_freq1 = 5000 + 5 * vht_oper->vht_op_info_chan_center_freq_seg1_idx;
+-					bss_printable_width = "80+80";
+-					break;
+-				default:
+-					wpa_printf(MSG_WARNING, "Smart ACS: BSS with Unsupported VHT channel width %d detected", bss_width);
+-					break;
++						break;
++					case VHT_OPER_CHANWIDTH_160MHZ: /* Deprecated format */
++						bss_printable_width = "160";
++						num_width = 160;
++						break;
++					case VHT_OPER_CHANWIDTH_80P80MHZ: /* Deprecated format */
++						bss_center_freq1 = 5000 + 5 * vht_oper->vht_op_info_chan_center_freq_seg1_idx;
++						bss_printable_width = "80+80";
++						break;
++					default:
++						wpa_printf(MSG_WARNING, "Smart ACS: BSS with Unsupported VHT channel width %d detected", bss_width);
++						break;
+ 				}
+ 			}
+ 		}
+ 
+ 		if (is_6ghz_op_class(iface->conf->op_class)) {
+-			/* Aligned to opensource HE */
++			bss_width = 0;
++			eht_oper = (struct ieee80211_eht_operation *)elems.eht_operation;
+ 			he_oper = (struct ieee80211_he_operation *)elems.he_operation;
++
+ 			if (he_oper && (he_oper->he_oper_params & HE_OPERATION_6GHZ_OPER_INFO)
+ 						&& (!(he_oper->he_oper_params & (HE_OPERATION_COHOSTED_BSS | HE_OPERATION_VHT_OPER_INFO)))) {
+ 				struct ieee80211_he_6ghz_oper_info *he_6ghz_oper_info = (struct ieee80211_he_6ghz_oper_info *)(he_oper + 1); /* means he_oper + sizeof(he_oper) */
+@@ -1161,11 +1334,22 @@ void acs_smart_record_bsses(struct hostapd_iface *iface, struct wpa_scan_results
+ 				he_6ghz_seg0_offset = he_6ghz_oper_info->chan_center_freq_seg0;
+ 				he_6ghz_seg1_offset = he_6ghz_oper_info->chan_center_freq_seg1;
+ 				bss_width = he_6ghz_oper_info->control & HE_6GHZ_OPER_INFO_CTRL_CHAN_WIDTH_MASK;
+-				bss_center_freq0 = WAVE_6G_STARTING_FREQ + (5 * he_6ghz_seg0_offset);
+-				if (he_6ghz_seg1_offset)
+-					bss_center_freq1 = WAVE_6G_STARTING_FREQ + (5 * he_6ghz_seg1_offset);
+-				wpa_printf(MSG_DEBUG, "6GHz oper info: pri = %d, width = %d, cf0 = %d, cf1 = %d",
+-									   he_6ghz_pri_chan, bss_width, bss_center_freq0, bss_center_freq1);
++				wpa_printf(MSG_DEBUG, "6GHz HE oper info: pri = %d, width = %d, cf0 = %d, cf1 = %d",
++							   he_6ghz_pri_chan, bss_width, he_6ghz_seg0_offset, he_6ghz_seg1_offset);
++
++				/* try to get 320MHz info from EHT if present */
++				if (eht_oper && (eht_oper->oper_params & EHT_OPER_INFO_PRESENT)) {
++					u8 eht_width;
++					struct ieee80211_eht_oper_info *oper_info = &eht_oper->oper_info;
++					eht_width = oper_info->control & 7;
++					eht_ccfs0 = oper_info->ccfs0;
++					eht_ccfs1 = oper_info->ccfs1;
++					if (eht_width == EHT_OPER_CHANNEL_WIDTH_320MHZ) {
++						bss_width = eht_width;
++					}
++					wpa_printf(MSG_DEBUG, "6GHz EHT oper info: width = %u, cf0 = %u, cf1 = %u",
++								   eht_width, eht_ccfs0, eht_ccfs1);
++				}
+ 			}
+ 			else if (elems.mxl_fils_ie) {
+ 				/*
+@@ -1231,6 +1415,9 @@ void acs_smart_record_bsses(struct hostapd_iface *iface, struct wpa_scan_results
+ 						case 160:
+ 							bss_width = HE_OPER_CHANWIDTH_160;
+ 							break;
++						case 320:
++							bss_width = EHT_OPER_CHANWIDTH_320;
++							break;
+ 						default:
+ 							break;
+ 					}
+@@ -1240,39 +1427,65 @@ void acs_smart_record_bsses(struct hostapd_iface *iface, struct wpa_scan_results
+ 				}
+ 
+ 				ch_width_and_ch_num_to_seg_idx(bss_width, he_6ghz_pri_chan, &he_6ghz_seg0_offset, &he_6ghz_seg1_offset);
++				wpa_printf(MSG_DEBUG, "6GHz Fils frame info  pri = %d, width = %d, cf0 = %d, cf1 = %d, elems.ssid = %02X:%02X:%02X:%02X, fopclass = %d",
++						he_6ghz_pri_chan, bss_width, he_6ghz_seg0_offset, he_6ghz_seg1_offset, elems.ssid[0], elems.ssid[1], elems.ssid[2], elems.ssid[3], fopclass);
++			} // if (elems.mxl_fils_ie)
++			else {
++				wpa_printf(MSG_ERROR, "No HE information is available for BSS:%-32.*s at freq %d", elems.ssid_len, elems.ssid, bss->freq);
++
++				/* Do not skip this BSS, but count it as 20MHz BW */
++				he_6ghz_seg0_offset = acs_freq_to_chan(bss->freq);
++				bss_width = HE_OPER_CHANWIDTH_20;
++			}
+ 
+-				if (he_6ghz_seg0_offset)
+-					bss_center_freq0 = WAVE_6G_STARTING_FREQ + (5 * he_6ghz_seg0_offset);
+-				if (he_6ghz_seg1_offset)
+-					bss_center_freq1 = WAVE_6G_STARTING_FREQ + (5 * he_6ghz_seg1_offset);
++			bss_center_freq0 = WAVE_6G_STARTING_FREQ + (5 * he_6ghz_seg0_offset);
+ 
+-				wpa_printf(MSG_DEBUG, "Fils frame info  pri = %d, width = %d, cf0 = %d, cf1 = %d, elems.ssid = %02X:%02X:%02X:%02X, fopclass = %d",
+-						he_6ghz_pri_chan, bss_width, bss_center_freq0, bss_center_freq1, elems.ssid[0], elems.ssid[1], elems.ssid[2], elems.ssid[3], fopclass);
+-				}
+-				switch(bss_width) {
+-					case HE_OPER_CHANWIDTH_20:
+-						bss_printable_width = "20";
+-						num_width = 20;
+-						break;
+-					case HE_OPER_CHANWIDTH_40:
+-						bss_printable_width = "40";
+-						num_width = 40;
+-						sec_offset = (he_6ghz_seg0_offset > he_6ghz_pri_chan) ? 20 : -20;
+-						bss_sec_freq = bss->freq + sec_offset;
+-						break;
+-					case HE_OPER_CHANWIDTH_80:
+-						bss_printable_width = "80";
+-						num_width = 80;
+-						break;
+-					case HE_OPER_CHANWIDTH_160:
+-						bss_printable_width = "160";
+-						num_width = 160;
+-						break;
+-					default:
+-						break;
+-				}
++			if (bss_width > HE_OPER_CHANWIDTH_20) {
++				u8 sec_chan;
++				if (((he_6ghz_pri_chan - 1) / 4) % 2)
++					sec_chan = he_6ghz_pri_chan - 4;
++				else
++					sec_chan = he_6ghz_pri_chan + 4;
++
++				bss_sec_freq = WAVE_6G_STARTING_FREQ + (5 * sec_chan);
+ 			}
+ 
++			switch(bss_width) {
++				case HE_OPER_CHANWIDTH_20:
++					bss_printable_width = "20";
++					num_width = 20;
++					break;
++				case HE_OPER_CHANWIDTH_40:
++					bss_printable_width = "40";
++					num_width = 40;
++					break;
++				case HE_OPER_CHANWIDTH_80:
++					bss_printable_width = "80";
++					num_width = 80;
++					break;
++				case HE_OPER_CHANWIDTH_160:
++					/* 80+80 or 160 */
++					num_width = 160;
++					if (he_6ghz_seg1_offset) {
++							bss_center_freq1 = WAVE_6G_STARTING_FREQ + (5 * he_6ghz_seg1_offset);
++							if (abs(he_6ghz_seg1_offset - he_6ghz_seg0_offset) == CF0_AND_CF1_IDX_DIFF_IN_160_MHZ) {
++								bss_printable_width = "160";
++								bss_center_freq0 = bss_center_freq1;
++							} else {
++								bss_printable_width = "80+80";
++							}
++					}
++					break;
++				case EHT_OPER_CHANWIDTH_320:
++					bss_printable_width = "320";
++					num_width = 320;
++					bss_center_freq0 = WAVE_6G_STARTING_FREQ + (5 * eht_ccfs1);
++					break;
++				default:
++					break;
++			}
++		} // if (is_6ghz_op_class
++
+ 		if (is_short_ssid) {
+ 			ssid_len = snprintf(ssid_string, sizeof(ssid_string), "%02X:%02X:%02X:%02X", elems.ssid[0], elems.ssid[1], elems.ssid[2], elems.ssid[3]);
+ 		}
+@@ -1285,18 +1498,20 @@ void acs_smart_record_bsses(struct hostapd_iface *iface, struct wpa_scan_results
+ 			mxl_parse_rnr(&elems, &iface->interfaces->rnr_scan_6g_ap_info);
+ 		}
+ 
++		/* let it to be printed only for 80+80 APs, but reset later anyway */
++		if (os_strcmp(bss_printable_width, "80+80"))
++			bss_center_freq1 = 0;
++
+ 		fprintf(fp, "%-32.*s\t%5s\t%7u\t%9u\t%7u\t%7u\t%4d\n",
+ 			ssid_len, ssid_string, bss_printable_width,
+ 			acs_freq_to_chan(bss->freq),
+-			bss_sec_freq > 0 ? acs_freq_to_chan(bss_sec_freq) : 0,
++			acs_freq_to_chan(bss_sec_freq),
+ 			acs_freq_to_chan(bss_center_freq0),
+-			bss_center_freq1 > 0 ? acs_freq_to_chan(bss_center_freq1) : 0,
++			bss_center_freq1 ? acs_freq_to_chan(bss_center_freq1) : 0,
+ 			bss->level);
+-		/* for 80+80 BSS only the first segment considered for Candidates ranking */
+-		if (os_strcmp(bss_printable_width, "80+80") == 0)
+-			bss_center_freq1 = 0;
+ 
+-		cf = (bss_center_freq1 ? bss_center_freq1 : bss_center_freq0);
++		bss_center_freq1 = 0;
++		cf = bss_center_freq0;
+ 		bss_base_freq = cf - (num_width >> 1) + (SINGLE_CHANNEL_WIDTH >> 1);
+ 
+ 		/* increase the relevant counters in every channel affected */
+@@ -1373,7 +1588,7 @@ static bool acs_is_chan_scanned(struct hostapd_iface *iface, short chan)
+ 			return candidate[i].scanned;
+ 	}
+ 
+-	return false;
++	return true;
+ }
+ 
+ static bool acs_are_all_available_chans_scanned(struct hostapd_iface *iface)
+@@ -1486,10 +1701,10 @@ static const char * acs_6g_scan_state_text(enum hostapd_acs_6g_scan_status statu
+ static const char * acs_6g_scan_type_text(enum hostapd_acs_6g_scan_type type)
+ {
+ 	switch (type) {
+-		case SCAN_6G_NONE:           return "SCAN_6G_NONE";
+-		case SCAN_6G_PSC_OPT:        return "SCAN_6G_PSC_OPT";
+-		case SCAN_6G_RNR_PASSIVE:    return "SCAN_6G_RNR_PASSIVE";
+-		case SCAN_6G_FULL_BAND:      return "SCAN_6G_FULL_BAND";
++		case SCAN_6G_NONE:             return "SCAN_6G_NONE";
++		case SCAN_6G_PSC_OPT:          return "SCAN_6G_PSC_OPT";
++		case SCAN_6G_RNR_PASSIVE:      return "SCAN_6G_RNR_PASSIVE";
++		case SCAN_6G_FULL_BAND:        return "SCAN_6G_FULL_BAND";
+ 		case SCAN_6G_UNII5_UNII7_BAND: return "SCAN_6G_UNII5_UNII7_BAND";
+ 	}
+ 	return "UNKNOWN";
+@@ -1547,7 +1762,7 @@ void acs_init_defaults_candidate_table(struct hostapd_iface *iface)
+ 	/* Get TX power from 1'st PSC channel */
+ 	for (i = 0; (i < iface->mxl_iface.num_candidates && i < MAX_CANDIDATES); i++) {
+ 		if (is_6ghz_psc_frequency(candidates[i].freq)) {
+-			tx_power = candidates[i].tx_power;
++			tx_power = candidates[i].tx_power[PRI_20];
+ 			break;
+ 		}
+ 	}
+@@ -1560,7 +1775,7 @@ void acs_init_defaults_candidate_table(struct hostapd_iface *iface)
+ 			continue;
+ 
+ 		candidates[i].cwi_noise[PRI_20]	= ACS_DEFAULT_CWI;
+-		candidates[i].tx_power = tx_power;
++		candidates[i].tx_power[PRI_20] = tx_power;
+ 	}
+ }
+ 
+@@ -1636,6 +1851,8 @@ void mxl_acs_update_scan_states(struct hostapd_iface *iface)
+ 
+ 		/* Looks to be the first scan call for 6G */
+ 		iface->mxl_iface.acs_6g_scan_type = SCAN_6G_PSC_OPT;
++		if (iface->mxl_iface.he_6ghz_reg_pwr_mode == HE_REG_INFO_6GHZ_AP_TYPE_SP)
++			iface->mxl_iface.acs_6g_scan_type = SCAN_6G_UNII5_UNII7_BAND;
+ 		iface->mxl_iface.acs_6g_scan_status = SCAN_6G_STARTED;
+ 		wpa_printf(MSG_DEBUG, "6G ACS - Update : scan_type : %s->%s  scan_state : %s->%s",
+ 					acs_6g_scan_type_text(SCAN_6G_NONE), acs_6g_scan_type_text(iface->mxl_iface.acs_6g_scan_type),
+@@ -1697,6 +1914,43 @@ complete:
+ 	mxl_acs_scan_complete(iface);
+ }
+ 
++static bool acs_is_unii4_160_prim_allowed_chan (int chan)
++{
++	return (chan == 149) || (chan == 153) || (chan == 157) || (chan == 161);
++}
++
++static int acs_unii4_chan_disabled(struct hostapd_iface *iface, struct hostapd_channel_data *chan)
++{
++	if (!hostapd_is_unii4_freq(chan->freq))
++		return false;
++
++	/* UNII4_DISABLED */
++	if (!iface->conf->acs_unii4)
++		return true;
++
++	if (UNII4_PARTIAL == iface->conf->acs_unii4)
++		return true;
++
++	/* UNII4_ENABLED */
++	return false;
++}
++
++static int is_excluded_opclass_chan(struct hostapd_iface *iface, int channel, int bandwidth)
++{
++	int i, op_band;
++	struct mxl_hostapd_config *mxl_conf = &iface->conf->mxl_conf;
++
++	for (i = 0; i < mxl_conf->acs_exclude_opclass_ch_count; i++) {
++		struct acs_exclude *op_list = &mxl_conf->acs_exclude_opclass_ch_list[i];
++
++		op_band = op_class_to_bandwidth(op_list->op_class);
++		if (op_band == bandwidth && op_list->channel == channel) {
++			return 1;
++		}
++	}
++	return 0;
++}
++
+ static int acs_is_subchannel_allowed(struct hostapd_iface *iface, int channel)
+ {
+ 	int j;
+@@ -1717,6 +1971,9 @@ static int acs_is_subchannel_allowed(struct hostapd_iface *iface, int channel)
+ 			    mxl_conf->acs_strict_chanlist && !mxl_is_in_chanlist(iface, chan))
+ 				return 0;
+ 
++			if (acs_unii4_chan_disabled(iface, chan))
++				return 0;
++
+ 			return 1;
+ 		}
+ 	}
+@@ -1727,6 +1984,7 @@ static int acs_is_subchannel_allowed(struct hostapd_iface *iface, int channel)
+ static int acs_is_channel_disabled(struct hostapd_iface *iface, int start_freq, int width, int primary_chan, bool check_chanlist)
+ {
+ 	int i, j;
++	bool unii4_disabled = false;
+ 	struct hostapd_hw_modes *mode = iface->current_mode;
+ 	struct mxl_hostapd_config *mxl_conf = &iface->conf->mxl_conf;
+ 
+@@ -1749,6 +2007,9 @@ static int acs_is_channel_disabled(struct hostapd_iface *iface, int start_freq,
+ 				    check_chanlist && !mxl_is_in_chanlist(iface, chan))
+ 					return 1;
+ 
++				if (acs_unii4_chan_disabled(iface, chan))
++					unii4_disabled = true;
++
+ 				switch (width) {
+ 				case 40:
+ 					/* TODO: check for HT40 flags
+@@ -1769,6 +2030,11 @@ static int acs_is_channel_disabled(struct hostapd_iface *iface, int start_freq,
+ 		}
+ 	}
+ 
++	/* Special handling for 160MHz - allow it only in case Primary in lower 80 Mhz part */
++	if (unii4_disabled && (!iface->conf->acs_unii4 ||
++	    ((UNII4_PARTIAL == iface->conf->acs_unii4) && !acs_is_unii4_160_prim_allowed_chan(primary_chan))))
++		return 1;
++
+ 	return 0;
+ }
+ 
+@@ -1806,7 +2072,9 @@ void add_channel_pair_candidates(struct hostapd_iface *iface, channel_pair *chan
+ 	struct acs_candidate_table *candidates = iface->mxl_iface.candidates;
+ 
+ 	for (i = 0; i < nof_pairs; i++) {
+-		if ((channel_pairs[i].primary == chan->chan) && acs_is_subchannel_allowed(iface, channel_pairs[i].secondary)) {
++		if ((channel_pairs[i].primary == chan->chan) &&
++		    (acs_is_subchannel_allowed(iface, channel_pairs[i].primary) &&
++		     acs_is_subchannel_allowed(iface, channel_pairs[i].secondary))) {
+ 			/* Special rule to allow only 2 non-overlapping 40 MHz candidates (1--5, 7--11) in 2.4 GHz,
+ 			* if special acs_use24overlapped configuration parameter is set to 0 (default) */
+ 			if ((base_freq < 5000) && (!iface->conf->mxl_conf.acs_use24overlapped) &&
+@@ -1926,11 +2194,46 @@ void add_160_channels(struct hostapd_iface *iface, mxl_acs_chan *channel_pairs,
+ 	}
+ }
+ 
++void add_320_channels(struct hostapd_iface *iface, mxl_acs_chan *channel_pairs, u32 nof_pairs, struct hostapd_channel_data *chan)
++{
++	int i;
++	struct acs_candidate_table *candidates = iface->mxl_iface.candidates;
++
++	for (i = 0; i < nof_pairs; i++) {
++		if (is_excluded_opclass_chan(iface, channel_pairs[i].primary, 320) ||
++			is_excluded_opclass_chan(iface, channel_pairs[i].secondary, 320)) {
++			continue;
++		}
++
++		if ((channel_pairs[i].primary == chan->chan) &&
++		    !acs_is_channel_disabled(iface, channel_pairs[i].freq, 320, channel_pairs[i].primary, false)) {
++			candidates[iface->mxl_iface.num_candidates].freq = channel_pairs[i].freq;
++			candidates[iface->mxl_iface.num_candidates].chan = channel_pairs[i].chan_no;
++			candidates[iface->mxl_iface.num_candidates].primary = channel_pairs[i].primary;
++			candidates[iface->mxl_iface.num_candidates].secondary = channel_pairs[i].secondary;
++			candidates[iface->mxl_iface.num_candidates].width = 320;
++
++			/* NOTE : No radar affected channels for 6GHz */
++
++			wpa_printf(MSG_DEBUG, "ACS: adding candidate %d, freq %d chan %d pri %d sec %d width %d",
++			    iface->mxl_iface.num_candidates,
++			    candidates[iface->mxl_iface.num_candidates].freq,
++			    candidates[iface->mxl_iface.num_candidates].chan,
++			    candidates[iface->mxl_iface.num_candidates].primary,
++			    candidates[iface->mxl_iface.num_candidates].secondary,
++			    candidates[iface->mxl_iface.num_candidates].width);
++
++			iface->mxl_iface.num_candidates++;
++		}
++	}
++}
++
+ void mxl_acs_init_candidate_table(struct hostapd_iface *iface)
+ {
+ 	int i;
+ 	struct hostapd_hw_modes *mode = iface->current_mode;
+ 	struct acs_candidate_table *candidates = iface->mxl_iface.candidates;
++	int bw_80_160_320 = 0;
+ 
+ 	memset(candidates, 0, sizeof(iface->mxl_iface.candidates));
+ 	iface->mxl_iface.num_candidates = 0;
+@@ -1938,6 +2241,15 @@ void mxl_acs_init_candidate_table(struct hostapd_iface *iface)
+ 
+ 	wpa_printf(MSG_DEBUG, "ACS: init candidate table, num_chan = %d", mode->num_channels);
+ 
++	/* Restore CW from user config */
++	if (iface->mxl_iface.acs_user_config_cw) {
++		wpa_printf(MSG_DEBUG, "ACS : old CW : %d, op_class : %d User Configured CW : %d, op_class : %d",
++			   hostapd_get_oper_chwidth(iface->conf), iface->conf->op_class,
++			   iface->mxl_iface.acs_user_config_cw, iface->mxl_iface.acs_user_config_op_class);
++		hostapd_set_oper_chwidth(iface->conf, iface->mxl_iface.acs_user_config_cw);
++		iface->conf->op_class = iface->mxl_iface.acs_user_config_op_class;
++	}
++
+ 	for (i = 0; i < mode->num_channels; i++) {
+ 		struct hostapd_channel_data *chan = &mode->channels[i];
+ 		if (chan->flag & HOSTAPD_CHAN_DISABLED)
+@@ -1949,8 +2261,10 @@ void mxl_acs_init_candidate_table(struct hostapd_iface *iface)
+ 		if (iface->conf->acs_exclude_dfs && (chan->flag & HOSTAPD_CHAN_RADAR))
+ 			continue;
+ 
+-		if (iface->conf->mxl_conf.acs_use24overlapped || (chan->chan == 1) ||
+-		    (chan->chan == 6) || (chan->chan == 11) || (chan->freq >= 5000)) {
++		if (!acs_unii4_chan_disabled(iface, chan) &&
++		    (iface->conf->mxl_conf.acs_use24overlapped || (chan->chan == 1) ||
++		    (chan->chan == 6) || (chan->chan == 11) || (chan->freq >= 5000)) &&
++		    !is_excluded_opclass_chan(iface, chan->chan, 20)) {
+ 			if (chan->flag & HOSTAPD_CHAN_RADAR)
+ 				candidates[iface->mxl_iface.num_candidates].radar_affected = true;
+ 
+@@ -1979,25 +2293,49 @@ void mxl_acs_init_candidate_table(struct hostapd_iface *iface)
+ 				continue;
+ 		}
+ 
++		switch (hostapd_get_oper_chwidth(iface->conf)) {
++			case CONF_OPER_CHWIDTH_320MHZ:
++				bw_80_160_320 |= BIT(CONF_OPER_CHWIDTH_320MHZ);
++				/* fallthrough */
++			case CONF_OPER_CHWIDTH_160MHZ:
++				bw_80_160_320 |= BIT(CONF_OPER_CHWIDTH_160MHZ);
++				/* fallthrough */
++			case CONF_OPER_CHWIDTH_80MHZ:
++				bw_80_160_320 |= BIT(CONF_OPER_CHWIDTH_80MHZ);
++				/* fallthrough */
++			default:
++				break;
++		}
++
+ 		if (chan->freq < 5000) { /* 2.4 GHz */
+-			add_channel_pair_candidates(iface, g_channel_pairs_40_24G, sizeof(g_channel_pairs_40_24G) / sizeof(channel_pair), 2407, chan);
++			add_channel_pair_candidates(iface, g_channel_pairs_40_24G, ARRAY_SIZE(g_channel_pairs_40_24G), 2407, chan);
+ 		} else if (chan->freq < WAVE_6G_STARTING_FREQ) { /* 5 GHz */
+-			add_channel_pair_candidates(iface, g_channel_pairs_40_5G, sizeof(g_channel_pairs_40_5G) / sizeof(channel_pair), 5000, chan);
++			add_channel_pair_candidates(iface, g_channel_pairs_40_5G, ARRAY_SIZE(g_channel_pairs_40_5G), 5000, chan);
+ 
+-			if (hostapd_get_oper_chwidth(iface->conf) >= CONF_OPER_CHWIDTH_80MHZ) { /* 80 MHz supported */
+-				add_80_channels(iface, g_channels80, sizeof(g_channels80) / sizeof(mxl_acs_chan), chan);
++			if (bw_80_160_320 & BIT(CONF_OPER_CHWIDTH_80MHZ)) { /* 80 MHz supported */
++				add_80_channels(iface, g_channels80, ARRAY_SIZE(g_channels80), chan);
+ 			}
+-			if (hostapd_get_oper_chwidth(iface->conf) == CONF_OPER_CHWIDTH_160MHZ) { /* 160 MHz supported */
+-				add_160_channels(iface, g_channels160, sizeof(g_channels160) / sizeof(mxl_acs_chan), chan);
++			if (bw_80_160_320 & BIT(CONF_OPER_CHWIDTH_160MHZ)) { /* 160 MHz supported */
++				add_160_channels(iface, g_channels160, ARRAY_SIZE(g_channels160), chan);
+ 			}
+ 		} else { /* 6GHz */
+-			add_channel_pair_candidates(iface, g_channel_pairs_40_6G, sizeof(g_channel_pairs_40_6G) / sizeof(channel_pair),
++			add_channel_pair_candidates(iface, g_channel_pairs_40_6G, ARRAY_SIZE(g_channel_pairs_40_6G),
+ 										WAVE_6G_STARTING_FREQ, chan);
+-			if (hostapd_get_oper_chwidth(iface->conf) >= CONF_OPER_CHWIDTH_80MHZ) { /* 80 MHz supported */
+-				add_80_channels(iface, g_channels80_6G, sizeof(g_channels80_6G) / sizeof(mxl_acs_chan), chan);
++			if (bw_80_160_320 & BIT(CONF_OPER_CHWIDTH_80MHZ)) { /* 80 MHz supported */
++				add_80_channels(iface, g_channels80_6G, ARRAY_SIZE(g_channels80_6G), chan);
++			}
++			if (bw_80_160_320 & BIT(CONF_OPER_CHWIDTH_160MHZ)) { /* 160 MHz supported */
++				add_160_channels(iface, g_channels160_6G, ARRAY_SIZE(g_channels160_6G), chan);
+ 			}
+-			if (hostapd_get_oper_chwidth(iface->conf) == CONF_OPER_CHWIDTH_160MHZ) { /* 160 MHz supported */
+-				add_160_channels(iface, g_channels160_6G, sizeof(g_channels160_6G) / sizeof(mxl_acs_chan), chan);
++			if (bw_80_160_320 & BIT(CONF_OPER_CHWIDTH_320MHZ)) { /* 320 MHz supported */
++				if (iface->conf->mxl_conf.acs_eht_mode == ACS_EHT_MODE_320_2)
++					add_320_channels(iface, g_channels320_2_6G, ARRAY_SIZE(g_channels320_2_6G), chan);
++				else if (iface->conf->mxl_conf.acs_eht_mode == ACS_EHT_MODE_320_1)
++					add_320_channels(iface, g_channels320_1_6G, ARRAY_SIZE(g_channels320_1_6G), chan);
++				else {
++					add_320_channels(iface, g_channels320_1_6G, ARRAY_SIZE(g_channels320_1_6G), chan);
++					add_320_channels(iface, g_channels320_2_6G, ARRAY_SIZE(g_channels320_2_6G), chan);
++				}
+ 			}
+ 		}
+ 	}
+@@ -2172,10 +2510,7 @@ int mxl_acs_do_switch_channel(struct hostapd_iface *iface, int block_tx)
+ 		   (channel->flag & HOSTAPD_CHAN_RADAR) &&
+ 		   ((channel->flag & HOSTAPD_CHAN_DFS_MASK) != HOSTAPD_CHAN_DFS_AVAILABLE)) {
+ 			iface->freq = channel->freq;
+-			iface->conf->acs = 0;
+-			hostapd_disable_iface(iface);
+-			hostapd_enable_iface(iface);
+-			iface->conf->acs = 1;
++			mxl_hostapd_restart_iface(iface);
+ 			return 0;
+ 		}
+ 	}
+@@ -2220,6 +2555,8 @@ int mxl_acs_do_switch_channel(struct hostapd_iface *iface, int block_tx)
+ 		return -1;
+ 	}
+ 
++	hostapd_prepare_and_send_csa_deauth_cfg_to_driver(iface->bss[0]);
++
+ 	for (i = 0; i < iface->num_bss; i++) {
+ 		err = hostapd_switch_channel(iface->bss[i], &csa_settings);
+ 		if (err) {
+@@ -2237,14 +2574,14 @@ int mxl_acs_do_switch_channel(struct hostapd_iface *iface, int block_tx)
+ 
+ void acs_print_info_header(int level)
+ {
+-	wpa_printf(level, " #  1y  2y freq  BW    R#   RB# u_p u_bw l_p l_s ls40 ls80  bss  pri aff rdr Ovl int40 c_p c_s cs40 cs80");
++	wpa_printf(level, " #  1y  2y freq  BW    R#   RB# u_p u_bw l_p l_s ls40 ls80 ls160 bss  pri aff rdr Ovl int40 c_p c_s cs40 cs80 cs160 tx_p tx_s tx40 tx80 tx160");
+ }
+ 
+ void acs_print_cand_no(int level, struct hostapd_iface *iface, int i)
+ {
+ 	struct acs_candidate_table *candidates = iface->mxl_iface.candidates;
+ 
+-	wpa_printf(level, "%2d %3d %3d %4d %3d %5d %5d %3d %4d %3d %3d %4d %4d %4d %4d %3d %3d %3d %5d %3d %3d %4d %4d",
++	wpa_printf(level, "%2d %3d %3d %4d %3d %5d %5d %3d %4d %3d %3d %4d %4d %5d %4d %4d %3d %3d %3d %5d %3d %3d %4d %4d %5d %4d %4d %4d %4d %5d ",
+ 				i,
+ 				candidates[i].primary,
+ 				candidates[i].secondary,
+@@ -2258,6 +2595,7 @@ void acs_print_cand_no(int level, struct hostapd_iface *iface, int i)
+ 				candidates[i].channel_load[SEC_20],
+ 				candidates[i].channel_load[SEC_MAX_40],
+ 				candidates[i].channel_load[SEC_MAX_80],
++				candidates[i].channel_load[SEC_MAX_160],
+ 				candidates[i].num_bss,
+ 				candidates[i].num_bss_pri,
+ 				candidates[i].radar_affected,
+@@ -2267,19 +2605,25 @@ void acs_print_cand_no(int level, struct hostapd_iface *iface, int i)
+ 				candidates[i].cwi_noise[PRI_20],
+ 				candidates[i].cwi_noise[SEC_20],
+ 				candidates[i].cwi_noise[SEC_MAX_40],
+-				candidates[i].cwi_noise[SEC_MAX_80]);
++				candidates[i].cwi_noise[SEC_MAX_80],
++				candidates[i].cwi_noise[SEC_MAX_160],
++				candidates[i].tx_power[PRI_20],
++				candidates[i].tx_power[SEC_20],
++				candidates[i].tx_power[SEC_MAX_40],
++				candidates[i].tx_power[SEC_MAX_80],
++				candidates[i].tx_power[SEC_MAX_160]);
+ }
+ 
+ void acs_print_info_header_file(FILE *fp)
+ {
+-	fprintf(fp, "\n #  1y  2y freq  BW    R#   RB# u_p u_bw l_p l_s ls40 ls80  bss  pri aff rdr Ovl int40  c_p  c_s cs40 cs80 txp skip\n");
++	fprintf(fp, "\n  #  1y  2y freq  BW    R#   RB# u_p u_bw l_p l_s ls40 ls80 ls160  bss  pri aff rdr Ovl int40  c_p  c_s cs40 cs80 cs160 tx_p tx_s tx40 tx80 tx160 skip\n");
+ }
+ 
+ void acs_print_cand_no_file(FILE *fp, struct hostapd_iface *iface, int i)
+ {
+ 	struct acs_candidate_table *candidates = iface->mxl_iface.candidates;
+ 
+-	fprintf(fp, "%2d %3d %3d %4d %3d %5d %5d %3d %4d %3d %3d %4d %4d %4d %4d %3d %3d %3d %5d %4d %4d %4d %4d %3d %4c\n",
++	fprintf(fp, "%3d %3d %3d %4d %3d %5d %5d %3d %4d %3d %3d %4d %4d %5d %4d %4d %3d %3d %3d %5d %4d %4d %4d %4d %5d %4d %4d %4d %4d %5d %4c\n",
+ 		i,
+ 		candidates[i].primary,
+ 		candidates[i].secondary,
+@@ -2293,6 +2637,7 @@ void acs_print_cand_no_file(FILE *fp, struct hostapd_iface *iface, int i)
+ 		candidates[i].channel_load[SEC_20],
+ 		candidates[i].channel_load[SEC_MAX_40],
+ 		candidates[i].channel_load[SEC_MAX_80],
++		candidates[i].channel_load[SEC_MAX_160],
+ 		candidates[i].num_bss,
+ 		candidates[i].num_bss_pri,
+ 		candidates[i].radar_affected,
+@@ -2303,7 +2648,12 @@ void acs_print_cand_no_file(FILE *fp, struct hostapd_iface *iface, int i)
+ 		candidates[i].cwi_noise[SEC_20],
+ 		candidates[i].cwi_noise[SEC_MAX_40],
+ 		candidates[i].cwi_noise[SEC_MAX_80],
+-		candidates[i].tx_power,
++		candidates[i].cwi_noise[SEC_MAX_160],
++		candidates[i].tx_power[PRI_20],
++		candidates[i].tx_power[SEC_20],
++		candidates[i].tx_power[SEC_MAX_40],
++		candidates[i].tx_power[SEC_MAX_80],
++		candidates[i].tx_power[SEC_MAX_160],
+ 		candidates[i].exclude_reason);
+ }
+ 
+@@ -2322,6 +2672,7 @@ void acs_print_info_legend(FILE *fp)
+ 		    "       l_s = channel load on secondary channel (valid if width > 20)\n" \
+ 		    "      ls40 = channel load on secondary 40 MHz part (valid if width > 40)\n" \
+ 		    "      ls80 = channel load on secondary 80 MHz part (valid if width > 80)\n" \
++		    "     ls160 = channel load on secondary 160 MHz part (valid if width > 160)\n" \
+ 		    "       bss = number of APs detected overlapping with channel\n" \
+ 		    "       pri = number of APs detected overlapping with primary channel\n" \
+ 		    "       aff = radar affected\n" \
+@@ -2332,7 +2683,12 @@ void acs_print_info_legend(FILE *fp)
+ 		    "       c_s = CWI noise level detected on secondary channel (valid if width > 20)\n" \
+ 		    "      cs40 = CWI noise level detected on secondary 40 MHz part (valid if width > 40)\n" \
+ 		    "      cs80 = CWI noise level detected on secondary 80 MHz part (valid if width > 80)\n" \
+-		    "       txp = TX power\n"
++		    "     cs160 = CWI noise level detected on secondary 160 MHz part (valid if width > 160)\n" \
++		    "      tx_p = TX power of primary channel\n"
++		    "      tx_s = TX power of secondary channel (valid if width > 20)\n"
++		    "      tx40 = TX power of secondary 40 MHz part (valid if width > 40)\n"
++		    "      tx80 = TX power of secondary 80 MHz part (valid if width > 80)\n"
++		    "     tx160 = TX power of secondary 160 MHz part (valid if width > 160)\n"
+ 		    "      skip = reason, why this channel candidate was excluded from ranking/selection: "
+ 				  "r = radar, i = intolerant, o = overlap40, v = overlap VHT/HE, c = CWI noise, "
+ 				  "u = Primary channel utilization <= 20%%, d = disabled\n");
+@@ -2411,7 +2767,7 @@ int acs_set_new_chan_if_ok(struct hostapd_iface *iface, int min_rank_cand_idx, i
+ 			iface->freq = hostapd_hw_get_freq(iface->bss[0], iface->conf->channel);
+ 			iface->conf->secondary_channel = get_secondary_offset(candidates[min_rank_cand_idx].primary, candidates[min_rank_cand_idx].secondary);
+ 			iface->mxl_iface.selected_candidate = min_rank_cand_idx;
+-			hostapd_set_oper_chwidth(iface->conf, get_oper_width(candidates[min_rank_cand_idx].width));
++			hostapd_set_oper_chwidth(iface->conf, mxl_get_oper_width(candidates[min_rank_cand_idx].width));
+ 			acs_smart_adjust_center_freq(iface, candidates[min_rank_cand_idx].chan);
+ 			res = true;
+ 		}
+@@ -2452,6 +2808,7 @@ static inline int acs_apply_penalty_factor(struct hostapd_iface *iface, enum pen
+ 	return iface->conf->mxl_conf.acs_penalty_factors[f] * rank;
+ }
+ 
++#define ACS_RANK_FACTOR0 94
+ #define ACS_RANK_FACTOR1 88
+ #define ACS_RANK_FACTOR2 75
+ #define ACS_RANK_FACTOR3 50
+@@ -2460,6 +2817,7 @@ static inline int acs_apply_penalty_factor(struct hostapd_iface *iface, enum pen
+ #define ACS_RANK_UTIL_FACTOR_40  15000 /* (100 * 100) + 0.5 * (100 * 100) */
+ #define ACS_RANK_UTIL_FACTOR_80  22500 /* (100 * 100) + 0.75 * (100 * 100) + 0.5 * (100 * 100) */
+ #define ACS_RANK_UTIL_FACTOR_160 31300 /* (100 * 100) + 0.88 * (100 * 100) + 0.75 * (100 * 100) + 0.5 * (100 * 100) */
++#define ACS_RANK_UTIL_FACTOR_320 40700 /* (100 ∗ 100) + 0.94 ∗ (100 ∗ 100) + 0.88 ∗ (100 ∗ 100) + 0.75 ∗ (100 ∗ 100) + 0.5 ∗ (100 ∗ 100) */
+ 
+ #define ACS_RANK_UTIL_MIN 20
+ #define ACS_RANK_UTIL_MAX 50
+@@ -2481,6 +2839,15 @@ static int acs_get_rank_bw_factor(int candidate_bw, enum acs_chan_per_bw_elems_e
+ 			return ACS_RANK_FACTOR2;
+ 		else
+ 			return ACS_RANK_FACTOR3;
++	case 320:
++		if (SEC_20 == sec_sb)
++			return ACS_RANK_FACTOR0;
++		else if (SEC_MAX_40 == sec_sb)
++			return ACS_RANK_FACTOR1;
++		else if (SEC_MAX_80 == sec_sb)
++			return ACS_RANK_FACTOR2;
++		else
++			return ACS_RANK_FACTOR3;
+ 	}
+ 
+ 	wpa_printf(MSG_ERROR, "ACS: failed to get rank bw factor for bandwidth %d, secondary subband %d",
+@@ -2490,17 +2857,58 @@ static int acs_get_rank_bw_factor(int candidate_bw, enum acs_chan_per_bw_elems_e
+ }
+ 
+ static bool
+-acs_is_chan_in_sec_80 (struct acs_candidate_table *candidate, int chan)
++acs_is_chan_in_sec (struct acs_candidate_table *candidate, int chan, bool *is_sec80_for_320mhz)
+ {
++	int center_160 = 0;
++	*is_sec80_for_320mhz = true; /* valid only for 320 MHz */
++
+ 	if ((candidate->primary < candidate->chan) &&
+ 	    (chan < candidate->chan))
+-		return false;
++		center_160 = candidate->chan - 16;
+ 
+ 	if ((candidate->primary > candidate->chan) &&
+ 	    (chan > candidate->chan))
+-		return false;
++		center_160 = candidate->chan + 16;
+ 
+-	return true;
++	if (center_160 && (candidate->width == 320)) {
++		if ((candidate->primary < center_160) && (chan < center_160))
++			*is_sec80_for_320mhz = false;
++		if ((candidate->primary > center_160) && (chan > center_160))
++			*is_sec80_for_320mhz = false;
++	}
++
++	return !center_160;
++}
++
++static int get_secondary_chan_index(struct hostapd_hw_modes *mode, int channel)
++{
++	int i = 0;
++
++	/* Find channel powers or index values*/
++	for (i = 0; i < mode->num_channels; i++) {
++                if (mode->channels[i].chan == channel) {
++			return i;
++		}
++	}
++
++	return -EINVAL;
++}
++
++static int acs_check_valid_channel(int channel, bool check_6G, int freq)
++{
++	int res = 1;
++
++	if (!is_6ghz_freq(freq)) {
++		if ((channel >= 68 && channel <= 96) || (channel >= 145 && channel <= 148))
++			res  = 0;
++	}
++
++	if (check_6G) {
++		if ((channel >= 97 && channel <= 113) || (channel >= 185 && channel <= 233))
++			res = 0;
++	}
++
++	return res;
+ }
+ 
+ static void acs_update_load_if_needed(struct acs_candidate_table *candidate, int load,
+@@ -2518,6 +2926,70 @@ static void acs_update_cwi_if_needed(struct acs_candidate_table *candidate, int
+ 		candidate->cwi_noise[sec_sb] = cwi;
+ }
+ 
++static void acs_update_tx_power_if_needed(struct acs_candidate_table *candidate, struct intel_vendor_channel_data *ch_data,
++						enum acs_chan_per_bw_elems_e sec_sb, struct hostapd_hw_modes *mode, int sp_mode)
++{
++	int ch_index = -1, channel = 0;
++	struct hostapd_channel_data *chan;
++
++	switch (sec_sb) {
++	case PRI_20:
++		ch_index = get_secondary_chan_index(mode, ch_data->channel);
++		break;
++	case SEC_20:
++		if (acs_check_valid_channel(ch_data->channel + SEC_20_CH_OFFSET, sp_mode, ch_data->freq)) {
++			channel = ch_data->channel + SEC_20_CH_OFFSET;
++		}
++		else if (acs_check_valid_channel(ch_data->channel - SEC_20_CH_OFFSET, sp_mode, ch_data->freq)) {
++			channel = ch_data->channel - SEC_20_CH_OFFSET;
++		}
++		if (channel)
++			ch_index = get_secondary_chan_index(mode, channel);
++		break;
++	case SEC_MAX_40:
++		channel = mxl_acs_find_center_chan(ch_data->freq, 40);
++		if (acs_check_valid_channel(channel + SEC_MAX_40_CH_OFFSET, sp_mode, ch_data->freq)) {
++			channel += SEC_MAX_40_CH_OFFSET;
++		}
++		else if (acs_check_valid_channel(channel - SEC_MAX_40_CH_OFFSET, sp_mode, ch_data->freq)) {
++			channel -= SEC_MAX_40_CH_OFFSET;
++		}
++		ch_index = get_secondary_chan_index(mode, channel); // segment of secondary 40
++		break;
++	case SEC_MAX_80:
++		channel = mxl_acs_find_center_chan(ch_data->freq, 80);
++		if (acs_check_valid_channel(channel + SEC_MAX_80_CH_OFFSET, sp_mode, ch_data->freq)) {
++			channel += SEC_MAX_80_CH_OFFSET;
++		}
++		else if (acs_check_valid_channel(channel - SEC_MAX_80_CH_OFFSET, sp_mode, ch_data->freq)) {
++			channel -= SEC_MAX_80_CH_OFFSET;
++		}
++		ch_index = get_secondary_chan_index(mode, channel); // segment of secondary 80
++		break;
++	case SEC_MAX_160:
++		channel = mxl_acs_find_center_chan(ch_data->freq, 160);
++		if (acs_check_valid_channel(channel + SEC_MAX_160_CH_OFFSET, sp_mode, ch_data->freq)) {
++			channel += SEC_MAX_160_CH_OFFSET;
++		}
++		else if (acs_check_valid_channel(channel - SEC_MAX_160_CH_OFFSET, sp_mode, ch_data->freq)) {
++			channel -= SEC_MAX_160_CH_OFFSET;
++		}
++		ch_index = get_secondary_chan_index(mode, channel); // segment of secondary 160
++		break;
++	default:
++		wpa_printf(MSG_ERROR, "Invalid Secondary element");
++		break;
++	}
++
++	if(ch_index < 0) {
++		wpa_printf(MSG_ERROR, "Secondary element not found");
++	}
++	else {
++		chan = &mode->channels[ch_index];
++		candidate->tx_power[sec_sb] = chan->max_tx_power;
++	}
++}
++
+ static void acs_calculate_rank_utilization (struct acs_candidate_table *candidate, int rank_primary)
+ {
+ 	int bw_factor, utilization;
+@@ -2535,6 +3007,9 @@ static void acs_calculate_rank_utilization (struct acs_candidate_table *candidat
+ 	case 160:
+ 		bw_factor = ACS_RANK_UTIL_FACTOR_160;
+ 		break;
++	case 320:
++		bw_factor = ACS_RANK_UTIL_FACTOR_320;
++		break;
+ 	default:
+ 		wpa_printf(MSG_ERROR, "Unsupported bandwidth %d", candidate->width);
+ 		return;
+@@ -2557,6 +3032,103 @@ static void acs_calculate_rank_utilization (struct acs_candidate_table *candidat
+ 		   candidate->rank_util_primary, candidate->bw_comp_util);
+ }
+ 
++#ifdef CONFIG_AFC
++static int mxl_acs_get_center_chan_idx_from_freq_range_6ghz(int start_freq, int end_freq, int bandwidth)
++{
++	int center_freq = 0;
++
++	if (mxl_get_oper_width(bandwidth) < 0)
++		return -1;
++
++	center_freq = (start_freq + end_freq) / 2;
++
++	if (!is_6ghz_freq(center_freq))
++		return -1;
++
++	return (center_freq - WAVE_6G_STARTING_FREQ) / 5;
++}
++
++static bool mxl_acs_is_chan_rule_present_parse_power(struct hostapd_iface *iface, int center_idx, int *tx){
++	for (int chan_idx = 0; chan_idx < iface->afc.num_chan_info; chan_idx++) {
++		if(center_idx == iface->afc.chan_info_list[chan_idx].chan){
++			*tx = iface->afc.chan_info_list[chan_idx].power;
++			return true;
++		}
++	}
++	return false;
++}
++
++static bool mxl_acs_is_freq_rule_present_parse_power(struct hostapd_iface *iface, int start_freq, int end_freq, int bw, int *tx) {
++	int afc_bw =0;
++	for (int freq_idx = 0; freq_idx < iface->afc.num_freq_range; freq_idx++) {
++		afc_bw = iface->afc.freq_range[freq_idx].high_freq - iface->afc.freq_range[freq_idx].low_freq;
++		if (!afc_bw)
++			continue;
++		if(start_freq >= iface->afc.freq_range[freq_idx].low_freq && end_freq <= iface->afc.freq_range[freq_idx].high_freq && bw == afc_bw) {
++			*tx = mxl_afc_calculate_psd_to_eirp(iface->afc.freq_range[freq_idx].max_psd,afc_bw);
++			return true;
++		}
++	}
++	return false;
++}
++
++static int mxl_acs_get_chan_id_freq_range_sec_tx(struct hostapd_iface *iface, int freq, int pri, int sec_bw, int *new_freq) {
++	int start_freq = freq - 10;
++	int mid_freq = start_freq + sec_bw;
++	int end_freq = mid_freq + sec_bw;
++	int pri_freq = hostapd_chan_to_freq(pri, true);
++	int sec_bw_start = 0, sec_bw_end = 0, sec_bw_center_chan_idx = 0;
++	int tx = 0;
++
++	if (start_freq < pri_freq && pri_freq < mid_freq) {
++		sec_bw_start = mid_freq;
++		sec_bw_end = mid_freq + sec_bw;
++		*new_freq = start_freq + 10;
++	} else if (mid_freq < pri_freq && pri_freq < end_freq) {
++		sec_bw_end = mid_freq;
++		sec_bw_start = mid_freq - sec_bw;
++		*new_freq = mid_freq + 10;
++	}
++
++	sec_bw_center_chan_idx = mxl_acs_get_center_chan_idx_from_freq_range_6ghz(sec_bw_start, sec_bw_end, sec_bw);
++	if(sec_bw_center_chan_idx == -1)
++		return tx;
++
++	if (!mxl_acs_is_chan_rule_present_parse_power(iface, sec_bw_center_chan_idx, &tx)) {
++		mxl_acs_is_freq_rule_present_parse_power(iface, sec_bw_start, sec_bw_end, sec_bw, &tx);
++	}
++
++	return tx;
++}
++
++static void mxl_acs_tx_power_update(struct hostapd_iface *iface)
++{
++	int i, sub_freq;
++	struct acs_candidate_table *candidates = iface->mxl_iface.candidates;
++
++	for (i = 0; (i < iface->mxl_iface.num_candidates && i < MAX_CANDIDATES); i++) {
++		if (candidates[i].width ==  320) {
++			candidates[i].tx_power[SEC_MAX_160] = mxl_acs_get_chan_id_freq_range_sec_tx(iface, candidates[i].freq, candidates[i].primary, 160, &sub_freq);
++			candidates[i].tx_power[SEC_MAX_160] += 9; /* compensation factor eight channels */
++			candidates[i].tx_power[SEC_MAX_80] = mxl_acs_get_chan_id_freq_range_sec_tx(iface, sub_freq, candidates[i].primary, 80, &sub_freq);
++			candidates[i].tx_power[SEC_MAX_80] += 6; /* compensation factor four channels */
++			candidates[i].tx_power[SEC_MAX_40] = mxl_acs_get_chan_id_freq_range_sec_tx(iface, sub_freq, candidates[i].primary, 40, &sub_freq);
++			candidates[i].tx_power[SEC_MAX_40] += 3; /* compensation factor two channels */
++		}
++		if (candidates[i].width ==  160) {
++			candidates[i].tx_power[SEC_MAX_80] = mxl_acs_get_chan_id_freq_range_sec_tx(iface, candidates[i].freq, candidates[i].primary, 80, &sub_freq);
++			candidates[i].tx_power[SEC_MAX_80] += 6; /* compensation factor four channels */
++			candidates[i].tx_power[SEC_MAX_40] = mxl_acs_get_chan_id_freq_range_sec_tx(iface, sub_freq, candidates[i].primary, 40, &sub_freq);
++			candidates[i].tx_power[SEC_MAX_40] += 3; /* compensation factor two channels */
++		}
++		if (candidates[i].width ==  80) {
++			candidates[i].tx_power[SEC_MAX_40] = mxl_acs_get_chan_id_freq_range_sec_tx(iface, candidates[i].freq, candidates[i].primary, 40, &sub_freq);
++			candidates[i].tx_power[SEC_MAX_40] += 3; /* compensation factor two channels */
++		}
++	}
++}
++#endif
++
+ /* Return: -1: error; 0: stay on the same channel; 1: set new channel */
+ int mxl_acs_recalc_ranks_and_set_chan (struct hostapd_iface *iface, int switch_reason)
+ {
+@@ -2592,14 +3164,15 @@ int mxl_acs_recalc_ranks_and_set_chan (struct hostapd_iface *iface, int switch_r
+ 
+ 	wpa_printf(MSG_DEBUG, "ACS: recalculate candidate table, acs_policy %d, "
+ 			      "acs_switch_thresh %d, acs_bw_comparison %d, acs_noise_threshold %d"
+-			      "acs_grp_priorities_throughput %d-%d-%d-%d, acs_grp_priorities_reach %d-%d-%d-%d",
++			      "acs_grp_priorities_throughput %d-%d-%d-%d-%d, acs_grp_priorities_reach %d-%d-%d-%d-%d",
+ 			      iface->conf->mxl_conf.acs_policy, iface->conf->mxl_conf.acs_switch_thresh,
+ 			      iface->conf->mxl_conf.acs_bw_comparison, iface->conf->mxl_conf.acs_noise_threshold,
+ 			      iface->conf->mxl_conf.acs_grp_priorities_throughput[0],
+ 			      iface->conf->mxl_conf.acs_grp_priorities_throughput[1], iface->conf->mxl_conf.acs_grp_priorities_throughput[2],
+-			      iface->conf->mxl_conf.acs_grp_priorities_throughput[3], iface->conf->mxl_conf.acs_grp_priorities_reach[0],
+-			      iface->conf->mxl_conf.acs_grp_priorities_reach[1], iface->conf->mxl_conf.acs_grp_priorities_reach[2],
+-			      iface->conf->mxl_conf.acs_grp_priorities_reach[3]);
++			      iface->conf->mxl_conf.acs_grp_priorities_throughput[3], iface->conf->mxl_conf.acs_grp_priorities_throughput[4],
++			      iface->conf->mxl_conf.acs_grp_priorities_reach[0], iface->conf->mxl_conf.acs_grp_priorities_reach[1],
++			      iface->conf->mxl_conf.acs_grp_priorities_reach[2], iface->conf->mxl_conf.acs_grp_priorities_reach[3],
++			      iface->conf->mxl_conf.acs_grp_priorities_reach[4]);
+ #ifndef CONFIG_NO_STDOUT_DEBUG
+ 	acs_print_penalty_factors(iface->conf->mxl_conf.acs_penalty_factors);
+ #endif /* CONFIG_NO_STDOUT_DEBUG */
+@@ -2609,6 +3182,10 @@ int mxl_acs_recalc_ranks_and_set_chan (struct hostapd_iface *iface, int switch_r
+ 
+ 	os_get_reltime(&now);
+ 
++#ifdef CONFIG_AFC
++	if (he_reg_is_sp(iface->conf->he_6ghz_reg_pwr_type) && is_6ghz_op_class(iface->conf->op_class))
++		mxl_acs_tx_power_update(iface);
++#endif
+ 	for (i = 0; (i < iface->mxl_iface.num_candidates && i < MAX_CANDIDATES); i++) {
+ 		int cg_idx = CALIB_20;
+ 		int cwi_rank, chan_load_rank, tx_power_rank, num_bss_rank = 0;
+@@ -2627,9 +3204,9 @@ int mxl_acs_recalc_ranks_and_set_chan (struct hostapd_iface *iface, int switch_r
+ 		if ((candidates[i].exclude_reason == ACS_NO_EXCLUSION) ||
+ 		    (candidates[i].exclude_reason == ACS_EXCLUDE_DISABLED)) {
+ 			tx_power_rank = acs_apply_penalty_factor(iface, K_TX_POWER,
+-					MIN(100, ((iface->mxl_iface.max_tx_power - candidates[i].tx_power) * 10 / 8)));
++					MIN(100, ((iface->mxl_iface.max_tx_power - candidates[i].tx_power[PRI_20]) * 10 / 8)));
+ 			wpa_printf(MSG_DEBUG, "ACS calc rank for tx power(%d) and max tx power(%d): %d",
+-				   candidates[i].tx_power, iface->mxl_iface.max_tx_power, tx_power_rank);
++				   candidates[i].tx_power[PRI_20], iface->mxl_iface.max_tx_power, tx_power_rank);
+ 
+ 			if (iface->mxl_iface.max_num_bss_pen)
+ 				num_bss_rank = acs_apply_penalty_factor(iface, K_NUMOFBSS,
+@@ -2648,6 +3225,11 @@ int mxl_acs_recalc_ranks_and_set_chan (struct hostapd_iface *iface, int switch_r
+ 			rank_util_primary = chan_load_rank + cwi_rank;
+ 
+ 			if (candidates[i].width > 20) {
++				tx_power_rank = acs_apply_penalty_factor(iface, K_TX_POWER,
++						MIN(100, ((iface->mxl_iface.max_tx_power - candidates[i].tx_power[SEC_20]) * 10 / 8)));
++				wpa_printf(MSG_DEBUG, "ACS calc secondary 20 rank for tx power(%d): %d",
++					   candidates[i].tx_power[SEC_20], tx_power_rank);
++
+ 				chan_load_rank = acs_apply_penalty_factor(iface, K_CL, candidates[i].channel_load[SEC_20]);
+ 				wpa_printf(MSG_DEBUG, "ACS calc secondary 20 rank for channel load(%d): %d",
+ 					   candidates[i].channel_load[SEC_20], chan_load_rank);
+@@ -2656,10 +3238,15 @@ int mxl_acs_recalc_ranks_and_set_chan (struct hostapd_iface *iface, int switch_r
+ 				wpa_printf(MSG_DEBUG, "ACS calc secondary 20 rank for CWI(%d): %d",
+ 					   candidates[i].cwi_noise[SEC_20], cwi_rank);
+ 
+-				candidates[i].rank += acs_get_rank_bw_factor(candidates[i].width, SEC_20) * (chan_load_rank + cwi_rank) / 100;
++				candidates[i].rank += acs_get_rank_bw_factor(candidates[i].width, SEC_20) * (chan_load_rank + cwi_rank + tx_power_rank) / 100;
+ 			}
+ 
+ 			if (candidates[i].width > 40) {
++				tx_power_rank = acs_apply_penalty_factor(iface, K_TX_POWER,
++						MIN(100, ((iface->mxl_iface.max_tx_power - candidates[i].tx_power[SEC_MAX_40]) * 10 / 8)));
++				wpa_printf(MSG_DEBUG, "ACS calc secondary 40 rank for tx power(%d): %d",
++					   candidates[i].tx_power[SEC_MAX_40], tx_power_rank);
++
+ 				chan_load_rank = acs_apply_penalty_factor(iface, K_CL, candidates[i].channel_load[SEC_MAX_40]);
+ 				wpa_printf(MSG_DEBUG, "ACS calc secondary 40 rank for channel load(%d): %d",
+ 					   candidates[i].channel_load[SEC_MAX_40], chan_load_rank);
+@@ -2668,10 +3255,15 @@ int mxl_acs_recalc_ranks_and_set_chan (struct hostapd_iface *iface, int switch_r
+ 				wpa_printf(MSG_DEBUG, "ACS calc secondary 40 rank for CWI(%d): %d",
+ 					   candidates[i].cwi_noise[SEC_MAX_40], cwi_rank);
+ 
+-				candidates[i].rank += acs_get_rank_bw_factor(candidates[i].width, SEC_MAX_40) * (chan_load_rank + cwi_rank) / 100;
++				candidates[i].rank += acs_get_rank_bw_factor(candidates[i].width, SEC_MAX_40) * (chan_load_rank + cwi_rank + tx_power_rank) / 100;
+ 			}
+ 
+ 			if (candidates[i].width > 80) {
++				tx_power_rank = acs_apply_penalty_factor(iface, K_TX_POWER,
++						MIN(100, ((iface->mxl_iface.max_tx_power - candidates[i].tx_power[SEC_MAX_80]) * 10 / 8)));
++				wpa_printf(MSG_DEBUG, "ACS calc secondary 80 rank for tx power(%d): %d",
++					   candidates[i].tx_power[SEC_MAX_80], tx_power_rank);
++
+ 				chan_load_rank = acs_apply_penalty_factor(iface, K_CL, candidates[i].channel_load[SEC_MAX_80]);
+ 				wpa_printf(MSG_DEBUG, "ACS calc secondary 80 rank for channel load(%d): %d",
+ 					   candidates[i].channel_load[SEC_MAX_80], chan_load_rank);
+@@ -2680,7 +3272,24 @@ int mxl_acs_recalc_ranks_and_set_chan (struct hostapd_iface *iface, int switch_r
+ 				wpa_printf(MSG_DEBUG, "ACS calc secondary 80 rank for CWI(%d): %d",
+ 					   candidates[i].cwi_noise[SEC_MAX_80], cwi_rank);
+ 
+-				candidates[i].rank += acs_get_rank_bw_factor(candidates[i].width, SEC_MAX_80) * (chan_load_rank + cwi_rank) / 100;
++				candidates[i].rank += acs_get_rank_bw_factor(candidates[i].width, SEC_MAX_80) * (chan_load_rank + cwi_rank + tx_power_rank) / 100;
++			}
++
++			if (candidates[i].width > 160) {
++				tx_power_rank = acs_apply_penalty_factor(iface, K_TX_POWER,
++						MIN(100, ((iface->mxl_iface.max_tx_power - candidates[i].tx_power[SEC_MAX_160]) * 10 / 8)));
++				wpa_printf(MSG_DEBUG, "ACS calc secondary 160 rank for tx power(%d): %d",
++					   candidates[i].tx_power[SEC_MAX_160], tx_power_rank);
++
++				chan_load_rank = acs_apply_penalty_factor(iface, K_CL, candidates[i].channel_load[SEC_MAX_160]);
++				wpa_printf(MSG_DEBUG, "ACS calc secondary 160 rank for channel load(%d): %d",
++					   candidates[i].channel_load[SEC_MAX_160], chan_load_rank);
++
++				cwi_rank = acs_apply_penalty_factor(iface, K_CWI, acs_get_cwi_penalty(candidates[i].cwi_noise[SEC_MAX_160]));
++				wpa_printf(MSG_DEBUG, "ACS calc secondary 160 rank for CWI(%d): %d",
++					   candidates[i].cwi_noise[SEC_MAX_160], cwi_rank);
++
++				candidates[i].rank += acs_get_rank_bw_factor(candidates[i].width, SEC_MAX_160) * (chan_load_rank + cwi_rank + tx_power_rank) / 100;
+ 			}
+ 
+ 			candidates[i].rank = iface->conf->mxl_conf.acs_chan_cust_penalty[candidates[i].chan] * candidates[i].rank / 100;
+@@ -2719,6 +3328,9 @@ int mxl_acs_recalc_ranks_and_set_chan (struct hostapd_iface *iface, int switch_r
+ 		case 160:
+ 			cg_idx = CALIB_160;
+ 			break;
++		case 320:
++			cg_idx = CALIB_320;
++			break;
+ 		default:
+ 			wpa_printf(MSG_ERROR, "Wrong width");
+ 			assert(0);
+@@ -2825,12 +3437,16 @@ set_chan:
+ 	iface->conf->channel = iface->conf->mxl_conf.acs_fallback_chan.primary;
+ 	iface->freq = hostapd_hw_get_freq(iface->bss[0], iface->conf->channel);
+ 	iface->conf->secondary_channel = get_secondary_offset(iface->conf->mxl_conf.acs_fallback_chan.primary, iface->conf->mxl_conf.acs_fallback_chan.secondary);
+-	hostapd_set_oper_chwidth(iface->conf, get_oper_width(iface->conf->mxl_conf.acs_fallback_chan.width));
++	hostapd_set_oper_chwidth(iface->conf, mxl_get_oper_width(iface->conf->mxl_conf.acs_fallback_chan.width));
+ 	acs_smart_adjust_center_freq(iface, 0);
+ 	wpa_printf(MSG_DEBUG, "ACS: exit recalculate, using fallback channel");
+ 	fprintf(fp_hist, "ACS: using fallback channel\n");
+ 	res = true;
+ 
++	/* WHM to trigger if ACS selects fallback channel */
++	wpa_printf(MSG_ERROR, "WHM-ACS: using fallback channel new channel %d, width %d", iface->conf->channel,hostapd_get_oper_chwidth(iface->conf));
++	hostapd_handle_acs_whm_warning(iface);
++
+ 	goto end;
+ 
+ stay_on_chan:
+@@ -2917,11 +3533,14 @@ static void acs_pop_chandef(struct hostapd_iface *iface, mxl_acs_chandef *chan)
+ 	iface->mxl_iface.selected_candidate = chan->sel_cand;
+ }
+ 
++
+ void mxl_hostapd_update_channel_data(struct hostapd_iface *iface, const u8 *data, size_t data_len)
+ {
+ 	struct intel_vendor_channel_data *ch_data = (struct intel_vendor_channel_data *) data;
+ 	struct acs_candidate_table *candidates = iface->mxl_iface.candidates;
++	struct hostapd_hw_modes *mode = iface->current_mode;
+ 	int j;
++	bool sp_mode = false;
+ 
+ 	if (!data || (data_len != sizeof(struct intel_vendor_channel_data))) {
+ 		wpa_printf(MSG_ERROR, "bad channel data event, size %zu expected %zu",
+@@ -3015,6 +3634,13 @@ void mxl_hostapd_update_channel_data(struct hostapd_iface *iface, const u8 *data
+ 		   ch_data->ext_sta_rx,
+ 		   ch_data->filled_mask);
+ 
++
++	if (is_6ghz_freq(ch_data->freq)) {
++		if (iface->mxl_iface.he_6ghz_reg_pwr_mode == HE_REG_INFO_6GHZ_AP_TYPE_SP) {
++			sp_mode = true;
++		}
++	}
++
+ 	for (j = 0; j < iface->mxl_iface.num_candidates; j++) {
+ 		candidates[j].filled_mask = ch_data->filled_mask;
+ 
+@@ -3030,10 +3656,10 @@ void mxl_hostapd_update_channel_data(struct hostapd_iface *iface, const u8 *data
+ 				candidates[j].cwi_noise[PRI_20] = ch_data->cwi_noise;
+ 
+ 			if (ch_data->filled_mask & CHDATA_TX_POWER) {
+-				candidates[j].tx_power = ch_data->tx_power;
++				candidates[j].tx_power[PRI_20] = ch_data->tx_power;
+ 				if (ch_data->tx_power > iface->mxl_iface.max_tx_power) iface->mxl_iface.max_tx_power = ch_data->tx_power;
++				acs_update_tx_power_if_needed(&candidates[j], ch_data, PRI_20, mode, sp_mode);
+ 			}
+-
+ 			if ((20 == candidates[j].width) &&
+ 			    (ch_data->filled_mask & CHDATA_ALL_BITS) &&
+ 			    (ch_data->filled_mask & CHDATA_SCAN_MODE))
+@@ -3045,20 +3671,51 @@ void mxl_hostapd_update_channel_data(struct hostapd_iface *iface, const u8 *data
+ 
+ 			if (ch_data->filled_mask & CHDATA_CWI_NOISE)
+ 				candidates[j].cwi_noise[SEC_20] = ch_data->cwi_noise;
++
++			if (ch_data->filled_mask & CHDATA_TX_POWER) {
++				candidates[j].tx_power[SEC_20] = ch_data->tx_power;
++				/*Fill in tx_power already received in hapd */
++				acs_update_tx_power_if_needed(&candidates[j], ch_data, SEC_20, mode, sp_mode);
++			}
+ 		} else if ((candidates[j].width > 40) &&
+ 			   (ch_data->filled_mask & CHDATA_CWI_NOISE) && (ch_data->filled_mask & CHDATA_LOAD) &&
+ 			   channels_overlap(ch_data->freq, 20, candidates[j].freq, candidates[j].width)) {
++			bool is_sec80_for_320mhz = false; /* valid only for 320MHz candidate */
+ 
+ 			if (candidates[j].width == 80) {
+ 				acs_update_load_if_needed(&candidates[j], ch_data->load, SEC_MAX_40);
+ 				acs_update_cwi_if_needed(&candidates[j], ch_data->cwi_noise, SEC_MAX_40);
++
++				/*Fill in tx_power already received in hapd */
++				acs_update_tx_power_if_needed(&candidates[j], ch_data, SEC_MAX_40, mode, sp_mode);
+ 			} else if (candidates[j].width == 160) {
+-				if (acs_is_chan_in_sec_80(&candidates[j], ch_data->channel)) {
++				if (acs_is_chan_in_sec(&candidates[j], ch_data->channel, &is_sec80_for_320mhz)) {
++					acs_update_load_if_needed(&candidates[j], ch_data->load, SEC_MAX_80);
++					acs_update_cwi_if_needed(&candidates[j], ch_data->cwi_noise, SEC_MAX_80);
++					/*Fill in tx_power already received in hapd */
++					acs_update_tx_power_if_needed(&candidates[j], ch_data, SEC_MAX_80, mode, sp_mode);
++				} else {
++					acs_update_load_if_needed(&candidates[j], ch_data->load, SEC_MAX_40);
++					acs_update_cwi_if_needed(&candidates[j], ch_data->cwi_noise, SEC_MAX_40);
++					/*Fill in tx_power already received in hapd */
++					acs_update_tx_power_if_needed(&candidates[j], ch_data, SEC_MAX_40, mode, sp_mode);
++				}
++			} else if (candidates[j].width == 320) {
++				if (acs_is_chan_in_sec(&candidates[j], ch_data->channel, &is_sec80_for_320mhz)) {
++					acs_update_load_if_needed(&candidates[j], ch_data->load, SEC_MAX_160);
++					acs_update_cwi_if_needed(&candidates[j], ch_data->cwi_noise, SEC_MAX_160);
++					/*Fill in tx_power already received in hapd */
++					acs_update_tx_power_if_needed(&candidates[j], ch_data, SEC_MAX_160, mode, sp_mode);
++				} else if (is_sec80_for_320mhz) {
+ 					acs_update_load_if_needed(&candidates[j], ch_data->load, SEC_MAX_80);
+ 					acs_update_cwi_if_needed(&candidates[j], ch_data->cwi_noise, SEC_MAX_80);
++					/*Fill in tx_power already received in hapd */
++					acs_update_tx_power_if_needed(&candidates[j], ch_data, SEC_MAX_80, mode, sp_mode);
+ 				} else {
+ 					acs_update_load_if_needed(&candidates[j], ch_data->load, SEC_MAX_40);
+ 					acs_update_cwi_if_needed(&candidates[j], ch_data->cwi_noise, SEC_MAX_40);
++					/*Fill in tx_power already received in hapd */
++					acs_update_tx_power_if_needed(&candidates[j], ch_data, SEC_MAX_40, mode, sp_mode);
+ 				}
+ 			}
+ 		}
+@@ -3139,7 +3796,6 @@ void mxl_acs_radar_switch(struct hostapd_iface *iface)
+ 		hostapd_disable_iface(iface);
+ 		wpa_printf(MSG_ERROR, "Unable to switch channel on radar detection !");
+ 	}
+-
+ }
+ 
+ int mxl_hostapd_acs_get_candidates_rank_idx(struct hostapd_iface *iface,
+@@ -3444,6 +4100,11 @@ bool mxl_acs_should_skip_freq(struct hostapd_iface *iface, struct hostapd_channe
+ 					return true;
+ 				break;
+ 
++			case SCAN_6G_UNII5_UNII7_BAND:
++				if(!(mxl_is_6ghz_unii5_unii7(chan->freq)))
++					return true;
++				break;
++
+ 			default:
+ 				wpa_printf(MSG_INFO, "6G ACS : Invalid scan type");
+ 		}
+@@ -3483,7 +4144,8 @@ void mxl_smart_acs_scan_complete(struct hostapd_iface *iface)
+ 
+ 	if (is_6ghz_op_class(iface->conf->op_class)) {
+ 		if (iface->mxl_iface.acs_6g_scan_type == SCAN_6G_FULL_BAND ||
+-			iface->mxl_iface.acs_6g_scan_type == SCAN_6G_RNR_PASSIVE)
++			iface->mxl_iface.acs_6g_scan_type == SCAN_6G_RNR_PASSIVE ||
++			iface->mxl_iface.acs_6g_scan_type == SCAN_6G_UNII5_UNII7_BAND)
+ 			iface->mxl_iface.acs_6g_scan_status = SCAN_6G_COMPLETE;
+ 
+ 		if (iface->mxl_iface.acs_6g_scan_status != SCAN_6G_COMPLETE) {
+@@ -3519,6 +4181,16 @@ void mxl_smart_acs_scan_complete(struct hostapd_iface *iface)
+ 		int count;
+ 		for (count = 0; count < iface->interfaces->count; count++) {
+ 			if (is_6ghz_op_class(iface->interfaces->iface[count]->conf->op_class))	{
++				/* Proceed with additional scan only if the interfaces are not disabled.
++				 * If so, it means the Station interface is controlling the radio and
++				 * the Client mode is enabled.
++				 */
++				if (iface->interfaces->iface[count]->state == HAPD_IFACE_DISABLED) {
++					wpa_printf(MSG_ERROR, "ACS: %s interface is disabled, can't continue",
++					iface->interfaces->iface[count]->conf ? iface->interfaces->iface[count]->conf->bss[0]->iface : "N/A");
++					mxl_acs_restore_6g_scan_states(iface);
++					continue;
++				}
+ 				/* Check if 6GHz is Really waiting for lower bands for RNR data to receive */
+ 				if (iface->interfaces->iface[count]->mxl_iface.acs_6g_scan_type == SCAN_6G_RNR_PASSIVE &&
+ 					iface->interfaces->iface[count]->mxl_iface.acs_6g_scan_status == SCAN_6G_WAITING) {
+@@ -3580,6 +4252,23 @@ int mxl_hostapd_acs_completed(struct hostapd_iface *iface, int err, int set_chan
+ 			hostapd_set_state(iface, HAPD_IFACE_ACS_DONE);
+ 			wpa_msg(iface->bss[0]->msg_ctx, MSG_INFO, ACS_EVENT_COMPLETED "SCAN");
+ 		}
++		/* WHM to trigger warnning.
++		 * if it selects bandwidth < 160 for 5G
++		 * and bandwidth < 40 for 2G.
++		 */
++		int ch_width = mxl_hostapd_get_num_width(hostapd_get_oper_chwidth(iface->conf), iface->conf->secondary_channel);
++		if (WAVE_FREQ_IS_5G(chan->freq) || WAVE_FREQ_IS_6G(chan->freq)) {
++			if (ch_width < 160) {
++				wpa_printf(MSG_ERROR, "WHM-ACS, Selected a lower bandwidth %d for %s band",
++					ch_width, (WAVE_FREQ_IS_5G(chan->freq) ? "5G" : "6G"));
++				hostapd_handle_acs_whm_warning(iface);
++			}
++		} else if (chan->freq < WAVE_FIRST_5G_FREQ) {
++			if (ch_width < 40) {
++				wpa_printf(MSG_ERROR,"WHM-ACS, Selected a lower bandwidth %d for 2G band", ch_width);
++				hostapd_handle_acs_whm_warning(iface);
++			}
++		}
+ 		break;
+ 	case HOSTAPD_CHAN_ACS:
+ 		wpa_printf(MSG_ERROR, "ACS error - reported complete, but no result available");
+@@ -3663,8 +4352,26 @@ int mxl_acs_start(struct hostapd_iface *iface)
+ 
+ void mxl_event_scan_results(struct hostapd_data *hapd, union wpa_event_data *data)
+ {
++	if (hapd->iface->mxl_iface.retrigger_acs) {
++		hapd->iface->mxl_iface.retrigger_acs = false;
++		if (data->scan_info.aborted && !hapd->iface->cac_started) {
++			if (mxl_acs_start(hapd->iface))
++				wpa_printf(MSG_INFO, "ACS: Failed to restart ACS");
++		}
++		return;
++	}
++
++	if (hapd->iface->scan_cb)
++		hapd->iface->scan_cb(hapd->iface);
++
+ 	if (!hapd->iface->conf->mxl_conf.acs_init_done)
+ 		mxl_acs_recalc_ranks_and_set_chan(hapd->iface, SWR_BG_SCAN);
++
++	if (hapd->iface->mxl_iface.cac_required){
++		wpa_printf(MSG_DEBUG, "CAC pending, need to restart CAC");
++		hapd->iface->mxl_iface.cac_required = 0;
++		mxl_hostapd_dfs_cac_restart(hapd->iface);
++	}
+ }
+ 
+ 
+@@ -3677,8 +4384,10 @@ void mxl_acs_init_defaults(struct hostapd_iface *iface)
+ 		/* PRI_20 and SEC_20 are overwritten, so no need to initialize */
+ 		candidates[i].channel_load[SEC_MAX_40] = 0;
+ 		candidates[i].channel_load[SEC_MAX_80] = 0;
++		candidates[i].channel_load[SEC_MAX_160] = 0;
+ 		candidates[i].cwi_noise[SEC_MAX_40] = 0;
+ 		candidates[i].cwi_noise[SEC_MAX_80] = 0;
++		candidates[i].cwi_noise[SEC_MAX_160] = 0;
+ 	}
+ }
+ 
+diff --git a/src/ap/mxl_acs.h b/src/ap/mxl_acs.h
+index ba49de19d..f8eb73d89 100644
+--- a/src/ap/mxl_acs.h
++++ b/src/ap/mxl_acs.h
+@@ -18,21 +18,25 @@
+ #include "../drivers/driver.h"
+ struct hostapd_iface;
+ 
+-/* 6GHz channel candidates: 59 20MHz, (29*2) 40MHz, (14*4) 80MHz, (7*8) 160MHz */
++#define HOSTAPD_CHAN_RESTRICTED 0x10000000
++
++/* 6GHz channel candidates: 59 20MHz, (29*2) 40MHz, (14*4) 80MHz, (7*8) 160MHz (3*16) 320 MHz */
+ #define NUM_20MHZ_IN_40MHZ		2
+ #define NUM_20MHZ_IN_80MHZ		4
+ #define NUM_20MHZ_IN_160MHZ		8
++#define NUM_20MHZ_IN_320MHZ		16
+ 
+ #define NUM_CHAN_PAIRS_40_24G	18
+-#define NUM_CHAN_PAIRS_40_5G	24
+-#define NUM_CHAN_PAIRS_80		24
+-#define NUM_CHAN_PAIRS_160		16
++#define NUM_CHAN_PAIRS_40_5G	28
++#define NUM_CHAN_PAIRS_80		28
++#define NUM_CHAN_PAIRS_160		24
+ 
+ #define NUM_CHANS_20_6G			(59)
+ #define NUM_CHAN_PAIRS_40_6G	((NUM_CHANS_20_6G >> 1) * NUM_20MHZ_IN_40MHZ)
+ #define NUM_CHAN_PAIRS_80_6G	((NUM_CHAN_PAIRS_40_6G >> 1) * NUM_20MHZ_IN_80MHZ)
+ #define NUM_CHAN_PAIRS_160_6G	((NUM_CHAN_PAIRS_80_6G >> 1) * NUM_20MHZ_IN_160MHZ)
+-#define MAX_CANDIDATES			(NUM_CHANS_20_6G + NUM_CHAN_PAIRS_40_6G + NUM_CHAN_PAIRS_80_6G + NUM_CHAN_PAIRS_160_6G)
++#define NUM_CHAN_PAIRS_320_6G	((NUM_CHAN_PAIRS_160_6G >> 4) * NUM_20MHZ_IN_320MHZ)
++#define MAX_CANDIDATES			(NUM_CHANS_20_6G + NUM_CHAN_PAIRS_40_6G + NUM_CHAN_PAIRS_80_6G + NUM_CHAN_PAIRS_160_6G + (2 * NUM_CHAN_PAIRS_320_6G))
+ 
+ #define ACS_EXCLUDE_RADAR				'r'
+ #define ACS_EXCLUDE_INTOLERANT			'i'
+@@ -44,6 +48,12 @@ struct hostapd_iface;
+ #define ACS_EXCLUDE_LOW_PRIMARY_UTIL	'u'
+ #define ACS_NO_EXCLUSION				' '
+ 
++#define HOSTAP_6GHZ_PSD_20MHZ_MIN			-127 // -63.5 dBm in 0.5dB steps
++#define HOSTAP_6GHZ_PSD_20MHZ_MAX			126 // 63 dBm in 0.5dB steps
++#define HOSTAP_6GHZ_10LOG_20MHZ				13 // 10log(20)
++#define HOSTAP_6GHZ_CONVERT_HALF_DB_UNIT	2 // to convert to 0.5db unit
++#define HOSTAPD_BYTE_2S_COMPLEMENT			(1<<8)
++
+ #define CHDATA_NOISE_FLOOR		1
+ #define CHDATA_BUSY_TIME		2
+ #define CHDATA_TOTAL_TIME		4
+@@ -67,6 +77,7 @@ enum acs_chan_per_bw_elems_e {
+ 	SEC_20,
+ 	SEC_MAX_40,
+ 	SEC_MAX_80,
++	SEC_MAX_160,
+ 	ACS_NUM_BW_ELEMS,
+ };
+ 
+@@ -75,6 +86,7 @@ typedef struct {
+ 	u32 secondary;
+ } channel_pair;
+ 
++/* for 80/160/320 */
+ typedef struct {
+ 	u32 chan_no;
+ 	u32 primary;
+@@ -108,7 +120,7 @@ typedef struct acs_candidate_table
+ 	struct os_reltime ts_overlap_vht_he; // Timestamp of overlapping VHT / HE detected
+ 	struct os_reltime ts_intolerant40;   // Timestamp of intolerant 40 MHz detected
+ 	int cwi_noise[ACS_NUM_BW_ELEMS];
+-	u32 tx_power;
++	u32 tx_power[ACS_NUM_BW_ELEMS];
+ 	u32 channel_load[ACS_NUM_BW_ELEMS];
+ 	u32 filled_mask;
+ 	char exclude_reason;
+@@ -130,6 +142,8 @@ extern mxl_acs_chan	g_channels160[NUM_CHAN_PAIRS_160];
+ extern channel_pair	g_channel_pairs_40_6G[NUM_CHAN_PAIRS_40_6G];
+ extern mxl_acs_chan	g_channels80_6G[NUM_CHAN_PAIRS_80_6G];
+ extern mxl_acs_chan	g_channels160_6G[NUM_CHAN_PAIRS_160_6G];
++extern mxl_acs_chan	g_channels320_1_6G[NUM_CHAN_PAIRS_320_6G];
++extern mxl_acs_chan	g_channels320_2_6G[NUM_CHAN_PAIRS_320_6G];
+ 
+ int mxl_acs_recalc_ranks_and_set_chan(struct hostapd_iface *iface, int switch_reason);
+ void mxl_acs_update_intolerant_channels(struct hostapd_iface *iface, u8 chan);
+diff --git a/src/ap/mxl_config.h b/src/ap/mxl_config.h
+index b758cbcf1..631b25ecc 100644
+--- a/src/ap/mxl_config.h
++++ b/src/ap/mxl_config.h
+@@ -28,7 +28,7 @@ struct hostapd_bss_config;
+ #define ACS_PEN_MAX                     1000
+ #define ACS_PEN_DEFAULT                 100
+ #define ACS_PEN_DEFAULT_WBSS            50
+-#define ACS_NUM_GRP_PRIORITIES          4
++#define ACS_NUM_GRP_PRIORITIES          5
+ #define ACS_MAX_CHANNELS                (233+1)
+ #define ACS_SWITCH_THRESHOLD            100
+ #define ACS_MIN_NUM_SCANS               1
+@@ -43,6 +43,19 @@ typedef struct acs_chan {
+         int width;
+ } acs_chan;
+ 
++struct acs_exclude {
++	int op_class;
++	int channel;
++};
++
++enum acs_eht_modes {
++	ACS_EHT_MODE_MIN,
++	ACS_EHT_MODE_320_0 = ACS_EHT_MODE_MIN,
++	ACS_EHT_MODE_320_1,
++	ACS_EHT_MODE_320_2,
++	ACS_EHT_MODE_MAX = ACS_EHT_MODE_320_2
++};
++
+ int mxl_config_check_smart_acs_config(struct hostapd_config *conf, struct hostapd_bss_config *bss, const char *buf, char* pos, int line);
+ int mxl_hostapd_acs_config_defaults(struct hostapd_config *conf);
+ void mxl_hostapd_config_fill_acs(struct hostapd_config *conf, char *pos);
+@@ -386,6 +399,7 @@ struct mxl_hostapd_config {
+ 	int *acs_6g_opt_ch_list;
+ 	int acs_6g_opt_ch_count;
+ 	int acs_rnr_scan_timeout;
++	enum acs_eht_modes acs_eht_mode;
+ 	int acs_6g_punct_mode;
+ 	u16 acs_bgscan_interval;
+ 	struct acs_exclude *acs_exclude_opclass_ch_list;
+-- 
+2.43.0
+

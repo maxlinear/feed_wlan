@@ -1,0 +1,55 @@
+From 08a9a9888e43940d8880d34a47820c6f8e5c1981 Mon Sep 17 00:00:00 2001
+From: mj <mj@maxlinear.com>
+Date: Sat, 8 Mar 2025 08:27:02 +0530
+Subject: [PATCH] WLANRTSYS-88422 validate mac address and link id
+
+Fix: Send request SID if mac address and link id valid
+---
+ src/ap/mxl_hostapd.c | 17 +++++++++++++++++
+ 1 file changed, 17 insertions(+)
+
+diff --git a/src/ap/mxl_hostapd.c b/src/ap/mxl_hostapd.c
+index 4b24b7bfe..688937a10 100644
+--- a/src/ap/mxl_hostapd.c
++++ b/src/ap/mxl_hostapd.c
+@@ -101,6 +101,11 @@ void mxl_hostapd_sta_add_params(struct hostapd_data *hapd, struct hostapd_sta_ad
+ 	}
+ }
+ 
++static bool is_valid_link_id(u8 link_id)
++{
++	return ((link_id == LINK_ID_2G) || (link_id == LINK_ID_5G) || (link_id == LINK_ID_6G));
++}
++
+ int mxl_hostapd_get_aid(struct hostapd_data *hapd, struct sta_info *sta)
+ {
+ 	struct mxl_hostapd_iface *mxl_iface = &hapd->iface->mxl_iface;
+@@ -192,6 +197,12 @@ int mxl_hostapd_get_aid(struct hostapd_data *hapd, struct sta_info *sta)
+ 				struct mxl_vendor_ml_sid ml_sid = {0};
+ 				struct mxl_ml_sta_mac_addr ml_sta_mac = {0}; /*= os_malloc(sizeof( struct mxl_ml_sta_mac_addr));*/
+ 				struct mxl_ml_sta_info ml_sta_info;/* = os_malloc(sizeof(ml_sta_info));*/
++				/* Validate Link ID */
++				if (!is_valid_link_id(hapd->conf->mxl_bss_conf.link_id)) {
++					wpa_printf(MSG_ERROR, "LINK_ID is not valid");
++					sta->aid = 0;
++					return -1;
++				}
+ 
+ 				if (hapd->conf->mxl_bss_conf.link_id == LINK_ID_2G) {
+ 					ml_sta_mac.assoc_link_bitmap |= 1 << LINK_ID_2G;
+@@ -206,6 +217,12 @@ int mxl_hostapd_get_aid(struct hostapd_data *hapd, struct sta_info *sta)
+ 					memcpy_s(ml_sta_mac.addr3, ETH_ALEN, sta->addr, ETH_ALEN);
+ 				}
+ 				if(sta->mxl_sta_info.linked_sta) {
++					/* Validate Sibling Link ID */
++					if (!is_valid_link_id(hapd->mxl_data.sibling_hapd->conf->mxl_bss_conf.link_id)) {
++						wpa_printf(MSG_ERROR, "Sibling Link ID is not valid");
++						sta->aid = 0;
++						return -1;
++					}
+ 					if (hapd->mxl_data.sibling_hapd->conf->mxl_bss_conf.link_id == LINK_ID_2G) {
+ 						ml_sta_mac.assoc_link_bitmap |= 1 << LINK_ID_2G;
+ 						memcpy_s(ml_sta_mac.addr1, ETH_ALEN, sta->mxl_sta_info.linked_sta->addr, ETH_ALEN);
+-- 
+2.43.0
+

@@ -27,6 +27,12 @@ CONFIG_IEEE80211BE_MXL_MLO=y
 # MXL vendor extensions to nl80211
 CONFIG_DRIVER_NL80211_MXL=y
 
+# EPCS support
+CONFIG_EPCS_MXL=y
+
+# SCS support
+CONFIG_SCS_MXL=y
+
 # QCA vendor extensions to nl80211
 #CONFIG_DRIVER_NL80211_QCA=y
 

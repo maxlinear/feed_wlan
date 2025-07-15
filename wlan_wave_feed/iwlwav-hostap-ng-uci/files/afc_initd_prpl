@@ -1,0 +1,33 @@
+#!/bin/sh /etc/rc.common
+
+START=99
+STOP=10
+
+USE_PROCD=1
+
+start_service() {
+
+    # Function to extract value from JSON
+    extract_value() {
+        json=$1
+        key=$2
+        echo "$json" | grep -o "\"$key\":[^,]*" | sed "s/.*: //;s/[\",]//g"
+    }
+
+    # Read the value from the iw
+    json_output=$(ubus call WiFi.Radio.3.Vendor.AFC _get)
+    local server_url=$(extract_value "$json_output" "AfcdServerConf")
+
+    if [ -z "$server_url" ]; then
+        server_url="https://maxlinear -p 8080 -e"
+    fi
+
+    procd_open_instance
+    procd_set_param command /usr/sbin/afcd -u $server_url
+    procd_set_param respawn
+    procd_close_instance
+}
+
+stop_service() {
+    killall afcd
+}

@@ -1,0 +1,34 @@
+From fb66650ac70aac7b8a1306b19a84b31f31b7f11d Mon Sep 17 00:00:00 2001
+From: "vsannidhi@maxlinear.com" <vsannidhi@lvdocker7.lvsw.maxlinear.com>
+Date: Fri, 4 Apr 2025 04:52:35 -0700
+Subject: [PATCH] WLANRTSYS-87374 [WAV700][SingleBand]Unable to connect the
+ Asus client in 6GHz single band.
+
+Issue: Asus Rog mobile cannot associate to 6G BSS (non ML Vaps)
+
+Root cause: As the Asus STA is sending ML Probe request, even though there is no colocated ML enabled BSS, the current hostap considers it as a valid ML Probe request and proceeds for DA check. The destination address check fails and ML Probe request is dropped. Hence the association fails.
+
+Fix: Modified the code so as to check for the presence of colocated ML enabled BSS and if there is none, send normal probe response (without ML IE).
+
+Unit test: verified that the Asus Rog mobile associates successfully.
+---
+ src/ap/beacon.c | 3 ++-
+ 1 file changed, 2 insertions(+), 1 deletion(-)
+
+diff --git a/src/ap/beacon.c b/src/ap/beacon.c
+index ec1d37962..eb1ac10dc 100644
+--- a/src/ap/beacon.c
++++ b/src/ap/beacon.c
+@@ -1668,7 +1668,8 @@ void handle_probe_req(struct hostapd_data *hapd,
+ 	}
+ 
+ #ifdef CONFIG_IEEE80211BE_MXL_MLO
+-	if ((elems.probe_req_mle) && (hapd->iconf->multibss_enable)) {
++	if (mxl_is_ml_vap_configured(hapd->iface) &&
++			(elems.probe_req_mle) && (hapd->iconf->multibss_enable)) {
+ 		if (NULL == (hapd = mxl_hostap_ml_probe_req_address_check(hapd, mgmt, &elems))) {
+ 			return;
+ 		}
+-- 
+2.43.0
+

@@ -1,0 +1,110 @@
+From 3536b58a6c2c3649ad327c16626c596d01f20f59 Mon Sep 17 00:00:00 2001
+From: Jouni Malinen <quic_jouni@quicinc.com>
+Date: Tue, 30 Jul 2024 12:15:02 +0300
+Subject: [PATCH] RSNO: Remove unused override element generation
+
+The separate RSNOE/RSNO2E/RSNXOE buffers were not actually used on the
+Authenticator, so remove them.
+
+Signed-off-by: Jouni Malinen <quic_jouni@quicinc.com>
+---
+ src/ap/wpa_auth.c    |  3 ---
+ src/ap/wpa_auth_i.h  |  3 ---
+ src/ap/wpa_auth_ie.c | 53 --------------------------------------------
+ 3 files changed, 59 deletions(-)
+
+diff --git a/src/ap/wpa_auth.c b/src/ap/wpa_auth.c
+index c41bd61fb..b39811cff 100644
+--- a/src/ap/wpa_auth.c
++++ b/src/ap/wpa_auth.c
+@@ -676,9 +676,6 @@ void wpa_deinit(struct wpa_authenticator *wpa_auth)
+ 
+ 
+ 	os_free(wpa_auth->wpa_ie);
+-	os_free(wpa_auth->rsne_override);
+-	os_free(wpa_auth->rsne_override_2);
+-	os_free(wpa_auth->rsnxe_override);
+ 
+ 	group = wpa_auth->group;
+ 	while (group) {
+diff --git a/src/ap/wpa_auth_i.h b/src/ap/wpa_auth_i.h
+index e486b84d2..3be1c56ea 100644
+--- a/src/ap/wpa_auth_i.h
++++ b/src/ap/wpa_auth_i.h
+@@ -262,9 +262,6 @@ struct wpa_authenticator {
+ 
+ 	u8 *wpa_ie;
+ 	size_t wpa_ie_len;
+-	u8 *rsne_override; /* RSNE with overridden payload */
+-	u8 *rsne_override_2; /* RSNE with overridden (2) payload */
+-	u8 *rsnxe_override; /* RSNXE with overridden payload */
+ 
+ 	u8 addr[ETH_ALEN];
+ 
+diff --git a/src/ap/wpa_auth_ie.c b/src/ap/wpa_auth_ie.c
+index d42b7d7e5..c9be2f0b9 100644
+--- a/src/ap/wpa_auth_ie.c
++++ b/src/ap/wpa_auth_ie.c
+@@ -751,59 +751,6 @@ int wpa_auth_gen_wpa_ie(struct wpa_authenticator *wpa_auth)
+ 	os_memcpy(wpa_auth->wpa_ie, buf, pos - buf);
+ 	wpa_auth->wpa_ie_len = pos - buf;
+ 
+-	if ((wpa_auth->conf.wpa & WPA_PROTO_RSN) &&
+-	    wpa_auth->conf.rsn_override_key_mgmt) {
+-		res = wpa_write_rsne_override(&wpa_auth->conf, buf,
+-					      sizeof(buf));
+-		if (res < 0)
+-			return res;
+-		os_free(wpa_auth->rsne_override);
+-		wpa_auth->rsne_override = os_malloc(res - 4);
+-		if (!wpa_auth->rsne_override)
+-			return -1;
+-		pos = wpa_auth->rsne_override;
+-		*pos++ = WLAN_EID_RSN;
+-		*pos++ = res - 2 - 4;
+-		os_memcpy(pos, &buf[2 + 4], res - 2 - 4);
+-	}
+-
+-	if ((wpa_auth->conf.wpa & WPA_PROTO_RSN) &&
+-	    wpa_auth->conf.rsn_override_key_mgmt_2) {
+-		res = wpa_write_rsne_override_2(&wpa_auth->conf, buf,
+-						sizeof(buf));
+-		if (res < 0)
+-			return res;
+-		os_free(wpa_auth->rsne_override_2);
+-		wpa_auth->rsne_override_2 = os_malloc(res - 4);
+-		if (!wpa_auth->rsne_override_2)
+-			return -1;
+-		pos = wpa_auth->rsne_override_2;
+-		*pos++ = WLAN_EID_RSN;
+-		*pos++ = res - 2 - 4;
+-		os_memcpy(pos, &buf[2 + 4], res - 2 - 4);
+-	}
+-
+-	if ((wpa_auth->conf.wpa & WPA_PROTO_RSN) &&
+-	    (wpa_auth->conf.rsn_override_key_mgmt ||
+-	     wpa_auth->conf.rsn_override_key_mgmt_2)) {
+-		res = wpa_write_rsnxe_override(&wpa_auth->conf, buf,
+-					       sizeof(buf));
+-		if (res < 0)
+-			return res;
+-		os_free(wpa_auth->rsnxe_override);
+-		if (res == 0) {
+-			wpa_auth->rsnxe_override = NULL;
+-			return 0;
+-		}
+-		wpa_auth->rsnxe_override = os_malloc(res - 4);
+-		if (!wpa_auth->rsnxe_override)
+-			return -1;
+-		pos = wpa_auth->rsnxe_override;
+-		*pos++ = WLAN_EID_RSNX;
+-		*pos++ = res - 2 - 4;
+-		os_memcpy(pos, &buf[2 + 4], res - 2 - 4);
+-	}
+-
+ 	return 0;
+ }
+ 
+-- 
+2.43.0
+

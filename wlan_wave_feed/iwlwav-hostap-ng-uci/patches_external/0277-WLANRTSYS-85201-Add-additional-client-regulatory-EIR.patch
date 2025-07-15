@@ -1,0 +1,102 @@
+From 337a13836f57ce9e815ebafe3af1cb5bb01a956d Mon Sep 17 00:00:00 2001
+From: "Ross-Ashikyan, William" <washikyan@maxlinear.com>
+Date: Mon, 27 Jan 2025 16:29:13 -0800
+Subject: [PATCH] WLANRTSYS-85201 Add additional client regulatory EIRP TPE IE
+ to beacon
+
+---
+ src/ap/acs.c            | 13 +++++++++++++
+ src/ap/mxl_ieee802_11.c | 25 +++++++++++++++++++++++--
+ src/ap/mxl_ieee802_11.h |  1 +
+ 3 files changed, 37 insertions(+), 2 deletions(-)
+
+diff --git a/src/ap/acs.c b/src/ap/acs.c
+index 181a83b93..b38175760 100644
+--- a/src/ap/acs.c
++++ b/src/ap/acs.c
+@@ -1417,5 +1417,18 @@ void mxl_acs_scan_complete(struct hostapd_iface *iface) { return acs_scan_comple
+ struct hostapd_channel_data *mxl_acs_find_chan(struct hostapd_iface *iface, int freq) { return acs_find_chan(iface, freq); }
+ int  mxl_is_in_chanlist(struct hostapd_iface *iface, struct hostapd_channel_data *chan) { return is_in_chanlist(iface, chan); }
+ void mxl_acs_study(struct hostapd_iface *iface) { return acs_study(iface); }
++int mxl_acs_find_center_chan(int freq, int width) {
++	switch (width) {
++		case 20:	return (freq - 5950) / 5;
++		case 40:	return acs_get_bw_center_chan(freq, ACS_BW40);
++		case 80:	return acs_get_bw_center_chan(freq, ACS_BW80);
++		case 160:	return acs_get_bw_center_chan(freq, ACS_BW160);
++		case 320:	return acs_get_bw_center_chan(freq, ACS_BW320);
++		default:
++			wpa_printf(MSG_ERROR,
++				"TPE: unsupported width for EIRP channel search");
++	}
++	return 0;
++}
+ #endif /* CONFIG_VENDOR_MXL */
+ 
+diff --git a/src/ap/mxl_ieee802_11.c b/src/ap/mxl_ieee802_11.c
+index d1cafb596..1ed74263f 100644
+--- a/src/ap/mxl_ieee802_11.c
++++ b/src/ap/mxl_ieee802_11.c
+@@ -74,7 +74,6 @@
+ #ifdef CONFIG_WDS_WPA
+ #include "wds_wpa.h"
+ #endif
+-
+ /* Single PSD in TPE 6 GHz is AP EIRP - 6 dBm before converted to PSD */
+ static int mxl_ap_eirp_to_sta_psd(int eirp, int width)
+ {
+@@ -128,7 +127,6 @@ u8 * hostapd_eid_txpower_envelope_vendor_mxl_6g(struct hostapd_data *hapd, u8 *e
+ 	if (he_reg_is_sp(iface->mxl_iface.he_6ghz_reg_pwr_mode)) {
+ 
+ 		width = op_class_to_bandwidth(iconf->op_class);
+-		/* hostapd-ng tracks segments differently than legacy hostapd */
+ 		chan_idx = hostapd_get_oper_centr_freq_seg0_idx(iconf);
+ 		if (!chan_idx) {
+ 			wpa_printf(MSG_ERROR, "No center channel was found in conf");
+@@ -170,10 +168,33 @@ u8 * hostapd_eid_txpower_envelope_vendor_mxl_6g(struct hostapd_data *hapd, u8 *e
+ 		tx_pwr[0] = (u8)max_client_psd;
+ 		eid = mxl_hostapd_add_tpe_info(eid, tx_pwr_count, tx_pwr_intrpn,
+ 					   REG_DEFAULT_CLIENT, tx_pwr);
++#ifdef CONFIG_AFC
++		/* For all non-20 MHz SP and ISP, append client EIRP */
++		if (width > 20) {
++			tx_pwr_count = __builtin_ctz(width / 20);
++			tx_pwr_intrpn = REGULATORY_CLIENT_EIRP;
++			/* Use Center Frequency of Primary 20 MHz to properly align this TPE */
++			center_freq = hostapd_chan_to_freq(iconf->channel, true);
++			for(i = 0; i <= tx_pwr_count; i++) {
++				chan_idx = mxl_acs_find_center_chan(center_freq, 20 << i);
++				/* search for matching whole channel */
++				for (int afc_response_chan_idx = 0; afc_response_chan_idx < iface->afc.num_chan_info; afc_response_chan_idx++) {
++					if (iface->afc.chan_info_list[afc_response_chan_idx].chan == chan_idx) {
++						max_power = iface->afc.chan_info_list[afc_response_chan_idx].power;
++						break;
++					}
++				}
++				tx_pwr[i] = 2 * (max_power - 6);
++			}
++			eid = mxl_hostapd_add_tpe_info(eid, tx_pwr_count, tx_pwr_intrpn,
++						REG_DEFAULT_CLIENT, tx_pwr);
++		}
++#endif
+ 	}
+ 
+ 	if (he_reg_is_indoor(iface->mxl_iface.he_6ghz_reg_pwr_mode)) {
+ 		/* Indoor APs must include an additional TPE for subordinate devices */
++		tx_pwr_count = 0; /* 0 covers PSD across the entire BW */
+ 		tx_pwr[0] = REG_PSD_MAX_TXPOWER_FOR_SUBORDINATE_CLIENT;
+ 		eid = mxl_hostapd_add_tpe_info(eid, tx_pwr_count, tx_pwr_intrpn,
+ 					   REG_SUBORDINATE_CLIENT, tx_pwr);
+diff --git a/src/ap/mxl_ieee802_11.h b/src/ap/mxl_ieee802_11.h
+index 5def77c67..a339eb179 100644
+--- a/src/ap/mxl_ieee802_11.h
++++ b/src/ap/mxl_ieee802_11.h
+@@ -61,4 +61,5 @@ int mxl_hostapd_add_authresp_elements(struct hostapd_data *hapd, u8 *pos, size_t
+ u8 * mxl_hostapd_eid_multi_ap(struct hostapd_data *hapd, struct sta_info *sta, u8 *eid, size_t len);
+ u8 * mxl_hostapd_add_tpe_info(u8 *eid, u8 tx_pwr_count, enum max_tx_pwr_interpretation tx_pwr_intrpn, u8 tx_pwr_cat, u8 *tx_pwr);
+ 
++int mxl_acs_find_center_chan(int freq, int width);
+ #endif /* MXL_IEEE802_11_H */
+-- 
+2.43.0
+

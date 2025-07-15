@@ -1,0 +1,60 @@
+From f10fceae1f0b27d46918fc978c3450c015afbc9d Mon Sep 17 00:00:00 2001
+From: Bharath Paidupati <bpaidupati@maxlinear.com>
+Date: Fri, 11 Apr 2025 16:08:20 +0800
+Subject: [PATCH] WLANRTSYS-88705 Enabling Wmm for EPCS
+
+---
+ hostapd/ctrl_iface.c     | 6 +++++-
+ hostapd/mxl_ctrl_iface.c | 4 ++++
+ 2 files changed, 9 insertions(+), 1 deletion(-)
+
+diff --git a/hostapd/ctrl_iface.c b/hostapd/ctrl_iface.c
+index 1f234d0d8..ca00399f0 100644
+--- a/hostapd/ctrl_iface.c
++++ b/hostapd/ctrl_iface.c
+@@ -1428,7 +1428,11 @@ static int hostapd_ctrl_iface_set(struct hostapd_data *hapd, char *cmd)
+ 		} else if (os_strcasecmp(cmd, "ssid") == 0) {
+ 			hostapd_neighbor_sync_own_report(hapd);
+ 		} else if (os_strncmp(cmd, "wme_ac_", 7) == 0 ||
+-			   os_strncmp(cmd, "wmm_ac_", 7) == 0) {
++			   os_strncmp(cmd, "wmm_ac_", 7) == 0
++#ifdef CONFIG_EPCS_MXL
++				|| os_strncmp(cmd, "epcs_wmm_ac_", 12) == 0
++#endif
++				) {
+ #ifdef CONFIG_VENDOR_MXL
+ 			if (mxl_hostapd_handle_wmm_ac_params(hapd, cmd, value) < 0) {
+ 				return -1;
+diff --git a/hostapd/mxl_ctrl_iface.c b/hostapd/mxl_ctrl_iface.c
+index 969ea2f34..a8748e493 100644
+--- a/hostapd/mxl_ctrl_iface.c
++++ b/hostapd/mxl_ctrl_iface.c
+@@ -253,10 +253,12 @@ static int mxl_hostapd_ctrl_iface_send_epcs_req_frame(struct hostapd_data *hapd,
+ 		return -1;
+ 	}
+ 
++	cmd = os_strchr(cmd, ' ');
+ 	if (!cmd) {
+ 		wpa_printf(MSG_ERROR, "CTRL: SEND_EPCS_REQ_FRAME - mac address is missing");
+ 		return -1;
+ 	}
++	cmd++;
+ 
+ 	if (hwaddr_aton(cmd, mac)) {
+ 		wpa_printf(MSG_ERROR, "CTRL: SEND_EPCS_REQ_FRAME - invalid peer mac address");
+@@ -339,10 +341,12 @@ static int mxl_hostapd_ctrl_iface_send_epcs_teardown_frame(struct hostapd_data *
+ 		return -1;
+ 	}
+ 
++	cmd = os_strchr(cmd, ' ');
+ 	if (!cmd) {
+ 		wpa_printf(MSG_ERROR, "CTRL: SEND_EPCS_TEARDOWN_FRAME - mac address is missing");
+ 		return -1;
+ 	}
++	cmd++;
+ 
+ 	if (hwaddr_aton(cmd, mac)) {
+ 		wpa_printf(MSG_ERROR, "CTRL: SEND_EPCS_TEARDOWN_FRAME - invalid peer mac address");
+-- 
+2.43.0
+

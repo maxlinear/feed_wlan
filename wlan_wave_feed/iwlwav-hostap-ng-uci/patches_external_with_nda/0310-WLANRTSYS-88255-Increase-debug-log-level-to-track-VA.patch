@@ -1,0 +1,135 @@
+From 740c34b89aeccb1a9d16d694ee257e079cd278ca Mon Sep 17 00:00:00 2001
+From: Venkatasaiprudhvi Sannidhi <vsannidhi@maxlinear.com>
+Date: Fri, 28 Feb 2025 18:22:48 +0530
+Subject: [PATCH] WLANRTSYS-88255 Increase debug log level to track VAP and STA
+ removal
+
+FIXUP to WLANRTSYS-62845 MLO changes in iwlwav-hostap-ng:
+AP MLD Auth Assoc and eapol changes.
+---
+ src/ap/mxl_hostapd.c    | 9 ++++++---
+ src/ap/mxl_ieee802_11.c | 2 +-
+ src/ap/mxl_mld.c        | 4 ++++
+ src/ap/sta_info.c       | 8 ++++++++
+ src/ap/wpa_auth.c       | 4 ++--
+ 5 files changed, 21 insertions(+), 6 deletions(-)
+
+diff --git a/src/ap/mxl_hostapd.c b/src/ap/mxl_hostapd.c
+index 9965eeb88..0cafed0aa 100644
+--- a/src/ap/mxl_hostapd.c
++++ b/src/ap/mxl_hostapd.c
+@@ -248,7 +248,7 @@ int mxl_hostapd_get_aid(struct hostapd_data *hapd, struct sta_info *sta)
+ 					}
+ 				}
+ 			}
+-			wpa_printf(MSG_DEBUG, "  new AID %d", sta->aid);
++			wpa_printf(MSG_ERROR, "  new AID %d", sta->aid);
+ 			return 0;
+ 		} else {
+ #endif /* CONFIG_IEEE80211BE_MXL_MLO */
+@@ -284,7 +284,7 @@ int mxl_hostapd_get_aid(struct hostapd_data *hapd, struct sta_info *sta)
+ 		ap_sta_remove_in_other_bss_now(hapd, sta);
+ 		/* check if STA already has AID - reuse it */
+ 		if (sta->aid > 0) {
+-			wpa_printf(MSG_DEBUG, " old AID %d", sta->aid);
++			wpa_printf(MSG_ERROR, " old AID %d", sta->aid);
+ 			return 0;
+ 		}
+ 		res = (*hapd->driver->get_aid)(hapd->drv_priv, &sta->aid, sta->addr);
+@@ -324,13 +324,16 @@ void mxl_hostapd_free_aid(struct hostapd_data *hapd, struct sta_info *sta)
+ 		aid_pool[(sta->aid - aid_offset - 1) / 32]
+ 				&= ~BIT((sta->aid - aid_offset - 1) % 32);
+ 		/* Free SID */
+-		if (!mxl_hostapd_is_recovery(hapd->iface))
++		if (!mxl_hostapd_is_recovery(hapd->iface)) {
+ 			(*hapd->driver->free_aid)(hapd->drv_priv, &sta->aid);
++			wpa_printf(MSG_ERROR, " Free AID %d", sta->aid);
++		}
+ 	} else {
+ 		/* Legacy */
+ 		if (!mxl_hostapd_is_recovery(hapd->iface)) {
+ 			sta->aid -= hapd->iconf->mbssid_aid_offset;
+ 			(*hapd->driver->free_aid)(hapd->drv_priv, &sta->aid);
++			wpa_printf(MSG_ERROR, " Free AID %d", sta->aid);
+ 		}
+ 	}
+ 
+diff --git a/src/ap/mxl_ieee802_11.c b/src/ap/mxl_ieee802_11.c
+index 9ae7e0dbe..6d1c3758b 100644
+--- a/src/ap/mxl_ieee802_11.c
++++ b/src/ap/mxl_ieee802_11.c
+@@ -973,7 +973,7 @@ void mxl_hostapd_drv_cleanup_sta(struct hostapd_data *hapd, struct sta_info *sta
+ 		sta1 = sta->mxl_sta_info.linked_sta;
+ 	}
+ 
+-	wpa_printf(MSG_DEBUG, "Removing STA" MACSTR " AID %d", MAC2STR(sta->addr), sta->aid);
++	wpa_printf(MSG_ERROR, "Removing STA " MACSTR " AID %d", MAC2STR(sta->addr), sta->aid);
+ 	ap_free_sta(hapd, sta);
+ 
+ 	if (sta1) {
+diff --git a/src/ap/mxl_mld.c b/src/ap/mxl_mld.c
+index eb9dc223d..77cc461fb 100644
+--- a/src/ap/mxl_mld.c
++++ b/src/ap/mxl_mld.c
+@@ -1576,6 +1576,10 @@ int mxl_ml_sta_add(struct hostapd_data *hapd, struct sta_info *sta)
+ 		wpa_printf(MSG_ERROR, "send LTQ_NL80211_VENDOR_SUBCMD_ML_STA_ADD failed!!!");
+ 		os_free(ml_sta_params);
+ 		return -1;
++	} else {
++		wpa_printf(MSG_ERROR, "ML STA added: aid %d, sta_addr1 " MACSTR ", sta_addr2 " MACSTR ", sta_addr3 " MACSTR,
++					ml_sta_params->aid, MAC2STR(ml_sta_params->sta_addr1),
++					MAC2STR(ml_sta_params->sta_addr2), MAC2STR(ml_sta_params->sta_addr3));
+ 	}
+ 	hapd = tmp_hapd;
+ 
+diff --git a/src/ap/sta_info.c b/src/ap/sta_info.c
+index 6ce06d9f8..5a24d1031 100644
+--- a/src/ap/sta_info.c
++++ b/src/ap/sta_info.c
+@@ -206,6 +206,10 @@ void ap_free_sta(struct hostapd_data *hapd, struct sta_info *sta)
+ 	int set_beacon = 0;
+ 
+ 	accounting_sta_stop(hapd, sta);
++#ifdef CONFIG_VENDOR_MXL
++	wpa_printf(MSG_ERROR, "Removing STA " MACSTR ", AID %d, called from %pS",
++			MAC2STR(sta->addr), sta->aid, __builtin_return_address(0));
++#endif /* CONFIG_VENDOR_MXL */
+ 
+ 	/* just in case */
+ 	sta->flags &= ~WLAN_STA_BSS_TRANS_MGMT_REQ_TIMEOUT;
+@@ -1879,6 +1883,10 @@ void ap_sta_set_authorized(struct hostapd_data *hapd, struct sta_info *sta,
+ 		sta->flags |= WLAN_STA_AUTHORIZED;
+ 	} else {
+ 		sta->flags &= ~WLAN_STA_AUTHORIZED;
++#ifdef CONFIG_VENDOR_MXL
++		wpa_printf(MSG_ERROR, "Clear authorized flag for STA " MACSTR " AID %d, called from %pF",
++				MAC2STR(sta->addr), sta->aid, __builtin_return_address(0));
++#endif /* CONFIG_VENDOR_MXL */
+ 	}
+ 
+ #ifdef CONFIG_P2P
+diff --git a/src/ap/wpa_auth.c b/src/ap/wpa_auth.c
+index 52f84387c..ade809559 100644
+--- a/src/ap/wpa_auth.c
++++ b/src/ap/wpa_auth.c
+@@ -372,7 +372,7 @@ static void wpa_rekey_gmk(void *eloop_ctx, void *timeout_ctx)
+ 	}
+ }
+ 
+-
++#ifndef CONFIG_IEEE80211BE_MXL_MLO
+ static void wpa_rekey_gtk(void *eloop_ctx, void *timeout_ctx)
+ {
+ 	struct wpa_authenticator *wpa_auth = eloop_ctx;
+@@ -399,7 +399,7 @@ static void wpa_rekey_gtk(void *eloop_ctx, void *timeout_ctx)
+ 				       0, wpa_rekey_gtk, wpa_auth, NULL);
+ 	}
+ }
+-
++#endif /* CONFIG_IEEE80211BE_MXL_MLO */
+ 
+ static void wpa_rekey_ptk(void *eloop_ctx, void *timeout_ctx)
+ {
+-- 
+2.43.0
+

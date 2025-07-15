@@ -1,0 +1,40 @@
+From e9629cbc54e60e7673375057d0191f392e8f718c Mon Sep 17 00:00:00 2001
+From: mj <mj@maxlinear.com>
+Date: Mon, 7 Apr 2025 22:41:15 +0530
+Subject: [PATCH] WLANRTSYS-87986 Handle sibling sta cleanup in wpa_ctrl
+ Deauthenticate
+
+Issue:
+Cleanup of the Sibling STA is missed when PWHM issues DEAUTH cmd
+as part of MacFiltering and results in TsManager Fatal.
+
+Fix:
+Do cleanup of the sibling sta in DEAUTH cmd
+---
+ src/ap/ctrl_iface_ap.c | 8 ++++++++
+ 1 file changed, 8 insertions(+)
+
+diff --git a/src/ap/ctrl_iface_ap.c b/src/ap/ctrl_iface_ap.c
+index 32729c6f3..9029e2ce1 100644
+--- a/src/ap/ctrl_iface_ap.c
++++ b/src/ap/ctrl_iface_ap.c
+@@ -669,8 +669,16 @@ int hostapd_ctrl_iface_deauthenticate(struct hostapd_data *hapd,
+ #endif /* CONFIG_VENDOR_MXL */
+ 	} else {
+ 		hostapd_drv_sta_deauth(hapd, addr, reason);
++#ifdef CONFIG_IEEE80211BE_MXL_MLO
++		if (sta) {
++			ap_sta_deauthenticate(hapd, sta, reason);
++			if (mxl_mlo_is_ml_sta(sta) && sta->mxl_sta_info.linked_sta)
++				ap_sta_deauthenticate(hapd->mxl_data.sibling_hapd, sta->mxl_sta_info.linked_sta, reason);
++		}
++#else
+ 		if (sta)
+ 			ap_sta_deauthenticate(hapd, sta, reason);
++#endif
+ 		else if (addr[0] == 0xff)
+ 			hostapd_free_stas(hapd);
+ 	}
+-- 
+2.43.0
+

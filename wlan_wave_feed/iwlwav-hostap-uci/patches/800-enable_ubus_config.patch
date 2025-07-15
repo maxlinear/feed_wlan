@@ -1,0 +1,64 @@
+diff --git a/hostapd/defconfig-debug b/hostapd/defconfig-debug
+index d79b35660..6cf321a47 100644
+--- a/hostapd/defconfig-debug
++++ b/hostapd/defconfig-debug
+@@ -389,6 +389,11 @@ CONFIG_OWE=y
+ #A part of wpa3
+ CONFIG_SUITEB192=y
+ 
++# uBus IPC/RPC System
++# Services can connect to the bus and provide methods
++# that can be called by other services or clients.
++CONFIG_UBUS=y
++
+ # Airtime policy support
+ #CONFIG_AIRTIME_POLICY=y
+ 
+diff --git a/hostapd/defconfig-release b/hostapd/defconfig-release
+index fcc3e0bbe..11fab3561 100644
+--- a/hostapd/defconfig-release
++++ b/hostapd/defconfig-release
+@@ -390,6 +390,11 @@ CONFIG_OWE=y
+ #A part of wpa3
+ CONFIG_SUITEB192=y
+ 
++# uBus IPC/RPC System
++# Services can connect to the bus and provide methods
++# that can be called by other services or clients.
++CONFIG_UBUS=y
++
+ # Airtime policy support
+ #CONFIG_AIRTIME_POLICY=y
+ 
+diff --git a/wpa_supplicant/defconfig-debug b/wpa_supplicant/defconfig-debug
+index aab3350bb..a6d02bb41 100644
+--- a/wpa_supplicant/defconfig-debug
++++ b/wpa_supplicant/defconfig-debug
+@@ -28,6 +28,11 @@
+ # functionality.
+ CONFIG_DRIVER_WEXT=y
+ 
++# uBus IPC/RPC System
++# Services can connect to the bus and provide methods
++# that can be called by other services or clients.
++CONFIG_UBUS=y
++
+ # Driver interface for Linux drivers using the nl80211 kernel interface
+ CONFIG_DRIVER_NL80211=y
+ 
+diff --git a/wpa_supplicant/defconfig-release b/wpa_supplicant/defconfig-release
+index 6a2ce19c1..cf73e3ac2 100644
+--- a/wpa_supplicant/defconfig-release
++++ b/wpa_supplicant/defconfig-release
+@@ -28,6 +28,11 @@
+ # functionality.
+ CONFIG_DRIVER_WEXT=y
+ 
++# uBus IPC/RPC System
++# Services can connect to the bus and provide methods
++# that can be called by other services or clients.
++CONFIG_UBUS=y
++
+ # Driver interface for Linux drivers using the nl80211 kernel interface
+ CONFIG_DRIVER_NL80211=y
+ 

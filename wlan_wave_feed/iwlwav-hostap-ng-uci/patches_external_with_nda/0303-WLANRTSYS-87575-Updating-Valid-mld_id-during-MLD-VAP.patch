@@ -1,0 +1,93 @@
+From f5f0dbe81893a837d90a5e214e14663fb5b8a64c Mon Sep 17 00:00:00 2001
+From: "Maneendra,Pokuri Naga" <pnmaneendra@maxlinear.com>
+Date: Thu, 6 Feb 2025 17:43:36 +0530
+Subject: [PATCH] WLANRTSYS-87575 Updating Valid mld_id during MLD VAP creation
+
+Issue:
+Continuous [GroupID: 62, FileID: 3, Line: 1442] - Fatal
+FW is asserting because of INVALID_MLD_ID during UMI_CREATE_MLD
+RCA:
+As per the implementation of mld, opensource mld_id is a derived parameter for us and altered if there is any SIGHUP/reload_bss from PWHM,
+after appending it in the p_ap_mld structure, and it's not expected to change it's value throughout the MLD creation but as mentioned because of the PWHM actions it's getting an invalid value before the Create MLD and FW is asserting.
+Fix:
+Fetch and Update the mld_id from the verify_mld_config function,
+so during setup_link we won't see this inconsistentices in FW.
+
+FIXUP to WLANRTSYS-60843 MLO Changes: AP MLD configuration and Beacon/Probe Rsp verification
+---
+ src/ap/mxl_hostapd.c |  1 +
+ src/ap/mxl_mld.c     | 34 +++++++++++++++++++++++++++++++++-
+ 2 files changed, 34 insertions(+), 1 deletion(-)
+
+diff --git a/src/ap/mxl_hostapd.c b/src/ap/mxl_hostapd.c
+index 4152cbea7..9965eeb88 100644
+--- a/src/ap/mxl_hostapd.c
++++ b/src/ap/mxl_hostapd.c
+@@ -2766,6 +2766,7 @@ int mxl_hostapd_deinit_gmld(struct hostapd_data *hapd)
+ 	gmld = &(hapd->iface->interfaces->mxl_interfaces.g_ap_mld[mld_id]);
+ 	if (gmld->num_links == MAX_NUM_LINKS) {
+ 		gmld->num_links--;
++		gmld->affiliated_links[LINK2] = NULL;
+ 		return 0;
+ 	}
+ 
+diff --git a/src/ap/mxl_mld.c b/src/ap/mxl_mld.c
+index 2a04d0da8..7a9e650a5 100644
+--- a/src/ap/mxl_mld.c
++++ b/src/ap/mxl_mld.c
+@@ -50,6 +50,31 @@ static u8 * mxl_hostapd_eid_mld_staprof_epcs(struct hostapd_data *hapd, u8 *eid)
+ }
+ #endif /* CONFIG_EPCS_MXL */
+ 
++static int mxl_get_valid_mld_id(struct hostapd_data *hapd, struct p_ap_mld *mld)
++{
++	struct hapd_interfaces *ifaces = hapd->iface->interfaces;
++	struct p_ap_mld *gmld = NULL;
++	for (int i = 0; i < MAX_SUPPORTED_MLDS; i++) {
++		gmld = &(ifaces->mxl_interfaces.g_ap_mld[i]);
++		if (mld == gmld)
++			return i;
++	}
++	return INVALID_MLD_ID;
++}
++
++static void mxl_update_valid_mld_id(struct hostapd_data *link1, struct hostapd_data *link2, struct p_ap_mld *mld) {
++	int mld_id;
++	if (link1->conf->mld_id != INVALID_MLD_ID) {
++		mld_id = link1->conf->mld_id;
++	} else if (link2->conf->mld_id != INVALID_MLD_ID) {
++		mld_id = link2->conf->mld_id;
++	} else {
++		mld_id = mxl_get_valid_mld_id(link1, mld);
++	}
++	link1->conf->mld_id = mld_id;
++	link2->conf->mld_id = mld_id;
++}
++
+ static void mxl_update_mld_info(struct hostapd_data *hapd, int mld_id, bool set_ap_mld_mac)
+ {
+ 	struct p_ap_mld *p_ap_mld = NULL;
+@@ -201,12 +226,19 @@ bool mxl_hostapd_verify_mld_config(struct p_ap_mld *mld)
+ 	if (link1 == NULL || link2 == NULL)
+ 		return false;
+ 
++	if (!mxl_is_mlo_enabled(link1->conf) || !mxl_is_mlo_enabled(link2->conf)) {
++		wpa_printf(MSG_ERROR,"MLD mxl_hostapd_verify_mld_config failed, mlo_enable is not set");
++		return false;
++	}
++
++	if (link1->conf->mld_id == INVALID_MLD_ID || link2->conf->mld_id == INVALID_MLD_ID)
++		mxl_update_valid_mld_id(link1, link2, mld);
++
+ 	/* possible key-mgmts for MLD are only OWE and SAE */
+ 	is_sae_link1 = !(link1->conf->wpa_key_mgmt & WPA_KEY_MGMT_OWE);
+ 	is_sae_link2 = !(link2->conf->wpa_key_mgmt & WPA_KEY_MGMT_OWE);
+ 
+ 	if (hostapd_mac_comp(link1->conf->mxl_bss_conf.ap_mld_mac, link2->conf->mxl_bss_conf.ap_mld_mac) ||
+-			(link1->conf->mld_id != link2->conf->mld_id) ||
+ 			(link1->conf->ieee80211w != link2->conf->ieee80211w) ||
+ 			(is_sae_link1 && is_sae_link2 && (link1->conf->sae_pwe != link2->conf->sae_pwe)) ||
+ 			(!(link1->conf->wpa_key_mgmt & link2->conf->wpa_key_mgmt)) ||
+-- 
+2.43.0
+

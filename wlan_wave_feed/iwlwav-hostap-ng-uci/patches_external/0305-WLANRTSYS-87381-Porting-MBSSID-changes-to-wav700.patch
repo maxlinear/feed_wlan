@@ -1,0 +1,170 @@
+From b70927bba2568b28e2160de31bcc14d074d3a930 Mon Sep 17 00:00:00 2001
+From: tchalivendra <tchalivendra@maxlinear.com>
+Date: Thu, 9 Jan 2025 21:33:24 +0530
+Subject: [PATCH] WLANRTSYS-87381 Porting MBSSID changes to wav700
+
+Adapt MBSSID to allow non-contiguous bssids
+Reference PR:https://mbitbucket.maxlinear.com/projects/SW_WAVE/repos/iwlwav-hostap-ng/pull-requests/549/overview
+Signed-off-by: bsrinivasan <bsrinivasan@maxlinear.com>
+
+Signed-off-by: Tejaswi <tchalivendra@maxlinear.com>
+---
+ hostapd/mxl_config.c       |  3 +++
+ src/ap/ap_config.c         |  5 ++++
+ src/ap/hostapd.c           | 49 ++++++++++++++++++++++++++++----------
+ src/ap/hostapd.h           |  1 +
+ src/ap/ieee802_11_shared.c | 12 +++++++---
+ src/ap/mxl_config.h        |  1 +
+ 6 files changed, 56 insertions(+), 15 deletions(-)
+
+diff --git a/hostapd/mxl_config.c b/hostapd/mxl_config.c
+index 15f7a95d4..328736cce 100644
+--- a/hostapd/mxl_config.c
++++ b/hostapd/mxl_config.c
+@@ -1855,6 +1855,9 @@ int mxl_hostapd_config_fill (struct hostapd_config *conf,
+ 			return 0;
+ 		}
+ 		mxl_conf->ProbeReqListTimer = atoi(pos);
++	} else if (os_strcmp(buf, "max_bss") == 0) {
++		/* max_bss is the count of bss in the radio incl. dummy vap*/
++		mxl_conf->max_bss = atoi(pos);
+ 	} else if (os_strcmp(buf, "he_6ghz_pwr_mode") == 0) {
+ 		int val = atoi(pos);
+ 		if (!IS_VALID_BOOL_RANGE(val)) {
+diff --git a/src/ap/ap_config.c b/src/ap/ap_config.c
+index 7d559504c..f7dc26620 100644
+--- a/src/ap/ap_config.c
++++ b/src/ap/ap_config.c
+@@ -1784,6 +1784,11 @@ int hostapd_config_check(struct hostapd_config *conf, int full_config)
+ 				conf->mbssid_aid_offset = MULTIBSS_AID_OFFSET;
+ 	}
+ 
++	if (conf->multibss_enable && !conf->mxl_conf.max_bss) {
++		wpa_printf(MSG_ERROR, "max_bss is not provided");
++		return -1;
++	}
++
+ 	ap_max_num_sta = conf->ap_max_num_sta;
+ 	for (i = 0; i < conf->num_bss; i++) {
+ 		if (conf->bss[i]->max_num_sta > conf->ap_max_num_sta) {
+diff --git a/src/ap/hostapd.c b/src/ap/hostapd.c
+index 509ce2744..31f858a76 100644
+--- a/src/ap/hostapd.c
++++ b/src/ap/hostapd.c
+@@ -1390,22 +1390,47 @@ static int db_table_create_radius_attributes(sqlite3 *db)
+ */
+ static bool hostapd_validate_multibssid_mac_addr(struct hostapd_data *hapd)
+ {
+-	u8 max_bssid = (1 << round_pow2_up(hapd->iconf->num_bss - 1));
++	u8 n = round_pow2_up(hapd->iconf->mxl_conf.max_bss);
+ 	u8 bss_idx = hapd->conf->bss_idx;
+-	u8 exp_addr_lsb;
+-	u8 mask_l = (max_bssid - 1);
+-	u8 mask_h = ~mask_l;
++	u8 max_bssid;
++	u8 mbssid_index;
++	u8 tx_vap_addr[ETH_ALEN];
+ 	u8 exp_addr[ETH_ALEN];
+-
+-	if (MASTER_VAP_BSS_IDX == hapd->conf->bss_idx)
++	u8 tx_vap_last_octet;
++	u8 expected_last_octet;
++	u8 bssid_offset;
++	const u8 max_n = 8;
++	if (MASTER_VAP_BSS_IDX == bss_idx)
+ 		return true;
+-	memcpy_s(exp_addr, ETH_ALEN, hapd->iface->bss[MULTIBSS_REFERENCE_BSS_IDX]->own_addr, ETH_ALEN);
+-	exp_addr_lsb = ((exp_addr[ETH_ALEN - 1] + (bss_idx - 1)) & mask_l);
+-	exp_addr[ETH_ALEN - 1] &=  mask_h;
+-	exp_addr[ETH_ALEN - 1] |= exp_addr_lsb;
+-
+-	if (!memcmp(exp_addr, hapd->own_addr, ETH_ALEN))
++	
++	if (n == 0) {
++		n = 1;
++	} else if (n > max_n) {
++		/* See 9.4.2.45 Multiple BSSID element in IEEE 802.11-2020*/
++		wpa_printf(MSG_ERROR, "n should not be greater than %d", max_n);
++		return false;
++	}
++	
++	max_bssid = 1 << n;
++	memcpy_s(tx_vap_addr, ETH_ALEN, hapd->iface->bss[MULTIBSS_REFERENCE_BSS_IDX]->own_addr, ETH_ALEN);
++	tx_vap_last_octet = tx_vap_addr[ETH_ALEN - 1];
++	mbssid_index = ((hapd->own_addr[ETH_ALEN - 1] - tx_vap_last_octet) + max_bssid) % max_bssid;
++	/*
++	   From IEEE 802.11-2020, 9.4.2.45 Multiple BSSID element
++	   B = (A5 mod 2^n)
++	   A5(i) = A5 – B + ((B + i) mod 2^n)
++	*/
++	bssid_offset = tx_vap_last_octet % max_bssid;
++	expected_last_octet = (tx_vap_last_octet - bssid_offset) + ((bssid_offset + mbssid_index) % max_bssid);
++	memcpy_s(exp_addr, ETH_ALEN, tx_vap_addr, ETH_ALEN);
++	exp_addr[ETH_ALEN - 1] = expected_last_octet;
++	
++	if (!memcmp(exp_addr, hapd->own_addr, ETH_ALEN)) {
++		hapd->mbssid_idx = mbssid_index;
++		wpa_printf(MSG_INFO, "Validation successful for " MACSTR " with mbssid_index %d",
++				MAC2STR(hapd->own_addr), hapd->mbssid_idx);
+ 		return true;
++	}
+ 	wpa_printf(MSG_ERROR, "Max BSSID = %d, Ref MAC addr is " MACSTR
+ 						   ", Received MAC addr is " MACSTR
+ 						   " but Expected MAC addr is " MACSTR
+diff --git a/src/ap/hostapd.h b/src/ap/hostapd.h
+index 0de8fce2c..e8737f039 100644
+--- a/src/ap/hostapd.h
++++ b/src/ap/hostapd.h
+@@ -218,6 +218,7 @@ struct hostapd_data {
+ 	u8 mld_link_id;
+ 	/* Used for mld_link_id assignment - valid on the first MLD BSS only */
+ 	u8 mld_next_link_id;
++	u8 mbssid_idx;
+ 
+ 	struct hostapd_data *mld_first_bss;
+ 
+diff --git a/src/ap/ieee802_11_shared.c b/src/ap/ieee802_11_shared.c
+index efcb4dd82..1b4dc8452 100644
+--- a/src/ap/ieee802_11_shared.c
++++ b/src/ap/ieee802_11_shared.c
+@@ -1441,8 +1441,14 @@ u8 * hostapd_eid_multiple_bssid(struct hostapd_data *hapd, u8 *eid, bool is_beac
+ 	size_pos = eid;
+ 	*eid++ = 0; /* Final size is not known yet */
+ 	data_pos = eid;
+-	/* MaxBSSID Indicator computed excluding the Dummy VAP */
+-	max_idx = round_pow2_up(hapd->iface->num_bss - 1);
++	max_idx = round_pow2_up(hapd->iconf->mxl_conf.max_bss);
++	if (max_idx == 0) {
++		max_idx = 1;
++	} else if (max_idx > 8) {
++		wpa_printf(MSG_ERROR, "Max BSSID Indicator should not be greater than 8");
++		eid = NULL;
++		goto end;
++	}
+ 	*eid++ = max_idx;
+ 	/* Iterate over each BSS */
+ 	for (i = MULTIBSS_REFERENCE_BSS_IDX + 1; i < hapd->iface->num_bss; i++) {
+@@ -1480,7 +1486,7 @@ u8 * hostapd_eid_multiple_bssid(struct hostapd_data *hapd, u8 *eid, bool is_beac
+ 			goto end;
+ 		}
+ 		/* Multiple BSSID-Index */
+-		eid = hostapd_eid_multiple_bssid_idx(bss, eid, i - 1, is_beacon);
++		eid = hostapd_eid_multiple_bssid_idx(bss, eid, bss->mbssid_idx, is_beacon);
+ 		if (!eid)
+ 			goto end;
+ 
+diff --git a/src/ap/mxl_config.h b/src/ap/mxl_config.h
+index 01c057c00..fb14dc4b2 100644
+--- a/src/ap/mxl_config.h
++++ b/src/ap/mxl_config.h
+@@ -354,6 +354,7 @@ struct mxl_hostapd_config {
+ #endif /* CONFIG_EPCS_MXL */
+ 	int sProbeReqCltMode;
+ 	int ProbeReqListTimer;
++	u8 max_bss;
+ 	size_t nlmsg_default_size;
+ 	int zwdfs_debug_chan;
+ 	bool is_client_mode; /* To check if client mode is enabled */
+-- 
+2.43.0
+

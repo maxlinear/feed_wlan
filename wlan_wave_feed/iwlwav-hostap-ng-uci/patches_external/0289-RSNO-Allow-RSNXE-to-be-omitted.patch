@@ -1,0 +1,112 @@
+From 11973ef99e01594d2096f2612673b1342d7fa35a Mon Sep 17 00:00:00 2001
+From: Jouni Malinen <quic_jouni@quicinc.com>
+Date: Tue, 23 Jul 2024 21:20:45 +0000
+Subject: [PATCH] RSNO: Allow RSNXE to be omitted
+
+Add an explicit rsn_override_omit_rsnxe=1 configuration parameter to
+allow the RSNXE to be omitted when using the RSNXOE and wanting to
+minimize interoperability issues with STAs that might recognize the
+RSNXE, but not handle it correctly, e.g., when multiple octets of
+payload is included.
+
+Signed-off-by: Jouni Malinen <quic_jouni@quicinc.com>
+---
+ hostapd/config_file.c  | 2 ++
+ hostapd/hostapd.conf   | 9 +++++++++
+ src/ap/ap_config.h     | 2 ++
+ src/ap/wpa_auth.h      | 1 +
+ src/ap/wpa_auth_glue.c | 1 +
+ src/ap/wpa_auth_ie.c   | 7 +++++--
+ 6 files changed, 20 insertions(+), 2 deletions(-)
+
+diff --git a/hostapd/config_file.c b/hostapd/config_file.c
+index a7a8d91d0..d862e3912 100644
+--- a/hostapd/config_file.c
++++ b/hostapd/config_file.c
+@@ -3816,6 +3816,8 @@ static int hostapd_config_fill(struct hostapd_config *conf,
+ 		os_free(bss->rsn_preauth_interfaces);
+ 		bss->rsn_preauth_interfaces = os_strdup(pos);
+ #endif /* CONFIG_RSN_PREAUTH */
++	} else if (os_strcmp(buf, "rsn_override_omit_rsnxe") == 0) {
++		bss->rsn_override_omit_rsnxe = atoi(pos);
+ 	} else if (os_strcmp(buf, "peerkey") == 0) {
+ 		wpa_printf(MSG_INFO,
+ 			   "Line %d: Obsolete peerkey parameter ignored", line);
+diff --git a/hostapd/hostapd.conf b/hostapd/hostapd.conf
+index c35609db8..ea7e17de3 100644
+--- a/hostapd/hostapd.conf
++++ b/hostapd/hostapd.conf
+@@ -2362,6 +2362,15 @@ own_ip_addr=127.0.0.1
+ #rsn_override_pairwise_2
+ #rsn_override_mfp_2
+ #
++# The RSNXE is normally included if any of the extended RSN capabilities is
++# enabled/supported. When using RSN overriding, a separate RSNXOE is included
++# and it may be more interoperable to omit the RSNXE completely. This
++# configuration parameter can be used to do that.
++# 0 = Include the RSNXE if any extended RSN capability is enabled/supported
++#     (default).
++# 1 = Do not include the RSNXE.
++#rsn_override_omit_rsnxe=0
++#
+ # Example configuration for WPA2-Personal/PMF-optional in RSNE and
+ # WPA3-Personal/PMF-required/MLO in override elements
+ #wpa_key_mgmt=WPA-PSK
+diff --git a/src/ap/ap_config.h b/src/ap/ap_config.h
+index 6e808b8b1..10b1e2b8a 100644
+--- a/src/ap/ap_config.h
++++ b/src/ap/ap_config.h
+@@ -472,6 +472,8 @@ struct hostapd_bss_config {
+ 	int rsn_preauth;
+ 	char *rsn_preauth_interfaces;
+ 
++	int rsn_override_omit_rsnxe;
++
+ #ifdef CONFIG_IEEE80211R_AP
+ 	/* IEEE 802.11r - Fast BSS Transition */
+ 	u8 mobility_domain[MOBILITY_DOMAIN_ID_LEN];
+diff --git a/src/ap/wpa_auth.h b/src/ap/wpa_auth.h
+index a7608e806..0e8e21b88 100644
+--- a/src/ap/wpa_auth.h
++++ b/src/ap/wpa_auth.h
+@@ -305,6 +305,7 @@ struct wpa_auth_config {
+ 	 * Set only in nontransmitted BSSs, i.e., is NULL for transmitted BSS
+ 	 * and in BSSs that are not part of a Multi-BSSID set. */
+ 	struct wpa_authenticator *tx_bss_auth;
++	int rsn_override_omit_rsnxe;
+ #ifdef CONFIG_IEEE80211BE_MXL_MLO
+ 	struct wpa_auth_mlo_conf mlo_conf;
+ #endif /* CONFIG_IEEE80211BE_MXL_MLO */
+diff --git a/src/ap/wpa_auth_glue.c b/src/ap/wpa_auth_glue.c
+index 26012f985..2c77fb482 100644
+--- a/src/ap/wpa_auth_glue.c
++++ b/src/ap/wpa_auth_glue.c
+@@ -230,6 +230,7 @@ void hostapd_wpa_auth_conf(struct hostapd_bss_config *conf,
+ #endif /* CONFIG_PASN */
+ 
+ 	wconf->radius_psk = conf->wpa_psk_radius == PSK_RADIUS_DURING_4WAY_HS;
++	wconf->rsn_override_omit_rsnxe = conf->rsn_override_omit_rsnxe;
+ }
+ 
+ 
+diff --git a/src/ap/wpa_auth_ie.c b/src/ap/wpa_auth_ie.c
+index 7d654df3d..0d831c61f 100644
+--- a/src/ap/wpa_auth_ie.c
++++ b/src/ap/wpa_auth_ie.c
+@@ -688,8 +688,11 @@ int wpa_auth_gen_wpa_ie(struct wpa_authenticator *wpa_auth)
+ 		if (res < 0)
+ 			return res;
+ 		pos += res;
+-		res = wpa_write_rsnxe(&wpa_auth->conf, pos,
+-				      buf + sizeof(buf) - pos);
++		if (wpa_auth->conf.rsn_override_omit_rsnxe)
++			res = 0;
++		else
++			res = wpa_write_rsnxe(&wpa_auth->conf, pos,
++					      buf + sizeof(buf) - pos);
+ 		if (res < 0)
+ 			return res;
+ 		pos += res;
+-- 
+2.43.0
+

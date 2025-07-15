@@ -1,0 +1,131 @@
+From f297312d8df938dd6195b44d31726ada7257642b Mon Sep 17 00:00:00 2001
+From: Vignesh Lal Desikachary <vdesikachary@maxlinear.com>
+Date: Thu, 30 Jan 2025 17:50:22 +0800
+Subject: [PATCH] WLANRTSYS-87474 Avoid removing sta entry for newly created
+ sta
+
+RCA: The newly created sta entry gets deleted if sta link mac address is same
+as non-ap mld mac address.
+
+Fix: Sta entry pointer is checked in prune sta function to avoid removing newly
+created sta entry.
+
+Unit tested: Client connect/disconnect, traffic testing.
+
+FIXUP to WLANRTSYS-62845 MLO changes: MLO Auth Assoc, WPA3 and eapol changes
+---
+ src/ap/ieee802_11.c     | 4 ++--
+ src/ap/mxl_hostapd.h    | 2 +-
+ src/ap/mxl_ieee802_11.c | 4 +++-
+ src/ap/mxl_mld.c        | 2 +-
+ src/ap/mxl_utils.c      | 5 +++--
+ src/ap/mxl_utils.h      | 1 +
+ 6 files changed, 11 insertions(+), 7 deletions(-)
+
+diff --git a/src/ap/ieee802_11.c b/src/ap/ieee802_11.c
+index f2dca390d..9ca16aa07 100644
+--- a/src/ap/ieee802_11.c
++++ b/src/ap/ieee802_11.c
+@@ -3168,7 +3168,7 @@ static void handle_auth(struct hostapd_data *hapd,
+ 
+ 	sta = ap_get_sta(hapd, sa);
+ #ifdef CONFIG_IEEE80211BE_MXL_MLO
+-	if (!sta && mxl_hostapd_prune_sta(hapd, sa)) {
++	if (!sta && mxl_hostapd_prune_sta(hapd, sa, NULL)) {
+ 		wpa_printf(MSG_ERROR, "Sta " MACSTR " already in the connected list, drop auth", MAC2STR(sa));
+ 		return;
+ 	}
+@@ -5865,7 +5865,7 @@ static void handle_assoc(struct hostapd_data *hapd,
+ 	}
+ #endif /* CONFIG_IEEE80211BE */
+ #ifdef CONFIG_IEEE80211BE_MXL_MLO
+-	if (!sta && mxl_hostapd_prune_sta(hapd, mgmt->sa)) {
++	if (!sta && mxl_hostapd_prune_sta(hapd, mgmt->sa, NULL)) {
+ 		wpa_printf(MSG_ERROR, "Sta " MACSTR " already in the connected list, drop assoc", MAC2STR(mgmt->sa));
+ 		return;
+ 	}
+diff --git a/src/ap/mxl_hostapd.h b/src/ap/mxl_hostapd.h
+index 9466347ce..2224949ba 100644
+--- a/src/ap/mxl_hostapd.h
++++ b/src/ap/mxl_hostapd.h
+@@ -254,7 +254,7 @@ int mxl_check_linked_sta_assoc_ies(struct hostapd_data *hapd, struct sta_info *s
+ #ifdef CONFIG_IEEE80211BE_MXL_MLO
+ void mxl_cleanup_sta(struct hostapd_data *hapd, struct sta_info *sta);
+ void mxl_remove_associated_sta(struct hostapd_data *hapd, struct sta_info *sta);
+-bool mxl_hostapd_prune_sta(struct hostapd_data *hapd, const u8 *addr);
++bool mxl_hostapd_prune_sta(struct hostapd_data *hapd, const u8 *addr, struct sta_info *new_sta);
+ #endif /* CONFIG_IEEE80211BE_MXL_MLO */
+ void mxl_parse_rnr(struct ieee802_11_elems *elems, struct dl_list *rnr_scan_6g_ap_info);
+ void mxl_hostapd_check_limit_reached(struct hostapd_data *hapd, const u8 *sta_addr, u16 *resp);
+diff --git a/src/ap/mxl_ieee802_11.c b/src/ap/mxl_ieee802_11.c
+index d478187c3..328ec0967 100644
+--- a/src/ap/mxl_ieee802_11.c
++++ b/src/ap/mxl_ieee802_11.c
+@@ -900,8 +900,10 @@ bool mxl_auth_parse_ml_ie(struct hostapd_data *hapd, const struct ieee80211_mgmt
+ 	}
+ 	if (elems.multilink_ie && (elems.multilink_ie_len >= MIN_BASIC_MULTILINK_IE_LEN)) {
+ 		memcpy_s(non_ap_mld_addr, ETH_ALEN, (elems.multilink_ie + 3), ETH_ALEN);
++		/* mxl_hostapd_prune_sta sta pointer is passed to avoid removing newly
++		 * created sta entry */
+ 		if (os_memcmp(sta->mxl_sta_info.non_ap_mld_mac, non_ap_mld_addr, ETH_ALEN) &&
+-			mxl_hostapd_prune_sta(hapd, non_ap_mld_addr)) {
++			mxl_hostapd_prune_sta(hapd, non_ap_mld_addr, sta)) {
+ 			wpa_printf(MSG_ERROR, "Sta with same MLD mac found " MACSTR,
+ 					MAC2STR(sta->mxl_sta_info.non_ap_mld_mac));
+ 			return false;
+diff --git a/src/ap/mxl_mld.c b/src/ap/mxl_mld.c
+index 7a9e650a5..f664d6b8e 100644
+--- a/src/ap/mxl_mld.c
++++ b/src/ap/mxl_mld.c
+@@ -1275,7 +1275,7 @@ u16 mxl_multilink_ie_validate(struct hostapd_data *hapd, struct sta_info *sta,
+ 
+ 			/* reject assoc req if sibling sta is already associated */
+ 			sibling_sta = ap_get_sta(sibling_hapd, sta->mxl_sta_info.sibling_sta_mac);
+-			if (!sibling_sta && mxl_hostapd_prune_sta(sibling_hapd, sta->mxl_sta_info.sibling_sta_mac)) {
++			if (!sibling_sta && mxl_hostapd_prune_sta(sibling_hapd, sta->mxl_sta_info.sibling_sta_mac, NULL)) {
+ 				wpa_printf(MSG_ERROR, "Sibling sta: " MACSTR
+ 						" Already present in other bss, Reject assoc req", MAC2STR(sta->mxl_sta_info.sibling_sta_mac));
+ 				return WLAN_STATUS_ASSOC_REJECTED_TEMPORARILY;
+diff --git a/src/ap/mxl_utils.c b/src/ap/mxl_utils.c
+index 13b6d79b7..b5f59bdb7 100644
+--- a/src/ap/mxl_utils.c
++++ b/src/ap/mxl_utils.c
+@@ -81,7 +81,7 @@ static int mxl_clean_exiting_sta_entry_by_mac(struct hostapd_iface *iface, void
+ 		if (!sta)
+ 			sta = mxl_ap_get_sta_by_non_ap_mld_mac(hapd, data->addr);
+ 
+-		if (sta) {
++		if (sta && sta != data->new_sta_entry) {
+ 
+ 			if (hapd->conf->wpa && mxl_check_sa_query(hapd, sta, 0))
+ 				return 1;
+@@ -93,12 +93,13 @@ static int mxl_clean_exiting_sta_entry_by_mac(struct hostapd_iface *iface, void
+ 	return 0;
+ }
+ 
+-bool mxl_hostapd_prune_sta(struct hostapd_data *hapd, const u8 *addr)
++bool mxl_hostapd_prune_sta(struct hostapd_data *hapd, const u8 *addr, struct sta_info *new_sta)
+ {
+ 	struct prune_data data = {0};
+ 	u16 status = 0;
+ 
+ 	data.addr = addr;
++	data.new_sta_entry = new_sta;
+ 
+ 	if (hapd->iface->interfaces &&
+ 			hapd->iface->interfaces->for_each_interface)
+diff --git a/src/ap/mxl_utils.h b/src/ap/mxl_utils.h
+index 3ae7e2961..de77a61a7 100644
+--- a/src/ap/mxl_utils.h
++++ b/src/ap/mxl_utils.h
+@@ -15,6 +15,7 @@ struct prune_data {
+ 	struct hostapd_data *hapd;
+ 	const u8 *addr;
+ 	int mld_assoc_link_id;
++	struct sta_info *new_sta_entry;
+ };
+ #endif /* CONFIG_VENDOR_MXL */
+ 
+-- 
+2.43.0
+

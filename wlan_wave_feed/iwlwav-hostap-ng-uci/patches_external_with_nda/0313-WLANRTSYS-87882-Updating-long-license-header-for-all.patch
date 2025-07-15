@@ -1,0 +1,1117 @@
+From f023655fd5feddf64ebf831b6d5c8a38309b1288 Mon Sep 17 00:00:00 2001
+From: spatel <spatel@maxlinear.com>
+Date: Mon, 24 Feb 2025 17:01:53 +0530
+Subject: [PATCH] WLANRTSYS-87882 Updating long license header for all mxl
+ files
+
+---
+ hostapd/mxl_config.c                   |  2 +-
+ hostapd/mxl_ctrl_iface.c               |  2 +-
+ hostapd/mxl_ctrl_iface.h               |  2 +-
+ hostapd/mxl_hostapd_cli.c              |  2 +-
+ hostapd/mxl_hostapd_cli.h              |  2 +-
+ src/ap/greylist.c                      | 19 ++++++++++++-------
+ src/ap/greylist.h                      | 19 ++++++++++++-------
+ src/ap/mxl_afc.c                       |  6 +++++-
+ src/ap/mxl_afc.h                       |  6 +++++-
+ src/ap/mxl_beacon.c                    |  5 ++++-
+ src/ap/mxl_beacon.h                    |  6 +++++-
+ src/ap/mxl_coexistence.c               |  2 +-
+ src/ap/mxl_coexistence.h               |  2 +-
+ src/ap/mxl_config.h                    |  2 +-
+ src/ap/mxl_csa.c                       | 22 ++++++++++++----------
+ src/ap/mxl_csa.h                       | 21 ++++++++++++---------
+ src/ap/mxl_dfs_common.c                |  2 +-
+ src/ap/mxl_dfs_common.h                |  2 +-
+ src/ap/mxl_dfs_file.c                  |  2 +-
+ src/ap/mxl_dfs_file.h                  |  2 +-
+ src/ap/mxl_drv_callbacks.c             |  6 +++++-
+ src/ap/mxl_drv_callbacks.h             |  6 +++++-
+ src/ap/mxl_events.c                    |  2 +-
+ src/ap/mxl_hostapd.c                   |  2 +-
+ src/ap/mxl_hostapd.h                   |  2 +-
+ src/ap/mxl_ieee802_11.c                |  6 +++++-
+ src/ap/mxl_ieee802_11.h                |  6 +++++-
+ src/ap/mxl_ieee802_11_eht.h            |  6 +++++-
+ src/ap/mxl_ieee802_11_shared.c         |  6 +++++-
+ src/ap/mxl_mld.c                       |  6 +++++-
+ src/ap/mxl_mld.h                       |  6 +++++-
+ src/ap/mxl_rrm.c                       |  2 +-
+ src/ap/mxl_rrm.h                       |  2 +-
+ src/ap/mxl_softblock.c                 |  2 +-
+ src/ap/mxl_softblock.h                 |  2 +-
+ src/ap/mxl_sta_info.c                  |  6 +++++-
+ src/ap/mxl_sta_info.h                  |  6 +++++-
+ src/ap/mxl_sub_band_dfs.c              |  2 +-
+ src/ap/mxl_sub_band_dfs.h              |  2 +-
+ src/ap/mxl_utils.c                     |  6 +++++-
+ src/ap/mxl_utils.h                     |  6 +++++-
+ src/ap/mxl_wds.c                       |  2 +-
+ src/ap/mxl_wds.h                       |  2 +-
+ src/ap/mxl_wmm.c                       |  6 +++++-
+ src/ap/mxl_wmm.h                       |  6 +++++-
+ src/ap/mxl_wpa_auth.c                  |  6 +++++-
+ src/ap/mxl_wpa_auth.h                  |  6 +++++-
+ src/ap/mxl_wpa_auth_glue.c             |  6 +++++-
+ src/ap/mxl_wpa_auth_glue.h             |  6 +++++-
+ src/ap/mxl_zwdfs.c                     |  2 +-
+ src/ap/mxl_zwdfs.h                     |  2 +-
+ src/ap/wds_wpa.c                       | 12 ++++++++++++
+ src/ap/wds_wpa.h                       | 12 ++++++++++++
+ src/common/mxl_defs.h                  |  2 +-
+ src/common/mxl_ieee802_11_common.c     |  2 +-
+ src/common/mxl_ieee802_11_common.h     |  2 +-
+ src/common/mxl_ieee802_11_defs.h       |  2 +-
+ src/common/mxl_sae.h                   |  6 +++++-
+ src/common/mxl_vendor.h                |  2 +-
+ src/common/mxl_wpa_ctrl.h              |  2 +-
+ src/common/vendor_cmds_copy.h          |  2 +-
+ src/drivers/mxl_driver.h               |  2 +-
+ src/drivers/mxl_driver_nl80211.c       |  2 +-
+ src/drivers/mxl_driver_nl80211.h       |  2 +-
+ src/drivers/mxl_nl80211.h              |  2 +-
+ src/utils/mxl_common.h                 |  2 +-
+ wpa_supplicant/mxl_config_ssid.h       |  6 +++---
+ wpa_supplicant/mxl_events.c            |  2 +-
+ wpa_supplicant/mxl_supplicant.c        |  2 +-
+ wpa_supplicant/mxl_supplicant.h        |  2 +-
+ wpa_supplicant/mxl_supplicant_config.h |  2 +-
+ 71 files changed, 230 insertions(+), 100 deletions(-)
+
+diff --git a/hostapd/mxl_config.c b/hostapd/mxl_config.c
+index 328736cce..dd88ff022 100644
+--- a/hostapd/mxl_config.c
++++ b/hostapd/mxl_config.c
+@@ -1,6 +1,6 @@
+ /******************************************************************************
+ 
+-         Copyright (c) 2023 - 2024, MaxLinear, Inc.
++         Copyright (c) 2020 - 2025, MaxLinear, Inc.
+          Copyright 2016 - 2020 Intel Corporation
+          Copyright 2015 - 2016 Lantiq Beteiligungs-GmbH & Co. KG
+          Copyright 2009 - 2014 Lantiq Deutschland GmbH
+diff --git a/hostapd/mxl_ctrl_iface.c b/hostapd/mxl_ctrl_iface.c
+index 87c32a331..337cc1917 100644
+--- a/hostapd/mxl_ctrl_iface.c
++++ b/hostapd/mxl_ctrl_iface.c
+@@ -1,6 +1,6 @@
+ /******************************************************************************
+ 
+-         Copyright (c) 2023 - 2024, MaxLinear, Inc.
++         Copyright (c) 2020 - 2025, MaxLinear, Inc.
+          Copyright 2016 - 2020 Intel Corporation
+          Copyright 2015 - 2016 Lantiq Beteiligungs-GmbH & Co. KG
+          Copyright 2009 - 2014 Lantiq Deutschland GmbH
+diff --git a/hostapd/mxl_ctrl_iface.h b/hostapd/mxl_ctrl_iface.h
+index e23c04c72..505c43632 100644
+--- a/hostapd/mxl_ctrl_iface.h
++++ b/hostapd/mxl_ctrl_iface.h
+@@ -1,6 +1,6 @@
+ /******************************************************************************
+ 
+-         Copyright (c) 2023 - 2024, MaxLinear, Inc.
++         Copyright (c) 2020 - 2025, MaxLinear, Inc.
+          Copyright 2016 - 2020 Intel Corporation
+          Copyright 2015 - 2016 Lantiq Beteiligungs-GmbH & Co. KG
+          Copyright 2009 - 2014 Lantiq Deutschland GmbH
+diff --git a/hostapd/mxl_hostapd_cli.c b/hostapd/mxl_hostapd_cli.c
+index d9054a1ae..47873c417 100644
+--- a/hostapd/mxl_hostapd_cli.c
++++ b/hostapd/mxl_hostapd_cli.c
+@@ -1,6 +1,6 @@
+ /******************************************************************************
+ 
+-         Copyright (c) 2023 - 2024, MaxLinear, Inc.
++         Copyright (c) 2020 - 2025, MaxLinear, Inc.
+          Copyright 2016 - 2020 Intel Corporation
+          Copyright 2015 - 2016 Lantiq Beteiligungs-GmbH & Co. KG
+          Copyright 2009 - 2014 Lantiq Deutschland GmbH
+diff --git a/hostapd/mxl_hostapd_cli.h b/hostapd/mxl_hostapd_cli.h
+index bfc39b123..71732a02f 100644
+--- a/hostapd/mxl_hostapd_cli.h
++++ b/hostapd/mxl_hostapd_cli.h
+@@ -1,6 +1,6 @@
+ /******************************************************************************
+ 
+-         Copyright (c) 2023 - 2024, MaxLinear, Inc.
++         Copyright (c) 2020 - 2025, MaxLinear, Inc.
+          Copyright 2016 - 2020 Intel Corporation
+          Copyright 2015 - 2016 Lantiq Beteiligungs-GmbH & Co. KG
+          Copyright 2009 - 2014 Lantiq Deutschland GmbH
+diff --git a/src/ap/greylist.c b/src/ap/greylist.c
+index 00b105131..904ee5e4c 100644
+--- a/src/ap/greylist.c
++++ b/src/ap/greylist.c
+@@ -1,10 +1,15 @@
+-/*
+- * hostapd / RADIUS Greylist Access Control
+- * Copyright 2023 MaxLinear
+- *
+- * This software may be distributed under the terms of the BSD license.
+- * See README for more details.
+- */
++/******************************************************************************
++
++         Copyright (c) 2020 - 2025, MaxLinear, Inc.
++         Copyright 2016 - 2020 Intel Corporation
++         Copyright 2015 - 2016 Lantiq Beteiligungs-GmbH & Co. KG
++         Copyright 2009 - 2014 Lantiq Deutschland GmbH
++         Copyright 2007 - 2008 Infineon Technologies AG
++
++  This software may be distributed under the terms of the BSD license.
++  See README for more details.
++
++*******************************************************************************/
+ 
+ #define __USE_XOPEN
+ #define _GNU_SOURCE
+diff --git a/src/ap/greylist.h b/src/ap/greylist.h
+index 04d661e07..a374817a1 100644
+--- a/src/ap/greylist.h
++++ b/src/ap/greylist.h
+@@ -1,10 +1,15 @@
+-/*
+- * hostapd / RADIUS Greylist Access Control
+- * Copyright 2023 MaxLinear
+- *
+- * This software may be distributed under the terms of the BSD license.
+- * See README for more details.
+- */
++/******************************************************************************
++
++         Copyright (c) 2020 - 2025, MaxLinear, Inc.
++         Copyright 2016 - 2020 Intel Corporation
++         Copyright 2015 - 2016 Lantiq Beteiligungs-GmbH & Co. KG
++         Copyright 2009 - 2014 Lantiq Deutschland GmbH
++         Copyright 2007 - 2008 Infineon Technologies AG
++
++  This software may be distributed under the terms of the BSD license.
++  See README for more details.
++
++*******************************************************************************/
+ 
+ #ifndef GREYLIST_H
+ #define GREYLIST_H
+diff --git a/src/ap/mxl_afc.c b/src/ap/mxl_afc.c
+index f15bd1837..abe00ca24 100644
+--- a/src/ap/mxl_afc.c
++++ b/src/ap/mxl_afc.c
+@@ -1,6 +1,10 @@
+ /******************************************************************************
+ 
+-         Copyright (c) 2024, MaxLinear, Inc.
++         Copyright (c) 2020 - 2025, MaxLinear, Inc.
++         Copyright 2016 - 2020 Intel Corporation
++         Copyright 2015 - 2016 Lantiq Beteiligungs-GmbH & Co. KG
++         Copyright 2009 - 2014 Lantiq Deutschland GmbH
++         Copyright 2007 - 2008 Infineon Technologies AG
+ 
+   This software may be distributed under the terms of the BSD license.
+   See README for more details.
+diff --git a/src/ap/mxl_afc.h b/src/ap/mxl_afc.h
+index f2454ae96..e3790a059 100644
+--- a/src/ap/mxl_afc.h
++++ b/src/ap/mxl_afc.h
+@@ -1,6 +1,10 @@
+ /******************************************************************************
+ 
+-         Copyright (c) 2024, MaxLinear, Inc.
++         Copyright (c) 2020 - 2025, MaxLinear, Inc.
++         Copyright 2016 - 2020 Intel Corporation
++         Copyright 2015 - 2016 Lantiq Beteiligungs-GmbH & Co. KG
++         Copyright 2009 - 2014 Lantiq Deutschland GmbH
++         Copyright 2007 - 2008 Infineon Technologies AG
+ 
+   This software may be distributed under the terms of the BSD license.
+   See README for more details.
+diff --git a/src/ap/mxl_beacon.c b/src/ap/mxl_beacon.c
+index a82aaee73..298085f68 100644
+--- a/src/ap/mxl_beacon.c
++++ b/src/ap/mxl_beacon.c
+@@ -1,7 +1,10 @@
+ /******************************************************************************
+ 
+-         Copyright (c) 2023 - 2024, MaxLinear, Inc.
++         Copyright (c) 2020 - 2025, MaxLinear, Inc.
+          Copyright 2016 - 2020 Intel Corporation
++         Copyright 2015 - 2016 Lantiq Beteiligungs-GmbH & Co. KG
++         Copyright 2009 - 2014 Lantiq Deutschland GmbH
++         Copyright 2007 - 2008 Infineon Technologies AG
+ 
+   This software may be distributed under the terms of the BSD license.
+   See README for more details.
+diff --git a/src/ap/mxl_beacon.h b/src/ap/mxl_beacon.h
+index 4b775b5ba..b8c779e8e 100644
+--- a/src/ap/mxl_beacon.h
++++ b/src/ap/mxl_beacon.h
+@@ -1,6 +1,10 @@
+ /******************************************************************************
+ 
+-         Copyright (c) 2023 - 2024, MaxLinear, Inc.
++         Copyright (c) 2020 - 2025, MaxLinear, Inc.
++         Copyright 2016 - 2020 Intel Corporation
++         Copyright 2015 - 2016 Lantiq Beteiligungs-GmbH & Co. KG
++         Copyright 2009 - 2014 Lantiq Deutschland GmbH
++         Copyright 2007 - 2008 Infineon Technologies AG
+ 
+   This software may be distributed under the terms of the BSD license.
+   See README for more details.
+diff --git a/src/ap/mxl_coexistence.c b/src/ap/mxl_coexistence.c
+index 596645dd2..14824cc61 100644
+--- a/src/ap/mxl_coexistence.c
++++ b/src/ap/mxl_coexistence.c
+@@ -1,6 +1,6 @@
+ /******************************************************************************
+ 
+-         Copyright (c) 2023 - 2024, MaxLinear, Inc.
++         Copyright (c) 2020 - 2025, MaxLinear, Inc.
+          Copyright 2016 - 2020 Intel Corporation
+          Copyright 2015 - 2016 Lantiq Beteiligungs-GmbH & Co. KG
+          Copyright 2009 - 2014 Lantiq Deutschland GmbH
+diff --git a/src/ap/mxl_coexistence.h b/src/ap/mxl_coexistence.h
+index 68e480b24..677d98360 100644
+--- a/src/ap/mxl_coexistence.h
++++ b/src/ap/mxl_coexistence.h
+@@ -1,6 +1,6 @@
+ /******************************************************************************
+ 
+-         Copyright (c) 2023 - 2024, MaxLinear, Inc.
++         Copyright (c) 2020 - 2025, MaxLinear, Inc.
+          Copyright 2016 - 2020 Intel Corporation
+          Copyright 2015 - 2016 Lantiq Beteiligungs-GmbH & Co. KG
+          Copyright 2009 - 2014 Lantiq Deutschland GmbH
+diff --git a/src/ap/mxl_config.h b/src/ap/mxl_config.h
+index fb14dc4b2..76abc45e5 100644
+--- a/src/ap/mxl_config.h
++++ b/src/ap/mxl_config.h
+@@ -1,6 +1,6 @@
+ /******************************************************************************
+ 
+-         Copyright (c) 2023 - 2024, MaxLinear, Inc.
++         Copyright (c) 2020 - 2025, MaxLinear, Inc.
+          Copyright 2016 - 2020 Intel Corporation
+          Copyright 2015 - 2016 Lantiq Beteiligungs-GmbH & Co. KG
+          Copyright 2009 - 2014 Lantiq Deutschland GmbH
+diff --git a/src/ap/mxl_csa.c b/src/ap/mxl_csa.c
+index 5be3c86c9..ed39bf3d1 100644
+--- a/src/ap/mxl_csa.c
++++ b/src/ap/mxl_csa.c
+@@ -1,13 +1,15 @@
+-/*
+- * hostapd / CSA for Multi AP / Mesh
+- * Copyright(c) 2022 - 2024 MaxLinear, Inc.
+- * Copyright(c) 2013 - 2016 Intel Mobile Communications GmbH.
+- * Copyright(c) 2011 - 2016 Intel Corporation. All rights reserved.
+- * Copyright (c) 2016-2017, Jouni Malinen <j@w1.fi>
+- *
+- * This software may be distributed under the terms of the BSD license.
+- * See README for more details.
+- */
++/******************************************************************************
++
++         Copyright (c) 2020 - 2025, MaxLinear, Inc.
++         Copyright 2016 - 2020 Intel Corporation
++         Copyright 2015 - 2016 Lantiq Beteiligungs-GmbH & Co. KG
++         Copyright 2009 - 2014 Lantiq Deutschland GmbH
++         Copyright 2007 - 2008 Infineon Technologies AG
++
++  This software may be distributed under the terms of the BSD license.
++  See README for more details.
++
++*******************************************************************************/
+ 
+ #include "utils/includes.h"
+ #include "utils/common.h"
+diff --git a/src/ap/mxl_csa.h b/src/ap/mxl_csa.h
+index 7d43f048e..4751fd444 100644
+--- a/src/ap/mxl_csa.h
++++ b/src/ap/mxl_csa.h
+@@ -1,12 +1,15 @@
+-/*
+- * hostapd / CSA for Multi AP / Mesh
+- * Copyright(c) 2022 - 2024 MaxLinear, Inc.
+- * Copyright(c) 2013 - 2016 Intel Mobile Communications GmbH.
+- * Copyright(c) 2011 - 2016 Intel Corporation. All rights reserved.
+- *
+- * This software may be distributed under the terms of the BSD license.
+- * See README for more details.
+- */
++/******************************************************************************
++
++         Copyright (c) 2020 - 2025, MaxLinear, Inc.
++         Copyright 2016 - 2020 Intel Corporation
++         Copyright 2015 - 2016 Lantiq Beteiligungs-GmbH & Co. KG
++         Copyright 2009 - 2014 Lantiq Deutschland GmbH
++         Copyright 2007 - 2008 Infineon Technologies AG
++
++  This software may be distributed under the terms of the BSD license.
++  See README for more details.
++
++*******************************************************************************/
+ 
+ 
+ #ifndef MXL_CSA_H
+diff --git a/src/ap/mxl_dfs_common.c b/src/ap/mxl_dfs_common.c
+index aafbc7c70..a2065035d 100644
+--- a/src/ap/mxl_dfs_common.c
++++ b/src/ap/mxl_dfs_common.c
+@@ -1,6 +1,6 @@
+ /******************************************************************************
+ 
+-         Copyright (c) 2023 - 2024, MaxLinear, Inc.
++         Copyright (c) 2020 - 2025, MaxLinear, Inc.
+          Copyright 2016 - 2020 Intel Corporation
+          Copyright 2015 - 2016 Lantiq Beteiligungs-GmbH & Co. KG
+          Copyright 2009 - 2014 Lantiq Deutschland GmbH
+diff --git a/src/ap/mxl_dfs_common.h b/src/ap/mxl_dfs_common.h
+index e91db9541..9b44d3970 100644
+--- a/src/ap/mxl_dfs_common.h
++++ b/src/ap/mxl_dfs_common.h
+@@ -1,6 +1,6 @@
+ /******************************************************************************
+ 
+-         Copyright (c) 2023 - 2024, MaxLinear, Inc.
++         Copyright (c) 2020 - 2025, MaxLinear, Inc.
+          Copyright 2016 - 2020 Intel Corporation
+          Copyright 2015 - 2016 Lantiq Beteiligungs-GmbH & Co. KG
+          Copyright 2009 - 2014 Lantiq Deutschland GmbH
+diff --git a/src/ap/mxl_dfs_file.c b/src/ap/mxl_dfs_file.c
+index cbb8fbe71..f5100e91b 100644
+--- a/src/ap/mxl_dfs_file.c
++++ b/src/ap/mxl_dfs_file.c
+@@ -1,6 +1,6 @@
+ /******************************************************************************
+ 
+-         Copyright (c) 2023 - 2024, MaxLinear, Inc.
++         Copyright (c) 2020 - 2025, MaxLinear, Inc.
+          Copyright 2016 - 2020 Intel Corporation
+          Copyright 2015 - 2016 Lantiq Beteiligungs-GmbH & Co. KG
+          Copyright 2009 - 2014 Lantiq Deutschland GmbH
+diff --git a/src/ap/mxl_dfs_file.h b/src/ap/mxl_dfs_file.h
+index e830a96eb..31ead426e 100644
+--- a/src/ap/mxl_dfs_file.h
++++ b/src/ap/mxl_dfs_file.h
+@@ -1,6 +1,6 @@
+ /******************************************************************************
+ 
+-         Copyright (c) 2023 - 2024, MaxLinear, Inc.
++         Copyright (c) 2020 - 2025, MaxLinear, Inc.
+          Copyright 2016 - 2020 Intel Corporation
+          Copyright 2015 - 2016 Lantiq Beteiligungs-GmbH & Co. KG
+          Copyright 2009 - 2014 Lantiq Deutschland GmbH
+diff --git a/src/ap/mxl_drv_callbacks.c b/src/ap/mxl_drv_callbacks.c
+index 7daa7ac53..2ee64e398 100644
+--- a/src/ap/mxl_drv_callbacks.c
++++ b/src/ap/mxl_drv_callbacks.c
+@@ -1,6 +1,10 @@
+ /******************************************************************************
+ 
+-         Copyright (c) 2023 - 2024, MaxLinear, Inc.
++         Copyright (c) 2020 - 2025, MaxLinear, Inc.
++         Copyright 2016 - 2020 Intel Corporation
++         Copyright 2015 - 2016 Lantiq Beteiligungs-GmbH & Co. KG
++         Copyright 2009 - 2014 Lantiq Deutschland GmbH
++         Copyright 2007 - 2008 Infineon Technologies AG
+ 
+   This software may be distributed under the terms of the BSD license.
+   See README for more details.
+diff --git a/src/ap/mxl_drv_callbacks.h b/src/ap/mxl_drv_callbacks.h
+index 3cdd5bc9c..4778c616d 100644
+--- a/src/ap/mxl_drv_callbacks.h
++++ b/src/ap/mxl_drv_callbacks.h
+@@ -1,6 +1,10 @@
+ /******************************************************************************
+ 
+-         Copyright (c) 2023 - 2024, MaxLinear, Inc.
++         Copyright (c) 2020 - 2025, MaxLinear, Inc.
++         Copyright 2016 - 2020 Intel Corporation
++         Copyright 2015 - 2016 Lantiq Beteiligungs-GmbH & Co. KG
++         Copyright 2009 - 2014 Lantiq Deutschland GmbH
++         Copyright 2007 - 2008 Infineon Technologies AG
+ 
+   This software may be distributed under the terms of the BSD license.
+   See README for more details.
+diff --git a/src/ap/mxl_events.c b/src/ap/mxl_events.c
+index 7685ef500..0f75c114f 100644
+--- a/src/ap/mxl_events.c
++++ b/src/ap/mxl_events.c
+@@ -1,6 +1,6 @@
+ /******************************************************************************
+ 
+-         Copyright (c) 2023 - 2024, MaxLinear, Inc.
++         Copyright (c) 2020 - 2025, MaxLinear, Inc.
+          Copyright 2016 - 2020 Intel Corporation
+          Copyright 2015 - 2016 Lantiq Beteiligungs-GmbH & Co. KG
+          Copyright 2009 - 2014 Lantiq Deutschland GmbH
+diff --git a/src/ap/mxl_hostapd.c b/src/ap/mxl_hostapd.c
+index 0cafed0aa..4b24b7bfe 100644
+--- a/src/ap/mxl_hostapd.c
++++ b/src/ap/mxl_hostapd.c
+@@ -1,6 +1,6 @@
+ /******************************************************************************
+ 
+-         Copyright (c) 2023 - 2024, MaxLinear, Inc.
++         Copyright (c) 2020 - 2025, MaxLinear, Inc.
+          Copyright 2016 - 2020 Intel Corporation
+          Copyright 2015 - 2016 Lantiq Beteiligungs-GmbH & Co. KG
+          Copyright 2009 - 2014 Lantiq Deutschland GmbH
+diff --git a/src/ap/mxl_hostapd.h b/src/ap/mxl_hostapd.h
+index 2224949ba..a121ea37e 100644
+--- a/src/ap/mxl_hostapd.h
++++ b/src/ap/mxl_hostapd.h
+@@ -1,6 +1,6 @@
+ /******************************************************************************
+ 
+-         Copyright (c) 2023 - 2024, MaxLinear, Inc.
++         Copyright (c) 2020 - 2025, MaxLinear, Inc.
+          Copyright 2016 - 2020 Intel Corporation
+          Copyright 2015 - 2016 Lantiq Beteiligungs-GmbH & Co. KG
+          Copyright 2009 - 2014 Lantiq Deutschland GmbH
+diff --git a/src/ap/mxl_ieee802_11.c b/src/ap/mxl_ieee802_11.c
+index 6d1c3758b..22fb9583d 100644
+--- a/src/ap/mxl_ieee802_11.c
++++ b/src/ap/mxl_ieee802_11.c
+@@ -1,6 +1,10 @@
+ /******************************************************************************
+ 
+-         Copyright (c) 2023 - 2024, MaxLinear, Inc.
++         Copyright (c) 2020 - 2025, MaxLinear, Inc.
++         Copyright 2016 - 2020 Intel Corporation
++         Copyright 2015 - 2016 Lantiq Beteiligungs-GmbH & Co. KG
++         Copyright 2009 - 2014 Lantiq Deutschland GmbH
++         Copyright 2007 - 2008 Infineon Technologies AG
+ 
+   This software may be distributed under the terms of the BSD license.
+   See README for more details.
+diff --git a/src/ap/mxl_ieee802_11.h b/src/ap/mxl_ieee802_11.h
+index a339eb179..c24031bd8 100644
+--- a/src/ap/mxl_ieee802_11.h
++++ b/src/ap/mxl_ieee802_11.h
+@@ -1,6 +1,10 @@
+ /******************************************************************************
+ 
+-         Copyright (c) 2023 - 2024, MaxLinear, Inc.
++         Copyright (c) 2020 - 2025, MaxLinear, Inc.
++         Copyright 2016 - 2020 Intel Corporation
++         Copyright 2015 - 2016 Lantiq Beteiligungs-GmbH & Co. KG
++         Copyright 2009 - 2014 Lantiq Deutschland GmbH
++         Copyright 2007 - 2008 Infineon Technologies AG
+ 
+   This software may be distributed under the terms of the BSD license.
+   See README for more details.
+diff --git a/src/ap/mxl_ieee802_11_eht.h b/src/ap/mxl_ieee802_11_eht.h
+index f30bdfaaa..56b0d4664 100644
+--- a/src/ap/mxl_ieee802_11_eht.h
++++ b/src/ap/mxl_ieee802_11_eht.h
+@@ -1,6 +1,10 @@
+ /******************************************************************************
+ 
+-         Copyright (c) 2023 - 2024, MaxLinear, Inc.
++         Copyright (c) 2020 - 2025, MaxLinear, Inc.
++         Copyright 2016 - 2020 Intel Corporation
++         Copyright 2015 - 2016 Lantiq Beteiligungs-GmbH & Co. KG
++         Copyright 2009 - 2014 Lantiq Deutschland GmbH
++         Copyright 2007 - 2008 Infineon Technologies AG
+ 
+   This software may be distributed under the terms of the BSD license.
+   See README for more details.
+diff --git a/src/ap/mxl_ieee802_11_shared.c b/src/ap/mxl_ieee802_11_shared.c
+index a95601fec..fe6c9ae04 100644
+--- a/src/ap/mxl_ieee802_11_shared.c
++++ b/src/ap/mxl_ieee802_11_shared.c
+@@ -1,6 +1,10 @@
+ /******************************************************************************
+ 
+-         Copyright (c) 2023 - 2024, MaxLinear, Inc.
++         Copyright (c) 2020 - 2025, MaxLinear, Inc.
++         Copyright 2016 - 2020 Intel Corporation
++         Copyright 2015 - 2016 Lantiq Beteiligungs-GmbH & Co. KG
++         Copyright 2009 - 2014 Lantiq Deutschland GmbH
++         Copyright 2007 - 2008 Infineon Technologies AG
+ 
+   This software may be distributed under the terms of the BSD license.
+   See README for more details.
+diff --git a/src/ap/mxl_mld.c b/src/ap/mxl_mld.c
+index 519f1a18c..52cb812d5 100644
+--- a/src/ap/mxl_mld.c
++++ b/src/ap/mxl_mld.c
+@@ -1,6 +1,10 @@
+ /******************************************************************************
+ 
+-         Copyright (c) 2023 - 2024, MaxLinear, Inc.
++         Copyright (c) 2020 - 2025, MaxLinear, Inc.
++         Copyright 2016 - 2020 Intel Corporation
++         Copyright 2015 - 2016 Lantiq Beteiligungs-GmbH & Co. KG
++         Copyright 2009 - 2014 Lantiq Deutschland GmbH
++         Copyright 2007 - 2008 Infineon Technologies AG
+ 
+   This software may be distributed under the terms of the BSD license.
+   See README for more details.
+diff --git a/src/ap/mxl_mld.h b/src/ap/mxl_mld.h
+index 419a4d8ee..878c95577 100644
+--- a/src/ap/mxl_mld.h
++++ b/src/ap/mxl_mld.h
+@@ -1,6 +1,10 @@
+ /******************************************************************************
+ 
+-         Copyright (c) 2023 - 2024, MaxLinear, Inc.
++         Copyright (c) 2020 - 2025, MaxLinear, Inc.
++         Copyright 2016 - 2020 Intel Corporation
++         Copyright 2015 - 2016 Lantiq Beteiligungs-GmbH & Co. KG
++         Copyright 2009 - 2014 Lantiq Deutschland GmbH
++         Copyright 2007 - 2008 Infineon Technologies AG
+ 
+   This software may be distributed under the terms of the BSD license.
+   See README for more details.
+diff --git a/src/ap/mxl_rrm.c b/src/ap/mxl_rrm.c
+index 468f3ac7d..43f14b1f4 100644
+--- a/src/ap/mxl_rrm.c
++++ b/src/ap/mxl_rrm.c
+@@ -1,6 +1,6 @@
+ /******************************************************************************
+ 
+-         Copyright (c) 2023 - 2024, MaxLinear, Inc.
++         Copyright (c) 2020 - 2025, MaxLinear, Inc.
+          Copyright 2016 - 2020 Intel Corporation
+          Copyright 2015 - 2016 Lantiq Beteiligungs-GmbH & Co. KG
+          Copyright 2009 - 2014 Lantiq Deutschland GmbH
+diff --git a/src/ap/mxl_rrm.h b/src/ap/mxl_rrm.h
+index 4086750a7..7c00b70fa 100644
+--- a/src/ap/mxl_rrm.h
++++ b/src/ap/mxl_rrm.h
+@@ -1,6 +1,6 @@
+ /******************************************************************************
+ 
+-         Copyright (c) 2023 - 2024, MaxLinear, Inc.
++         Copyright (c) 2020 - 2025, MaxLinear, Inc.
+          Copyright 2016 - 2020 Intel Corporation
+          Copyright 2015 - 2016 Lantiq Beteiligungs-GmbH & Co. KG
+          Copyright 2009 - 2014 Lantiq Deutschland GmbH
+diff --git a/src/ap/mxl_softblock.c b/src/ap/mxl_softblock.c
+index dfcacb6d9..df20814f5 100644
+--- a/src/ap/mxl_softblock.c
++++ b/src/ap/mxl_softblock.c
+@@ -1,6 +1,6 @@
+ /******************************************************************************
+ 
+-         Copyright (c) 2023 - 2024, MaxLinear, Inc.
++         Copyright (c) 2020 - 2025, MaxLinear, Inc.
+          Copyright 2016 - 2020 Intel Corporation
+          Copyright 2015 - 2016 Lantiq Beteiligungs-GmbH & Co. KG
+          Copyright 2009 - 2014 Lantiq Deutschland GmbH
+diff --git a/src/ap/mxl_softblock.h b/src/ap/mxl_softblock.h
+index 9898f287d..27e3fd0d0 100644
+--- a/src/ap/mxl_softblock.h
++++ b/src/ap/mxl_softblock.h
+@@ -1,6 +1,6 @@
+ /******************************************************************************
+ 
+-         Copyright (c) 2023 - 2024, MaxLinear, Inc.
++         Copyright (c) 2020 - 2025, MaxLinear, Inc.
+          Copyright 2016 - 2020 Intel Corporation
+          Copyright 2015 - 2016 Lantiq Beteiligungs-GmbH & Co. KG
+          Copyright 2009 - 2014 Lantiq Deutschland GmbH
+diff --git a/src/ap/mxl_sta_info.c b/src/ap/mxl_sta_info.c
+index 251b53709..6818086c8 100644
+--- a/src/ap/mxl_sta_info.c
++++ b/src/ap/mxl_sta_info.c
+@@ -1,6 +1,10 @@
+ /******************************************************************************
+ 
+-         Copyright (c) 2023 - 2024, MaxLinear, Inc.
++         Copyright (c) 2020 - 2025, MaxLinear, Inc.
++         Copyright 2016 - 2020 Intel Corporation
++         Copyright 2015 - 2016 Lantiq Beteiligungs-GmbH & Co. KG
++         Copyright 2009 - 2014 Lantiq Deutschland GmbH
++         Copyright 2007 - 2008 Infineon Technologies AG
+ 
+   This software may be distributed under the terms of the BSD license.
+   See README for more details.
+diff --git a/src/ap/mxl_sta_info.h b/src/ap/mxl_sta_info.h
+index d0be6cbf6..2726b0f14 100644
+--- a/src/ap/mxl_sta_info.h
++++ b/src/ap/mxl_sta_info.h
+@@ -1,6 +1,10 @@
+ /******************************************************************************
+ 
+-         Copyright (c) 2023 - 2024, MaxLinear, Inc.
++         Copyright (c) 2020 - 2025, MaxLinear, Inc.
++         Copyright 2016 - 2020 Intel Corporation
++         Copyright 2015 - 2016 Lantiq Beteiligungs-GmbH & Co. KG
++         Copyright 2009 - 2014 Lantiq Deutschland GmbH
++         Copyright 2007 - 2008 Infineon Technologies AG
+ 
+   This software may be distributed under the terms of the BSD license.
+   See README for more details.
+diff --git a/src/ap/mxl_sub_band_dfs.c b/src/ap/mxl_sub_band_dfs.c
+index ef6cfddf5..05c811744 100644
+--- a/src/ap/mxl_sub_band_dfs.c
++++ b/src/ap/mxl_sub_band_dfs.c
+@@ -1,6 +1,6 @@
+ /******************************************************************************
+ 
+-         Copyright (c) 2023 - 2024, MaxLinear, Inc.
++         Copyright (c) 2020 - 2025, MaxLinear, Inc.
+          Copyright 2016 - 2020 Intel Corporation
+          Copyright 2015 - 2016 Lantiq Beteiligungs-GmbH & Co. KG
+          Copyright 2009 - 2014 Lantiq Deutschland GmbH
+diff --git a/src/ap/mxl_sub_band_dfs.h b/src/ap/mxl_sub_band_dfs.h
+index e578c06a6..65426fb74 100644
+--- a/src/ap/mxl_sub_band_dfs.h
++++ b/src/ap/mxl_sub_band_dfs.h
+@@ -1,6 +1,6 @@
+ /******************************************************************************
+ 
+-         Copyright (c) 2023 - 2024, MaxLinear, Inc.
++         Copyright (c) 2020 - 2025, MaxLinear, Inc.
+          Copyright 2016 - 2020 Intel Corporation
+          Copyright 2015 - 2016 Lantiq Beteiligungs-GmbH & Co. KG
+          Copyright 2009 - 2014 Lantiq Deutschland GmbH
+diff --git a/src/ap/mxl_utils.c b/src/ap/mxl_utils.c
+index b5f59bdb7..be95eabdc 100644
+--- a/src/ap/mxl_utils.c
++++ b/src/ap/mxl_utils.c
+@@ -1,6 +1,10 @@
+ /******************************************************************************
+ 
+-         Copyright (c) 2023 - 2024, MaxLinear, Inc.
++         Copyright (c) 2020 - 2025, MaxLinear, Inc.
++         Copyright 2016 - 2020 Intel Corporation
++         Copyright 2015 - 2016 Lantiq Beteiligungs-GmbH & Co. KG
++         Copyright 2009 - 2014 Lantiq Deutschland GmbH
++         Copyright 2007 - 2008 Infineon Technologies AG
+ 
+   This software may be distributed under the terms of the BSD license.
+   See README for more details.
+diff --git a/src/ap/mxl_utils.h b/src/ap/mxl_utils.h
+index de77a61a7..756ce1d86 100644
+--- a/src/ap/mxl_utils.h
++++ b/src/ap/mxl_utils.h
+@@ -1,6 +1,10 @@
+ /******************************************************************************
+ 
+-         Copyright (c) 2023 - 2024, MaxLinear, Inc.
++         Copyright (c) 2020 - 2025, MaxLinear, Inc.
++         Copyright 2016 - 2020 Intel Corporation
++         Copyright 2015 - 2016 Lantiq Beteiligungs-GmbH & Co. KG
++         Copyright 2009 - 2014 Lantiq Deutschland GmbH
++         Copyright 2007 - 2008 Infineon Technologies AG
+ 
+   This software may be distributed under the terms of the BSD license.
+   See README for more details.
+diff --git a/src/ap/mxl_wds.c b/src/ap/mxl_wds.c
+index 774e59a90..521a0120a 100644
+--- a/src/ap/mxl_wds.c
++++ b/src/ap/mxl_wds.c
+@@ -1,6 +1,6 @@
+ /******************************************************************************
+ 
+-         Copyright (c) 2023 - 2024, MaxLinear, Inc.
++         Copyright (c) 2020 - 2025, MaxLinear, Inc.
+          Copyright 2016 - 2020 Intel Corporation
+          Copyright 2015 - 2016 Lantiq Beteiligungs-GmbH & Co. KG
+          Copyright 2009 - 2014 Lantiq Deutschland GmbH
+diff --git a/src/ap/mxl_wds.h b/src/ap/mxl_wds.h
+index 77de95d19..f443b924c 100644
+--- a/src/ap/mxl_wds.h
++++ b/src/ap/mxl_wds.h
+@@ -1,6 +1,6 @@
+ /******************************************************************************
+ 
+-         Copyright (c) 2023 - 2024, MaxLinear, Inc.
++         Copyright (c) 2020 - 2025, MaxLinear, Inc.
+          Copyright 2016 - 2020 Intel Corporation
+          Copyright 2015 - 2016 Lantiq Beteiligungs-GmbH & Co. KG
+          Copyright 2009 - 2014 Lantiq Deutschland GmbH
+diff --git a/src/ap/mxl_wmm.c b/src/ap/mxl_wmm.c
+index de9ec2478..46d09d3d5 100644
+--- a/src/ap/mxl_wmm.c
++++ b/src/ap/mxl_wmm.c
+@@ -1,6 +1,10 @@
+ /******************************************************************************
+ 
+-         Copyright (c) 2023 - 2024, MaxLinear, Inc.
++         Copyright (c) 2020 - 2025, MaxLinear, Inc.
++         Copyright 2016 - 2020 Intel Corporation
++         Copyright 2015 - 2016 Lantiq Beteiligungs-GmbH & Co. KG
++         Copyright 2009 - 2014 Lantiq Deutschland GmbH
++         Copyright 2007 - 2008 Infineon Technologies AG
+ 
+   This software may be distributed under the terms of the BSD license.
+   See README for more details.
+diff --git a/src/ap/mxl_wmm.h b/src/ap/mxl_wmm.h
+index 2fe1c9284..90040931b 100644
+--- a/src/ap/mxl_wmm.h
++++ b/src/ap/mxl_wmm.h
+@@ -1,6 +1,10 @@
+ /******************************************************************************
+ 
+-         Copyright (c) 2023 - 2024, MaxLinear, Inc.
++         Copyright (c) 2020 - 2025, MaxLinear, Inc.
++         Copyright 2016 - 2020 Intel Corporation
++         Copyright 2015 - 2016 Lantiq Beteiligungs-GmbH & Co. KG
++         Copyright 2009 - 2014 Lantiq Deutschland GmbH
++         Copyright 2007 - 2008 Infineon Technologies AG
+ 
+   This software may be distributed under the terms of the BSD license.
+   See README for more details.
+diff --git a/src/ap/mxl_wpa_auth.c b/src/ap/mxl_wpa_auth.c
+index cd3590dbf..404f1c0be 100644
+--- a/src/ap/mxl_wpa_auth.c
++++ b/src/ap/mxl_wpa_auth.c
+@@ -1,6 +1,10 @@
+ /******************************************************************************
+ 
+-         Copyright (c) 2023 - 2024, MaxLinear, Inc.
++         Copyright (c) 2020 - 2025, MaxLinear, Inc.
++         Copyright 2016 - 2020 Intel Corporation
++         Copyright 2015 - 2016 Lantiq Beteiligungs-GmbH & Co. KG
++         Copyright 2009 - 2014 Lantiq Deutschland GmbH
++         Copyright 2007 - 2008 Infineon Technologies AG
+ 
+   This software may be distributed under the terms of the BSD license.
+   See README for more details.
+diff --git a/src/ap/mxl_wpa_auth.h b/src/ap/mxl_wpa_auth.h
+index a6125a49c..e2be678e5 100644
+--- a/src/ap/mxl_wpa_auth.h
++++ b/src/ap/mxl_wpa_auth.h
+@@ -1,6 +1,10 @@
+ /******************************************************************************
+ 
+-         Copyright (c) 2023 - 2024, MaxLinear, Inc.
++         Copyright (c) 2020 - 2025, MaxLinear, Inc.
++         Copyright 2016 - 2020 Intel Corporation
++         Copyright 2015 - 2016 Lantiq Beteiligungs-GmbH & Co. KG
++         Copyright 2009 - 2014 Lantiq Deutschland GmbH
++         Copyright 2007 - 2008 Infineon Technologies AG
+ 
+   This software may be distributed under the terms of the BSD license.
+   See README for more details.
+diff --git a/src/ap/mxl_wpa_auth_glue.c b/src/ap/mxl_wpa_auth_glue.c
+index 248ffaffe..72c5eddae 100644
+--- a/src/ap/mxl_wpa_auth_glue.c
++++ b/src/ap/mxl_wpa_auth_glue.c
+@@ -1,6 +1,10 @@
+ /******************************************************************************
+ 
+-         Copyright (c) 2023 - 2024, MaxLinear, Inc.
++         Copyright (c) 2020 - 2025, MaxLinear, Inc.
++         Copyright 2016 - 2020 Intel Corporation
++         Copyright 2015 - 2016 Lantiq Beteiligungs-GmbH & Co. KG
++         Copyright 2009 - 2014 Lantiq Deutschland GmbH
++         Copyright 2007 - 2008 Infineon Technologies AG
+ 
+   This software may be distributed under the terms of the BSD license.
+   See README for more details.
+diff --git a/src/ap/mxl_wpa_auth_glue.h b/src/ap/mxl_wpa_auth_glue.h
+index 08daf4441..09809be1a 100644
+--- a/src/ap/mxl_wpa_auth_glue.h
++++ b/src/ap/mxl_wpa_auth_glue.h
+@@ -1,6 +1,10 @@
+ /******************************************************************************
+ 
+-         Copyright (c) 2023 - 2024, MaxLinear, Inc.
++         Copyright (c) 2020 - 2025, MaxLinear, Inc.
++         Copyright 2016 - 2020 Intel Corporation
++         Copyright 2015 - 2016 Lantiq Beteiligungs-GmbH & Co. KG
++         Copyright 2009 - 2014 Lantiq Deutschland GmbH
++         Copyright 2007 - 2008 Infineon Technologies AG
+ 
+   This software may be distributed under the terms of the BSD license.
+   See README for more details.
+diff --git a/src/ap/mxl_zwdfs.c b/src/ap/mxl_zwdfs.c
+index 082b31161..3699af882 100644
+--- a/src/ap/mxl_zwdfs.c
++++ b/src/ap/mxl_zwdfs.c
+@@ -1,6 +1,6 @@
+ /******************************************************************************
+ 
+-         Copyright (c) 2023 - 2024, MaxLinear, Inc.
++         Copyright (c) 2020 - 2025, MaxLinear, Inc.
+          Copyright 2016 - 2020 Intel Corporation
+          Copyright 2015 - 2016 Lantiq Beteiligungs-GmbH & Co. KG
+          Copyright 2009 - 2014 Lantiq Deutschland GmbH
+diff --git a/src/ap/mxl_zwdfs.h b/src/ap/mxl_zwdfs.h
+index 353480e65..b84cd8f89 100644
+--- a/src/ap/mxl_zwdfs.h
++++ b/src/ap/mxl_zwdfs.h
+@@ -1,6 +1,6 @@
+ /******************************************************************************
+ 
+-         Copyright (c) 2023 - 2024, MaxLinear, Inc.
++         Copyright (c) 2020 - 2025, MaxLinear, Inc.
+          Copyright 2016 - 2020 Intel Corporation
+          Copyright 2015 - 2016 Lantiq Beteiligungs-GmbH & Co. KG
+          Copyright 2009 - 2014 Lantiq Deutschland GmbH
+diff --git a/src/ap/wds_wpa.c b/src/ap/wds_wpa.c
+index a272f1e02..20964ee4b 100644
+--- a/src/ap/wds_wpa.c
++++ b/src/ap/wds_wpa.c
+@@ -1,3 +1,15 @@
++/******************************************************************************
++
++         Copyright (c) 2020 - 2025, MaxLinear, Inc.
++         Copyright 2016 - 2020 Intel Corporation
++         Copyright 2015 - 2016 Lantiq Beteiligungs-GmbH & Co. KG
++         Copyright 2009 - 2014 Lantiq Deutschland GmbH
++         Copyright 2007 - 2008 Infineon Technologies AG
++
++  This software may be distributed under the terms of the BSD license.
++  See README for more details.
++
++*******************************************************************************/
+ #include "includes.h"
+ #include "common.h"
+ #include "drivers/driver.h"
+diff --git a/src/ap/wds_wpa.h b/src/ap/wds_wpa.h
+index a19872339..078d3aec7 100644
+--- a/src/ap/wds_wpa.h
++++ b/src/ap/wds_wpa.h
+@@ -1,3 +1,15 @@
++/******************************************************************************
++
++         Copyright (c) 2020 - 2025, MaxLinear, Inc.
++         Copyright 2016 - 2020 Intel Corporation
++         Copyright 2015 - 2016 Lantiq Beteiligungs-GmbH & Co. KG
++         Copyright 2009 - 2014 Lantiq Deutschland GmbH
++         Copyright 2007 - 2008 Infineon Technologies AG
++
++  This software may be distributed under the terms of the BSD license.
++  See README for more details.
++
++*******************************************************************************/
+ #ifndef WDS_WPA_H
+ #define WDS_WPA_H
+ 
+diff --git a/src/common/mxl_defs.h b/src/common/mxl_defs.h
+index 136699b5e..ea759e50d 100644
+--- a/src/common/mxl_defs.h
++++ b/src/common/mxl_defs.h
+@@ -1,6 +1,6 @@
+ /******************************************************************************
+ 
+-         Copyright (c) 2023 - 2024, MaxLinear, Inc.
++         Copyright (c) 2020 - 2025, MaxLinear, Inc.
+          Copyright 2016 - 2020 Intel Corporation
+          Copyright 2015 - 2016 Lantiq Beteiligungs-GmbH & Co. KG
+          Copyright 2009 - 2014 Lantiq Deutschland GmbH
+diff --git a/src/common/mxl_ieee802_11_common.c b/src/common/mxl_ieee802_11_common.c
+index 6add0a1cd..76930b751 100644
+--- a/src/common/mxl_ieee802_11_common.c
++++ b/src/common/mxl_ieee802_11_common.c
+@@ -1,6 +1,6 @@
+ /******************************************************************************
+ 
+-         Copyright (c) 2023 - 2024, MaxLinear, Inc.
++         Copyright (c) 2020 - 2025, MaxLinear, Inc.
+          Copyright 2016 - 2020 Intel Corporation
+          Copyright 2015 - 2016 Lantiq Beteiligungs-GmbH & Co. KG
+          Copyright 2009 - 2014 Lantiq Deutschland GmbH
+diff --git a/src/common/mxl_ieee802_11_common.h b/src/common/mxl_ieee802_11_common.h
+index a728e5b51..764074a38 100644
+--- a/src/common/mxl_ieee802_11_common.h
++++ b/src/common/mxl_ieee802_11_common.h
+@@ -1,6 +1,6 @@
+ /******************************************************************************
+ 
+-         Copyright (c) 2023 - 2024, MaxLinear, Inc.
++         Copyright (c) 2020 - 2025, MaxLinear, Inc.
+          Copyright 2016 - 2020 Intel Corporation
+          Copyright 2015 - 2016 Lantiq Beteiligungs-GmbH & Co. KG
+          Copyright 2009 - 2014 Lantiq Deutschland GmbH
+diff --git a/src/common/mxl_ieee802_11_defs.h b/src/common/mxl_ieee802_11_defs.h
+index 04a36aad6..26b7ef448 100644
+--- a/src/common/mxl_ieee802_11_defs.h
++++ b/src/common/mxl_ieee802_11_defs.h
+@@ -1,6 +1,6 @@
+ /******************************************************************************
+ 
+-         Copyright (c) 2023 - 2024, MaxLinear, Inc.
++         Copyright (c) 2020 - 2025, MaxLinear, Inc.
+          Copyright 2016 - 2020 Intel Corporation
+          Copyright 2015 - 2016 Lantiq Beteiligungs-GmbH & Co. KG
+          Copyright 2009 - 2014 Lantiq Deutschland GmbH
+diff --git a/src/common/mxl_sae.h b/src/common/mxl_sae.h
+index 723dd3568..95fde83af 100644
+--- a/src/common/mxl_sae.h
++++ b/src/common/mxl_sae.h
+@@ -1,6 +1,10 @@
+ /******************************************************************************
+ 
+-         Copyright (c) 2023 - 2024, MaxLinear, Inc.
++         Copyright (c) 2020 - 2025, MaxLinear, Inc.
++         Copyright 2016 - 2020 Intel Corporation
++         Copyright 2015 - 2016 Lantiq Beteiligungs-GmbH & Co. KG
++         Copyright 2009 - 2014 Lantiq Deutschland GmbH
++         Copyright 2007 - 2008 Infineon Technologies AG
+ 
+   This software may be distributed under the terms of the BSD license.
+   See README for more details.
+diff --git a/src/common/mxl_vendor.h b/src/common/mxl_vendor.h
+index 07d140074..670acca98 100644
+--- a/src/common/mxl_vendor.h
++++ b/src/common/mxl_vendor.h
+@@ -1,6 +1,6 @@
+ /******************************************************************************
+ 
+-         Copyright (c) 2023 - 2024, MaxLinear, Inc.
++         Copyright (c) 2020 - 2025, MaxLinear, Inc.
+          Copyright 2016 - 2020 Intel Corporation
+          Copyright 2015 - 2016 Lantiq Beteiligungs-GmbH & Co. KG
+          Copyright 2009 - 2014 Lantiq Deutschland GmbH
+diff --git a/src/common/mxl_wpa_ctrl.h b/src/common/mxl_wpa_ctrl.h
+index 848f33aa4..200033acd 100644
+--- a/src/common/mxl_wpa_ctrl.h
++++ b/src/common/mxl_wpa_ctrl.h
+@@ -1,6 +1,6 @@
+ /******************************************************************************
+ 
+-         Copyright (c) 2023 - 2024, MaxLinear, Inc.
++         Copyright (c) 2020 - 2025, MaxLinear, Inc.
+          Copyright 2016 - 2020 Intel Corporation
+          Copyright 2015 - 2016 Lantiq Beteiligungs-GmbH & Co. KG
+          Copyright 2009 - 2014 Lantiq Deutschland GmbH
+diff --git a/src/common/vendor_cmds_copy.h b/src/common/vendor_cmds_copy.h
+index 339ec8703..ea5ca8576 100644
+--- a/src/common/vendor_cmds_copy.h
++++ b/src/common/vendor_cmds_copy.h
+@@ -1,6 +1,6 @@
+ /******************************************************************************
+ 
+-         Copyright (c) 2023 - 2024, MaxLinear, Inc.
++         Copyright (c) 2020 - 2025, MaxLinear, Inc.
+          Copyright 2016 - 2020 Intel Corporation
+          Copyright 2015 - 2016 Lantiq Beteiligungs-GmbH & Co. KG
+          Copyright 2009 - 2014 Lantiq Deutschland GmbH
+diff --git a/src/drivers/mxl_driver.h b/src/drivers/mxl_driver.h
+index 0ea4b4c5c..5adf3cb5c 100644
+--- a/src/drivers/mxl_driver.h
++++ b/src/drivers/mxl_driver.h
+@@ -1,6 +1,6 @@
+ /******************************************************************************
+ 
+-         Copyright (c) 2023 - 2024, MaxLinear, Inc.
++         Copyright (c) 2020 - 2025, MaxLinear, Inc.
+          Copyright 2016 - 2020 Intel Corporation
+          Copyright 2015 - 2016 Lantiq Beteiligungs-GmbH & Co. KG
+          Copyright 2009 - 2014 Lantiq Deutschland GmbH
+diff --git a/src/drivers/mxl_driver_nl80211.c b/src/drivers/mxl_driver_nl80211.c
+index e48c8fc66..0e8855cf0 100644
+--- a/src/drivers/mxl_driver_nl80211.c
++++ b/src/drivers/mxl_driver_nl80211.c
+@@ -1,6 +1,6 @@
+ /******************************************************************************
+ 
+-         Copyright (c) 2023 - 2024, MaxLinear, Inc.
++         Copyright (c) 2020 - 2025, MaxLinear, Inc.
+          Copyright 2016 - 2020 Intel Corporation
+          Copyright 2015 - 2016 Lantiq Beteiligungs-GmbH & Co. KG
+          Copyright 2009 - 2014 Lantiq Deutschland GmbH
+diff --git a/src/drivers/mxl_driver_nl80211.h b/src/drivers/mxl_driver_nl80211.h
+index 7fd1a8bd2..9107929f1 100644
+--- a/src/drivers/mxl_driver_nl80211.h
++++ b/src/drivers/mxl_driver_nl80211.h
+@@ -1,6 +1,6 @@
+ /******************************************************************************
+ 
+-         Copyright (c) 2023 - 2024, MaxLinear, Inc.
++         Copyright (c) 2020 - 2025, MaxLinear, Inc.
+          Copyright 2016 - 2020 Intel Corporation
+          Copyright 2015 - 2016 Lantiq Beteiligungs-GmbH & Co. KG
+          Copyright 2009 - 2014 Lantiq Deutschland GmbH
+diff --git a/src/drivers/mxl_nl80211.h b/src/drivers/mxl_nl80211.h
+index ee8dacd40..b7f15ef25 100644
+--- a/src/drivers/mxl_nl80211.h
++++ b/src/drivers/mxl_nl80211.h
+@@ -1,6 +1,6 @@
+ /******************************************************************************
+ 
+-         Copyright (c) 2023 - 2024, MaxLinear, Inc.
++         Copyright (c) 2020 - 2025, MaxLinear, Inc.
+          Copyright 2016 - 2020 Intel Corporation
+          Copyright 2015 - 2016 Lantiq Beteiligungs-GmbH & Co. KG
+          Copyright 2009 - 2014 Lantiq Deutschland GmbH
+diff --git a/src/utils/mxl_common.h b/src/utils/mxl_common.h
+index 1c6251e45..751d41a62 100644
+--- a/src/utils/mxl_common.h
++++ b/src/utils/mxl_common.h
+@@ -1,6 +1,6 @@
+ /******************************************************************************
+ 
+-         Copyright (c) 2023 - 2024, MaxLinear, Inc.
++         Copyright (c) 2020 - 2025, MaxLinear, Inc.
+          Copyright 2016 - 2020 Intel Corporation
+          Copyright 2015 - 2016 Lantiq Beteiligungs-GmbH & Co. KG
+          Copyright 2009 - 2014 Lantiq Deutschland GmbH
+diff --git a/wpa_supplicant/mxl_config_ssid.h b/wpa_supplicant/mxl_config_ssid.h
+index b53408456..ef9e269c2 100644
+--- a/wpa_supplicant/mxl_config_ssid.h
++++ b/wpa_supplicant/mxl_config_ssid.h
+@@ -1,13 +1,13 @@
+ /******************************************************************************
+ 
+-         Copyright (c) 2023, MaxLinear, Inc.
++         Copyright (c) 2020 - 2025, MaxLinear, Inc.
+          Copyright 2016 - 2020 Intel Corporation
+          Copyright 2015 - 2016 Lantiq Beteiligungs-GmbH & Co. KG
+          Copyright 2009 - 2014 Lantiq Deutschland GmbH
+          Copyright 2007 - 2008 Infineon Technologies AG
+ 
+-  For licensing information, see the file 'LICENSE' in the root folder of
+-  this software module.
++  This software may be distributed under the terms of the BSD license.
++  See README for more details.
+ 
+ *******************************************************************************/
+ 
+diff --git a/wpa_supplicant/mxl_events.c b/wpa_supplicant/mxl_events.c
+index a4c1d41d9..b59f63bf8 100644
+--- a/wpa_supplicant/mxl_events.c
++++ b/wpa_supplicant/mxl_events.c
+@@ -1,6 +1,6 @@
+ /******************************************************************************
+ 
+-         Copyright (c) 2023 - 2024, MaxLinear, Inc.
++         Copyright (c) 2020 - 2025, MaxLinear, Inc.
+          Copyright 2016 - 2020 Intel Corporation
+          Copyright 2015 - 2016 Lantiq Beteiligungs-GmbH & Co. KG
+          Copyright 2009 - 2014 Lantiq Deutschland GmbH
+diff --git a/wpa_supplicant/mxl_supplicant.c b/wpa_supplicant/mxl_supplicant.c
+index 3cd36dbb4..43721fcd9 100644
+--- a/wpa_supplicant/mxl_supplicant.c
++++ b/wpa_supplicant/mxl_supplicant.c
+@@ -1,6 +1,6 @@
+ /******************************************************************************
+ 
+-         Copyright (c) 2023 - 2024, MaxLinear, Inc.
++         Copyright (c) 2020 - 2025, MaxLinear, Inc.
+          Copyright 2016 - 2020 Intel Corporation
+          Copyright 2015 - 2016 Lantiq Beteiligungs-GmbH & Co. KG
+          Copyright 2009 - 2014 Lantiq Deutschland GmbH
+diff --git a/wpa_supplicant/mxl_supplicant.h b/wpa_supplicant/mxl_supplicant.h
+index eea5524d9..40285ac1c 100644
+--- a/wpa_supplicant/mxl_supplicant.h
++++ b/wpa_supplicant/mxl_supplicant.h
+@@ -1,6 +1,6 @@
+ /******************************************************************************
+ 
+-         Copyright (c) 2023 - 2024, MaxLinear, Inc.
++         Copyright (c) 2020 - 2025, MaxLinear, Inc.
+          Copyright 2016 - 2020 Intel Corporation
+          Copyright 2015 - 2016 Lantiq Beteiligungs-GmbH & Co. KG
+          Copyright 2009 - 2014 Lantiq Deutschland GmbH
+diff --git a/wpa_supplicant/mxl_supplicant_config.h b/wpa_supplicant/mxl_supplicant_config.h
+index 448042c6d..65c92e531 100644
+--- a/wpa_supplicant/mxl_supplicant_config.h
++++ b/wpa_supplicant/mxl_supplicant_config.h
+@@ -1,6 +1,6 @@
+ /******************************************************************************
+ 
+-         Copyright (c) 2023 - 2024, MaxLinear, Inc.
++         Copyright (c) 2020 - 2025, MaxLinear, Inc.
+          Copyright 2016 - 2020 Intel Corporation
+          Copyright 2015 - 2016 Lantiq Beteiligungs-GmbH & Co. KG
+          Copyright 2009 - 2014 Lantiq Deutschland GmbH
+-- 
+2.43.0
+

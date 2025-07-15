@@ -1,0 +1,39 @@
+From e04e287cd27396832e80a9ffbec7c8b1574eef90 Mon Sep 17 00:00:00 2001
+From: "Ross-Ashikyan, William" <washikyan@maxlinear.com>
+Date: Tue, 7 Jan 2025 15:24:39 -0800
+Subject: [PATCH] WLANRTSYS-87307 Expose free_beacon_data() outside hostapd.c
+
+---
+ src/ap/hostapd.c | 2 +-
+ src/ap/hostapd.h | 2 ++
+ 2 files changed, 3 insertions(+), 1 deletion(-)
+
+diff --git a/src/ap/hostapd.c b/src/ap/hostapd.c
+index f97dbd8b4..f47d7dd83 100644
+--- a/src/ap/hostapd.c
++++ b/src/ap/hostapd.c
+@@ -5276,7 +5276,7 @@ int hostapd_csa_in_progress(struct hostapd_iface *iface)
+ 
+ #ifdef NEED_AP_MLME
+ 
+-static void free_beacon_data(struct beacon_data *beacon)
++void free_beacon_data(struct beacon_data *beacon)
+ {
+ 	os_free(beacon->head);
+ 	beacon->head = NULL;
+diff --git a/src/ap/hostapd.h b/src/ap/hostapd.h
+index 81abff339..88af990eb 100644
+--- a/src/ap/hostapd.h
++++ b/src/ap/hostapd.h
+@@ -924,6 +924,8 @@ struct hostapd_data * hostapd_mld_get_link_bss(struct hostapd_data *hapd,
+ 					       u8 link_id);
+ int hostapd_link_remove(struct hostapd_data *hapd, u32 count);
+ 
++void free_beacon_data(struct beacon_data *beacon);
++
+ #ifdef CONFIG_IEEE80211BE
+ #define for_each_mld_link(_link, _bss_idx, _iface_idx, _ifaces, _mld_id) \
+ 	for (_iface_idx = 0;						\
+-- 
+2.43.0
+

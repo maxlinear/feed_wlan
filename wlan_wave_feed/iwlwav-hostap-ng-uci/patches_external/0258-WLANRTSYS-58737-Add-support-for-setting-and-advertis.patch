@@ -1,0 +1,392 @@
+From d76566952674f0dc46ae1d0fc6fe2a924af2d9da Mon Sep 17 00:00:00 2001
+From: Nikita Chernikov <nchernikov@maxlinear.com>
+Date: Sun, 3 Nov 2024 10:25:08 +0200
+Subject: [PATCH] WLANRTSYS-58737 Add support for setting and advertising PBAC
+
+ - Parse and set new PBAC capability from wiphy
+ - Add option to set pbac advertisment in RSN capabs of beacon/probe response
+ - Check and set pbac depending on mfp configuration and wiphy support
+ - Add new conf param pbac_disable
+ - Set pbac in driver if allowed
+ - Add new mxl specific handler for preparing bss reload on sighup
+
+Signed-off-by: Nikita Chernikov <nchernikov@maxlinear.com>
+---
+ hostapd/mxl_config.c              | 13 ++++++
+ src/ap/hostapd.c                  |  3 ++
+ src/ap/mxl_config.h               |  1 +
+ src/ap/mxl_hostapd.c              | 66 +++++++++++++++++++++++++++++++
+ src/ap/mxl_hostapd.h              |  4 ++
+ src/ap/mxl_wpa_auth_glue.c        |  8 ++++
+ src/ap/mxl_wpa_auth_glue.h        |  1 +
+ src/ap/wpa_auth.h                 |  3 ++
+ src/ap/wpa_auth_glue.c            |  3 ++
+ src/ap/wpa_auth_ie.c              | 11 ++++++
+ src/common/vendor_cmds_copy.h     |  1 +
+ src/drivers/driver_nl80211_capa.c |  6 +++
+ src/drivers/mxl_driver.h          |  2 +
+ src/drivers/mxl_driver_nl80211.c  |  8 ++++
+ src/drivers/mxl_driver_nl80211.h  |  1 +
+ src/drivers/mxl_nl80211.h         |  5 +++
+ src/drivers/nl80211_copy.h        |  4 ++
+ 17 files changed, 140 insertions(+)
+
+diff --git a/hostapd/mxl_config.c b/hostapd/mxl_config.c
+index b93abc749..741a20e8c 100644
+--- a/hostapd/mxl_config.c
++++ b/hostapd/mxl_config.c
+@@ -1901,6 +1901,13 @@ int mxl_hostapd_config_fill (struct hostapd_config *conf,
+ 			return 0;
+ 		}
+ 		mxl_conf->dup_beacon.bw = val;
++	} else if (os_strcmp(buf, "disable_pbac") == 0) {
++		int val = atoi(pos);
++		if (!IS_VALID_BOOL_RANGE(val)) {
++			wpa_printf(MSG_ERROR, "Line %d: invalid disable_pbac value %d", line, val);
++			return 0;
++		}
++		mxl_bss_conf->disable_pbac = val;
+ 	} else if (os_strcmp(buf, "nlmsg_default_size") == 0) {
+ 		size_t val = (size_t)atoi(pos);
+ 		if (val > mxl_conf->nlmsg_default_size)
+@@ -2021,6 +2028,7 @@ void mxl_hostapd_config_defaults_bss(struct hostapd_bss_config *bss)
+ 	bss->mxl_bss_conf.eml_transition_timeout = EML_CAPAB_TRANSITION_TIMEOUT_DEFAULT;
+ #endif /* CONFIG_IEEE80211BE_MXL_MLO */
+ 	mxl_bss_conf->rnr_auto_update = 1;
++	mxl_bss_conf->disable_pbac = false;
+ }
+ 
+ void mxl_hostapd_config_defaults(struct hostapd_config *conf)
+@@ -2176,5 +2184,10 @@ int mxl_hostapd_config_check_bss(struct hostapd_bss_config *bss, struct hostapd_
+ 		return -1;
+ 	}
+ 
++	if (full_config && (bss->ieee80211w != MGMT_FRAME_PROTECTION_REQUIRED)) {
++		bss->mxl_bss_conf.disable_pbac = true;
++		wpa_printf(MSG_WARNING, "Disabling PBAC advertisement - MFPR not configured");
++	}
++
+ 	return 0;
+ }
+diff --git a/src/ap/hostapd.c b/src/ap/hostapd.c
+index a640d3f18..f97dbd8b4 100644
+--- a/src/ap/hostapd.c
++++ b/src/ap/hostapd.c
+@@ -362,6 +362,9 @@ int hostapd_reload_config(struct hostapd_iface *iface)
+ 			hapd->iconf,
+ 			hostapd_get_oper_centr_freq_seg1_idx(oldconf));
+ 		hapd->conf = newconf->bss[j];
++#ifdef CONFIG_VENDOR_MXL
++		mxl_hostapd_prepare_reload_bss(hapd);
++#endif /* CONFIG_VENDOR_MXL*/
+ 		hostapd_reload_bss(hapd);
+ #ifdef CONFIG_IEEE80211BE_MXL_MLO
+ 		if (hapd->conf->mxl_bss_conf.mlo_enable && hapd->mxl_data.sibling_hapd)
+diff --git a/src/ap/mxl_config.h b/src/ap/mxl_config.h
+index 55a11ad60..01c057c00 100644
+--- a/src/ap/mxl_config.h
++++ b/src/ap/mxl_config.h
+@@ -409,6 +409,7 @@ struct mxl_hostapd_bss_config {
+ 	bool disable_beacon_prot;
+ #endif /* CONFIG_IEEE80211BE */
+ 	u32 bss_same_ssid; /* bitmap size [32 bits] - Need to handle based on MAX_SUPPORTED_6GHZ_VAP_PER_RADIO - WLANRTSYS-61684 */
++	bool disable_pbac;
+ 
+ 	/* Multi-AP */
+ 	bool ul_csa;
+diff --git a/src/ap/mxl_hostapd.c b/src/ap/mxl_hostapd.c
+index 46f4946da..a37260221 100644
+--- a/src/ap/mxl_hostapd.c
++++ b/src/ap/mxl_hostapd.c
+@@ -1656,6 +1656,8 @@ int mxl_hostapd_setup_interface(struct hostapd_data *hapd)
+ 	(void)mxl_conf;
+ 	(void)mxl_bss_conf;
+ 
++	mxl_hostapd_set_pbac_if_allowed(hapd);
++
+ #ifdef CONFIG_IEEE80211AX
+ 	/* He Debug mode */
+ 	mxl_hostapd_set_debug_mode_he_cap(hapd);
+@@ -1722,6 +1724,15 @@ int mxl_hostapd_setup_bss_post(struct hostapd_data *hapd)
+ 	(void)mxl_bss_conf;
+ 	(void)mxl_conf;
+ 
++	if (mxl_hostapd_is_pbac_capable(hapd->iface)) {
++		int pbac = mxl_hostapd_is_pbac_allowed(hapd);
++		if (MXL_DRV_VENDOR_SET(LTQ_NL80211_VENDOR_SUBCMD_SET_PBAC,
++			   &pbac, sizeof(pbac))) {
++			wpa_printf(MSG_WARNING, "set pbac failed");
++			return -1;
++		}
++	}
++
+ #ifdef CONFIG_IEEE80211AX
+ 	mxl_hostapd_send_debug_mode_he_cap(hapd);
+ 	mxl_hostapd_send_non_adv_he_cap(hapd);
+@@ -2183,6 +2194,61 @@ int mxl_hostapd_prepare_reload_config(struct hostapd_iface *iface) {
+ 	return 0;
+ }
+ 
++bool mxl_hostapd_is_pbac_capable(struct hostapd_iface *iface)
++{
++	return !!(iface->mxl_iface.drv_flags & MXL_WPA_DRIVER_FLAGS_MFP_PBAC);
++}
++
++bool mxl_hostapd_is_pbac_allowed(struct hostapd_data *hapd)
++{
++	struct hostapd_iface *iface = hapd->iface;
++	struct mxl_hostapd_bss_config *mxl_bss_conf = &hapd->conf->mxl_bss_conf;
++	enum mfp_options mfp = hapd->conf->ieee80211w;
++
++	return (mxl_hostapd_is_pbac_capable(iface) &&
++		   (mfp == MGMT_FRAME_PROTECTION_REQUIRED) &&
++		   !mxl_bss_conf->disable_pbac);
++}
++
++void mxl_hostapd_set_pbac_if_allowed(struct hostapd_data *hapd)
++{
++	struct mxl_hostapd_bss_config *mxl_bss_conf = &hapd->conf->mxl_bss_conf;
++
++	/*  If disable_pbac was not explicitly set in conf - we check if we can advertise PBAC 
++	*   disable_pbac = 0 ---> PBAC is allowed if capable in Wiphy and MFPR is set
++	*   disable_pbac = 1 ---> PBAC is not allowed even if capable in Wiphy and MFPR is set
++	*/
++	mxl_bss_conf->disable_pbac = mxl_hostapd_is_pbac_allowed(hapd) ? false : true;
++}
++
++static int mxl_hostapd_reload_pbac(struct hostapd_data *hapd)
++{
++	struct hostapd_iface *iface = hapd->iface;
++
++	mxl_hostapd_set_pbac_if_allowed(hapd);
++
++	if (mxl_hostapd_is_pbac_capable(iface)) {
++		int pbac = mxl_hostapd_is_pbac_allowed(hapd);
++		if (MXL_DRV_VENDOR_SET(LTQ_NL80211_VENDOR_SUBCMD_SET_PBAC,
++			   &pbac, sizeof(pbac))) {
++			wpa_printf(MSG_WARNING, "set pbac failed");
++			return -1;
++		}
++	}
++
++	return 0;
++}
++
++int mxl_hostapd_prepare_reload_bss(struct hostapd_data *hapd)
++{
++	/* Add all MxL specific preprations before BSS reload - SIGHUP */
++
++	/* Check if PBAC should be disabled due to no MFPR */
++	mxl_hostapd_reload_pbac(hapd);
++
++	return 0;
++}
++
+ void mxl_hostapd_cleanup_iface(struct hostapd_iface *iface)
+ {
+ 	mxl_hostapd_dfs_history_deinit(iface);
+diff --git a/src/ap/mxl_hostapd.h b/src/ap/mxl_hostapd.h
+index bedd32ef7..9466347ce 100644
+--- a/src/ap/mxl_hostapd.h
++++ b/src/ap/mxl_hostapd.h
+@@ -202,6 +202,10 @@ void mxl_hostapd_update_freq_params_sec_offs(struct hostapd_freq_params *params)
+ enum oper_chan_width mxl_get_oper_width(int width);
+ int mxl_ieee80211n_supported_ht_tx_bf_capab(struct hostapd_iface *iface);
+ int mxl_hostapd_prepare_reload_config(struct hostapd_iface *iface);
++bool mxl_hostapd_is_pbac_capable(struct hostapd_iface *iface);
++bool mxl_hostapd_is_pbac_allowed(struct hostapd_data *hapd);
++void mxl_hostapd_set_pbac_if_allowed(struct hostapd_data *hapd);
++int mxl_hostapd_prepare_reload_bss(struct hostapd_data *hapd);
+ struct hostapd_channel_data * mxl_hostapd_get_mode_channel(struct hostapd_iface *iface, unsigned int freq);
+ struct hostapd_data * mxl_get_hapd_bssid(struct hostapd_iface *iface, const u8 *bssid);
+ void mxl_hostapd_cleanup_iface(struct hostapd_iface *iface);
+diff --git a/src/ap/mxl_wpa_auth_glue.c b/src/ap/mxl_wpa_auth_glue.c
+index e66061fbb..248ffaffe 100644
+--- a/src/ap/mxl_wpa_auth_glue.c
++++ b/src/ap/mxl_wpa_auth_glue.c
+@@ -106,3 +106,11 @@ void mxl_mlo_ieee802_1x_set_sta_authorized(struct hostapd_data *hapd, struct sta
+ 	}
+ }
+ #endif /* CONFIG_IEEE80211BE_MXL_MLO */
++
++bool mxl_wpa_auth_set_pbac(struct hostapd_bss_config *conf)
++{
++	/* Double checked to not accidentaly enable PBAC in beacon when MFPR is not set */
++	if (conf->ieee80211w != MGMT_FRAME_PROTECTION_REQUIRED)
++		return false;
++	return conf->mxl_bss_conf.disable_pbac ? false : true;
++}
+diff --git a/src/ap/mxl_wpa_auth_glue.h b/src/ap/mxl_wpa_auth_glue.h
+index 1896cfb07..08daf4441 100644
+--- a/src/ap/mxl_wpa_auth_glue.h
++++ b/src/ap/mxl_wpa_auth_glue.h
+@@ -18,4 +18,5 @@ void mxl_hostapd_setup_wpa_mlo_linkid(struct hostapd_data *hapd);
+ void mxl_mlo_hostapd_wpa_auth_disconnect(struct hostapd_data *hapd, const u8 *addr, u16 reason);
+ void mxl_mlo_ieee802_1x_set_sta_authorized(struct hostapd_data *hapd, struct sta_info *sta, int value);
+ #endif /* CONFIG_IEEE80211BE_MXL_MLO */
++bool mxl_wpa_auth_set_pbac(struct hostapd_bss_config *conf);
+ #endif /* MXL_WPA_AUTH_GLUE_H */
+diff --git a/src/ap/wpa_auth.h b/src/ap/wpa_auth.h
+index ced45519d..794a76b25 100644
+--- a/src/ap/wpa_auth.h
++++ b/src/ap/wpa_auth.h
+@@ -206,6 +206,9 @@ struct wpa_auth_config {
+ 	int okc;
+ 	int tx_status;
+ 	enum mfp_options ieee80211w;
++#ifdef CONFIG_VENDOR_MXL
++	bool pbac;
++#endif /* CONFIG_VENDOR_MXL */
+ 	int beacon_prot;
+ 	int group_mgmt_cipher;
+ 	int sae_require_mfp;
+diff --git a/src/ap/wpa_auth_glue.c b/src/ap/wpa_auth_glue.c
+index 5015d51d0..aba5acd9b 100644
+--- a/src/ap/wpa_auth_glue.c
++++ b/src/ap/wpa_auth_glue.c
+@@ -73,6 +73,9 @@ void hostapd_wpa_auth_conf(struct hostapd_bss_config *conf,
+ #endif /* CONFIG_OCV */
+ 	wconf->okc = conf->okc;
+ 	wconf->ieee80211w = conf->ieee80211w;
++#ifdef CONFIG_VENDOR_MXL
++	wconf->pbac = mxl_wpa_auth_set_pbac(conf);
++#endif /* CONFIG_VENDOR_MXL */
+ 	wconf->beacon_prot = conf->beacon_prot;
+ 	wconf->group_mgmt_cipher = conf->group_mgmt_cipher;
+ 	wconf->sae_require_mfp = conf->sae_require_mfp;
+diff --git a/src/ap/wpa_auth_ie.c b/src/ap/wpa_auth_ie.c
+index da521baaf..2a8f420f0 100644
+--- a/src/ap/wpa_auth_ie.c
++++ b/src/ap/wpa_auth_ie.c
+@@ -108,6 +108,10 @@ static u16 wpa_own_rsn_capab(struct wpa_auth_config *conf)
+ 		if (conf->ieee80211w == MGMT_FRAME_PROTECTION_REQUIRED)
+ 			capab |= WPA_CAPABILITY_MFPR;
+ 	}
++#ifdef CONFIG_VENDOR_MXL
++	if (conf->pbac)
++		capab |= WPA_CAPABILITY_PBAC;
++#endif /* CONFIG_VENDOR_MXL*/
+ #ifdef CONFIG_OCV
+ 	if (conf->ocv)
+ 		capab |= WPA_CAPABILITY_OCVC;
+@@ -936,6 +940,13 @@ wpa_validate_wpa_ie(struct wpa_authenticator *wpa_auth,
+ 		    return WPA_MGMT_FRAME_PROTECTION_VIOLATION;
+ 	}
+ 
++#ifdef CONFIG_VENDOR_MXL
++	if (data.capabilities & WPA_CAPABILITY_PBAC) {
++		wpa_printf(MSG_DEBUG, "STA " MACSTR " is using PBAC",
++			   MAC2STR(sm->addr));
++	}
++#endif /* CONFIG_VENDOR_MXL */
++
+ #ifdef CONFIG_IEEE80211R_AP
+ 	if (wpa_key_mgmt_ft(sm->wpa_key_mgmt)) {
+ 		if (mdie == NULL || mdie_len < MOBILITY_DOMAIN_ID_LEN + 1) {
+diff --git a/src/common/vendor_cmds_copy.h b/src/common/vendor_cmds_copy.h
+index 26c0419eb..15fa1d7d3 100644
+--- a/src/common/vendor_cmds_copy.h
++++ b/src/common/vendor_cmds_copy.h
+@@ -422,6 +422,7 @@ enum ltq_nl80211_vendor_subcmds {
+   LTQ_NL80211_VENDOR_SUBCMD_SET_PCIE_AUTO_GEN_ENABLE,
+   LTQ_NL80211_VENDOR_SUBCMD_SET_VW_TEST_MODE,
+   LTQ_NL80211_VENDOR_SUBCMD_GET_VW_TEST_MODE,
++  LTQ_NL80211_VENDOR_SUBCMD_SET_PBAC,
+   /* add new iw sub commands here */
+ 
+   /* used to define LTQ_NL80211_VENDOR_SUBCMD_MAX below */
+diff --git a/src/drivers/driver_nl80211_capa.c b/src/drivers/driver_nl80211_capa.c
+index cd02f3b64..e6f992ef0 100644
+--- a/src/drivers/driver_nl80211_capa.c
++++ b/src/drivers/driver_nl80211_capa.c
+@@ -533,6 +533,12 @@ static int ext_feature_isset(const u8 *ext_features, int ext_features_len,
+ 	return (ft_byte & BIT(ftidx % 8)) != 0;
+ }
+ 
++#ifdef CONFIG_VENDOR_MXL
++int mxl_nl80211_ext_feature_isset(const u8 *ext_features, int ext_features_len, enum nl80211_ext_feature_index ftidx)
++{
++	return ext_feature_isset(ext_features, ext_features_len, ftidx);
++}
++#endif /* CONFIG_VENDOR_MXL */
+ 
+ static void wiphy_info_ext_feature_flags(struct wiphy_info_data *info,
+ 					 struct nlattr *tb)
+diff --git a/src/drivers/mxl_driver.h b/src/drivers/mxl_driver.h
+index 1198db7c7..0ea4b4c5c 100644
+--- a/src/drivers/mxl_driver.h
++++ b/src/drivers/mxl_driver.h
+@@ -71,6 +71,8 @@ struct mxl_wpa_event_data {
+ 
+ /** Driver supports background CAC */
+ #define MXL_WPA_DRIVER_FLAGS_BACKGROUND_CAC	0x0000000000000001ULL
++/** Driver supports PBAC */
++#define MXL_WPA_DRIVER_FLAGS_MFP_PBAC		0x0000000000000002ULL
+ 
+ #define HOSTAP_6GHZ_CHANNEL_FIRST 1
+ #define HOSTAP_6GHZ_CHANNEL_LAST 233
+diff --git a/src/drivers/mxl_driver_nl80211.c b/src/drivers/mxl_driver_nl80211.c
+index 30cc4c590..e48c8fc66 100644
+--- a/src/drivers/mxl_driver_nl80211.c
++++ b/src/drivers/mxl_driver_nl80211.c
+@@ -131,6 +131,14 @@ void mxl_nl80211_update_capa(struct nlattr **tb, struct wpa_driver_capa *capa)
+ {
+ 	if (tb[NL80211_ATTR_WIPHY_DFS_ANTENNA])
+ 		capa->mxl_flags |= MXL_WPA_DRIVER_FLAGS_BACKGROUND_CAC;
++
++	if (tb[NL80211_ATTR_EXT_FEATURES]) {
++		u8 *ext_features = nla_data(tb[NL80211_ATTR_EXT_FEATURES]);
++		int len = nla_len(tb[NL80211_ATTR_EXT_FEATURES]);
++		if (mxl_nl80211_ext_feature_isset(ext_features, len,
++					   NL80211_EXT_FEATURE_MFP_PBAC))
++			capa->mxl_flags |= MXL_WPA_DRIVER_FLAGS_MFP_PBAC;
++	}
+ }
+ 
+ #ifdef CONFIG_IEEE80211BE_MXL_MLO
+diff --git a/src/drivers/mxl_driver_nl80211.h b/src/drivers/mxl_driver_nl80211.h
+index 8fad0e452..7fd1a8bd2 100644
+--- a/src/drivers/mxl_driver_nl80211.h
++++ b/src/drivers/mxl_driver_nl80211.h
+@@ -28,6 +28,7 @@ int mxl_nl80211_set_channel_dfs_state(void *priv, enum nl80211_dfs_state dfs_sta
+ 				      int freq, int dfs_time, int dfs_debug);
+ int mxl_nl80211_set_antenna(void *priv, u32 tx_ant, u32 rx_ant);
+ void mxl_nl80211_update_capa(struct nlattr **tb, struct wpa_driver_capa *capa);
++int mxl_nl80211_ext_feature_isset(const u8 *ext_features, int ext_features_len, enum nl80211_ext_feature_index ftidx);
+ void mxl_phy_info_eml_capa(struct hostapd_hw_modes *mode, struct nlattr *eml_capa);
+ int mxl_do_process_drv_event(struct i802_bss *bss, int cmd, struct nlattr **tb);
+ void mxl_wpa_driver_nl80211_scan_abort_timeout(void *eloop_ctx, void *timeout_ctx);
+diff --git a/src/drivers/mxl_nl80211.h b/src/drivers/mxl_nl80211.h
+index b9ae0c502..ee8dacd40 100644
+--- a/src/drivers/mxl_nl80211.h
++++ b/src/drivers/mxl_nl80211.h
+@@ -90,6 +90,11 @@
+ #define MXL_NL80211_RADAR_EVENTS		\
+ 	NL80211_RADAR_CAC_PAUSED,		\
+ 
++/*
++ * @NL80211_EXT_FEATURE_MFP_PBAC: protected block ack capable
++ */
++#define MXL_NL80211_EXT_FEATURES		\
++	NL80211_EXT_FEATURE_MFP_PBAC,		\
+ 
+ enum nl80211_sb_dfs_bw {
+ 	NL80211_SB_DFS_BW_NORMAL,
+diff --git a/src/drivers/nl80211_copy.h b/src/drivers/nl80211_copy.h
+index b14a9f287..5197215a1 100644
+--- a/src/drivers/nl80211_copy.h
++++ b/src/drivers/nl80211_copy.h
+@@ -6618,6 +6618,10 @@ enum nl80211_ext_feature_index {
+ 	NL80211_EXT_FEATURE_OWE_OFFLOAD_AP,
+ 	NL80211_EXT_FEATURE_DFS_CONCURRENT,
+ 
++#ifdef CONFIG_VENDOR_MXL
++	MXL_NL80211_EXT_FEATURES
++#endif /* CONFIG_VENDOR_MXL */
++
+ 	/* add new features before the definition below */
+ 	NUM_NL80211_EXT_FEATURES,
+ 	MAX_NL80211_EXT_FEATURES = NUM_NL80211_EXT_FEATURES - 1
+-- 
+2.43.0
+

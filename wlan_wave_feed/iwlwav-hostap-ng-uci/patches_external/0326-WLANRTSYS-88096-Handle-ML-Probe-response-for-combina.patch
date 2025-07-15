@@ -1,0 +1,204 @@
+From 3947d1f049f782d6038c11bf213110f31f4cb87a Mon Sep 17 00:00:00 2001
+From: "vsannidhi@maxlinear.com" <vsannidhi@lvdocker7.lvsw.maxlinear.com>
+Date: Thu, 10 Apr 2025 21:56:36 -0700
+Subject: [PATCH] WLANRTSYS-88096 Handle ML Probe response for combinations of
+ TX and non-TX VAP
+
+Description: Handle various scenarios where the non AP MLD sends the ML
+Probe request to the Tx or non TX VAPs which are part of MLO.
+
+Unit test: Validated with Intel 11be client by configuring our AP as MLD for below cases.
+1) 2G,5G MLO
+2) 2G 6G Tx VAP MLO
+3) 2G,6G non TX VAP MLO.
+---
+ src/ap/beacon.c                |  4 +--
+ src/ap/mxl_beacon.c            | 46 ++++++++++++++++++----------------
+ src/ap/mxl_beacon.h            |  5 ++--
+ src/ap/mxl_ieee802_11_shared.c |  2 +-
+ src/ap/mxl_mld.c               |  4 +--
+ src/ap/mxl_mld.h               |  2 +-
+ 6 files changed, 33 insertions(+), 30 deletions(-)
+
+diff --git a/src/ap/beacon.c b/src/ap/beacon.c
+index eb1ac10dc..a75fcef9d 100644
+--- a/src/ap/beacon.c
++++ b/src/ap/beacon.c
+@@ -2458,7 +2458,7 @@ int ieee802_11_build_ap_params(struct hostapd_data *hapd,
+ 		 * station profiles. For now use 256.
+ 		 */
+ #ifdef CONFIG_IEEE80211BE_MXL_MLO
+-		tail_len += mxl_hostapd_multilink_ie_len_is_mlo(hapd);
++		tail_len += mxl_hostapd_multilink_ie_len_is_mlo(hapd, ML_BASIC);
+ 		tail_len += mxl_hostapd_max_chan_switch_time_ie_len(hapd);
+ #endif /* CONFIG_IEEE80211BE_MXL_MLO */
+ 		if (hapd->conf->mld_ap)
+@@ -2698,7 +2698,7 @@ int ieee802_11_build_ap_params(struct hostapd_data *hapd,
+ 		tailpos = hostapd_eid_eht_operation(hapd, tailpos);
+ 	}
+ #ifdef CONFIG_IEEE80211BE_MXL_MLO
+-	tailpos = mxl_hostapd_eid_multilink_is_mlo(hapd, tailpos);
++	tailpos = mxl_hostapd_eid_multilink_is_mlo(hapd, tailpos, ML_BASIC, false);
+ #endif /* CONFIG_IEEE80211BE_MXL_MLO */
+ #endif /* CONFIG_IEEE80211BE */
+ 
+diff --git a/src/ap/mxl_beacon.c b/src/ap/mxl_beacon.c
+index 120ebfa71..bdf4c824f 100644
+--- a/src/ap/mxl_beacon.c
++++ b/src/ap/mxl_beacon.c
+@@ -47,17 +47,17 @@ size_t mxl_hostapd_eid_ml_probe_len(struct hostapd_data *hapd, const u8 *probe_r
+ 		}
+ 	}
+ 
+-	if (hapd->iconf->ieee80211be && hapd->conf->mxl_bss_conf.mlo_enable && hapd->conf->mxl_bss_conf.ml_ie_add) {
+-		if (probe_req_mle) {
++	if (hapd->iconf->ieee80211be) {
++		if (probe_req_mle && hapd->conf->mxl_bss_conf.mld_num_simul_links) {
+ 			if (non_tx_probe_req_vap) {
+-				buflen += mxl_hostapd_multilink_ie_len(hapd, ML_BASIC);
+-				buflen += mxl_hostapd_multilink_ie_len(non_tx_probe_req_vap, ML_PROBE);
++				buflen += mxl_hostapd_multilink_ie_len_is_mlo(hapd, ML_BASIC);
++				buflen += mxl_hostapd_multilink_ie_len_is_mlo(non_tx_probe_req_vap, ML_PROBE);
+ 			} else {
+-				buflen += mxl_hostapd_multilink_ie_len(hapd, ML_PROBE);
++				buflen += mxl_hostapd_multilink_ie_len_is_mlo(hapd, ML_PROBE);
+ 			}
+ 		}
+ 		else {
+-			buflen += mxl_hostapd_multilink_ie_len(hapd, ML_BASIC);
++			buflen += mxl_hostapd_multilink_ie_len_is_mlo(hapd, ML_BASIC);
+ 		}
+ 	}
+ 	return buflen;
+@@ -82,25 +82,29 @@ u8 * mxl_hostapd_eid_ml_probe(struct hostapd_data *hapd, const u8 *probe_req_mle
+ 		}
+ 	}
+ 
+-	if (hapd->iconf->ieee80211be && hapd->conf->mxl_bss_conf.mlo_enable && hapd->conf->mxl_bss_conf.ml_ie_add) {
++	if (hapd->iconf->ieee80211be) {
+ 		if (probe_req_mle && hapd->conf->mxl_bss_conf.mld_num_simul_links) {
++			/* Probe request is received for non Tx VAP */
+ 			if (non_tx_probe_req_vap) {
+-				pos = mxl_hostapd_eid_multilink(hapd, NULL, pos, ML_BASIC, 0, false, false);
+-				pos = mxl_hostapd_eid_multilink(non_tx_probe_req_vap, NULL, pos, ML_PROBE, 0, false, true);
++				/* If Tx VAP is ML VAP, Basic ML IE will be added */
++				pos = mxl_hostapd_eid_multilink_is_mlo(hapd, pos, ML_BASIC, false);
++				/* If non Tx VAP is ML VAP, Probe request variant ML IE will be added */
++				pos = mxl_hostapd_eid_multilink_is_mlo(non_tx_probe_req_vap, pos, ML_PROBE, true);
+ 			} else {
+-				pos = mxl_hostapd_eid_multilink(hapd, NULL, pos, ML_PROBE, 0, false, false);
++				/* Probe request is received for Tx VAP, and if tx VAP is ML VAP, ML probe will be added */
++				pos = mxl_hostapd_eid_multilink_is_mlo(hapd, pos, ML_PROBE, false);
+ 			}
+ 		} else {
+-			pos = mxl_hostapd_eid_multilink(hapd, NULL, pos, ML_BASIC, 0, false, false);
++			pos = mxl_hostapd_eid_multilink_is_mlo(hapd, pos, ML_BASIC, false);
+ 		}
+ 	}
+ 	return pos;
+ }
+ 
+-size_t mxl_hostapd_multilink_ie_len_is_mlo(struct hostapd_data *hapd)
++size_t mxl_hostapd_multilink_ie_len_is_mlo(struct hostapd_data *hapd, enum multilink_type ml_type)
+ {
+ 	if (hapd->iconf->ieee80211be && hapd->conf->mxl_bss_conf.mlo_enable && hapd->conf->mxl_bss_conf.ml_ie_add) {
+-		return mxl_hostapd_multilink_ie_len(hapd, 0);
++		return mxl_hostapd_multilink_ie_len(hapd, ml_type);
+ 	}
+ 
+ 	return 0;
+@@ -115,10 +119,10 @@ size_t mxl_hostapd_max_chan_switch_time_ie_len(struct hostapd_data *hapd)
+ 		return MAX_CHANNEL_SWITCH_TIME_IE_LEN;
+ }
+ 
+-u8 * mxl_hostapd_eid_multilink_is_mlo(struct hostapd_data *hapd, u8 *pos)
++u8 * mxl_hostapd_eid_multilink_is_mlo(struct hostapd_data *hapd, u8 *pos, enum multilink_type ml_type, bool is_non_tx_ml_probe)
+ {
+ 	if (hapd->iconf->ieee80211be && hapd->conf->mxl_bss_conf.mlo_enable && hapd->conf->mxl_bss_conf.ml_ie_add) {
+-		pos = mxl_hostapd_eid_multilink(hapd, NULL, pos, ML_BASIC, 0, false, false);
++		pos = mxl_hostapd_eid_multilink(hapd, NULL, pos, ml_type, 0, false, is_non_tx_ml_probe);
+ 	}
+ 	return pos;
+ }
+@@ -131,12 +135,12 @@ bool mxl_check_ml_probe_type_address_check(struct hostapd_data *hapd, const stru
+ 		return true;
+ 	}
+ 	else if (hapd->iconf->multibss_enable) {
+-			size_t tx_bss_idx = mxl_hostapd_get_mbssid_tx_bss_idx(hapd->iface);
+-			struct hostapd_data *bss = hapd->iface->bss[tx_bss_idx];
+-			if (bss && bss->conf->mxl_bss_conf.mlo_enable &&
+-					(!os_memcmp(bss->own_addr, mgmt->da, ETH_ALEN) ||
+-					 !os_memcmp(bss->own_addr, mgmt->bssid, ETH_ALEN)))
+-				return true;
++		size_t tx_bss_idx = mxl_hostapd_get_mbssid_tx_bss_idx(hapd->iface);
++		struct hostapd_data *bss = hapd->iface->bss[tx_bss_idx];
++		if (bss && bss->conf->mxl_bss_conf.mlo_enable &&
++			(!os_memcmp(bss->own_addr, mgmt->da, ETH_ALEN) ||
++			 !os_memcmp(bss->own_addr, mgmt->bssid, ETH_ALEN)))
++			return true;
+ 	}
+ 
+ 	return false;
+diff --git a/src/ap/mxl_beacon.h b/src/ap/mxl_beacon.h
+index b8c779e8e..943bae17d 100644
+--- a/src/ap/mxl_beacon.h
++++ b/src/ap/mxl_beacon.h
+@@ -18,11 +18,10 @@
+ #define MAX_CHANNEL_SWITCH_TIME_IE_LEN 7
+ size_t mxl_hostapd_eid_ml_probe_len(struct hostapd_data *hapd, const u8 *probe_req_mle, size_t probe_req_mle_len);
+ u8 * mxl_hostapd_eid_ml_probe(struct hostapd_data *hapd, const u8 *probe_req_mle, size_t probe_req_mle_len, u8 *pos);
+-size_t mxl_hostapd_multilink_ie_len_is_mlo(struct hostapd_data *hapd);
+ size_t mxl_hostapd_max_chan_switch_time_ie_len(struct hostapd_data *hapd);
+-u8 * mxl_hostapd_eid_multilink_is_mlo(struct hostapd_data *hapd, u8 *pos);
++u8 * mxl_hostapd_eid_multilink_is_mlo(struct hostapd_data *hapd, u8 *pos, enum multilink_type ml_type, bool is_non_tx_ml_probe);
+ bool mxl_check_ml_probe_type_address_check(struct hostapd_data *hapd, const struct ieee80211_mgmt *mgmt);
+-size_t mxl_hostapd_multilink_ie_len_is_mlo(struct hostapd_data *hapd);
++size_t mxl_hostapd_multilink_ie_len_is_mlo(struct hostapd_data *hapd, enum multilink_type ml_type);
+ int mxl_hostap_ml_get_non_tx_bss_idx_from_mlid(struct hostapd_data *hapd,  const u8 *probe_req_mle, size_t probe_req_mle_len);
+ struct hostapd_data* mxl_hostap_ml_probe_req_address_check(struct hostapd_data *hapd, const struct ieee80211_mgmt *mgmt,
+ 					   struct ieee802_11_elems *elems);
+diff --git a/src/ap/mxl_ieee802_11_shared.c b/src/ap/mxl_ieee802_11_shared.c
+index fe6c9ae04..94cb81604 100644
+--- a/src/ap/mxl_ieee802_11_shared.c
++++ b/src/ap/mxl_ieee802_11_shared.c
+@@ -87,7 +87,7 @@ int mxl_get_non_tx_mlo_ie_len(struct hostapd_data *hapd, u8 *probe_req_mle, size
+ 		}
+ 
+ 		if (add_mlo_ie) {
+-			len = mxl_hostapd_multilink_ie_len_is_mlo(hapd);
++			len = mxl_hostapd_multilink_ie_len_is_mlo(hapd, ML_BASIC);
+ 		}
+ 
+ 		if (hapd->conf->bss_idx == (MULTIBSS_REFERENCE_BSS_IDX + 1)) {
+diff --git a/src/ap/mxl_mld.c b/src/ap/mxl_mld.c
+index 3a9500fb2..88e661bb4 100644
+--- a/src/ap/mxl_mld.c
++++ b/src/ap/mxl_mld.c
+@@ -482,9 +482,9 @@ int mxl_mld_setup_interfaces(struct hapd_interfaces *interfaces)
+ 	return 0;
+ }
+ 
+-int mxl_hostapd_multilink_ie_len(struct hostapd_data *hapd, bool is_probe_req)
++int mxl_hostapd_multilink_ie_len(struct hostapd_data *hapd, enum multilink_type ml_type)
+ {
+-	if (!is_probe_req)
++	if (ml_type == ML_BASIC)
+ 		return BASIC_MULTILINK_IE_LEN;
+ 	else
+ 		return BASIC_MULTILINK_IE_LEN + PER_STA_PROFILE_LENGTH;
+diff --git a/src/ap/mxl_mld.h b/src/ap/mxl_mld.h
+index 878c95577..6143104c1 100644
+--- a/src/ap/mxl_mld.h
++++ b/src/ap/mxl_mld.h
+@@ -152,7 +152,7 @@ int mxl_hostapd_mld_remove(struct hostapd_data *hapd, u8 sendto_fw);
+ void mxl_mlo_sibling_vap_drv_delete(struct hostapd_data *hapd);
+ 
+ /* Multi-Link element length */
+-int mxl_hostapd_multilink_ie_len(struct hostapd_data *hapd, bool is_probe_req);
++int mxl_hostapd_multilink_ie_len(struct hostapd_data *hapd, enum multilink_type ml_type);
+ 
+ /* Multi-Link Element */
+ u8 * mxl_hostapd_eid_multilink(struct hostapd_data *hapd, struct sta_info *sta,
+-- 
+2.43.0
+

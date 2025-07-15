@@ -1,0 +1,45 @@
+#!/bin/sh /etc/rc.common
+
+START=99
+STOP=10
+
+USE_PROCD=1
+
+configure_wireless() {
+    uci add_list wireless.radio4.hostapd_options='afcd_sock=/var/run/afcd.sock'
+    uci add_list wireless.radio4.hostapd_options='afc_location_type=0'
+    uci add_list wireless.radio4.hostapd_options='afc_linear_polygon=-121.98586:37.381933'
+    uci add_list wireless.radio4.hostapd_options='afc_request_version=1.4'
+    uci add_list wireless.radio4.hostapd_options='afc_request_id=11235813'
+    uci add_list wireless.radio4.hostapd_options='afc_serial_number=SN000'
+    uci add_list wireless.radio4.hostapd_options='afc_cert_ids=US_47_CFR_PART_15_SUBPART_E:CID000'
+    uci add_list wireless.radio4.hostapd_options='afc_freq_range=5925:6425,6525:6875'
+    uci add_list wireless.radio4.hostapd_options='afc_op_class=131,132,133,134,137'
+    uci set wireless.radio4.afc_server_url="https://maxlinear -p 8080 -e"
+    ubus call uci commit '{ "config" : "wireless" }'
+}
+
+start_service() {
+    local initialized
+
+    # Check if the wireless configuration has been initialized
+    initialized=$(uci get wireless.radio4.initialized 2>/dev/null)
+
+    if [ "$initialized" != "1" ]; then
+        configure_wireless
+        uci set wireless.radio4.initialized='1'
+        ubus call uci commit '{ "config" : "wireless" }'
+    fi
+
+    # Read the value from the wireless config
+    local server_url =$(uci get wireless.radio4.afc_server)
+
+    procd_open_instance
+    procd_set_param command /usr/sbin/afcd -u $server_url
+    procd_set_param respawn
+    procd_close_instance
+}
+
+stop_service() {
+    killall afcd
+}

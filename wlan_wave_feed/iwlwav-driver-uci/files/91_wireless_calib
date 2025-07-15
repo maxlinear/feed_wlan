@@ -50,6 +50,11 @@ initwireless_calibration() {
 					cd - >&-;
 				}
 			elif [ "$flashtype" == "emmc" ]; then
+				if [ ! -e "/dev/$partname " ]; then
+					major_value=$(cat /sys/class/mmc_host/mmc0/mmc0:0001/block/mmcblk0/$partname/uevent | grep MAJOR | cut -d '=' -f2)
+					minor_value=$(cat /sys/class/mmc_host/mmc0/mmc0:0001/block/mmcblk0/$partname/uevent | grep MINOR | cut -d '=' -f2)
+					mknod /dev/$partname b $major_value $minor_value > /dev/null 2>&1
+				fi 
 				mount -t ext2 /dev/$partname /tmp/_calibration &> /dev/null && {
 					cp -rf /tmp/_calibration/cal* /tmp/wlanconfig/
 					umount /tmp/_calibration

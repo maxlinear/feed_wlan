@@ -1,0 +1,103 @@
+From 292fcb7451b13806c7111088ed036ccb48f24221 Mon Sep 17 00:00:00 2001
+From: Jouni Malinen <quic_jouni@quicinc.com>
+Date: Mon, 29 Jul 2024 16:43:50 +0300
+Subject: [PATCH] RSNO: Use SNonce cookie to indicate support for RSN
+ overriding
+
+This provides an implicitly protected (SNonce is used as an input to PTK
+derivation) mechanism for a STA to indicate support for RSN overriding
+in a manner that does not cause interopability issues with deployed APs.
+
+In addition, update sm->SNonce on the Authenticator only based on
+message 2/4 since that is the only EAPOL-Key message that is defined to
+provide the actual SNonce value. While clearing of this internal buffer
+on message 4/4 might not cause issues, it is better to keep the actual
+SNonce value here since the SNonce cookie can be used at a later point
+in the sequence.
+
+Signed-off-by: Jouni Malinen <quic_jouni@quicinc.com>
+---
+ src/ap/wpa_auth.c       | 10 ++++++++--
+ src/common/wpa_common.c | 21 +++++++++++++++++++++
+ src/common/wpa_common.h |  3 +++
+ 3 files changed, 32 insertions(+), 2 deletions(-)
+
+diff --git a/src/ap/wpa_auth.c b/src/ap/wpa_auth.c
+index 1a0d3fcd6..a01f6a808 100644
+--- a/src/ap/wpa_auth.c
++++ b/src/ap/wpa_auth.c
+@@ -1566,7 +1566,8 @@ continue_processing:
+ 	sm->EAPOLKeyReceived = true;
+ 	sm->EAPOLKeyPairwise = !!(key_info & WPA_KEY_INFO_KEY_TYPE);
+ 	sm->EAPOLKeyRequest = !!(key_info & WPA_KEY_INFO_REQUEST);
+-	os_memcpy(sm->SNonce, key->key_nonce, WPA_NONCE_LEN);
++	if (msg == PAIRWISE_2)
++		os_memcpy(sm->SNonce, key->key_nonce, WPA_NONCE_LEN);
+ 	wpa_sm_step(sm);
+ }
+ 
+@@ -3545,7 +3546,9 @@ SM_STATE(WPA_PTK, PTKCALCNEGOTIATING)
+ #endif /* CONFIG_IEEE80211R_AP */
+ 
+ 	/* Verify RSN Selection element for RSN overriding */
+-	if ((sm->rsn_selection && !kde.rsn_selection) ||
++	if ((rsn_is_snonce_cookie(sm->SNonce) && !kde.rsn_selection) ||
++	    (!rsn_is_snonce_cookie(sm->SNonce) && kde.rsn_selection) ||
++	    (sm->rsn_selection && !kde.rsn_selection) ||
+ 	    (!sm->rsn_selection && kde.rsn_selection) ||
+ 	    (sm->rsn_selection && kde.rsn_selection &&
+ 	     (sm->rsn_selection_len != kde.rsn_selection_len ||
+@@ -3553,6 +3556,9 @@ SM_STATE(WPA_PTK, PTKCALCNEGOTIATING)
+ 			sm->rsn_selection_len) != 0))) {
+ 		wpa_auth_logger(wpa_auth, wpa_auth_get_spa(sm), LOGGER_INFO,
+ 				"RSN Selection element from (Re)AssocReq did not match the one in EAPOL-Key msg 2/4");
++		wpa_printf(MSG_DEBUG,
++			   "SNonce cookie for RSN overriding %sused",
++			   rsn_is_snonce_cookie(sm->SNonce) ? "" : "not ");
+ 		wpa_hexdump(MSG_DEBUG, "RSN Selection in AssocReq",
+ 			    sm->rsn_selection, sm->rsn_selection_len);
+ 		wpa_hexdump(MSG_DEBUG, "RSN Selection in EAPOL-Key msg 2/4",
+diff --git a/src/common/wpa_common.c b/src/common/wpa_common.c
+index b2eb640ab..7971ad0a8 100644
+--- a/src/common/wpa_common.c
++++ b/src/common/wpa_common.c
+@@ -4389,3 +4389,24 @@ int wpa_pasn_add_extra_ies(struct wpabuf *buf, const u8 *extra_ies, size_t len)
+ }
+ 
+ #endif /* CONFIG_PASN */
++
++
++void rsn_set_snonce_cookie(u8 *snonce)
++{
++	u8 *pos;
++
++	pos = snonce + WPA_NONCE_LEN - 6;
++	WPA_PUT_BE24(pos, OUI_WFA);
++	pos += 3;
++	WPA_PUT_BE24(pos, 0x000029);
++}
++
++
++bool rsn_is_snonce_cookie(const u8 *snonce)
++{
++	const u8 *pos;
++
++	pos = snonce + WPA_NONCE_LEN - 6;
++	return WPA_GET_BE24(pos) == OUI_WFA &&
++		WPA_GET_BE24(pos + 3) == 0x000029;
++}
+diff --git a/src/common/wpa_common.h b/src/common/wpa_common.h
+index 8d842ba70..fa3a2e231 100644
+--- a/src/common/wpa_common.h
++++ b/src/common/wpa_common.h
+@@ -803,4 +803,7 @@ int wpa_pasn_parse_parameter_ie(const u8 *data, u8 len, bool from_ap,
+ void wpa_pasn_add_rsnxe(struct wpabuf *buf, u16 capab);
+ int wpa_pasn_add_extra_ies(struct wpabuf *buf, const u8 *extra_ies, size_t len);
+ 
++void rsn_set_snonce_cookie(u8 *snonce);
++bool rsn_is_snonce_cookie(const u8 *snonce);
++
+ #endif /* WPA_COMMON_H */
+-- 
+2.43.0
+

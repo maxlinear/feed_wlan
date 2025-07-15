@@ -1,0 +1,33 @@
+From 358642527bcd349e5c16deae57616c6711e2b54b Mon Sep 17 00:00:00 2001
+From: Adil Saeed Musthafa <quic_adilm@quicinc.com>
+Date: Thu, 25 Jul 2024 12:51:07 -0700
+Subject: [PATCH] RSNO: Protect wpa_ie_buf3 from reuse explicitly
+
+Use else-if check for better clarity regarding usage of wpa_ie_buf3 to
+make it explicit that memory is allocated for this pointer only once.
+
+Signed-off-by: Adil Saeed Musthafa <quic_adilm@quicinc.com>
+---
+ src/ap/wpa_auth.c | 6 +++---
+ 1 file changed, 3 insertions(+), 3 deletions(-)
+
+diff --git a/src/ap/wpa_auth.c b/src/ap/wpa_auth.c
+index 900465dd7..c41bd61fb 100644
+--- a/src/ap/wpa_auth.c
++++ b/src/ap/wpa_auth.c
+@@ -4306,9 +4306,9 @@ SM_STATE(WPA_PTK, PTKINITNEGOTIATING)
+ 		wpa_ie_len = pos - wpa_ie_buf3;
+ 		wpa_hexdump(MSG_DEBUG, "EAPOL-Key msg 3/4 IEs after edits",
+ 			    wpa_ie, wpa_ie_len);
+-	}
+-	if ((conf->rsn_override_key_mgmt || conf->rsn_override_key_mgmt_2) &&
+-	    !sm->rsn_override && !sm->rsn_override_2) {
++	} else if ((conf->rsn_override_key_mgmt ||
++		    conf->rsn_override_key_mgmt_2) &&
++		   !sm->rsn_override && !sm->rsn_override_2) {
+ 		u8 *ie;
+ 		size_t ie_len;
+ 		u32 ids[] = {
+-- 
+2.43.0
+

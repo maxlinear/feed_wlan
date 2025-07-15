@@ -1,0 +1,30 @@
+From 11e2bde96e2261c4ff8dc91afb3117eb353c619f Mon Sep 17 00:00:00 2001
+From: mj <mj@maxlinear.com>
+Date: Wed, 14 May 2025 11:40:15 +0530
+Subject: [PATCH] WLANRTSYS-88253 Allow set channel during CAC period from
+ hostapd.
+
+Issue : avoid set channel in hostapd , while running CAC.
+Fix : FW already validing this. Hence, skipping this check in hostapd.
+---
+ hostapd/ctrl_iface.c | 4 ----
+ 1 file changed, 4 deletions(-)
+
+diff --git a/hostapd/ctrl_iface.c b/hostapd/ctrl_iface.c
+index ca00399f0..337017af4 100644
+--- a/hostapd/ctrl_iface.c
++++ b/hostapd/ctrl_iface.c
+@@ -3080,10 +3080,6 @@ static int hostapd_ctrl_iface_chan_switch(struct hostapd_iface *iface,
+ 		return -1;
+ 	}
+ 
+-	if (!switch_type_zwdfs && iface->cac_started) {
+-		wpa_printf(MSG_ERROR, "CAC is running, can't switch channel");
+-		return -1;
+-	}
+ 	/* Check if CCA/CSA in progress or CAC is running for MLO */
+ 	if (!mxl_hostapd_ctrl_iface_is_channel_allowed(iface)) {
+ 		wpa_printf(MSG_ERROR, "Channel switch isn't allowed for MLO vap");
+-- 
+2.43.0
+

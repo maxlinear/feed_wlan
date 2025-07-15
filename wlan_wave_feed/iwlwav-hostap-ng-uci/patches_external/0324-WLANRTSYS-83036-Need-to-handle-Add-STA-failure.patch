@@ -1,0 +1,28 @@
+From ed790ed379901e4f37988c9434a1666c56f71099 Mon Sep 17 00:00:00 2001
+From: "vsannidhi@maxlinear.com" <vsannidhi@lvdocker7.lvsw.maxlinear.com>
+Date: Thu, 27 Mar 2025 02:07:57 -0700
+Subject: [PATCH] WLANRTSYS-83036 Need to handle Add STA failure Description:
+ For a non AP MLD, in case the sibling station addition fails, cleanup the
+ previously added linked STA.
+
+Unit test: Validated that the cleanup happened successfully for the
+linked STA. (By forcefully failing the second add sta failure)
+---
+ src/ap/mxl_ieee802_11.c | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/src/ap/mxl_ieee802_11.c b/src/ap/mxl_ieee802_11.c
+index 22fb9583d..0258904fb 100644
+--- a/src/ap/mxl_ieee802_11.c
++++ b/src/ap/mxl_ieee802_11.c
+@@ -779,6 +779,7 @@ int mxl_mlo_add_associated_sta(struct hostapd_data *hapd, struct sta_info *sta,
+ 				hostapd_drv_sta_remove(hapd1, sta1->addr);
+ 				sta1->added_unassoc = 0;
+ 			}
++			ap_free_sta(hapd, sta);
+ 			return -1;
+ 		}
+ 	}
+-- 
+2.43.0
+

@@ -1,0 +1,48 @@
+From 92c00b32a87c0bf3cee86254d2ed285a7a35cf6c Mon Sep 17 00:00:00 2001
+From: Jouni Malinen <quic_jouni@quicinc.com>
+Date: Thu, 15 Aug 2024 20:39:03 +0300
+Subject: [PATCH] RSNO: Do not enforce SNonce cookie and RSN Selection match if
+ RSNO not used
+
+A STA that supports RSN overriding will always use the SNonce cookie. An
+AP that does not advertise RSN overriding elements must not enforce that
+SNonce cookie is used with RSN Selection element since a STA includes
+the latter only when it sees the AP advertising RSN overriding elements.
+
+Signed-off-by: Jouni Malinen <quic_jouni@quicinc.com>
+---
+ src/ap/wpa_auth.c | 18 ++++++++++--------
+ 1 file changed, 10 insertions(+), 8 deletions(-)
+
+diff --git a/src/ap/wpa_auth.c b/src/ap/wpa_auth.c
+index d889eece9..122a04bd4 100644
+--- a/src/ap/wpa_auth.c
++++ b/src/ap/wpa_auth.c
+@@ -3546,14 +3546,16 @@ SM_STATE(WPA_PTK, PTKCALCNEGOTIATING)
+ #endif /* CONFIG_IEEE80211R_AP */
+ 
+ 	/* Verify RSN Selection element for RSN overriding */
+-	if ((rsn_is_snonce_cookie(sm->SNonce) && !kde.rsn_selection) ||
+-	    (!rsn_is_snonce_cookie(sm->SNonce) && kde.rsn_selection) ||
+-	    (sm->rsn_selection && !kde.rsn_selection) ||
+-	    (!sm->rsn_selection && kde.rsn_selection) ||
+-	    (sm->rsn_selection && kde.rsn_selection &&
+-	     (sm->rsn_selection_len != kde.rsn_selection_len ||
+-	      os_memcmp(sm->rsn_selection, kde.rsn_selection,
+-			sm->rsn_selection_len) != 0))) {
++	if ((wpa_auth->conf.rsn_override_key_mgmt ||
++	     wpa_auth->conf.rsn_override_key_mgmt_2) &&
++	    ((rsn_is_snonce_cookie(sm->SNonce) && !kde.rsn_selection) ||
++	     (!rsn_is_snonce_cookie(sm->SNonce) && kde.rsn_selection) ||
++	     (sm->rsn_selection && !kde.rsn_selection) ||
++	     (!sm->rsn_selection && kde.rsn_selection) ||
++	     (sm->rsn_selection && kde.rsn_selection &&
++	      (sm->rsn_selection_len != kde.rsn_selection_len ||
++	       os_memcmp(sm->rsn_selection, kde.rsn_selection,
++			 sm->rsn_selection_len) != 0)))) {
+ 		wpa_auth_logger(wpa_auth, wpa_auth_get_spa(sm), LOGGER_INFO,
+ 				"RSN Selection element from (Re)AssocReq did not match the one in EAPOL-Key msg 2/4");
+ 		wpa_printf(MSG_DEBUG,
+-- 
+2.43.0
+

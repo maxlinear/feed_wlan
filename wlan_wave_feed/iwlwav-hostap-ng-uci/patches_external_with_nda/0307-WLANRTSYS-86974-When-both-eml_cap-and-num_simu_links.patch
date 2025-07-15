@@ -1,0 +1,38 @@
+From b52a2a4c141db77ceb470acc1920a9c25ff9548d Mon Sep 17 00:00:00 2001
+From: stheinan <stheinan@maxlinear.com>
+Date: Wed, 29 Jan 2025 16:52:04 +0530
+Subject: [PATCH] WLANRTSYS-86974 When both eml_cap and num_simu_links are set
+ in assoc request consider the STA as MLSR/EMLSR
+
+Issue:
+Pixel9 client is sending both eml_cap and num_simu_links set in assoc request,
+currently we accept it as STR STA.Later when EML action frame is received we move the STA to EMSLR mode.
+Again when STA Exits EMSLR,we move back to STR for which we don't have proper handling.
+
+Fix:
+When STA sends both eml_cap and num_simu_links,consider it has MLSR/EMLSR STA.
+
+FIXUP to  WLANRTSYS-62845 MLO changes in iwlwav-hostap-ng:
+AP MLD Auth Assoc and eapol changes.
+---
+ src/ap/mxl_mld.c | 4 ++++
+ 1 file changed, 4 insertions(+)
+
+diff --git a/src/ap/mxl_mld.c b/src/ap/mxl_mld.c
+index f664d6b8e..eb9dc223d 100644
+--- a/src/ap/mxl_mld.c
++++ b/src/ap/mxl_mld.c
+@@ -1541,6 +1541,10 @@ int mxl_ml_sta_add(struct hostapd_data *hapd, struct sta_info *sta)
+ 		ml_sta_params->assoc_link_bitmap |= 1 << sibling_link_id;
+ 		memcpy_s(ml_sta_addr, ETH_ALEN, linked_sta->addr, ETH_ALEN);
+ 
++		/*when STA sends both EMLSR cap set and num simultaneous link as 1 , consider it as EMSLR STA*/
++		if(ml_sta_params->num_of_sim_links && ml_sta_params->eml_capab)
++			ml_sta_params->num_of_sim_links = 0;
++
+ 		if (ml_sta_params->num_of_sim_links) /* STR */
+ 			ml_sta_params->eml_capab = 0;
+ 	}
+-- 
+2.43.0
+

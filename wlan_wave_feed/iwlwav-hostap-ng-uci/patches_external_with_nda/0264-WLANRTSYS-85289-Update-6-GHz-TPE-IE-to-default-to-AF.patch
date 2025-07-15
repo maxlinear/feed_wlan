@@ -1,0 +1,261 @@
+From 1465b688a83f5760a5dfac20ce4b9bb82f85bf60 Mon Sep 17 00:00:00 2001
+From: "Ross-Ashikyan, William" <washikyan@maxlinear.com>
+Date: Tue, 3 Dec 2024 17:36:15 -0800
+Subject: [PATCH] WLANRTSYS-85289 Update 6 GHz TPE IE to default to AFC report
+ values
+
+---
+ src/ap/ieee802_11.c     |   6 ++
+ src/ap/mxl_ieee802_11.c | 170 ++++++++++++++++++----------------------
+ src/ap/mxl_ieee802_11.h |   1 +
+ 3 files changed, 84 insertions(+), 93 deletions(-)
+
+diff --git a/src/ap/ieee802_11.c b/src/ap/ieee802_11.c
+index 463c8a9ce..50bca838b 100644
+--- a/src/ap/ieee802_11.c
++++ b/src/ap/ieee802_11.c
+@@ -8978,4 +8978,10 @@ int mxl_check_linked_sta_assoc_ies(struct hostapd_data *hapd, struct sta_info *s
+ {
+ 	return __check_assoc_ies(hapd, sta, NULL, 0, elems, reassoc, true);
+ }
++u8 * mxl_hostapd_add_tpe_info(u8 *eid, u8 tx_pwr_count,
++				 enum max_tx_pwr_interpretation tx_pwr_intrpn,
++				 u8 tx_pwr_cat, u8 tx_pwr)
++{
++	return hostapd_add_tpe_info(eid, tx_pwr_count, tx_pwr_intrpn, tx_pwr_cat, tx_pwr);
++}
+ #endif /* CONFIG_VENDOR_MXL */
+diff --git a/src/ap/mxl_ieee802_11.c b/src/ap/mxl_ieee802_11.c
+index ec707e141..5373734be 100644
+--- a/src/ap/mxl_ieee802_11.c
++++ b/src/ap/mxl_ieee802_11.c
+@@ -7,7 +7,6 @@
+ 
+ *******************************************************************************/
+ 
+-#include <math.h>
+ #include "utils/includes.h"
+ 
+ #ifndef CONFIG_NATIVE_WINDOWS
+@@ -76,122 +75,107 @@
+ #include "wds_wpa.h"
+ #endif
+ 
++/* Single PSD in TPE 6 GHz is AP EIRP - 6 dBm before converted to PSD */
++static int mxl_ap_eirp_to_sta_psd(int eirp, int width)
++{
++	switch (width) {
++		case 20:  return eirp - 19;  /* -6 - (10 * log10(20))  */
++		case 40:  return eirp - 22;  /* -6 - (10 * log10(40))  */
++		case 80:  return eirp - 25;  /* -6 - (10 * log10(80))  */
++		case 160: return eirp - 28;  /* -6 - (10 * log10(160)) */
++		case 320: return eirp - 31;  /* -6 - (10 * log10(320)) */
++	default:
++		return -64; /* should never reach, represents lowest power possible */
++	}
++}
++
++/* Below four values are in units of 0.5 dBm/MHz */
++#define REG_PSD_MAX_TXPOWER_FOR_DEFAULT_CLIENT      (-2)   /*  -1 dBm/MHz */
++#define REG_PSD_MAX_TXPOWER_FOR_SUBORDINATE_CLIENT  10     /*   5 dBm/MHz */
++#define MAX_TX_PWR_CLIENT_SP_DBM_MHZ_LIMIT          34     /*  17 dBm/MHz */
++#define MIN_TX_PWR_CLIENT_SP_DBM_MHZ_LIMIT          (-128) /* -64 dBm/MHz */
++
+ u8 * hostapd_eid_txpower_envelope_vendor_mxl_6g(struct hostapd_data *hapd, u8 *eid, bool only_one_psd_limit)
+ {
+-#define MAX_TX_POWER_PSD_MIN_NUM_OCTETS         1
+-#define MAX_TRANSMIT_PWR_INTERPRET_REG_EIRP_PSD 3
+-#define MAX_TRANSMIT_PWR_INTERPRET_OFFSET       3
+-#define MAX_TX_PWR_MINUS_ONE_DBM_MHZ            0xFE
+-#define MAX_TX_PWR_CLIENT_SP_DBM_MHZ_LIMIT      0x22
+-#define MAX_TX_PWR_LPI_CLIENT_FIVE_DBM_MHZ      10
+-#define MAX_TRANSMIT_PWR_CATEGORY_SUB_ORDINATE_DEVICE  1
+-#define MAX_TRANSMIT_PWR_CATEGORY_OFFSET        6
+-/* Below will transform eirp 1 dBM into PSD with units of 1 dBm/MHz */
+-#define MAX_TRANSMIT_EIRP_TO_PSD(eirp, bw) ((eirp) - (10.0 * log10(bw)))
+ 	struct hostapd_iface *iface = hapd->iface;
++	struct hostapd_config *iconf = iface->conf;
+ 	struct hostapd_hw_modes *mode = iface->current_mode;
++	int max_power = UINT8_MAX;
++	int max_client_psd = 0;
++	u8 tx_pwr_count = 0; /* Will be changed in WLANRTSYS-85200 */
+ 	int width, chan_idx = 0;
+-	int max_power = 0xFF;
+-	float max_client_psd = 0.0;
+-	int current_freq, center_freq = 0;
++	int start_freq, center_freq, end_freq, current_freq = 0;
++	enum max_tx_pwr_interpretation tx_pwr_intrpn = REGULATORY_CLIENT_EIRP_PSD;
+ 	int i = 0;
+ 
+ 	if (!only_one_psd_limit) {
+ 		/*
+-		 * TODO: To compute PSD values based on the BW configured and advertise multiple PSD,
++		 * TODO: WLANRTSYS-85200
++		 *       To compute PSD values based on the BW configured and advertise multiple PSD,
+ 		 *       one for each of the 20MHz channels contained within the configured BW
+ 		 */
+ 		return eid;
+ 	}
+ 
+-	if (hapd->iface->conf->he_6ghz_reg_pwr_type == HE_REG_INFO_6GHZ_AP_TYPE_INDOOR) {
+-		*eid++ = WLAN_EID_TRANSMIT_POWER_ENVELOPE;
+-		*eid++ = 1 + MAX_TX_POWER_PSD_MIN_NUM_OCTETS;
+-		*eid++ = (MAX_TRANSMIT_PWR_INTERPRET_REG_EIRP_PSD << MAX_TRANSMIT_PWR_INTERPRET_OFFSET);
+-		/* -1.0 dBM is 0xFE in two’s compliment */
+-		*eid++ = MAX_TX_PWR_MINUS_ONE_DBM_MHZ;
+-
+-		/* TPE for Subordinate Device power category */
+-		/* One Max Transmit PSD for a PPDU of any BW */
+-		*eid++ = WLAN_EID_TRANSMIT_POWER_ENVELOPE;
+-		*eid++ = 1 + MAX_TX_POWER_PSD_MIN_NUM_OCTETS;
+-		*eid++ = (MAX_TRANSMIT_PWR_INTERPRET_REG_EIRP_PSD << MAX_TRANSMIT_PWR_INTERPRET_OFFSET) |
+-		(MAX_TRANSMIT_PWR_CATEGORY_SUB_ORDINATE_DEVICE << MAX_TRANSMIT_PWR_CATEGORY_OFFSET);
+-		/* 5.0 dBm/MHz in units of 0.5 dBm/MHz */
+-		*eid++ = MAX_TX_PWR_LPI_CLIENT_FIVE_DBM_MHZ;
+-	}
++	if (iface->mxl_iface.he_6ghz_reg_pwr_mode == HE_REG_INFO_6GHZ_AP_TYPE_INDOOR) {
++		/* Default Transmit Power Envelope for Global Operating Class */
++		max_client_psd = REG_PSD_MAX_TXPOWER_FOR_DEFAULT_CLIENT;
++		eid = mxl_hostapd_add_tpe_info(eid, tx_pwr_count, tx_pwr_intrpn,
++					   REG_DEFAULT_CLIENT, (u8)max_client_psd);
++		}
+ 
++	if (he_reg_is_sp(iface->mxl_iface.he_6ghz_reg_pwr_mode)) {
+ 
+-	if (he_reg_is_sp(iface->conf->he_6ghz_reg_pwr_type)) {
+-		width = op_class_to_bandwidth(hapd->iface->conf->op_class);
+-		switch (width) {
+-			case 20:
+-			case 40:
+-			case 80:
+-				chan_idx = hostapd_get_oper_centr_freq_seg0_idx(iface->conf);
+-				break;
+-			case 160:
+-			case 320:
+-				chan_idx = hostapd_get_oper_centr_freq_seg1_idx(iface->conf);
+-				break;
+-			default:
+-				wpa_printf(MSG_ERROR, "TPE: wrong or unsupported channel width %d", width);
+-				return eid;
++		width = op_class_to_bandwidth(iconf->op_class);
++		/* hostapd-ng tracks segments differently than legacy hostapd */
++		chan_idx = hostapd_get_oper_centr_freq_seg0_idx(iconf);
++		if (!chan_idx) {
++			wpa_printf(MSG_ERROR, "No center channel was found in conf");
++			return eid;
+ 		}
+ 		center_freq = hostapd_chan_to_freq(chan_idx, true);
+-		//search for matching channel
+-		for (current_freq =  center_freq - (width / 2) + 10;
+-				current_freq <= center_freq + (width / 2) - 10;
+-				current_freq += 20) {
+-			for (i = 0; i < mode->num_channels; i++) {
+-				if (mode->channels[i].freq == current_freq) {
+-					if(mode->channels[i].max_tx_power < max_power) {
+-						max_power = mode->channels[i].max_tx_power;
+-						break;
+-					}
++		start_freq = center_freq - (width / 2) + 10;
++		end_freq = center_freq + (width / 2) - 10;
++
++#ifdef CONFIG_AFC
++		if (iface->afc.num_chan_info && iface->afc.data_valid) {
++			/* search for matching whole channel */
++			for (int afc_response_chan_idx = 0; afc_response_chan_idx < iface->afc.num_chan_info; afc_response_chan_idx++) {
++				if (iface->afc.chan_info_list[afc_response_chan_idx].chan == chan_idx) {
++					max_power = iface->afc.chan_info_list[afc_response_chan_idx].power;
++					break;
+ 				}
+ 			}
+ 		}
+-
+-		*eid++ = WLAN_EID_TRANSMIT_POWER_ENVELOPE;
+-		*eid++ = 1 + MAX_TX_POWER_PSD_MIN_NUM_OCTETS;
+-		*eid++ = (MAX_TRANSMIT_PWR_INTERPRET_REG_EIRP_PSD << MAX_TRANSMIT_PWR_INTERPRET_OFFSET);
+-
+-		/* -1.0 dBM is 0xFE in two’s compliment */
+-		if (max_power == 0xFF)
+-			*eid++ = MAX_TX_PWR_MINUS_ONE_DBM_MHZ;
++#endif
++		if (max_power == UINT8_MAX) {
++			/* search for subchannel with lowest power */
++			width = 20; /* 20MHz factor used to transform eirp to psd from mode structure */
++			for (current_freq =  start_freq; current_freq <= end_freq; current_freq += 20) {
++				for (i = 0; i < mode->num_channels; i++) {
++					if (mode->channels[i].freq == current_freq)
++						max_power = MIN(max_power, mode->channels[i].max_tx_power);
++				}
++			}
++		}
++		if (max_power == UINT8_MAX)
++			max_client_psd = REG_PSD_MAX_TXPOWER_FOR_DEFAULT_CLIENT;
+ 		else {
+-			/* Client's TX limit is -6dBm EIRP from AP's TX limit and is set in units of 0.5 dBm/MHz */
+-			/* Current implementation works with lowest 20MHz channel, hence the fixed 20.0 below    */
+-			max_client_psd = 2.0 * MAX_TRANSMIT_EIRP_TO_PSD((max_power - 6.0), 20.0);
+-			max_client_psd = (max_client_psd > MAX_TX_PWR_CLIENT_SP_DBM_MHZ_LIMIT) ? MAX_TX_PWR_CLIENT_SP_DBM_MHZ_LIMIT : max_client_psd;
+-			*eid++ = (int)max_client_psd;
++			/* Client's TX limit is set in units of 0.5 dBm/MHz */
++			max_client_psd = 2 * mxl_ap_eirp_to_sta_psd(max_power, width);
++			max_client_psd = MIN(MAX_TX_PWR_CLIENT_SP_DBM_MHZ_LIMIT, max_client_psd);
++			max_client_psd = MAX(MIN_TX_PWR_CLIENT_SP_DBM_MHZ_LIMIT, max_client_psd);
+ 		}
++		eid = mxl_hostapd_add_tpe_info(eid, tx_pwr_count, tx_pwr_intrpn,
++					   REG_DEFAULT_CLIENT, (u8)max_client_psd);
+ 	}
+ 
+-	return eid;
+-}
+-
+-static u8 * hostapd_add_tpe_info_mxl(u8 *eid, u8 tx_pwr_count,
+-			 enum max_tx_pwr_interpretation tx_pwr_intrpn,
+-			 u8 tx_pwr_cat, u8 tx_pwr)
+-{
+-	int i;
+-
+-	*eid++ = WLAN_EID_TRANSMIT_POWER_ENVELOPE; /* Element ID */
+-	*eid++ = 2 + tx_pwr_count; /* Length */
+-
+-	/*
+-	* Transmit Power Information field
+-	* bits 0-2 : Maximum Transmit Power Count
+-	* bits 3-5 : Maximum Transmit Power Interpretation
+-	* bits 6-7 : Maximum Transmit Power Category
+-	*/
+-	*eid++ = tx_pwr_count | (tx_pwr_intrpn << 3) | (tx_pwr_cat << 6);
+-
+-	/* Maximum Transmit Power field */
+-	for (i = 0; i <= tx_pwr_count; i++)
+-		*eid++ = tx_pwr;
++	if (he_reg_is_indoor(iface->mxl_iface.he_6ghz_reg_pwr_mode)) {
++		/* Indoor APs must include an additional TPE for subordinate devices */
++		max_client_psd = REG_PSD_MAX_TXPOWER_FOR_SUBORDINATE_CLIENT;
++		eid = mxl_hostapd_add_tpe_info(eid, tx_pwr_count, tx_pwr_intrpn,
++					   REG_SUBORDINATE_CLIENT, (u8)max_client_psd);
++	}
+ 
+ 	return eid;
+ }
+@@ -287,7 +271,7 @@ u8 * hostapd_eid_txpower_envelope_vendor_mxl(struct hostapd_data *hapd, u8 *eid)
+ 	else
+ 		tx_pwr = max_tx_power;
+ 
+-	return hostapd_add_tpe_info_mxl(eid, tx_pwr_count, LOCAL_EIRP,
++	return mxl_hostapd_add_tpe_info(eid, tx_pwr_count, LOCAL_EIRP,
+ 				REG_DEFAULT_CLIENT,
+ 				tx_pwr);
+ }
+diff --git a/src/ap/mxl_ieee802_11.h b/src/ap/mxl_ieee802_11.h
+index a1102c7b6..7b5636682 100644
+--- a/src/ap/mxl_ieee802_11.h
++++ b/src/ap/mxl_ieee802_11.h
+@@ -60,5 +60,6 @@ u8* mxl_hostapd_eid_legacy_multi_ap(struct hostapd_data *hapd, const u8 *ies, si
+ 
+ int mxl_hostapd_add_authresp_elements(struct hostapd_data *hapd, u8 *pos, size_t vendor_ie_len, size_t *out_len);
+ u8 * mxl_hostapd_eid_multi_ap(struct hostapd_data *hapd, struct sta_info *sta, u8 *eid, size_t len);
++u8 * mxl_hostapd_add_tpe_info(u8 *eid, u8 tx_pwr_count, enum max_tx_pwr_interpretation tx_pwr_intrpn, u8 tx_pwr_cat, u8 tx_pwr);
+ 
+ #endif /* MXL_IEEE802_11_H */
+-- 
+2.43.0
+

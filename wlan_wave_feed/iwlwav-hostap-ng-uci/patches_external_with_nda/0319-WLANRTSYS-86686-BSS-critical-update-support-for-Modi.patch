@@ -1,0 +1,43 @@
+From e58633e84899234f6a57f1ca707d4fbadbb48627 Mon Sep 17 00:00:00 2001
+From: mj <mj@maxlinear.com>
+Date: Tue, 1 Apr 2025 16:14:26 +0530
+Subject: [PATCH] WLANRTSYS-86686 BSS critical update support for Modification
+ of the MU EDCA Parameter Set element Fix : Enable critical update flag in the
+ beacon frame if MU EDCA parameter set via hostapd_cli command.
+
+---
+ hostapd/ctrl_iface.c | 14 ++++++++++++++
+ 1 file changed, 14 insertions(+)
+
+diff --git a/hostapd/ctrl_iface.c b/hostapd/ctrl_iface.c
+index 7e543c9cf..1f234d0d8 100644
+--- a/hostapd/ctrl_iface.c
++++ b/hostapd/ctrl_iface.c
+@@ -3492,10 +3492,24 @@ static int hostapd_ctrl_iface_update_edca_counter(struct hostapd_iface *iface)
+ 	count++;
+ 	clr_set_he_cap(&iface->conf->he_mu_edca.he_qos_info,
+ 				   count, HE_QOS_INFO_EDCA_PARAM_SET_COUNT);
++#ifdef CONFIG_IEEE80211BE_MXL_MLO
++	for (int i = 0; i < iface->num_bss; i++) {
++		if (!mxl_is_mlo_enabled(iface->bss[i]->conf)) {
++			mxl_ml_send_bss_critical_update_info(iface->bss[i],
++				BSS_CRITICAL_UPDATE_COMMON, 0, 0);
++			if (iface->bss[i]->beacon_set_done && iface->bss[i]->started)
++				ieee802_11_set_beacon(iface->bss[i]);
++			}
++		else {
++			mxl_ml_handle_critical_update(iface->bss[i]);
++		}
++	}
++#else
+ 	if (ieee802_11_update_beacons(iface) < 0) {
+ 		wpa_printf(MSG_ERROR, "Beacon update failed on MU EDCA Parameter Set Count increment");
+ 		return -1;
+ 	}
++#endif /* CONFIG_IEEE80211BE_MXL_MLO */
+ 	return 0;
+ }
+ 
+-- 
+2.43.0
+

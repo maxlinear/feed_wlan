@@ -1,0 +1,18 @@
+In this folder there are 2 special folders:
+
+    - "patches":
+        This folder contains special MaxLinear commits saved in the form of patches. These patches
+        are meant to be uploaded manually by a developer.
+
+        PATCHES CONTAINED IN THIS FOLDER MUST START WITH 9000
+
+        E.g. 9000-WLANRTSYS-45977-OneWiFi-Open-source-hostapd-integrat.patch
+        (you can use --start-number=9000 with format-patch Git command)
+
+    - "patches_external":
+        This folder contains patches generated automatically by DevOps scripts. Each time a new internal
+        MaxLinear commit is merged, its corresponding patch file will be added to this subfolder.
+
+        Patches in this folder may be overwritten without further notice!
+
+Please refer to the README located at the root of this repository for more information.

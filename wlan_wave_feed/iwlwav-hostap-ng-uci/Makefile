@@ -15,10 +15,11 @@ PKG_VERSION:=2.10
 PKG_SOURCE:=$(PKG_NAME)-$(PKG_VERSION).tar.bz2
 PKG_PROJECT:=maxlinear
 PKG_SOURCE_NAME:=iwlwav-hostap-ng.git
+CONFIG_UGW_PKG_SOURCE_URL:=ssh://git@github.com
 PKG_SOURCE_URL:=https://w1.fi/hostap.git
 PKG_SOURCE_VERSION:=033634019ddf8a2a12ad9c367d82cce6275804a5
 PKG_SOURCE_PROTO:=git
-PKG_MIRROR_HASH:=4c82420a573e5ba41dbb521ffe484dba411fe955092f408cdd9ab3089a846256
+PKG_MIRROR_HASH:=f4e8e4f1f55231e2fd79b1268ec40d2e64afac5bf60256079b5d0feb9509f059
 ifeq ($(BUILD_VARIANT),debug)
 PKG_CONFIG_DEPENDS:=CONFIG_WIRELESS_STA-debug CONFIG_LIBCURL_OPENSSL CONFIG_LIBCURL_SSH2 CONFIG_LIBCURL_VERBOSE CONFIG_PACKAGE_libjson-c
 else
@@ -164,6 +165,13 @@ define Package/iwlwav-hostap-ng-uci/install
 		$(INSTALL_BIN) $(PKG_BUILD_DIR)/wpa_supplicant/wpa_passphrase $(1)/usr/sbin \
 	)
 	$(INSTALL_BIN) $(PKG_BUILD_DIR)/afc/afcd $(1)/usr/sbin
+	$(INSTALL_DIR) $(1)/etc/init.d/
+	$(if $(filter $(CONFIG_BUILD_SDK),"prplos"), \
+		$(INSTALL_BIN) ./files/afc_initd_prpl $(1)/etc/init.d/afc_initd; \
+	)
+	$(if $(filter $(CONFIG_BUILD_SDK),"ugw"), \
+		$(INSTALL_BIN) ./files/afc_initd $(1)/etc/init.d/afc_initd; \
+	)
 	echo -e "iwlwav_hostap_hash=\"$(PKG_REV)\"\niwlwav_hostap_tag=\"$(PKG_REV)\"" > $(1)/etc/iwlwav_hostap.ver
 endef
 

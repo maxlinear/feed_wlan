@@ -1,0 +1,50 @@
+From c354f950f27d7a07ce2fbf9f485ac175edebe556 Mon Sep 17 00:00:00 2001
+From: hmgokhale <hmgokhale@maxlinear.com>
+Date: Fri, 8 Nov 2024 19:41:25 +0530
+Subject: [PATCH] WLANRTSYS-85797 Do not bring up the mlo enabled VAP which is
+ configured as WPA2
+
+Issue: Able to bring up MLO with WPA2 Security Mode
+Fix:
+Add a check for MLO enabled vap and do not bring up the vap if it is
+WPA2 configured
+Test:
+Tested the scenario and the vap is not up after configuring the wpa2
+
+Signed-off-by: hmgokhale <hmgokhale@maxlinear.com>
+---
+ hostapd/mxl_config.c | 12 +++++++++++-
+ 1 file changed, 11 insertions(+), 1 deletion(-)
+
+diff --git a/hostapd/mxl_config.c b/hostapd/mxl_config.c
+index 0f567a861..b93abc749 100644
+--- a/hostapd/mxl_config.c
++++ b/hostapd/mxl_config.c
+@@ -2126,13 +2126,23 @@ int mxl_hostapd_config_check(struct hostapd_config *conf, int full_config)
+ {
+ 
+ #ifdef CONFIG_IEEE80211BE_MXL_MLO
++	int i;
+ 	if (!conf->ieee80211be) {
+-		int i;
+ 		for (i = 0; i < conf->num_bss; i++) {
+ 			if (conf->bss[i]->mxl_bss_conf.mlo_enable)
+ 				return -1;
+ 		}
+ 	}
++
++	for (i = 0; i < conf->num_bss; i++) {
++		if (conf->bss[i]->mxl_bss_conf.mlo_enable) {
++			if (conf->bss[i]->wpa_key_mgmt == WPA_KEY_MGMT_PSK) {
++				wpa_printf(MSG_ERROR, "MLD: WPA2 PSK is not allowed in MLD");
++				return -1;
++			}
++		}
++	}
++
+ #endif /* CONFIG_IEEE80211BE_MXL_MLO */
+ 
+ 	return 0;
+-- 
+2.43.0
+

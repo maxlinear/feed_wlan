@@ -1,0 +1,25 @@
+From e7be66b9c79fc6388084b6124c77af24b97dde0d Mon Sep 17 00:00:00 2001
+From: Bharath Paidupati <bpaidupati@maxlinear.com>
+Date: Tue, 1 Apr 2025 13:49:07 +0800
+Subject: [PATCH] WLANRTSYS-88821 Revert Opclass fix for 320MHz Fixup:
+ Reverting fix WLANRTSYS-86271
+
+---
+ hostapd/mxl_config.c | 1 -
+ 1 file changed, 1 deletion(-)
+
+diff --git a/hostapd/mxl_config.c b/hostapd/mxl_config.c
+index dd88ff022..1fdc2df97 100644
+--- a/hostapd/mxl_config.c
++++ b/hostapd/mxl_config.c
+@@ -2087,7 +2087,6 @@ void mxl_hostapd_config_defaults(struct hostapd_config *conf)
+ #endif /* CONFIG_IEEE80211BE */
+ #ifdef CONFIG_IEEE80211BE_MXL_MLO
+ 	mxl_conf->max_chan_switch_time = MAX_CHAN_SWITCH_TIME_DEFAULT;
+-	mxl_conf->rnr_6g_op_class_137_allowed = 1;
+ #endif /* CONFIG_IEEE80211BE_MXL_MLO */
+ 
+ 	/*
+-- 
+2.43.0
+

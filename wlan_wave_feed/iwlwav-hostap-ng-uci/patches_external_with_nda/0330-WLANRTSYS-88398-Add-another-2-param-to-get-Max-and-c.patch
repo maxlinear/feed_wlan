@@ -1,0 +1,168 @@
+From 89486c0bf8fc3d474dc9cf8fd1b28bd6507976ef Mon Sep 17 00:00:00 2001
+From: mj <mj@maxlinear.com>
+Date: Tue, 13 May 2025 11:22:09 +0530
+Subject: [PATCH] WLANRTSYS-88398 Add another 2 param to get Max and current tx
+ power Fix: Get the max and current tx power using this vendor NL command -
+ LTQ_NL80211_VENDOR_SUBCMD_GET_20MHZ_TX_POWER. 1st param is RNR 20mhz tx power
+ 2nd param is max tx power 3rd param is cur_tx_power If the regd is FCC, read
+ the tx power for 160 Mhz due to low power indoor Tx power definition in FCC.
+ If channel is not configured for 160. the 160 Mhz power table won't be in the
+ power table. So, read the power limit for 20mhz tx power from power table Non
+ FCC, read the tx power for 20mhz bandwidth from power table in the driver.
+
+---
+ src/ap/ap_drv_ops.h           |  4 ++--
+ src/ap/hostapd.c              |  5 +++--
+ src/common/vendor_cmds_copy.h |  7 +++++++
+ src/drivers/driver.h          |  3 ++-
+ src/drivers/driver_nl80211.c  | 34 ++++++++++++++++++++++------------
+ 5 files changed, 36 insertions(+), 17 deletions(-)
+
+diff --git a/src/ap/ap_drv_ops.h b/src/ap/ap_drv_ops.h
+index bf2abcee2..ae3754081 100644
+--- a/src/ap/ap_drv_ops.h
++++ b/src/ap/ap_drv_ops.h
+@@ -517,12 +517,12 @@ static inline int hostapd_drv_set_mbssid_num_vaps_in_group(struct hostapd_data *
+ }
+ 
+ static inline int hostapd_drv_get_tx_power_20mhz(struct hostapd_data *hapd,
+-						int *tx_power_20mhz)
++						struct mxl_vendor_20mhz_tx_power *tx_power)
+ {
+ 	if (hapd->driver == NULL || hapd->driver->get_tx_power_20mhz == NULL)
+ 		return -ENOTSUP;
+ 
+-	return hapd->driver->get_tx_power_20mhz(hapd->drv_priv, tx_power_20mhz);
++	return hapd->driver->get_tx_power_20mhz(hapd->drv_priv, tx_power);
+ }
+ 
+ #ifdef CONFIG_IEEE80211AX
+diff --git a/src/ap/hostapd.c b/src/ap/hostapd.c
+index f745529cb..a47dd7a0d 100644
+--- a/src/ap/hostapd.c
++++ b/src/ap/hostapd.c
+@@ -6179,17 +6179,18 @@ int hostapd_get_psd_val(struct hostapd_iface *iface, u8 *val)
+ {
+ 	int psd = 0;
+ 	int tx_power_20mhz = 0;
++	struct mxl_vendor_20mhz_tx_power tx_power = {0};
+ 	struct hostapd_data *hapd = NULL;
+ 
+ 	if (!val || !iface || !iface->bss[0])
+ 		return -1;
+ 
+ 	hapd = iface->bss[0];
+-	if (hostapd_drv_get_tx_power_20mhz(hapd, &tx_power_20mhz)) {
++	if (hostapd_drv_get_tx_power_20mhz(hapd, &tx_power)) {
+ 		wpa_printf(MSG_ERROR, "failed to get tx_power_20mhz : %d", tx_power_20mhz);
+ 		return -1;
+ 	}
+-
++	tx_power_20mhz = tx_power.rnr_20mhz_tx_power;
+ 	psd = (tx_power_20mhz - HOSTAP_6GHZ_10LOG_20MHZ ) * HOSTAP_6GHZ_CONVERT_HALF_DB_UNIT;
+ 
+ 	if (( psd < HOSTAP_6GHZ_PSD_20MHZ_MIN) ||
+diff --git a/src/common/vendor_cmds_copy.h b/src/common/vendor_cmds_copy.h
+index ea5ca8576..569c9e4da 100644
+--- a/src/common/vendor_cmds_copy.h
++++ b/src/common/vendor_cmds_copy.h
+@@ -757,6 +757,13 @@ struct intel_vendor_he_capa {
+   u8 he_ppe_thresholds[25];
+ } __attribute__ ((packed));
+ 
++/* Data for LTQ_NL80211_VENDOR_SUBCMD_GET_20MHZ_TX_POWER vendor command */
++struct mxl_vendor_20mhz_tx_power {
++  u32 rnr_20mhz_tx_power;
++  u32 max_tx_power;
++  u32 cur_tx_power;
++} __attribute__ ((packed));
++
+ /* Data for MXL_NL80211_VENDOR_SUBCMD_SET_EHT_DEBUG_DATA,
+  *          MXL_NL80211_VENDOR_SUBCMD_SET_EHT_NON_ADVERTISED and
+  *          MXL_NL80211_VENDOR_SUBCMD_GET_EHT_NON_ADVERTISED vendor commands */
+diff --git a/src/drivers/driver.h b/src/drivers/driver.h
+index ce5c42652..a1ec284ab 100644
+--- a/src/drivers/driver.h
++++ b/src/drivers/driver.h
+@@ -5338,9 +5338,10 @@ struct wpa_driver_ops {
+ 	/**
+ 	 * get_tx_power_20mhz - get tx power for 20mhz bandwidth
+ 	 * @priv: Private driver interface data
++	 * @tx_power - 20mhz tx power struct
+ 	 * Returns: 0 on success, -1 on failure
+ 	 */
+-	int (*get_tx_power_20mhz)(void *priv, int *tx_power_20mhz);
++	int (*get_tx_power_20mhz)(void *priv, struct mxl_vendor_20mhz_tx_power *tx_power);
+ 
+ 	/**
+ 	 * set_bss_load - Set BSS Load IE in Beacon
+diff --git a/src/drivers/driver_nl80211.c b/src/drivers/driver_nl80211.c
+index 99bea28ce..750f13ebb 100644
+--- a/src/drivers/driver_nl80211.c
++++ b/src/drivers/driver_nl80211.c
+@@ -14538,32 +14538,42 @@ int nl80211_set_mbssid_num_vaps_in_group(void *priv, const u8 mbssid_num_vaps_in
+ 	return ret;
+ }
+ 
+-int nl80211_get_tx_power_20mhz(void *priv, int *tx_power_20mhz)
++int nl80211_get_tx_power_20mhz(void *priv, struct mxl_vendor_20mhz_tx_power *tx_power)
+ {
+ 	int ret;
+ 	errno_t err;
+-	struct wpabuf *rsp;
++	size_t tx_power_vendor_size = sizeof(struct mxl_vendor_20mhz_tx_power);
++	struct wpabuf *rsp_tx_power;
+ 
+-	rsp = wpabuf_alloc(sizeof(*tx_power_20mhz));
+-	if (!rsp)
++	if (NULL == tx_power) {
++		wpa_printf(MSG_ERROR, "20mhz_tx_power NULL failed: %i (%s)",
++			ret, strerror(-ret));
++		return -EFAULT;
++	}
++
++	rsp_tx_power = wpabuf_alloc(tx_power_vendor_size);
++	if (!rsp_tx_power) {
++		wpa_printf(MSG_ERROR, "20mhz_tx_power alloc failed: %i (%s)",
++			ret, strerror(-ret));
+ 		return -ENOBUFS;
++	}
+ 
+ 	ret = nl80211_vendor_cmd(priv, OUI_LTQ, LTQ_NL80211_VENDOR_SUBCMD_GET_20MHZ_TX_POWER,
+-				     NULL, 0, NESTED_ATTR_NOT_USED, rsp);
++				NULL, 0, NESTED_ATTR_NOT_USED, rsp_tx_power);
+ 	if (ret < 0) {
+-		wpa_printf(MSG_ERROR, "nl80211: sending GET_TX_POWER_20MHZ failed: %i (%s)",
+-			   ret, strerror(-ret));
++		wpa_printf(MSG_ERROR, "nl80211: GET_TX_POWER_20MHZ failed: %i (%s)",
++			ret, strerror(-ret));
+ 		goto out;
+ 	}
+ 
+-	if (rsp->used != sizeof(*tx_power_20mhz)) {
+-		wpa_printf(MSG_ERROR, "nl80211: driver returned %zu bytes instead of %zu",
+-			   rsp->used, sizeof(*tx_power_20mhz));
++	if (rsp_tx_power->used != tx_power_vendor_size) {
+ 		ret = -EMSGSIZE;
++		wpa_printf(MSG_ERROR, "nl80211: driver returned %zu bytes instead of expected %zu",
++			rsp_tx_power->used, tx_power_vendor_size);
+ 		goto out;
+ 	}
+ 
+-	err = memcpy_s(tx_power_20mhz, sizeof(*tx_power_20mhz), rsp->buf, sizeof(*tx_power_20mhz));
++	err = memcpy_s(tx_power, sizeof(*tx_power), rsp_tx_power->buf, tx_power_vendor_size);
+ 	if (EOK != err) {
+ 		wpa_printf(MSG_ERROR, "%s: memcpy_s error %d", __func__, err);
+ 		ret = -ENOBUFS;
+@@ -14571,7 +14581,7 @@ int nl80211_get_tx_power_20mhz(void *priv, int *tx_power_20mhz)
+ 	}
+ 
+ out:
+-	wpabuf_free(rsp);
++	wpabuf_free(rsp_tx_power);
+ 	return ret;
+ }
+ 
+-- 
+2.43.0
+

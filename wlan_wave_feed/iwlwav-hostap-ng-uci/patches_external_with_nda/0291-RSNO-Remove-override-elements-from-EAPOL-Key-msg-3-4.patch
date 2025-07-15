@@ -1,0 +1,59 @@
+From d2e2f5d162e9a56349e5a994e99306f29f467738 Mon Sep 17 00:00:00 2001
+From: Jouni Malinen <quic_jouni@quicinc.com>
+Date: Thu, 25 Jul 2024 19:22:00 +0000
+Subject: [PATCH] RSNO: Remove override elements from EAPOL-Key msg 3/4
+
+This was not done in case the STA did not use RSN overriding.
+
+Signed-off-by: Jouni Malinen <quic_jouni@quicinc.com>
+---
+ src/ap/wpa_auth.c | 33 +++++++++++++++++++++++++++++++++
+ 1 file changed, 33 insertions(+)
+
+diff --git a/src/ap/wpa_auth.c b/src/ap/wpa_auth.c
+index 8a79fef5b..900465dd7 100644
+--- a/src/ap/wpa_auth.c
++++ b/src/ap/wpa_auth.c
+@@ -4307,6 +4307,39 @@ SM_STATE(WPA_PTK, PTKINITNEGOTIATING)
+ 		wpa_hexdump(MSG_DEBUG, "EAPOL-Key msg 3/4 IEs after edits",
+ 			    wpa_ie, wpa_ie_len);
+ 	}
++	if ((conf->rsn_override_key_mgmt || conf->rsn_override_key_mgmt_2) &&
++	    !sm->rsn_override && !sm->rsn_override_2) {
++		u8 *ie;
++		size_t ie_len;
++		u32 ids[] = {
++			RSNE_OVERRIDE_IE_VENDOR_TYPE,
++			RSNE_OVERRIDE_2_IE_VENDOR_TYPE,
++			RSNXE_OVERRIDE_IE_VENDOR_TYPE,
++			0
++		};
++		int i;
++
++		wpa_printf(MSG_DEBUG,
++			   "RSN: Remove RSNE/RSNXE override elements");
++		wpa_hexdump(MSG_DEBUG, "EAPOL-Key msg 3/4 IEs before edits",
++			    wpa_ie, wpa_ie_len);
++		wpa_ie_buf3 = os_memdup(wpa_ie, wpa_ie_len);
++		if (!wpa_ie_buf3)
++			goto done;
++		wpa_ie = wpa_ie_buf3;
++
++		for (i = 0; ids[i]; i++) {
++			ie = (u8 *) get_vendor_ie(wpa_ie, wpa_ie_len, ids[i]);
++			if (ie) {
++				ie_len = 2 + ie[1];
++				os_memmove(ie, ie + ie_len,
++					   wpa_ie_len - (ie + ie_len - wpa_ie));
++				wpa_ie_len -= ie_len;
++			}
++		}
++		wpa_hexdump(MSG_DEBUG, "EAPOL-Key msg 3/4 IEs after edits",
++			    wpa_ie, wpa_ie_len);
++	}
+ #ifdef CONFIG_TESTING_OPTIONS
+ 	if (conf->rsne_override_eapol_set) {
+ 		wpa_ie_buf2 = replace_ie(
+-- 
+2.43.0
+

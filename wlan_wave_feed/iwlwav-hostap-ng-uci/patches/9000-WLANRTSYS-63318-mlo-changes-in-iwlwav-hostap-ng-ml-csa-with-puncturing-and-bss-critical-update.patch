@@ -1,0 +1,20 @@
+diff --git a/hostapd/ctrl_iface.c b/hostapd/ctrl_iface.c
+index bd6a189ad..75b4552d0 100644
+--- a/hostapd/ctrl_iface.c
++++ b/hostapd/ctrl_iface.c
+@@ -2786,6 +2786,15 @@ static int hostapd_ctrl_check_freq_params(struct hostapd_freq_params *params,
+ 		/* The 6 GHz band requires HE to be enabled. */
+ 		params->he_enabled = 1;
+ 
++#ifdef CONFIG_VENDOR_MXL
++		/* Sigma scripts are not being adapted yet for 160 & 320 MHz CSA */
++		/* Patch needs to be removed once sigma gets aligned & legacy hostap becomes obsolete */
++		if (params->center_freq2 && (params->bandwidth == 320 || params->bandwidth == 160)) {
++			params->center_freq1 = params->center_freq2;
++			params->center_freq2 = 0;
++		}
++#endif /* CONFIG_VENDOR_MXL */
++
+ 		if (params->center_freq1) {
+ 			if (params->freq == 5935)
+ 				idx = (params->center_freq1 - 5925) / 5;

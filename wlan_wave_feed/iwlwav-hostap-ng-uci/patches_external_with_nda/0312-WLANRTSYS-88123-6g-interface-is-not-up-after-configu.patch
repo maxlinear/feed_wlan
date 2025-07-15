@@ -1,0 +1,29 @@
+From 0cbde092e081151b4382bae082c548dd170b7139 Mon Sep 17 00:00:00 2001
+From: "Vaish,Prabhav Kumar" <pvaish@maxlinear.com>
+Date: Fri, 28 Feb 2025 15:47:11 +0530
+Subject: [PATCH] WLANRTSYS-88123 6g interface is not up after configuring OWE
+ security
+
+Signed-off-by: Vaish,Prabhav Kumar <pvaish@maxlinear.com>
+---
+ src/common/wpa_common.h | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/src/common/wpa_common.h b/src/common/wpa_common.h
+index 8ae52ec18..9714bf40b 100644
+--- a/src/common/wpa_common.h
++++ b/src/common/wpa_common.h
+@@ -26,8 +26,8 @@
+ #define OWE_DH_GROUP 19
+ 
+ /* Max Security IE length RSNE/OSEN/RSNXE/WPA_VENDOR_IE */
+-/* Max can be WPAIE(28) + RSNXE(3) */
+-#define WPA_IE_MAX_LEN 31
++/* Max can be WPAIE(30) + RSNXE(3) */
++#define WPA_IE_MAX_LEN 33
+ 
+ #ifdef CONFIG_NO_TKIP
+ #define WPA_ALLOWED_PAIRWISE_CIPHERS \
+-- 
+2.43.0
+

@@ -1,0 +1,425 @@
+From dd6508d775bac0f7decee3172d9cc84d11681061 Mon Sep 17 00:00:00 2001
+From: Selvavignesh Shanmugam <sshanmugam@maxlinear.com>
+Date: Mon, 16 Dec 2024 15:08:33 +0800
+Subject: [PATCH] WLANRTSYS-85095 Handle ML STA Remove cleanup
+
+Dependent changes are in driver.
+
+Additional Fix:
+  Handle cleanup of the sibling STA when DEAUTHENTICATE
+is issued for the ML STA.
+
+FIXUP to WLANRTSYS-62845 MLO changes: MLO Auth Assoc, WPA3 and eapol changes
+---
+ src/ap/ctrl_iface_ap.c     | 26 ++++++++++----------
+ src/ap/mxl_drv_callbacks.c |  4 ----
+ src/ap/mxl_hostapd.c       | 44 +++++++---------------------------
+ src/ap/mxl_ieee802_11.c    | 32 ++++---------------------
+ src/ap/mxl_ieee802_11.h    |  1 -
+ src/ap/mxl_mld.c           | 49 --------------------------------------
+ src/ap/mxl_mld.h           |  2 --
+ src/ap/mxl_sta_info.c      |  5 ----
+ src/ap/mxl_utils.c         |  1 -
+ src/ap/sta_info.c          | 14 ++++-------
+ 10 files changed, 30 insertions(+), 148 deletions(-)
+
+diff --git a/src/ap/ctrl_iface_ap.c b/src/ap/ctrl_iface_ap.c
+index 56b79cea3..075e1e7ab 100644
+--- a/src/ap/ctrl_iface_ap.c
++++ b/src/ap/ctrl_iface_ap.c
+@@ -26,6 +26,7 @@
+ #include "taxonomy.h"
+ #include "wnm_ap.h"
+ #ifdef CONFIG_VENDOR_MXL
++#include "mxl_ieee802_11.h"
+ #include "mxl_dfs_common.h"
+ #endif /* CONFIG_VENDOR_MXL */
+ //#include "../hostapd/ctrl_iface.h"
+@@ -646,10 +647,20 @@ int hostapd_ctrl_iface_deauthenticate(struct hostapd_data *hapd,
+ 
+ 	sta = ap_get_sta(hapd, addr);
+ 
++#ifdef CONFIG_IEEE80211BE_MXL_MLO
++	if (!sta && mxl_is_mlo_enabled(hapd->conf))
++		sta = mxl_ap_get_sta_by_non_ap_mld_mac(hapd, addr);
++#endif
++
+ 	if (os_strstr(txtaddr, " tx=0")) {
++#ifdef CONFIG_IEEE80211BE_MXL_MLO
++		if (sta)
++			mxl_hostapd_drv_cleanup_sta(hapd, sta);
++#else
+ 		hostapd_drv_sta_remove(hapd, addr);
+ 		if (sta)
+ 			ap_free_sta(hapd, sta);
++#endif
+ #ifdef CONFIG_VENDOR_MXL
+ 	} else if (is_broadcast_ether_addr(addr) &&
+ 		(hapd->wpa_auth) && (hapd->conf->ieee80211w != NO_MGMT_FRAME_PROTECTION)) {
+@@ -674,9 +685,6 @@ int hostapd_ctrl_iface_disassociate(struct hostapd_data *hapd,
+ 	struct sta_info *sta;
+ 	const char *pos;
+ 	u16 reason = WLAN_REASON_PREV_AUTH_NOT_VALID;
+-#ifdef CONFIG_IEEE80211BE_MXL_MLO
+-	struct sta_info *sta1 = NULL;
+-#endif
+ 
+ 	wpa_dbg(hapd->msg_ctx, MSG_DEBUG, "CTRL_IFACE DISASSOCIATE %s",
+ 		txtaddr);
+@@ -734,16 +742,8 @@ int hostapd_ctrl_iface_disassociate(struct hostapd_data *hapd,
+ 
+ 	if (os_strstr(txtaddr, " tx=0")) {
+ #ifdef CONFIG_IEEE80211BE_MXL_MLO
+-		if (sta) {
+-			if (mxl_mlo_is_ml_sta(sta)) {
+-				sta1 = sta->mxl_sta_info.linked_sta;
+-				mxl_ml_stop_sta_traffic_remove_mld(hapd, sta);
+-			}
+-			ap_free_sta(hapd, sta);
+-
+-			if (sta1)
+-				ap_free_sta(hapd->mxl_data.sibling_hapd, sta1);
+-		}
++		if (sta)
++			mxl_hostapd_drv_cleanup_sta(hapd, sta);
+ #else
+ 		hostapd_drv_sta_remove(hapd, addr);
+ 		if (sta)
+diff --git a/src/ap/mxl_drv_callbacks.c b/src/ap/mxl_drv_callbacks.c
+index 7c2273fdf..7daa7ac53 100644
+--- a/src/ap/mxl_drv_callbacks.c
++++ b/src/ap/mxl_drv_callbacks.c
+@@ -52,10 +52,6 @@ void mxl_hostapd_notif_disassoc(struct hostapd_data *hapd, const u8 *addr)
+ 		return;
+ 	}
+ 
+-	if (hapd->conf->mxl_bss_conf.mlo_enable && hapd->mxl_data.sibling_hapd) {
+-		mxl_ml_stop_sta_traffic_remove_mld(hapd, sta);
+-	}
+-
+ 	sta->flags &= ~WLAN_STA_BSS_TRANS_MGMT_REQ_TIMEOUT;
+ 	/* until required details is made available driver,
+ 	 * set reason and source values to unspecified and local respectively */
+diff --git a/src/ap/mxl_hostapd.c b/src/ap/mxl_hostapd.c
+index 922264bd0..24d8aeedc 100644
+--- a/src/ap/mxl_hostapd.c
++++ b/src/ap/mxl_hostapd.c
+@@ -299,6 +299,15 @@ void mxl_hostapd_free_aid(struct hostapd_data *hapd, struct sta_info *sta)
+ {
+ 	struct mxl_hostapd_iface *mxl_iface = &hapd->iface->mxl_iface;
+ 
++#ifdef CONFIG_IEEE80211BE_MXL_MLO
++	if (mxl_mlo_is_ml_sta(sta) && (sta->mxl_sta_info.ext_flags & WLAN_STA_MLD_STA)) {
++		struct sta_info *sta1 = sta->mxl_sta_info.linked_sta;
++		sta->mxl_sta_info.ext_flags &= ~WLAN_STA_MLD_STA;
++		if (sta1)
++			sta1->mxl_sta_info.ext_flags &= ~WLAN_STA_MLD_STA;
++	}
++#endif
++
+ 	if ((sta->aid <= 0) || (!hapd->driver->free_aid))
+ 		return;
+ 
+@@ -2726,43 +2735,8 @@ int mxl_update_rnr_check(struct hostapd_iface *iface)
+ }
+ 
+ #ifdef CONFIG_IEEE80211BE_MXL_MLO
+-void mxl_hostapd_ml_sta_stop_traffic(struct hostapd_iface *iface, unsigned int idx)
+-{
+-	struct hostapd_data *hapd, *hapd1;
+-	struct sta_info *sta;
+-
+-	hapd = iface->bss[idx];
+-	sta = hapd->sta_list;
+-
+-	if (sta == NULL) {
+-		wpa_printf(MSG_INFO, "STA list is empty");
+-	}
+-
+-	while (sta) {
+-		wpa_printf(MSG_INFO, "%s removing STA", __func__);
+-		if (hapd->conf->mxl_bss_conf.mlo_enable && hapd->mxl_data.sibling_hapd) {
+-			mxl_ml_stop_sta_traffic_remove_mld(hapd, sta);
+-		}
+-		sta = sta->next;
+-	}
+-	hapd1 = hapd->mxl_data.sibling_hapd;
+-	if (hapd1 == NULL)
+-		return;
+-
+-	hapd = hapd1;
+-	sta = hapd->sta_list;
+-	while (sta) {
+-		wpa_printf(MSG_INFO, "%s removing linked STA", __func__);
+-		if (hapd->conf->mxl_bss_conf.mlo_enable && hapd->mxl_data.sibling_hapd) {
+-			mxl_ml_stop_sta_traffic_remove_mld(hapd, sta);
+-		}
+-		sta = sta->next;
+-	}
+-}
+-
+ void mxl_hostapd_remove_mld_vap(struct hostapd_iface *iface, unsigned int idx)
+ {
+-	mxl_hostapd_ml_sta_stop_traffic(iface, idx);
+ 	hostapd_free_stas(iface->bss[idx]);
+ 	hostapd_free_stas(iface->bss[idx]->mxl_data.sibling_hapd);
+ 	mxl_hostapd_mld_remove(iface->bss[idx], 0);
+diff --git a/src/ap/mxl_ieee802_11.c b/src/ap/mxl_ieee802_11.c
+index 5373734be..d88c1eb49 100644
+--- a/src/ap/mxl_ieee802_11.c
++++ b/src/ap/mxl_ieee802_11.c
+@@ -577,7 +577,6 @@ static void mxl_handle_deauth_linked_sta(struct hostapd_data *hapd,
+ 
+ void mxl_mlo_handle_disassoc(struct hostapd_data *hapd, const struct ieee80211_mgmt *mgmt, size_t len)
+ {
+-	int ret = 0;
+ 	struct hostapd_data *hapd1 = NULL;
+ 	struct sta_info *sta = NULL, *sta1 = NULL;
+ 
+@@ -586,19 +585,16 @@ void mxl_mlo_handle_disassoc(struct hostapd_data *hapd, const struct ieee80211_m
+ 		sta = ap_get_sta(hapd, mgmt->sa);
+ 		if (sta) {
+ 			sta1 = sta->mxl_sta_info.linked_sta;
+-			ret = mxl_ml_stop_sta_traffic_remove_mld(hapd, sta);
+ 		}
+ 	}
+-	if (!ret)
+-		mxl_handle_disassoc(hapd, mgmt, len);
++	mxl_handle_disassoc(hapd, mgmt, len);
+ 
+-	if (hapd1 && sta1 && !ret && (len >= (IEEE80211_HDRLEN + sizeof(mgmt->u.disassoc))))
++	if (hapd1 && sta1 && (len >= (IEEE80211_HDRLEN + sizeof(mgmt->u.disassoc))))
+ 		mxl_mlo_handle_disassoc_linked_sta(hapd1, mgmt->u.disassoc.reason_code, sta1);
+ }
+ 
+ void mxl_mlo_handle_deauth(struct hostapd_data *hapd, const struct ieee80211_mgmt *mgmt, size_t len)
+ {
+-	int ret = 0;
+ 	struct hostapd_data *hapd1 = NULL;
+ 	struct sta_info *sta = NULL, *sta1 = NULL;
+ 
+@@ -607,13 +603,11 @@ void mxl_mlo_handle_deauth(struct hostapd_data *hapd, const struct ieee80211_mgm
+ 		sta = ap_get_sta(hapd, mgmt->sa);
+ 		if (sta) {
+ 			sta1 = sta->mxl_sta_info.linked_sta;
+-			ret = mxl_ml_stop_sta_traffic_remove_mld(hapd, sta);
+ 		}
+ 	}
+-	if (!ret)
+-		mxl_handle_deauth(hapd, mgmt, len);
++	mxl_handle_deauth(hapd, mgmt, len);
+ 
+-	if (hapd1 && sta1 && !ret && (len >= (IEEE80211_HDRLEN + sizeof(mgmt->u.deauth))))
++	if (hapd1 && sta1 && (len >= (IEEE80211_HDRLEN + sizeof(mgmt->u.deauth))))
+ 		mxl_handle_deauth_linked_sta(hapd1, mgmt->u.deauth.reason_code, sta1);
+ }
+ 
+@@ -819,10 +813,6 @@ void mxl_mlo_handle_deauth_cb(struct hostapd_data *hapd,
+ 		wpa_printf(MSG_DEBUG, "STA " MACSTR " did not acknowledge "
+ 				"deauth", MAC2STR(sta->addr));
+ 
+-	if (hapd->conf->mxl_bss_conf.mlo_enable && hapd->mxl_data.sibling_hapd) {
+-		mxl_ml_stop_sta_traffic_remove_mld(hapd, sta);
+-	}
+-
+ 	ap_sta_deauth_cb(hapd, sta);
+ 	if (hapd->conf->mxl_bss_conf.mlo_enable && hapd->mxl_data.sibling_hapd) {
+ 		hapd1 = hapd->mxl_data.sibling_hapd;
+@@ -858,9 +848,6 @@ void mxl_mlo_handle_disassoc_cb(struct hostapd_data *hapd,
+ 	else
+ 		wpa_printf(MSG_DEBUG, "STA " MACSTR " did not acknowledge "
+ 				"disassoc", MAC2STR(sta->addr));
+-	if (hapd->conf->mxl_bss_conf.mlo_enable && hapd->mxl_data.sibling_hapd) {
+-		mxl_ml_stop_sta_traffic_remove_mld(hapd, sta);
+-	}
+ 	ap_sta_disassoc_cb(hapd, sta);
+ 	if (hapd->conf->mxl_bss_conf.mlo_enable && hapd->mxl_data.sibling_hapd) {
+ 		hapd1 = hapd->mxl_data.sibling_hapd;
+@@ -932,16 +919,6 @@ bool mxl_check_assoc_ies_owe(struct hostapd_data *hapd, struct sta_info *sta, st
+ 	return false;
+ }
+ 
+-void mxl_ml_drv_remove_sta(struct hostapd_data *hapd, struct sta_info *sta)
+-{
+-	mxl_ml_stop_sta_traffic_remove_mld(hapd, sta);
+-	hostapd_drv_sta_remove(hapd, sta->addr);
+-	wpa_auth_sm_event(sta->wpa_sm, WPA_DRV_STA_REMOVED);
+-	if (hapd->mxl_data.sibling_hapd && sta->mxl_sta_info.linked_sta) {
+-		hostapd_drv_sta_remove(hapd->mxl_data.sibling_hapd, sta->mxl_sta_info.linked_sta->addr);
+-		wpa_auth_sm_event(sta->mxl_sta_info.linked_sta->wpa_sm, WPA_DRV_STA_REMOVED);
+-	}
+-}
+ void mxl_free_sta_profile(struct hostapd_data *hapd, struct sta_info *sta)
+ {
+ 	if (sta->mxl_sta_info.sta_profile_ie) {
+@@ -982,7 +959,6 @@ void mxl_hostapd_drv_cleanup_sta(struct hostapd_data *hapd, struct sta_info *sta
+ 
+ 	if (sta->mxl_sta_info.ext_flags & WLAN_STA_MULTILINK) {
+ 		sta1 = sta->mxl_sta_info.linked_sta;
+-		mxl_ml_stop_sta_traffic_remove_mld(hapd, sta);
+ 	}
+ 
+ 	wpa_printf(MSG_DEBUG, "Removing STA" MACSTR " AID %d", MAC2STR(sta->addr), sta->aid);
+diff --git a/src/ap/mxl_ieee802_11.h b/src/ap/mxl_ieee802_11.h
+index 7b5636682..82d321faf 100644
+--- a/src/ap/mxl_ieee802_11.h
++++ b/src/ap/mxl_ieee802_11.h
+@@ -44,7 +44,6 @@ void mxl_wpa_mld_auth_sta_init(struct sta_info *sta);
+ int mxl_mlo_sae_prepare_commit_pt(struct hostapd_data *hapd, struct sta_info *sta, const struct sae_pt *pt, const struct sae_pk *pk);
+ bool mxl_auth_parse_ml_ie(struct hostapd_data *hapd, const struct ieee80211_mgmt *mgmt, size_t len, struct sta_info *sta);
+ bool mxl_check_assoc_ies_owe(struct hostapd_data *hapd, struct sta_info *sta, struct ieee802_11_elems *elems);
+-void mxl_ml_drv_remove_sta(struct hostapd_data *hapd, struct sta_info *sta);
+ int mxl_pmksa_cache_handle(struct sta_info *sta);
+ void mxl_free_sta_profile(struct hostapd_data *hapd, struct sta_info *sta);
+ void mxl_hostapd_drv_cleanup_sta(struct hostapd_data *hapd, struct sta_info *sta);
+diff --git a/src/ap/mxl_mld.c b/src/ap/mxl_mld.c
+index a829ea0bb..bdd48c2eb 100644
+--- a/src/ap/mxl_mld.c
++++ b/src/ap/mxl_mld.c
+@@ -1541,55 +1541,6 @@ int mxl_ml_sta_add(struct hostapd_data *hapd, struct sta_info *sta)
+ 	return res;
+ }
+ 
+-int mxl_ml_remove_sta(struct hostapd_data *hapd, u8 *sa, u8 sendto_fw)
+-{
+-	struct mxl_sta_mld_remove sta_mld;
+-	struct sta_info *sta;
+-
+-	sta = ap_get_sta(hapd, sa);
+-	if (sta == NULL) {
+-		wpa_printf(MSG_INFO, "Station " MACSTR " trying to remove ml STA, but it is not associated",
+-				MAC2STR(sa));
+-		return -1;
+-	}
+-
+-	sta_mld.aid = sta->aid;
+-	sta_mld.sendto_fw = sendto_fw;
+-
+-	wpa_printf(MSG_INFO, "Removing ML station %d " MACSTR, sendto_fw,
+-			MAC2STR(sta->addr));
+-	if (MXL_DRV_VENDOR_SET(LTQ_NL80211_VENDOR_SUBCMD_REMOVE_STA_MLD, &sta_mld, sizeof(struct mxl_sta_mld_remove))) {
+-		wpa_printf(MSG_ERROR, " send LTQ_NL80211_VENDOR_SUBCMD_REMOVE_STA_MLD failed!!!");
+-		return -1;
+-	}
+-	return 0;
+-}
+-
+-/* Stop traffic on both STA, remove MLD STA and remove STA */
+-int mxl_ml_stop_sta_traffic_remove_mld(struct hostapd_data *hapd, struct sta_info *sta)
+-{
+-	struct hostapd_data *hapd1 = hapd->mxl_data.sibling_hapd;
+-
+-	if (mxl_mlo_is_ml_sta(sta) && (sta->mxl_sta_info.ext_flags & WLAN_STA_MLD_STA)) {
+-		struct sta_info *sta1 = sta->mxl_sta_info.linked_sta;
+-		if (sta->mxl_sta_info.ext_flags & (WLAN_STA_SINGLE_LINK_ML_ASSOC)) {
+-			if (mxl_ml_remove_sta(hapd, sta->addr, 1))
+-				return -1;
+-		} else {
+-			if (mxl_ml_remove_sta(hapd, sta->addr, 0))
+-				return -1;
+-		}
+-
+-		sta->mxl_sta_info.ext_flags &= ~WLAN_STA_MLD_STA;
+-		if (sta1) {
+-			if (mxl_ml_remove_sta(hapd1, sta1->addr, 1))
+-				return -1;
+-			sta1->mxl_sta_info.ext_flags &= ~WLAN_STA_MLD_STA;
+-		}
+-	}
+-	return 0;
+-}
+-
+ int ml_sta_send_t2lm_teardown_frame(struct hostapd_data *hapd, u8 *sta_mac)
+ {
+ 	struct sta_info *sta;
+diff --git a/src/ap/mxl_mld.h b/src/ap/mxl_mld.h
+index e50ebc1c2..419a4d8ee 100644
+--- a/src/ap/mxl_mld.h
++++ b/src/ap/mxl_mld.h
+@@ -190,8 +190,6 @@ u16 mxl_ml_ie_wds_validate (struct hostapd_data *hapd, struct sta_info *sta,
+ 				const u8 *ies, size_t ies_len);
+ int mxl_ml_set_sid(struct hostapd_data *hapd, struct mxl_ml_sta_info *ml_sta_info);
+ int mxl_ml_sta_add(struct hostapd_data *hapd, struct sta_info *sta);
+-int mxl_ml_remove_sta(struct hostapd_data *hapd, u8 *sa, u8 sendto_fw);
+-int mxl_ml_stop_sta_traffic_remove_mld(struct hostapd_data *hapd, struct sta_info *sta);
+ int ml_sta_send_t2lm_teardown_frame(struct hostapd_data *hapd, u8 *sta_mac);
+ bool mxl_is_ml_vap_configured(struct hostapd_iface *iface);
+ void mxl_ml_increment_bss_param_change_count(struct hostapd_data *hapd);
+diff --git a/src/ap/mxl_sta_info.c b/src/ap/mxl_sta_info.c
+index 61215c902..251b53709 100644
+--- a/src/ap/mxl_sta_info.c
++++ b/src/ap/mxl_sta_info.c
+@@ -48,8 +48,6 @@ void mxl_ml_ap_handle_timer(void *eloop_ctx, void *timeout_ctx)
+ 		hostapd_logger(hapd, sta->addr, HOSTAPD_MODULE_IEEE80211,
+ 			       HOSTAPD_LEVEL_INFO, "deauthenticated due to "
+ 			       "local deauth request");
+-		if (hapd->conf->mxl_bss_conf.mlo_enable && hapd->mxl_data.sibling_hapd)
+-			mxl_ml_stop_sta_traffic_remove_mld(hapd, sta);
+ #ifdef UBUS_SUPPORT
+ 		hostapd_ubus_notify(hapd, "local-deauth", sta->addr);
+ #endif /* UBUS_SUPPORT */
+@@ -240,9 +238,6 @@ skip_poll:
+ 		mlme_deauthenticate_indication(
+ 			hapd, sta,
+ 			WLAN_REASON_PREV_AUTH_NOT_VALID);
+-		if (hapd->conf->mxl_bss_conf.mlo_enable && hapd->mxl_data.sibling_hapd) {
+-			mxl_ml_stop_sta_traffic_remove_mld(hapd, sta);
+-		}
+ #ifdef UBUS_SUPPORT
+ 		hostapd_ubus_notify(hapd, "inactive-deauth", sta->addr);
+ #endif /* UBUS_SUPPORT */
+diff --git a/src/ap/mxl_utils.c b/src/ap/mxl_utils.c
+index 0a8bc2208..13b6d79b7 100644
+--- a/src/ap/mxl_utils.c
++++ b/src/ap/mxl_utils.c
+@@ -54,7 +54,6 @@ void mxl_remove_associated_sta(struct hostapd_data *hapd, struct sta_info *sta)
+ 	if (mxl_mlo_is_ml_sta(sta)) {
+ 		wpa_printf(MSG_ERROR, "%s: Cleaning associated MLD Sta from hostapd and driver" MACSTR,
+ 			 hapd->conf->iface, MAC2STR(sta->addr));
+-		mxl_ml_stop_sta_traffic_remove_mld(hapd, sta);
+ 		linked_sta = sta->mxl_sta_info.linked_sta;
+ 	}
+ 	else
+diff --git a/src/ap/sta_info.c b/src/ap/sta_info.c
+index 8f3e0574e..6ce06d9f8 100644
+--- a/src/ap/sta_info.c
++++ b/src/ap/sta_info.c
+@@ -493,7 +493,11 @@ void hostapd_free_stas(struct hostapd_data *hapd)
+ 		sta = sta->next;
+ 		wpa_printf(MSG_DEBUG, "Removing station " MACSTR,
+ 			   MAC2STR(prev->addr));
++#ifdef CONFIG_IEEE80211BE_MXL_MLO
++		mxl_hostapd_drv_cleanup_sta(hapd, prev);
++#else
+ 		ap_free_sta(hapd, prev);
++#endif
+ 	}
+ }
+ 
+@@ -967,11 +971,6 @@ static void ap_sta_disassoc_cb_timeout(void *eloop_ctx, void *timeout_ctx)
+ 
+ 	wpa_printf(MSG_DEBUG, "%s: Disassociation callback for STA " MACSTR,
+ 		   hapd->conf->iface, MAC2STR(sta->addr));
+-#ifdef CONFIG_IEEE80211BE_MXL_MLO
+-	if (mxl_is_mlo_enabled(hapd->conf) && hapd->mxl_data.sibling_hapd) {
+-		mxl_ml_stop_sta_traffic_remove_mld(hapd, sta);
+-	}
+-#endif /* CONFIG_IEEE80211BE_MXL_MLO */
+ 	ap_sta_remove(hapd, sta);
+ 	mlme_disassociate_indication(hapd, sta, sta->disassoc_reason);
+ }
+@@ -1033,11 +1032,6 @@ static void ap_sta_deauth_cb_timeout(void *eloop_ctx, void *timeout_ctx)
+ 
+ 	wpa_printf(MSG_DEBUG, "%s: Deauthentication callback for STA " MACSTR,
+ 		   hapd->conf->iface, MAC2STR(sta->addr));
+-#ifdef CONFIG_IEEE80211BE_MXL_MLO
+-	if (mxl_is_mlo_enabled(hapd->conf) && hapd->mxl_data.sibling_hapd) {
+-		mxl_ml_stop_sta_traffic_remove_mld(hapd, sta);
+-	}
+-#endif /* CONFIG_IEEE80211BE_MXL_MLO */
+ 	ap_sta_remove(hapd, sta);
+ 	mlme_deauthenticate_indication(hapd, sta, sta->deauth_reason);
+ }
+-- 
+2.43.0
+

@@ -1,0 +1,468 @@
+From a959817514927812ea07cf8735da194f7fa44a1b Mon Sep 17 00:00:00 2001
+From: spatel <spatel@maxlinear.com>
+Date: Thu, 31 Oct 2024 18:31:57 +0530
+Subject: [PATCH] WLANRTSYS-56560 [MXL] implement Dynamic WMM support
+
+---
+ hostapd/config_file.c              |  3 ++
+ hostapd/ctrl_iface.c               |  3 ++
+ hostapd/mxl_config_proprietary.c   | 52 ++++++++++++++++++++++++++++
+ hostapd/mxl_ctrl_iface.c           |  2 ++
+ src/ap/ap_config.h                 |  3 ++
+ src/ap/drv_callbacks.c             |  5 +++
+ src/ap/hostapd.c                   |  4 +++
+ src/ap/hostapd.h                   |  3 ++
+ src/ap/mxl_common_proprietary.c    | 55 ++++++++++++++++++++++++++++++
+ src/ap/mxl_config.h                |  4 +++
+ src/ap/mxl_hostapd.c               |  3 ++
+ src/ap/mxl_hostapd.h               |  2 ++
+ src/ap/wmm.c                       | 14 ++++++++
+ src/common/ieee802_11_common.h     |  9 +++++
+ src/common/vendor_cmds_copy.h      | 18 ++++++++++
+ src/drivers/driver.h               | 17 +++++++++
+ src/drivers/driver_common.c        |  3 ++
+ src/drivers/driver_nl80211_event.c | 13 +++++++
+ 18 files changed, 213 insertions(+)
+
+diff --git a/hostapd/config_file.c b/hostapd/config_file.c
+index 954d1658c..7e1b0856b 100644
+--- a/hostapd/config_file.c
++++ b/hostapd/config_file.c
+@@ -4298,6 +4298,9 @@ static int hostapd_config_fill(struct hostapd_config *conf,
+ 				   line);
+ 			return 1;
+ 		}
++#ifdef CONFIG_VENDOR_MXL_PROPRIETARY
++	} else if (mxl_config_check_dynamic_wmm(conf, buf, pos) == 0) {
++#endif /* CONFIG_VENDOR_MXL_PROPRIETARY */
+ 	} else if (os_strcmp(buf, "bss") == 0) {
+ 		if (hostapd_config_bss(conf, pos)) {
+ 			wpa_printf(MSG_ERROR, "Line %d: invalid bss item",
+diff --git a/hostapd/ctrl_iface.c b/hostapd/ctrl_iface.c
+index 13364e89d..546f9f15f 100644
+--- a/hostapd/ctrl_iface.c
++++ b/hostapd/ctrl_iface.c
+@@ -1452,6 +1452,9 @@ static int hostapd_ctrl_iface_set(struct hostapd_data *hapd, char *cmd)
+ 			wpa_auth_set_transition_disable(hapd->wpa_auth,
+ 							hapd->conf->transition_disable);
+ #ifdef CONFIG_VENDOR_MXL
++#ifdef CONFIG_VENDOR_MXL_PROPRIETARY
++		} else if(mxl_hostapd_ctrl_iface_set_wmm(hapd, cmd, &ret)) {
++#endif /* CONFIG_VENDOR_MXL_PROPRIETARY */
+ 		} else if(mxl_hostapd_ctrl_iface_set(hapd, cmd, &ret)) {
+ #endif /* CONFIG_VENDOR_MXL */
+ 		}
+diff --git a/hostapd/mxl_config_proprietary.c b/hostapd/mxl_config_proprietary.c
+index ec51404f4..e13d97d9d 100644
+--- a/hostapd/mxl_config_proprietary.c
++++ b/hostapd/mxl_config_proprietary.c
+@@ -54,6 +54,58 @@ int mxl_config_check_dfs_debug_chan(struct hostapd_config *conf, const char *buf
+ 	return 1;
+ }
+ 
++int mxl_config_check_dynamic_wmm(struct hostapd_config *conf, const char *buf, char* pos)
++{
++	if (os_strcmp(buf, "dynamic_wmm") == 0) {
++		int val = atoi(pos);
++		if (!IS_VALID_BOOL_RANGE(val)) {
++			wpa_printf(MSG_ERROR, "invalid dynamic_wmm value %d", val);
++			return 1;
++		}
++		conf->dynamic_wmm = val;
++	} else {
++		return 1;
++	}
++	return 0;
++}
++
++int mxl_hostapd_ctrl_iface_set_wmm(struct hostapd_data *hapd, char *cmd, int *ret)
++{
++	if (os_strcasecmp(cmd, "dynamic_wmm") == 0) {
++		if (!hostapd_drv_vendor_cmd(hapd->iface->bss[0], OUI_LTQ, LTQ_NL80211_VENDOR_SUBCMD_SET_DYNAMIC_WMM,
++			(u8*)&hapd->iconf->dynamic_wmm, sizeof(hapd->iconf->dynamic_wmm),
++			NESTED_ATTR_NOT_USED, NULL)) {
++			int i;
++			for (i = 0; i < hapd->iface->num_bss; i++) {
++				if (hapd->iface->bss[i]->beacon_set_done && hapd->iface->bss[i]->started) {
++					hapd->iface->bss[i]->parameter_set_count++;
++					ieee802_11_set_beacon(hapd->iface->bss[i]);
++				}
++			}
++		}
++		else {
++			*ret = -1;
++		}
++	} else {
++		return 0;
++	}
++	return 1;
++}
++
++int mxl_hostapd_ctrl_iface_get_wmm(struct hostapd_data *hapd, char *cmd, char *buf, size_t buflen, int *reply_len)
++{
++	int res = 0;
++	if (os_strcmp(cmd, "dynamic_wmm") == 0) {
++		res = sprintf_s(buf, buflen, "%d\n", hapd->iconf->dynamic_wmm);
++		if (res <= 0)
++			res = -1;
++	} else {
++		return 0;
++	}
++	*reply_len = res;
++	return 1;
++}
++
+ static int hostapd_parse_opt_ch_list(int **int_list, char *val, int *ch_count, int op_class)
+ {
+ #define MAX_OPT_CH_LIST 5
+diff --git a/hostapd/mxl_ctrl_iface.c b/hostapd/mxl_ctrl_iface.c
+index a084d5e16..ee798a467 100644
+--- a/hostapd/mxl_ctrl_iface.c
++++ b/hostapd/mxl_ctrl_iface.c
+@@ -3381,6 +3381,8 @@ int mxl_hostapd_ctrl_iface_get(struct hostapd_data *hapd, char *cmd, char *buf,
+ #ifdef CONFIG_VENDOR_MXL_PROPRIETARY
+ 	if (mxl_hostapd_ctrl_iface_get_dynamic_failsafe(hapd, cmd, buf, buflen, reply_len)) {
+ 		return *reply_len;
++	} else if (mxl_hostapd_ctrl_iface_get_wmm(hapd, cmd, buf, buflen, reply_len)) {
++		return *reply_len;
+ 	}
+ #endif
+ 	return 0;
+diff --git a/src/ap/ap_config.h b/src/ap/ap_config.h
+index 10b1e2b8a..15024c6d3 100644
+--- a/src/ap/ap_config.h
++++ b/src/ap/ap_config.h
+@@ -1301,6 +1301,9 @@ struct hostapd_config {
+ 	 * 3 = VO (voice)
+ 	 */
+ 	struct hostapd_wmm_ac_params wmm_ac_params[4];
++#ifdef CONFIG_VENDOR_MXL_PROPRIETARY
++	int dynamic_wmm;
++#endif /* CONFIG_VENDOR_MXL_PROPRIETARY */
+ 
+ 	int ht_op_mode_fixed;
+ 	u16 ht_capab;
+diff --git a/src/ap/drv_callbacks.c b/src/ap/drv_callbacks.c
+index 3e08ec63e..a4b5fb552 100644
+--- a/src/ap/drv_callbacks.c
++++ b/src/ap/drv_callbacks.c
+@@ -2809,6 +2809,11 @@ void wpa_supplicant_event(void *ctx, enum wpa_event_type event,
+ 			   hapd->conf->iface);
+ 		hostapd_event_cca(hapd, event);
+ 		break;
++#ifdef CONFIG_VENDOR_MXL_PROPRIETARY
++	case EVENT_LTQ_WMM:
++		hostapd_event_ltq_dynamic_wmm(hapd, &data->wmm, sizeof(struct intel_vendor_event_wmm));
++		break;
++#endif /* CONFIG_VENDOR_MXL_PROPRIETARY */
+ #endif /* CONFIG_IEEE80211AX */
+ 	case EVENT_LTQ_UNCONNECTED_STA_RX:
+ 		hostapd_event_ltq_unconnected_sta_rx(hapd,
+diff --git a/src/ap/hostapd.c b/src/ap/hostapd.c
+index 48d8b2c37..6bb8d7722 100644
+--- a/src/ap/hostapd.c
++++ b/src/ap/hostapd.c
+@@ -3914,6 +3914,10 @@ hostapd_alloc_bss_data(struct hostapd_iface *hapd_iface,
+ 	hapd->mxl_data.sibling_hapd = NULL;
+ #endif /* CONFIG_IEEE80211BE_MXL_MLO */
+ 
++#ifdef CONFIG_VENDOR_MXL_PROPRIETARY
++	mxl_dynamic_wmm_param_init(hapd);
++#endif /* CONFIG_VENDOR_MXL_PROPRIETARY */
++
+ #ifdef CONFIG_VENDOR_MXL
+ 	mxl_hostapd_alloc_bss_data(hapd);
+ #endif /* CONFIG_VENDOR_MXL */
+diff --git a/src/ap/hostapd.h b/src/ap/hostapd.h
+index 2bd2fe58b..bee6639f6 100644
+--- a/src/ap/hostapd.h
++++ b/src/ap/hostapd.h
+@@ -534,6 +534,9 @@ struct hostapd_data {
+ #endif /* CONFIG_VENDOR_MXL */
+ 	u8 csa_deauth_mode;
+ 	u16 csa_deauth_tx_time[INTEL_CSA_DEAUTH_TX_TIME_ARR_SIZE];
++#ifdef CONFIG_VENDOR_MXL_PROPRIETARY
++	struct hostapd_dynamic_wmm_params dynamic_wmm_params[WMM_AC_NUM];
++#endif /*CONFIG_VENDOR_MXL_PROPRIETARY*/
+ };
+ 
+ 
+diff --git a/src/ap/mxl_common_proprietary.c b/src/ap/mxl_common_proprietary.c
+index e4f7ad46d..fc806497a 100644
+--- a/src/ap/mxl_common_proprietary.c
++++ b/src/ap/mxl_common_proprietary.c
+@@ -48,6 +48,61 @@
+ #include "mxl_acs.h"
+ #include "mxl_dfs_common.h"
+ 
++#define MIN_WMM_PARAM_VAL 0
++#define MAX_WMM_PARAM_VAL 0xf
++#define MAX_WMM_TXOP_VAL  0xffff
++
++void hostapd_event_ltq_dynamic_wmm(struct hostapd_data *hapd, struct intel_vendor_event_wmm *wmm, size_t data_len)
++{
++	struct mxl_hostapd_config *mxl_conf = &hapd->iconf->mxl_conf;
++	int i;
++
++	if (hapd->iface->state != HAPD_IFACE_ENABLED) {
++		wpa_printf(MSG_INFO, "Dynamic WMM: discard driver event: interface not ready yet");
++		return;
++	}
++
++	if (!hapd->iconf->dynamic_wmm && !mxl_conf->dynamic_edca) {
++		wpa_printf(MSG_INFO, "Dynamic WMM: Discard driver event: dynamic WMM not enabled");
++		return;
++	}
++
++	for (i = 0; i < WMM_AC_NUM; i++) {
++		if (!IS_VALID_RANGE(wmm->ac_info[i].cwmin, MIN_WMM_PARAM_VAL, MAX_WMM_PARAM_VAL) ||
++		    !IS_VALID_RANGE(wmm->ac_info[i].cwmax, MIN_WMM_PARAM_VAL, MAX_WMM_PARAM_VAL) ||
++		    !IS_VALID_RANGE(wmm->ac_info[i].aifs, MIN_WMM_PARAM_VAL, MAX_WMM_PARAM_VAL)  ||
++		    !IS_VALID_RANGE(wmm->ac_info[i].txop_limit, MIN_WMM_PARAM_VAL, MAX_WMM_TXOP_VAL))
++			goto err_params;
++
++		hapd->dynamic_wmm_params[i].cwmin = wmm->ac_info[i].cwmin;
++		hapd->dynamic_wmm_params[i].cwmax = wmm->ac_info[i].cwmax;
++		hapd->dynamic_wmm_params[i].aifs = wmm->ac_info[i].aifs;
++		hapd->dynamic_wmm_params[i].txop_limit = wmm->ac_info[i].txop_limit;
++	}
++
++	hapd->parameter_set_count++;
++	ieee802_11_update_beacon(hapd);
++	return;
++
++err_params:
++	wpa_printf(MSG_ERROR, "Invalid dynamic WMM parameters received from driver");
++}
++
++void mxl_dynamic_wmm_param_init(struct hostapd_data *hapd)
++{
++	int i;
++	for (i = 0; i < ARRAY_SIZE(hapd->dynamic_wmm_params); i++)
++		hapd->dynamic_wmm_params[i].cwmin = -1;
++}
++
++void mxl_hostapd_setup_interface_pre_wmm(struct hostapd_iface *iface, struct hostapd_data *hapd)
++{
++	if (hostapd_drv_vendor_cmd(hapd, OUI_LTQ, LTQ_NL80211_VENDOR_SUBCMD_SET_DYNAMIC_WMM,
++                                   (u8*)&iface->conf->dynamic_wmm, sizeof(iface->conf->dynamic_wmm),
++                                   NESTED_ATTR_NOT_USED, NULL))
++                wpa_printf(MSG_WARNING, "set dynamic_wmm failed");
++}
++
+ struct hostapd_channel_data *
+ mxl_dfs_get_channel_dynamic_failsafe(struct hostapd_iface *iface,
+                                      int *secondary_channel,
+diff --git a/src/ap/mxl_config.h b/src/ap/mxl_config.h
+index ce462ba9a..b758cbcf1 100644
+--- a/src/ap/mxl_config.h
++++ b/src/ap/mxl_config.h
+@@ -50,6 +50,10 @@ void mxl_hostapd_config_free_acs(struct hostapd_config *conf);
+ int mxl_hostapd_config_check_acs(struct hostapd_config *conf, int full_config);
+ int mxl_config_check_dfs_debug_chan(struct hostapd_config *conf, const char *buf, char* pos);
+ int mxl_config_check_dynamic_failsafe(struct hostapd_config *conf, const char *buf, char* pos);
++int mxl_config_check_dynamic_wmm(struct hostapd_config *conf, const char *buf, char* pos);
++int mxl_hostapd_ctrl_iface_set_wmm(struct hostapd_data *hapd, char *cmd, int *ret);
++int mxl_hostapd_ctrl_iface_get_wmm(struct hostapd_data *hapd, char *cmd, char *buf, size_t buflen, int *reply_len);
++void hostapd_event_ltq_dynamic_wmm(struct hostapd_data *hapd, struct intel_vendor_event_wmm *wmm, size_t data_len);
+ #endif /* CONFIG_VENDOR_MXL_PROPRIETARY */
+ 
+ #define CCA_TH_SIZE 5
+diff --git a/src/ap/mxl_hostapd.c b/src/ap/mxl_hostapd.c
+index 8fd5608a5..92cf86507 100644
+--- a/src/ap/mxl_hostapd.c
++++ b/src/ap/mxl_hostapd.c
+@@ -2142,6 +2142,9 @@ void mxl_hostapd_setup_interface_pre(struct hostapd_iface *iface)
+ 					NESTED_ATTR_NOT_USED,NULL))
+ 		wpa_printf(MSG_WARNING, "set sInterferDetThresh failed");
+ 
++#ifdef CONFIG_VENDOR_MXL_PROPRIETARY
++	mxl_hostapd_setup_interface_pre_wmm(iface, hapd);
++#endif /* CONFIG_VENDOR_MXL_PROPRIETARY */
+ 	if (MXL_DRV_VENDOR_SET(LTQ_NL80211_VENDOR_SUBCMD_SET_DYNAMIC_EDCA,
+ 			       &mxl_conf->dynamic_edca, sizeof(mxl_conf->dynamic_edca)))
+ 		wpa_printf(MSG_WARNING, "set dynamic_edca failed");
+diff --git a/src/ap/mxl_hostapd.h b/src/ap/mxl_hostapd.h
+index 6d24b23d3..64a134175 100644
+--- a/src/ap/mxl_hostapd.h
++++ b/src/ap/mxl_hostapd.h
+@@ -245,6 +245,8 @@ void mxl_hostapd_update_channel_data(struct hostapd_iface *iface, const u8 *data
+ void mxl_hostapd_set_state_pre(struct hostapd_iface *iface, enum hostapd_iface_state s);
+ bool mxl_hostapd_ieee80211n_check_40mhz(struct hostapd_iface *iface);
+ int mxl_hostapd_restart_iface(struct hostapd_iface *iface);
++void mxl_dynamic_wmm_param_init(struct hostapd_data *hapd);
++void mxl_hostapd_setup_interface_pre_wmm(struct hostapd_iface *iface, struct hostapd_data *hapd);
+ #endif /* CONFIG_VENDOR_MXL_PROPRIETARY */
+ 
+ int mxl_hostapd_get_num_width(enum oper_chan_width width, int secondary);
+diff --git a/src/ap/wmm.c b/src/ap/wmm.c
+index d9fd7502f..605dd1ea8 100644
+--- a/src/ap/wmm.c
++++ b/src/ap/wmm.c
+@@ -140,6 +140,20 @@ u8 * hostapd_eid_wmm(struct hostapd_data *hapd, u8 *eid)
+ 
+ 	wmm->reserved = 0;
+ 
++#ifdef CONFIG_VENDOR_MXL_PROPRIETARY
++	if (hapd->iconf->dynamic_wmm || hapd->iconf->mxl_conf.dynamic_edca) {
++		for (e = 0; e < WMM_AC_NUM; e++) {
++			if (-1 == hapd->dynamic_wmm_params[e].cwmin) /* not updated by driver */
++				continue;
++
++			wmmp[e].aifs = hapd->dynamic_wmm_params[e].aifs;
++			wmmp[e].cwmin = hapd->dynamic_wmm_params[e].cwmin;
++			wmmp[e].cwmax = hapd->dynamic_wmm_params[e].cwmax;
++			wmmp[e].txop_limit = hapd->dynamic_wmm_params[e].txop_limit;
++		}
++	}
++#endif /* CONFIG_VENDOR_MXL_PROPRIETARY */
++
+ 	/* fill in a parameter set record for each AC */
+ 	for (e = 0; e < 4; e++) {
+ 		struct wmm_ac_parameter *ac = &wmm->ac[e];
+diff --git a/src/common/ieee802_11_common.h b/src/common/ieee802_11_common.h
+index 31985ecd8..87e0a192f 100644
+--- a/src/common/ieee802_11_common.h
++++ b/src/common/ieee802_11_common.h
+@@ -264,6 +264,15 @@ struct hostapd_wmm_ac_params {
+ 	int admission_control_mandatory;
+ };
+ 
++#ifdef CONFIG_VENDOR_MXL_PROPRIETARY
++struct hostapd_dynamic_wmm_params {
++	int aifs;
++	int cwmin;
++	int cwmax;
++	int txop_limit;
++};
++#endif /* CONFIG_VENDOR_MXL_PROPRIETARY */
++
+ int hostapd_config_wmm_ac(struct hostapd_wmm_ac_params wmm_ac_params[],
+ 			  const char *name, const char *val);
+ 
+diff --git a/src/common/vendor_cmds_copy.h b/src/common/vendor_cmds_copy.h
+index ee74d4c0c..1f0dd06ca 100644
+--- a/src/common/vendor_cmds_copy.h
++++ b/src/common/vendor_cmds_copy.h
+@@ -450,6 +450,9 @@ enum ltq_nl80211_vendor_events {
+   LTQ_NL80211_VENDOR_EVENT_COC_BEACON_UPDATE   = 14,
+   LTQ_NL80211_VENDOR_EVENT_WHM                 = 15,
+   LTQ_NL80211_VENDOR_EVENT_CSI_STATS           = 16,
++#ifdef CONFIG_VENDOR_MXL_PROPRIETARY
++  LTQ_NL80211_VENDOR_EVENT_DYNAMIC_WMM_UPDATE  = 17,
++#endif /* CONFIG_VENDOR_MXL_PROPRIETARY */
+   LTQ_NL80211_VENDOR_EVENT_REGDB_INFO_UPDATE   = 18,
+   LTQ_NL80211_VENDOR_EVENT_RX_MEASURE          = 19,
+ };
+@@ -917,6 +920,21 @@ struct intel_vendor_whm_event_cfg {
+   u32               num_cards;
+ } __attribute__ ((packed));
+ 
++#ifdef CONFIG_VENDOR_MXL_PROPRIETARY
++/* Data for EVENT_LTQ_WMM events */
++#define MAX_AC_PRIORITIES 4
++struct intel_vendor_wmm_info {
++  u16 txop_limit;
++  u8  cwmin;
++  u8  cwmax;
++  u8  aifs;
++} __attribute__ ((packed));
++
++struct intel_vendor_event_wmm {
++  struct intel_vendor_wmm_info ac_info[MAX_AC_PRIORITIES];
++} __attribute__ ((packed));
++#endif /* CONFIG_VENDOR_MXL_PROPRIETARY */
++
+ enum {
+   AFC_UPDATE_STATUS_DEFAULT = 0,
+   AFC_UPDATE_STATUS_SERVER,
+diff --git a/src/drivers/driver.h b/src/drivers/driver.h
+index 55b1936c9..593b91b6c 100644
+--- a/src/drivers/driver.h
++++ b/src/drivers/driver.h
+@@ -6039,6 +6039,9 @@ enum wpa_event_type {
+ #endif /* CONFIG_IEEE80211BE_MXL_MLO */
+ 	EVENT_LTQ_UNCONNECTED_STA_RX,
+ 	EVENT_LTQ_CSA_RECEIVED,
++#ifdef CONFIG_VENDOR_MXL_PROPRIETARY
++	EVENT_LTQ_WMM,
++#endif /* CONFIG_VENDOR_MXL_PROPRIETARY */
+ };
+ 
+ 
+@@ -7019,6 +7022,10 @@ union wpa_event_data {
+ 		u8 cca_count;
+ 	} bss_cca;
+ 
++
++#ifdef CONFIG_VENDOR_MXL_PROPRIETARY
++	struct intel_vendor_event_wmm wmm;
++#endif /* CONFIG_VENDOR_MXL_PROPRIETARY */
+  #ifdef CONFIG_VENDOR_MXL
+ 	struct mxl_wpa_event_data mxl_wpa_event;
+ #endif /* CONFIG_VENDOR_MXL */
+@@ -7128,6 +7135,16 @@ static inline void mxl_drv_event_eapol_rx2(void *ctx, const u8 *src, const u8 *d
+ }
+ #endif /* CONFIG_VENDOR_MXL */
+ 
++#ifdef CONFIG_VENDOR_MXL_PROPRIETARY
++static inline void drv_event_ltq_wmm(void *ctx, const u8 *data, size_t data_len)
++{
++	union wpa_event_data event;
++	os_memset(&event, 0, sizeof(event));
++	memcpy_s(&event.wmm, sizeof(event.wmm), data, data_len);
++	wpa_supplicant_event(ctx, EVENT_LTQ_WMM, &event);
++}
++#endif /* CONFIG_VENDOR_MXL_PROPRIETARY */
++
+ static inline void drv_event_ltq_csa_received (void *ctx, const u8 *data, size_t data_len)
+ {
+ 	errno_t err;
+diff --git a/src/drivers/driver_common.c b/src/drivers/driver_common.c
+index 294d5c1c4..fe4ea305c 100644
+--- a/src/drivers/driver_common.c
++++ b/src/drivers/driver_common.c
+@@ -105,6 +105,9 @@ const char * event_to_string(enum wpa_event_type event)
+ 	E2S(TID_LINK_MAP);
+ 	E2S(LINK_RECONFIG);
+ 	E2S(LTQ_UNCONNECTED_STA_RX);
++#ifdef CONFIG_VENDOR_MXL_PROPRIETARY
++	E2S(LTQ_WMM);
++#endif
+ #ifdef CONFIG_VENDOR_MXL
+ 	MXL_E2S;
+ #endif /* CONFIG_VENDOR_MXL */
+diff --git a/src/drivers/driver_nl80211_event.c b/src/drivers/driver_nl80211_event.c
+index f4f601b82..8a7cab7b1 100644
+--- a/src/drivers/driver_nl80211_event.c
++++ b/src/drivers/driver_nl80211_event.c
+@@ -3312,6 +3312,14 @@ static void mxl_nl80211_handle_softblock_drop(struct wpa_driver_nl80211_data *dr
+ 
+ #endif /* CONFIG_DRIVER_NL80211_MXL */
+ 
++#ifdef CONFIG_VENDOR_MXL_PROPRIETARY
++static void ltq_nl80211_handle_wmm(struct i802_bss *bss,
++				   const u8 *data, size_t len)
++{
++	drv_event_ltq_wmm(bss->ctx, data, len);
++}
++#endif /* CONFIG_VENDOR_MXL_PROPRIETARY */
++
+ /******************************************************************************/
+ /*! \brief      Handle Unconnected STA vendor event from driver
+  *
+@@ -3377,6 +3385,11 @@ static void nl80211_vendor_event_mxl(struct wpa_driver_nl80211_data *drv,
+ 		case LTQ_NL80211_VENDOR_EVENT_UNCONNECTED_STA:
+ 			ltq_nl80211_handle_unconnected_sta(drv, data, len);
+ 			break;
++#ifdef CONFIG_VENDOR_MXL_PROPRIETARY
++		case LTQ_NL80211_VENDOR_EVENT_DYNAMIC_WMM_UPDATE:
++			ltq_nl80211_handle_wmm(bss, data, len);
++			break;
++#endif /* CONFIG_VENDOR_MXL_PROPRIETARY */
+ 		case LTQ_NL80211_VENDOR_EVENT_WDS_CONNECT:
+ 			mxl_nl80211_handle_wds_connect(drv, data, len);
+ 			break;
+-- 
+2.43.0
+

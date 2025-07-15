@@ -1,0 +1,28 @@
+From db65344db38a3fc7bf4cb6fd767ec848dee9400e Mon Sep 17 00:00:00 2001
+From: mj <mj@maxlinear.com>
+Date: Tue, 4 Mar 2025 18:14:14 +0530
+Subject: [PATCH] WLANRTSYS-87485 cleanup for the STA after send the broadcast
+ deauth frame
+
+Issue : STA is not cleaned up in the broadcast deauth flow. It may cause issues later.
+Fix: Remove all the STAs associated with the vap in the broadcast deauth flow.
+Unit test: have triggered broadcast deauth via hostapd_cli command and see cleanup happened properly.
+---
+ src/ap/ctrl_iface_ap.c | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/src/ap/ctrl_iface_ap.c b/src/ap/ctrl_iface_ap.c
+index 075e1e7ab..b95492124 100644
+--- a/src/ap/ctrl_iface_ap.c
++++ b/src/ap/ctrl_iface_ap.c
+@@ -665,6 +665,7 @@ int hostapd_ctrl_iface_deauthenticate(struct hostapd_data *hapd,
+ 	} else if (is_broadcast_ether_addr(addr) &&
+ 		(hapd->wpa_auth) && (hapd->conf->ieee80211w != NO_MGMT_FRAME_PROTECTION)) {
+ 		mxl_hostapd_send_protected_deauth(hapd, reason);
++		hostapd_free_stas(hapd);
+ #endif /* CONFIG_VENDOR_MXL */
+ 	} else {
+ 		hostapd_drv_sta_deauth(hapd, addr, reason);
+-- 
+2.43.0
+

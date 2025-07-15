@@ -1,0 +1,41 @@
+From ce386416e857b37fc7bf0f404457f1bd9115d26a Mon Sep 17 00:00:00 2001
+From: Selvavignesh Shanmugam <sshanmugam@maxlinear.com>
+Date: Mon, 27 Jan 2025 13:57:10 +0800
+Subject: [PATCH] WLANRTSYS-86650 Skip the ap_mld update if the hapd is already
+ updated
+
+Issue:
+When pwhm issues hostapd_enable_iface back to back, if the vap is mlo
+vap, the affiliated links in ap_mld struct will be updated with same
+hapd. This causes the MLD creation with same vapId and GroupId 62
+occurs.
+
+Fix:
+Update the hapd to the affiliated link of ap_mld, if it is not previously
+added to the same mld.
+
+FIXUP to WLANRTSYS-60843 MLO Changes: AP MLD configuration and Beacon/Probe Rsp verification
+---
+ src/ap/mxl_mld.c | 6 ++++++
+ 1 file changed, 6 insertions(+)
+
+diff --git a/src/ap/mxl_mld.c b/src/ap/mxl_mld.c
+index bdd48c2eb..8e9f6bd63 100644
+--- a/src/ap/mxl_mld.c
++++ b/src/ap/mxl_mld.c
+@@ -61,6 +61,12 @@ static void mxl_update_mld_info(struct hostapd_data *hapd, int mld_id, bool set_
+ 	if (p_ap_mld->num_links >= MAX_NUM_LINKS)
+ 		return;
+ 
++	/* Skip the updation of hapd, if it is already registered in ap_mld struct */
++	if (hapd == p_ap_mld->affiliated_links[0] || hapd == p_ap_mld->affiliated_links[1]) {
++		wpa_printf(MSG_INFO, "%s Already registered as MLD with AP MLD MAC "MACSTR"", hapd->conf->iface, MAC2STR(p_ap_mld->ap_mld_mac));
++		return;
++	}
++
+ 	p_ap_mld->affiliated_links[p_ap_mld->num_links++] = hapd;
+ 	if (set_ap_mld_mac)
+ 		memcpy_s(p_ap_mld->ap_mld_mac, ETH_ALEN, hapd->conf->mxl_bss_conf.ap_mld_mac, ETH_ALEN);
+-- 
+2.43.0
+

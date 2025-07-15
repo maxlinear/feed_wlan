@@ -1,0 +1,130 @@
+From b35285b5fa5a3ca31cd7d92173574daf72189ebc Mon Sep 17 00:00:00 2001
+From: mj <mj@maxlinear.com>
+Date: Wed, 8 Jan 2025 08:32:51 +0530
+Subject: [PATCH] WLANRTSYS-86582 Don't switch the channel if CCA/CSA in
+ progress and CAC is running
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Issue : A MAC fatal error occurred during the CSA start in the affiliated state.
+The channel switch was triggered in the main link for CSA. Once the firmware received a set channel request for the CSA type, the Channel Switch Manager moved from the IDLE state to the CSA start state for both the main and sibling links. After completing the CSA, the firmware sent a CSA confirmation to the driver.
+However, during the CSA process, a MAC fatal error was triggered if hostapd sent another set channel request for the sibling VAP to the firmware due to an incorrect state in CSA."
+Fix : Hostapd should not send a set channel request if CSA is in progress on the main link or sibling link.
+Fixed other corner case, skip channel switch if CAC is running or CCA in progress.
+Fixup: Fix up to WLANRTSYS-63318 MLO changes in iwlwav-hostap-ng: ML CSA with puncturing and BSS critical update
+Unit test: Validated basic sanity test with MLO and non MLO vap.
+• change the channel using hostapd cli command to validate CSA completion on both main and sibling link.
+• Ran the iperf downlink/uplink traffic to intel STA.
+• validated reported setup. don't see any issue with this change.
+---
+ hostapd/ctrl_iface.c     | 15 +++++++++++++++
+ hostapd/mxl_ctrl_iface.c | 23 +++++++++++++++++++++++
+ hostapd/mxl_ctrl_iface.h |  5 +++++
+ src/ap/hostapd.c         |  9 +++++++++
+ 4 files changed, 52 insertions(+)
+
+diff --git a/hostapd/ctrl_iface.c b/hostapd/ctrl_iface.c
+index fb13b037f..a5b77aceb 100644
+--- a/hostapd/ctrl_iface.c
++++ b/hostapd/ctrl_iface.c
+@@ -2963,6 +2963,21 @@ static int hostapd_ctrl_iface_chan_switch(struct hostapd_iface *iface,
+ 		return -1;
+ 	}
+ 
++#ifdef CONFIG_IEEE80211BE_MXL_MLO
++	if (hostapd_csa_in_progress(iface)) {
++		wpa_printf(MSG_ERROR, "CSA is in progress, can't switch channel");
++		return -1;
++	}
++
++	if (iface->radar_background.cac_started || iface->cac_started) {
++		wpa_printf(MSG_ERROR, "CAC is running, can't switch channel");
++		return -1;
++	}
++	/* Check if CCA/CSA in progress or CAC is running for sibling hapd */
++	if (!mxl_hostapd_ctrl_iface_is_channel_switch_allowed(iface))
++		return -1;
++#endif /* CONFIG_IEEE80211BE_MXL_MLO */
++
+ 	ret = hostapd_parse_csa_settings(pos, &settings);
+ 	if (ret)
+ 		return ret;
+diff --git a/hostapd/mxl_ctrl_iface.c b/hostapd/mxl_ctrl_iface.c
+index c2147a45b..efaeddad3 100644
+--- a/hostapd/mxl_ctrl_iface.c
++++ b/hostapd/mxl_ctrl_iface.c
+@@ -3795,6 +3795,29 @@ int mxl_hostapd_ctrl_iface_set_beacon(struct hostapd_data *hapd)
+ 	return -1;
+ }
+ 
++#ifdef CONFIG_IEEE80211BE_MXL_MLO
++bool mxl_hostapd_ctrl_iface_is_channel_switch_allowed(struct hostapd_iface *iface)
++{
++	uint8_t i;
++	struct hostapd_data *hapd = NULL;
++	struct hostapd_data *sibling_hapd = NULL;
++	for (i = 1; i < iface->conf->num_bss; i++)
++	{
++		hapd = iface->bss[i];
++		if (hapd && mxl_is_mlo_enabled(hapd->conf)) {
++			sibling_hapd = hapd->mxl_data.sibling_hapd;
++			if (sibling_hapd &&
++				((hostapd_csa_in_progress(sibling_hapd->iface))
++				|| (sibling_hapd->cca_in_progress)
++				|| (sibling_hapd->iface->radar_background.cac_started))) {
++				wpa_printf(MSG_ERROR, "Channel switch isn't allowed if CSA/CCA in progress or CAC is running for sibling vap");
++				return false;
++			}
++		}
++	}
++	return true;
++}
++#endif /* CONFIG_IEEE80211BE_MXL_MLO */
+ int mxl_hostapd_ctrl_iface_acl_add_mac(struct mac_acl_entry **acl, int *num, const char *cmd)
+ { return hostapd_ctrl_iface_acl_add_mac (acl, num, cmd); }
+ int mxl_hostapd_ctrl_iface_acl_del_mac(struct mac_acl_entry **acl, int *num, const char *txtaddr)
+diff --git a/hostapd/mxl_ctrl_iface.h b/hostapd/mxl_ctrl_iface.h
+index 312485358..9ee590f42 100644
+--- a/hostapd/mxl_ctrl_iface.h
++++ b/hostapd/mxl_ctrl_iface.h
+@@ -34,4 +34,9 @@ int mxl_hostapd_ctrl_iface_get_power_mode(struct hostapd_iface *iface,
+ int mxl_hostapd_ctrl_iface_set_power_mode(struct hostapd_iface *iface, const char *cmd,
+ 					  char *buf, size_t buflen);
+ int mxl_hostapd_handle_wmm_ac_params(struct hostapd_data *hapd, char *cmd, char *value);
++
++#ifdef CONFIG_IEEE80211BE_MXL_MLO
++bool mxl_hostapd_ctrl_iface_is_channel_switch_allowed(struct hostapd_iface *iface);
++#endif /* CONFIG_IEEE80211BE_MXL_MLO */
++
+ #endif /* MXL_CTRL_IFACE_H */
+diff --git a/src/ap/hostapd.c b/src/ap/hostapd.c
+index 114a7f1a0..8116ab249 100644
+--- a/src/ap/hostapd.c
++++ b/src/ap/hostapd.c
+@@ -61,6 +61,7 @@
+ #include "mxl_dfs_common.h"
+ #include "mxl_wds.h"
+ #ifdef CONFIG_IEEE80211BE_MXL_MLO
++#include "../../hostapd/mxl_ctrl_iface.h"
+ #include "mxl_mld.h"
+ #endif /* CONFIG_IEEE80211BE_MXL_MLO */
+ #include "mxl_beacon.h"
+@@ -5852,6 +5853,14 @@ hostapd_color_switch_trigger(struct hostapd_data *hapd, u8 new_color)
+ 	}
+ 
+ #ifdef CONFIG_IEEE80211BE_MXL_MLO
++	if (hapd->iface->radar_background.cac_started) {
++		wpa_printf(MSG_ERROR, "CAC is running for MLO vap, can't switch color");
++		return;
++	}
++	/* Check if CCA/CSA in progress or CAC is running for sibling hapd */
++	if (!mxl_hostapd_ctrl_iface_is_channel_switch_allowed(hapd->iface))
++		return;
++
+ 	for (int k = 0; k < hapd->iface->num_bss; k++) {
+ 		if (mxl_is_mlo_enabled(hapd->iface->bss[k]->conf) && !(hapd->iface->bss[k]->beacon_set_done)) {
+ 			wpa_printf(MSG_ERROR, "BSS color collision detected before one of the mld vap %s is up, can't switch color", hapd->iface->bss[k]->conf->iface);
+-- 
+2.43.0
+

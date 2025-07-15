@@ -1,0 +1,67 @@
+From e70bdf29f87b218901594aeda489fafa9fcea017 Mon Sep 17 00:00:00 2001
+From: mujiburrahimank <mujiburrahimank@maxlinear.com>
+Date: Wed, 18 Dec 2024 13:51:36 +0800
+Subject: [PATCH] WLANRTSYS-85470 Extended error logging in AFC NL message
+ failure cases
+
+Adding changes for capturing AFC logs for success cases, which is required for test validation
+---
+ src/ap/mxl_afc.c | 22 +++++++++++-----------
+ 1 file changed, 11 insertions(+), 11 deletions(-)
+
+diff --git a/src/ap/mxl_afc.c b/src/ap/mxl_afc.c
+index 3af468714..8d6a71307 100644
+--- a/src/ap/mxl_afc.c
++++ b/src/ap/mxl_afc.c
+@@ -132,10 +132,11 @@ static int mxl_hostap_afc_parse_chan_and_freq_regrule(struct hostapd_iface *ifac
+ 
+ int mxl_hostap_afc_construct_regrule_from_afc_data(struct hostapd_iface *iface)
+ {
+-	int num_rules, new_num_rules;
++	int num_rules, new_num_rules, res;
+ 	size_t reg_size;
+ 	struct ieee80211_regdomain *regd;
+ 	struct hostapd_data *hapd = iface->bss[0];
++	uint32_t err_start_freq_mhz, err_end_freq_mhz, err_bw_mhz, err_eirp;
+ 
+ 	num_rules = iface->afc.num_freq_range + iface->afc.num_chan_info;
+ 	/* Assuming we are storing all the chan responses in single array and num_chan_info indicates no. of 
+@@ -164,20 +165,19 @@ int mxl_hostap_afc_construct_regrule_from_afc_data(struct hostapd_iface *iface)
+ 		regd->n_reg_rules = 0;
+ 	}
+ 
+-	if (MXL_DRV_VENDOR_SET(LTQ_NL80211_VENDOR_SUBCMD_UPDATE_AFC_INFO,
+-			      (u8*)regd,
+-			      reg_size)) {
+-		uint32_t err_start_freq_mhz, err_end_freq_mhz, err_bw_mhz, err_eirp;
++	res = MXL_DRV_VENDOR_SET(LTQ_NL80211_VENDOR_SUBCMD_UPDATE_AFC_INFO, (u8*)regd, reg_size);
++	for(int reg_i = 0; reg_i < regd->n_reg_rules; reg_i++) {
++		mxl_hostap_afc_get_regulatory_rule(regd, reg_i, &err_start_freq_mhz, &err_end_freq_mhz, &err_bw_mhz, &err_eirp);
++		wpa_printf(MSG_INFO, "AFC : regd rule:%d start_mhz:%d end_mhz:%d bw_mhz:%d eirp:%d",
++			reg_i, err_start_freq_mhz, err_end_freq_mhz, err_bw_mhz, err_eirp);
++	}
++	
++	if (res) {
+ 		wpa_printf(MSG_ERROR, "AFC : failed to send NL msg of size %zu to driver", reg_size);
+ 		wpa_printf(MSG_ERROR, "AFC : failed to send %d frequencies and %d channels as condensed list of %d reg_rules",
+ 			iface->afc.num_freq_range, iface->afc.num_freq_range, regd->n_reg_rules);
+ 		wpa_printf(MSG_ERROR, "AFC : failed NL msg was for afc with %s data with a %d second timeout",
+ 			(iface->afc.data_valid ? "valid" : "invalid"), iface->afc.timeout);
+-		for(int reg_i = 0; reg_i < regd->n_reg_rules; reg_i++) {
+-			mxl_hostap_afc_get_regulatory_rule(regd, reg_i, &err_start_freq_mhz, &err_end_freq_mhz, &err_bw_mhz, &err_eirp);
+-			wpa_printf(MSG_ERROR, "AFC : regd rule:%d start_mhz:%d end_mhz:%d bw_mhz:%d eirp:%d",
+-				reg_i, err_start_freq_mhz, err_end_freq_mhz, err_bw_mhz, err_eirp);
+-		}
+ 		goto fail;
+ 	}
+ 	os_free(regd);
+@@ -316,4 +316,4 @@ resched:
+ 	mxl_hostapd_afc_resched_timeout(iface, iface->afc.timeout);
+ 
+ 	return ret;
+-}
+\ No newline at end of file
++}
+-- 
+2.43.0
+

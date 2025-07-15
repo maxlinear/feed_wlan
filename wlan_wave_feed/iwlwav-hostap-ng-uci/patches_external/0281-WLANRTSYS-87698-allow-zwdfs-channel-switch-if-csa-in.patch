@@ -1,0 +1,27 @@
+From 114a4e8b26b5be286199370d0827f1a6a5852b92 Mon Sep 17 00:00:00 2001
+From: mj <mj@maxlinear.com>
+Date: Mon, 3 Feb 2025 09:31:10 +0530
+Subject: [PATCH] WLANRTSYS-87698 allow zwdfs channel switch if csa in progress
+
+Issue: Zwdfs channel switch is not allowed if CSA is inprogress.
+Fix : Allow Zwdfs channel switch during CSA.
+---
+ hostapd/ctrl_iface.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/hostapd/ctrl_iface.c b/hostapd/ctrl_iface.c
+index 6845b7c55..94cfab8bb 100644
+--- a/hostapd/ctrl_iface.c
++++ b/hostapd/ctrl_iface.c
+@@ -3071,7 +3071,7 @@ static int hostapd_ctrl_iface_chan_switch(struct hostapd_iface *iface,
+ #endif /* CONFIG_VENDOR_MXL */
+ 
+ #ifdef CONFIG_IEEE80211BE_MXL_MLO
+-	if (hostapd_csa_in_progress(iface)) {
++	if (!switch_type_zwdfs && hostapd_csa_in_progress(iface)) {
+ 		wpa_printf(MSG_ERROR, "CSA is in progress, can't switch channel");
+ 		return -1;
+ 	}
+-- 
+2.43.0
+

@@ -1,0 +1,35 @@
+From c809d39006e8346e4b38cf9b507e5289bc14352d Mon Sep 17 00:00:00 2001
+From: "karthikgk@maxlinear.com" <karthikgk@lvdocker7.lvsw.maxlinear.com>
+Date: Wed, 23 Apr 2025 04:54:58 -0700
+Subject: [PATCH] WLANRTSYS-88434 : Ping loss from AP1 to AP2 after Client mode
+ reconnection in 2.4Ghz.
+
+Root cause : once we disable the Vap  remove interface will be called and "PARAM_DB_CORE_MULTI_AP_MODE" will be deleted and when we try to enable VAP the PWHM is direclty calling driver function "_wv_ieee80211_op_add_interface" in which we are trying to get multi_ap_mode for secondary vap from
+PARAM_DB_CORE_MULTI_AP_MODE which is set to default value 0 so we are getting this error WRONG multi_ap_mode during mtlk_core_cfg_create_sec_vap.
+
+Fix : when PWHM calls _wv_ieee80211_op_add_interface we will recieve INTERFACE_ENABLED event in the hostapd send LTQ_NL80211_VENDOR_SUBCMD_SET_MESH_MODE to set the  "PARAM_DB_CORE_MULTI_AP_MODE" so that during mtlk_core_cfg_create_sec_vap we will recieve the correct value.
+
+signed-off-by : karthik gk < karthikgk@maxlinear.com >
+---
+ src/ap/drv_callbacks.c | 5 +++++
+ 1 file changed, 5 insertions(+)
+
+diff --git a/src/ap/drv_callbacks.c b/src/ap/drv_callbacks.c
+index 6ebe984c9..ca001bf52 100644
+--- a/src/ap/drv_callbacks.c
++++ b/src/ap/drv_callbacks.c
+@@ -2718,6 +2718,11 @@ void wpa_supplicant_event(void *ctx, enum wpa_event_type event,
+ 			 * Try to re-enable interface if the driver stopped it
+ 			 * when the interface got disabled.
+ 			 */
++#ifdef CONFIG_VENDOR_MXL
++			if (MXL_DRV_VENDOR_SET(LTQ_NL80211_VENDOR_SUBCMD_SET_MESH_MODE, &hapd->conf->multi_ap, sizeof(hapd->conf->multi_ap))) {
++				wpa_printf(MSG_ERROR, "Failed to set multi_ap");
++			}
++#endif /* CONFIG_VENDOR_MXL */
+ 			if (hapd->wpa_auth)
+ 				wpa_auth_reconfig_group_keys(hapd->wpa_auth);
+ 			else
+-- 
+2.43.0
+

@@ -1,0 +1,331 @@
+From 67782283cc5f83479c2ff39463b92a3bb6d37088 Mon Sep 17 00:00:00 2001
+From: Jouni Malinen <quic_jouni@quicinc.com>
+Date: Mon, 29 Jul 2024 15:41:59 +0300
+Subject: [PATCH] RSNO: Use the RSN Selection element to indicate which variant
+ was used
+
+This replaces the use of the RSNE Override and RSNE Override 2 elements
+with empty payload to indicate which RSNE variant was used.
+
+In addition, this adds stricter validation of the RSNE in
+(Re)Association Request frame to allow only the pairwise cipher suites
+and AKMs listed in the indicated RSNE variant to be used.
+
+Signed-off-by: Jouni Malinen <quic_jouni@quicinc.com>
+---
+ src/ap/drv_callbacks.c         |  6 ++--
+ src/ap/ieee802_11.c            | 11 +++----
+ src/ap/wpa_auth.c              | 52 +++++++++++++++++++++++++++-------
+ src/ap/wpa_auth.h              |  4 +--
+ src/ap/wpa_auth_i.h            |  2 ++
+ src/ap/wpa_auth_ie.c           | 21 +++++++++-----
+ src/common/ieee802_11_common.c |  9 ++++++
+ src/common/ieee802_11_common.h |  2 ++
+ src/common/ieee802_11_defs.h   |  2 ++
+ src/common/wpa_common.c        |  6 ++++
+ src/common/wpa_common.h        | 10 +++++++
+ 11 files changed, 95 insertions(+), 30 deletions(-)
+
+diff --git a/src/ap/drv_callbacks.c b/src/ap/drv_callbacks.c
+index 977a9cbf5..6ebe984c9 100644
+--- a/src/ap/drv_callbacks.c
++++ b/src/ap/drv_callbacks.c
+@@ -547,10 +547,8 @@ int hostapd_notif_assoc(struct hostapd_data *hapd, const u8 *addr,
+ 				   "Failed to initialize WPA state machine");
+ 			return -1;
+ 		}
+-		wpa_auth_set_rsn_override(sta->wpa_sm,
+-					  elems.rsne_override != NULL);
+-		wpa_auth_set_rsn_override_2(sta->wpa_sm,
+-					    elems.rsne_override_2 != NULL);
++		wpa_auth_set_rsn_selection(sta->wpa_sm, elems.rsn_selection,
++					   elems.rsn_selection_len);
+ #ifdef CONFIG_IEEE80211BE
+ 		if (sta->mld_info.mld_sta) {
+ 			wpa_printf(MSG_DEBUG,
+diff --git a/src/ap/ieee802_11.c b/src/ap/ieee802_11.c
+index 624870221..f686b874a 100644
+--- a/src/ap/ieee802_11.c
++++ b/src/ap/ieee802_11.c
+@@ -1961,6 +1961,8 @@ void handle_auth_fils(struct hostapd_data *hapd, struct sta_info *sta,
+ 		goto fail;
+ 	}
+ 
++	wpa_auth_set_rsn_selection(sta->wpa_sm, elems.rsn_selection,
++				   elems.rsn_selection_len);
+ 	res = wpa_validate_wpa_ie(hapd->wpa_auth, sta->wpa_sm,
+ 				  hapd->iface->freq,
+ 				  elems.rsn_ie - 2, elems.rsn_ie_len + 2,
+@@ -1971,9 +1973,6 @@ void handle_auth_fils(struct hostapd_data *hapd, struct sta_info *sta,
+ 	if (resp != WLAN_STATUS_SUCCESS)
+ 		goto fail;
+ 
+-	wpa_auth_set_rsn_override(sta->wpa_sm, elems.rsne_override != NULL);
+-	wpa_auth_set_rsn_override_2(sta->wpa_sm, elems.rsne_override_2 != NULL);
+-
+ 	if (!elems.fils_nonce) {
+ 		wpa_printf(MSG_DEBUG, "FILS: No FILS Nonce field");
+ 		resp = WLAN_STATUS_UNSPECIFIED_FAILURE;
+@@ -4455,10 +4454,8 @@ static int __check_assoc_ies(struct hostapd_data *hapd, struct sta_info *sta,
+ 		}
+ 
+ 		wpa_auth_set_auth_alg(sta->wpa_sm, sta->auth_alg);
+-		wpa_auth_set_rsn_override(sta->wpa_sm,
+-					  elems->rsne_override != NULL);
+-		wpa_auth_set_rsn_override_2(sta->wpa_sm,
+-					    elems->rsne_override_2 != NULL);
++		wpa_auth_set_rsn_selection(sta->wpa_sm, elems->rsn_selection,
++					   elems->rsn_selection_len);
+ 		res = wpa_validate_wpa_ie(hapd->wpa_auth, sta->wpa_sm,
+ 					  hapd->iface->freq,
+ 					  wpa_ie, wpa_ie_len,
+diff --git a/src/ap/wpa_auth.c b/src/ap/wpa_auth.c
+index b39811cff..1a0d3fcd6 100644
+--- a/src/ap/wpa_auth.c
++++ b/src/ap/wpa_auth.c
+@@ -833,6 +833,7 @@ static void wpa_free_sta_sm(struct wpa_state_machine *sm)
+ 	os_free(sm->last_rx_eapol_key);
+ 	os_free(sm->wpa_ie);
+ 	os_free(sm->rsnxe);
++	os_free(sm->rsn_selection);
+ 	wpa_group_put(sm->wpa_auth, sm->group);
+ #ifdef CONFIG_DPP2
+ 	wpabuf_clear_free(sm->dpp_z);
+@@ -3542,6 +3543,27 @@ SM_STATE(WPA_PTK, PTKCALCNEGOTIATING)
+ 		goto out;
+ 	}
+ #endif /* CONFIG_IEEE80211R_AP */
++
++	/* Verify RSN Selection element for RSN overriding */
++	if ((sm->rsn_selection && !kde.rsn_selection) ||
++	    (!sm->rsn_selection && kde.rsn_selection) ||
++	    (sm->rsn_selection && kde.rsn_selection &&
++	     (sm->rsn_selection_len != kde.rsn_selection_len ||
++	      os_memcmp(sm->rsn_selection, kde.rsn_selection,
++			sm->rsn_selection_len) != 0))) {
++		wpa_auth_logger(wpa_auth, wpa_auth_get_spa(sm), LOGGER_INFO,
++				"RSN Selection element from (Re)AssocReq did not match the one in EAPOL-Key msg 2/4");
++		wpa_hexdump(MSG_DEBUG, "RSN Selection in AssocReq",
++			    sm->rsn_selection, sm->rsn_selection_len);
++		wpa_hexdump(MSG_DEBUG, "RSN Selection in EAPOL-Key msg 2/4",
++			    kde.rsn_selection, kde.rsn_selection_len);
++		/* MLME-DEAUTHENTICATE.request */
++		wpa_sta_disconnect(wpa_auth, sm->addr,
++				   WLAN_REASON_PREV_AUTH_NOT_VALID);
++		goto out;
++
++	}
++
+ #ifdef CONFIG_P2P
+ 	if (kde.ip_addr_req && kde.ip_addr_req[0] &&
+ 	    wpa_auth->ip_pool && WPA_GET_BE32(sm->ip_addr) == 0) {
+@@ -6482,17 +6504,27 @@ void wpa_auth_set_auth_alg(struct wpa_state_machine *sm, u16 auth_alg)
+ }
+ 
+ 
+-void wpa_auth_set_rsn_override(struct wpa_state_machine *sm, bool val)
++void wpa_auth_set_rsn_selection(struct wpa_state_machine *sm, const u8 *ie,
++				size_t len)
+ {
+-	if (sm)
+-		sm->rsn_override = val;
+-}
+-
+-
+-void wpa_auth_set_rsn_override_2(struct wpa_state_machine *sm, bool val)
+-{
+-	if (sm)
+-		sm->rsn_override_2 = val;
++	if (!sm)
++		return;
++	os_free(sm->rsn_selection);
++	sm->rsn_selection = NULL;
++	sm->rsn_selection_len = 0;
++	sm->rsn_override = false;
++	sm->rsn_override_2 = false;
++	if (ie) {
++		if (len >=  1) {
++			if (ie[0] == RSN_SELECTION_RSNE_OVERRIDE)
++				sm->rsn_override = true;
++			else if (ie[0] == RSN_SELECTION_RSNE_OVERRIDE_2)
++				sm->rsn_override_2 = true;
++		}
++		sm->rsn_selection = os_memdup(ie, len);
++		if (sm->rsn_selection)
++			sm->rsn_selection_len = len;
++	}
+ }
+ 
+ 
+diff --git a/src/ap/wpa_auth.h b/src/ap/wpa_auth.h
+index 0e8e21b88..a68da14d6 100644
+--- a/src/ap/wpa_auth.h
++++ b/src/ap/wpa_auth.h
+@@ -633,8 +633,8 @@ u8 * wpa_auth_write_assoc_resp_fils(struct wpa_state_machine *sm,
+ bool wpa_auth_write_fd_rsn_info(struct wpa_authenticator *wpa_auth,
+ 				u8 *fd_rsn_info);
+ void wpa_auth_set_auth_alg(struct wpa_state_machine *sm, u16 auth_alg);
+-void wpa_auth_set_rsn_override(struct wpa_state_machine *sm, bool val);
+-void wpa_auth_set_rsn_override_2(struct wpa_state_machine *sm, bool val);
++void wpa_auth_set_rsn_selection(struct wpa_state_machine *sm, const u8 *ie,
++				size_t len);
+ void wpa_auth_set_dpp_z(struct wpa_state_machine *sm, const struct wpabuf *z);
+ void wpa_auth_set_transition_disable(struct wpa_authenticator *wpa_auth,
+ 				     u8 val);
+diff --git a/src/ap/wpa_auth_i.h b/src/ap/wpa_auth_i.h
+index 3be1c56ea..42af21af0 100644
+--- a/src/ap/wpa_auth_i.h
++++ b/src/ap/wpa_auth_i.h
+@@ -114,6 +114,8 @@ struct wpa_state_machine {
+ 	size_t wpa_ie_len;
+ 	u8 *rsnxe;
+ 	size_t rsnxe_len;
++	u8 *rsn_selection;
++	size_t rsn_selection_len;
+ 
+ 	enum {
+ 		WPA_VERSION_NO_WPA = 0 /* WPA not used */,
+diff --git a/src/ap/wpa_auth_ie.c b/src/ap/wpa_auth_ie.c
+index c9be2f0b9..ae1527ed5 100644
+--- a/src/ap/wpa_auth_ie.c
++++ b/src/ap/wpa_auth_ie.c
+@@ -954,9 +954,13 @@ wpa_validate_wpa_ie(struct wpa_authenticator *wpa_auth,
+ 		return WPA_INVALID_GROUP;
+ 	}
+ 
+-	key_mgmt = data.key_mgmt & (wpa_auth->conf.wpa_key_mgmt |
+-				    wpa_auth->conf.rsn_override_key_mgmt |
+-				    wpa_auth->conf.rsn_override_key_mgmt_2);
++	if (sm->rsn_override_2)
++		key_mgmt = data.key_mgmt &
++			wpa_auth->conf.rsn_override_key_mgmt_2;
++	else if (sm->rsn_override)
++		key_mgmt = data.key_mgmt & wpa_auth->conf.rsn_override_key_mgmt;
++	else
++		key_mgmt = data.key_mgmt & wpa_auth->conf.wpa_key_mgmt;
+ 	if (!key_mgmt) {
+ 		wpa_printf(MSG_DEBUG, "Invalid WPA key mgmt (0x%x) from "
+ 			   MACSTR, data.key_mgmt, MAC2STR(sm->addr));
+@@ -1025,11 +1029,14 @@ wpa_validate_wpa_ie(struct wpa_authenticator *wpa_auth,
+ 	else
+ 		sm->wpa_key_mgmt = WPA_KEY_MGMT_PSK;
+ 
+-	if (version == WPA_PROTO_RSN)
++	if (version == WPA_PROTO_RSN && sm->rsn_override_2)
++		ciphers = data.pairwise_cipher &
++			wpa_auth->conf.rsn_override_pairwise_2;
++	else if (version == WPA_PROTO_RSN && sm->rsn_override)
+ 		ciphers = data.pairwise_cipher &
+-			(wpa_auth->conf.rsn_pairwise |
+-			 wpa_auth->conf.rsn_override_pairwise |
+-			 wpa_auth->conf.rsn_override_pairwise_2);
++			wpa_auth->conf.rsn_override_pairwise;
++	else if (version == WPA_PROTO_RSN)
++		ciphers = data.pairwise_cipher & wpa_auth->conf.rsn_pairwise;
+ 	else
+ 		ciphers = data.pairwise_cipher & wpa_auth->conf.wpa_pairwise;
+ 	if (!ciphers) {
+diff --git a/src/common/ieee802_11_common.c b/src/common/ieee802_11_common.c
+index 35164844d..13c2e3531 100644
+--- a/src/common/ieee802_11_common.c
++++ b/src/common/ieee802_11_common.c
+@@ -151,6 +151,15 @@ static int ieee802_11_parse_vendor_specific(const u8 *pos, size_t elen,
+ 			elems->rsne_override_2 = pos;
+ 			elems->rsne_override_2_len = elen;
+ 			break;
++		case WFA_RSN_SELECTION_OUI_TYPE:
++			if (elen < 4 + 1) {
++				wpa_printf(MSG_DEBUG,
++					   "Too short RSN Selection element ignored");
++				return -1;
++			}
++			elems->rsn_selection = pos + 4;
++			elems->rsn_selection_len = elen - 4;
++			break;
+ #ifdef CONFIG_VENDOR_MXL
+ 		case WCE_OUI_TYPE:
+ 			elems->wfa_capability_elem = pos;
+diff --git a/src/common/ieee802_11_common.h b/src/common/ieee802_11_common.h
+index f20d25281..9493cf048 100644
+--- a/src/common/ieee802_11_common.h
++++ b/src/common/ieee802_11_common.h
+@@ -121,6 +121,7 @@ struct ieee802_11_elems {
+ 	const u8 *mbssid_known_bss;
+ 	const u8 *rsne_override;
+ 	const u8 *rsne_override_2;
++	const u8 *rsn_selection;
+ 	const u8 *rnr;
+ #ifdef CONFIG_VENDOR_MXL
+ 	const u8 *multilink_ie;
+@@ -198,6 +199,7 @@ struct ieee802_11_elems {
+ 	size_t rsne_override_len;
+ 	size_t rsne_override_2_len;
+ 	u8 rnr_len;
++	size_t rsn_selection_len;
+ #ifdef CONFIG_VENDOR_MXL
+ 	u8 multilink_ie_len;
+ 	u8 non_inheritance_len;
+diff --git a/src/common/ieee802_11_defs.h b/src/common/ieee802_11_defs.h
+index e5fbc373a..e20c79d68 100644
+--- a/src/common/ieee802_11_defs.h
++++ b/src/common/ieee802_11_defs.h
+@@ -1510,9 +1510,11 @@ struct auth_fail_list {
+ #define WFA_RSNE_OVERRIDE_OUI_TYPE 0x29
+ #define WFA_RSNE_OVERRIDE_2_OUI_TYPE 0x2a
+ #define WFA_RSNXE_OVERRIDE_OUI_TYPE 0x2b
++#define WFA_RSN_SELECTION_OUI_TYPE 0x2c
+ #define RSNE_OVERRIDE_IE_VENDOR_TYPE 0x506f9a29
+ #define RSNE_OVERRIDE_2_IE_VENDOR_TYPE 0x506f9a2a
+ #define RSNXE_OVERRIDE_IE_VENDOR_TYPE 0x506f9a2b
++#define RSN_SELECTION_IE_VENDOR_TYPE 0x506f9a2c
+ 
+ #define MULTI_AP_SUB_ELEM_TYPE 0x06
+ #define MULTI_AP_PROFILE_SUB_ELEM_TYPE 0x07
+diff --git a/src/common/wpa_common.c b/src/common/wpa_common.c
+index 1e66aa561..b2eb640ab 100644
+--- a/src/common/wpa_common.c
++++ b/src/common/wpa_common.c
+@@ -3749,6 +3749,12 @@ static int wpa_parse_generic(const u8 *pos, struct wpa_eapol_ie_parse *ie)
+ 	}
+ #endif /* CONFIG_IEEE80211BE_MXL_MLO */
+ 
++	if (selector == RSN_SELECTION_IE_VENDOR_TYPE) {
++		ie->rsn_selection = p;
++		ie->rsn_selection_len = left;
++		return 0;
++	}
++
+ 	return 2;
+ }
+ 
+diff --git a/src/common/wpa_common.h b/src/common/wpa_common.h
+index b65c8541a..8d842ba70 100644
+--- a/src/common/wpa_common.h
++++ b/src/common/wpa_common.h
+@@ -644,6 +644,14 @@ struct wpa_pasn_params_data {
+ #define WPA_PASN_PUBKEY_COMPRESSED_1 0x03
+ #define WPA_PASN_PUBKEY_UNCOMPRESSED 0x04
+ 
++/* WPA3 specification - RSN Selection element */
++enum rsn_selection_variant {
++	RSN_SELECTION_RSNE = 0,
++	RSN_SELECTION_RSNE_OVERRIDE = 1,
++	RSN_SELECTION_RSNE_OVERRIDE_2 = 2,
++};
++
++
+ int wpa_ft_parse_ies(const u8 *ies, size_t ies_len, struct wpa_ft_ies *parse,
+ 		     int key_mgmt, bool reassoc_resp);
+ void wpa_ft_parse_ies_free(struct wpa_ft_ies *parse);
+@@ -703,6 +711,8 @@ struct wpa_eapol_ie_parse {
+ 	u16 aid;
+ 	const u8 *wmm;
+ 	size_t wmm_len;
++	const u8 *rsn_selection;
++	size_t rsn_selection_len;
+ 	u16 valid_mlo_gtks; /* bitmap of valid link GTK KDEs */
+ 	const u8 *mlo_gtk[MAX_NUM_MLO_LINKS];
+ 	size_t mlo_gtk_len[MAX_NUM_MLO_LINKS];
+-- 
+2.43.0
+

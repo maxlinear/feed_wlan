@@ -1,0 +1,25 @@
+From 891383c43fcb1fb0bf6dbed052448db15e7e9f6d Mon Sep 17 00:00:00 2001
+From: Bharath Paidupati <bpaidupati@maxlinear.com>
+Date: Fri, 15 Nov 2024 12:48:15 +0530
+Subject: [PATCH] WLANRTSYS-86271 Fixing operating class of 137 for 320MHz
+
+Fixup: WLANRTSYS-60843 MLO changes: AP MLD configuration
+---
+ hostapd/mxl_config.c | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/hostapd/mxl_config.c b/hostapd/mxl_config.c
+index 741a20e8c..15f7a95d4 100644
+--- a/hostapd/mxl_config.c
++++ b/hostapd/mxl_config.c
+@@ -2084,6 +2084,7 @@ void mxl_hostapd_config_defaults(struct hostapd_config *conf)
+ #endif /* CONFIG_IEEE80211BE */
+ #ifdef CONFIG_IEEE80211BE_MXL_MLO
+ 	mxl_conf->max_chan_switch_time = MAX_CHAN_SWITCH_TIME_DEFAULT;
++	mxl_conf->rnr_6g_op_class_137_allowed = 1;
+ #endif /* CONFIG_IEEE80211BE_MXL_MLO */
+ 
+ 	/*
+-- 
+2.43.0
+

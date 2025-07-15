@@ -1,0 +1,55 @@
+From b43d9a6be27dfe2bb23fcf2d6c9bed75bac52a2f Mon Sep 17 00:00:00 2001
+From: Jouni Malinen <quic_jouni@quicinc.com>
+Date: Wed, 11 Oct 2023 12:45:09 +0300
+Subject: [PATCH] Add RSN overriding elements into IE parsing
+
+Signed-off-by: Jouni Malinen <quic_jouni@quicinc.com>
+---
+ src/common/ieee802_11_common.c | 8 ++++++++
+ src/common/ieee802_11_common.h | 4 ++++
+ 2 files changed, 12 insertions(+)
+
+diff --git a/src/common/ieee802_11_common.c b/src/common/ieee802_11_common.c
+index 3036420a0..c2250d319 100644
+--- a/src/common/ieee802_11_common.c
++++ b/src/common/ieee802_11_common.c
+@@ -143,6 +143,14 @@ static int ieee802_11_parse_vendor_specific(const u8 *pos, size_t elen,
+ 			elems->sae_pk = pos + 4;
+ 			elems->sae_pk_len = elen - 4;
+ 			break;
++		case WFA_RSNE_OVERRIDE_OUI_TYPE:
++			elems->rsne_override = pos;
++			elems->rsne_override_len = elen;
++			break;
++		case WFA_RSNE_OVERRIDE_2_OUI_TYPE:
++			elems->rsne_override_2 = pos;
++			elems->rsne_override_2_len = elen;
++			break;
+ #ifdef CONFIG_VENDOR_MXL
+ 		case WCE_OUI_TYPE:
+ 			elems->wfa_capability_elem = pos;
+diff --git a/src/common/ieee802_11_common.h b/src/common/ieee802_11_common.h
+index b484969f4..f20d25281 100644
+--- a/src/common/ieee802_11_common.h
++++ b/src/common/ieee802_11_common.h
+@@ -119,6 +119,8 @@ struct ieee802_11_elems {
+ 	const u8 *tdls_mle;
+ 	const u8 *prior_access_mle;
+ 	const u8 *mbssid_known_bss;
++	const u8 *rsne_override;
++	const u8 *rsne_override_2;
+ 	const u8 *rnr;
+ #ifdef CONFIG_VENDOR_MXL
+ 	const u8 *multilink_ie;
+@@ -193,6 +195,8 @@ struct ieee802_11_elems {
+ 	size_t tdls_mle_len;
+ 	size_t prior_access_mle_len;
+ 	u8 mbssid_known_bss_len;
++	size_t rsne_override_len;
++	size_t rsne_override_2_len;
+ 	u8 rnr_len;
+ #ifdef CONFIG_VENDOR_MXL
+ 	u8 multilink_ie_len;
+-- 
+2.43.0
+

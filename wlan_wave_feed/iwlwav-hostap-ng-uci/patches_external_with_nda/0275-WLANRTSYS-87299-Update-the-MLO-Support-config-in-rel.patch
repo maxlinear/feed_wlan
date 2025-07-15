@@ -1,0 +1,39 @@
+From 6ebf2292a34f23f683cdad9f94387f09e312633a Mon Sep 17 00:00:00 2001
+From: Selvavignesh Shanmugam <sshanmugam@maxlinear.com>
+Date: Wed, 15 Jan 2025 20:59:43 +0800
+Subject: [PATCH] WLANRTSYS-87299 Update the MLO Support config in reload bss
+
+Issue:
+When the MLO VAP config is updated, the reload bss happens and the
+mlo_support config is not updated. Due to this, whenever the
+ML STA tries to associate the ML SID req is not sent, instead
+Legacy SID is requested. So the fatal is seen when the Stop Traffic
+is initiated.
+
+Fix:
+Update the MLO Support config in reload bss.
+
+FIXUP to WLANRTSYS-62845 MLO changes: MLO Auth Assoc, WPA3 and eapol changes
+---
+ src/ap/mxl_hostapd.c | 5 +++++
+ 1 file changed, 5 insertions(+)
+
+diff --git a/src/ap/mxl_hostapd.c b/src/ap/mxl_hostapd.c
+index 24d8aeedc..46f0522b3 100644
+--- a/src/ap/mxl_hostapd.c
++++ b/src/ap/mxl_hostapd.c
+@@ -2200,6 +2200,11 @@ int mxl_hostapd_prepare_reload_config(struct hostapd_iface *iface) {
+ 		return -1;
+ 	}
+ 
++#ifdef CONFIG_IEEE80211BE_MXL_MLO
++	/* Re-apply MLO Support config */
++	mxl_hostapd_set_eml_capab(iface);
++#endif
++
+ 	return 0;
+ }
+ 
+-- 
+2.43.0
+

@@ -1,0 +1,32 @@
+From b7f117b292deb100c0cb589d618964951783c9d9 Mon Sep 17 00:00:00 2001
+From: "Ross-Ashikyan, William" <washikyan@maxlinear.com>
+Date: Thu, 13 Feb 2025 10:56:46 -0800
+Subject: [PATCH] WLANRTSYS-87711 Fix for WLANRTSYS-85201 Restore EIRP PSD
+ declaration for subordinate devices
+
+Issue: Before WLANRTSYS-85201, all TPEs used EIRP PSD unit interpretation, so
+the variable was declared once. Now, we need to set EIRP PSD back for this TPE
+specifically for composite power mode.
+
+Fix: One line restoring tx_pwr_intrpn to REGULATORY_CLIENT_EIRP_PSD
+
+Fixup: WLANRTSYS-85201 Add additional client regulatory EIRP TPE IE to beacon
+---
+ src/ap/mxl_ieee802_11.c | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/src/ap/mxl_ieee802_11.c b/src/ap/mxl_ieee802_11.c
+index 328ec0967..9ae7e0dbe 100644
+--- a/src/ap/mxl_ieee802_11.c
++++ b/src/ap/mxl_ieee802_11.c
+@@ -179,6 +179,7 @@ u8 * hostapd_eid_txpower_envelope_vendor_mxl_6g(struct hostapd_data *hapd, u8 *e
+ 	if (he_reg_is_indoor(iface->mxl_iface.he_6ghz_reg_pwr_mode)) {
+ 		/* Indoor APs must include an additional TPE for subordinate devices */
+ 		tx_pwr_count = 0; /* 0 covers PSD across the entire BW */
++		tx_pwr_intrpn = REGULATORY_CLIENT_EIRP_PSD;
+ 		tx_pwr[0] = REG_PSD_MAX_TXPOWER_FOR_SUBORDINATE_CLIENT;
+ 		eid = mxl_hostapd_add_tpe_info(eid, tx_pwr_count, tx_pwr_intrpn,
+ 					   REG_SUBORDINATE_CLIENT, tx_pwr);
+-- 
+2.43.0
+

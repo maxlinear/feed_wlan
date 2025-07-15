@@ -1,0 +1,27 @@
+From dac505ed038ee53e04e9b39ccd29ca6bface4b76 Mon Sep 17 00:00:00 2001
+From: Udhayakumar Mahendiran <umahendiran@maxlinear.com>
+Date: Mon, 23 Dec 2024 19:45:54 +0800
+Subject: [PATCH] WLANRTSYS-86810 Create an AQM command configuration to set it
+ externally
+
+Update vendor command for AQM enable/disable.
+---
+ src/common/vendor_cmds_copy.h | 2 ++
+ 1 file changed, 2 insertions(+)
+
+diff --git a/src/common/vendor_cmds_copy.h b/src/common/vendor_cmds_copy.h
+index 15fa1d7d3..e434ddc44 100644
+--- a/src/common/vendor_cmds_copy.h
++++ b/src/common/vendor_cmds_copy.h
+@@ -423,6 +423,8 @@ enum ltq_nl80211_vendor_subcmds {
+   LTQ_NL80211_VENDOR_SUBCMD_SET_VW_TEST_MODE,
+   LTQ_NL80211_VENDOR_SUBCMD_GET_VW_TEST_MODE,
+   LTQ_NL80211_VENDOR_SUBCMD_SET_PBAC,
++  LTQ_NL80211_VENDOR_SUBCMD_SET_AQM_STA_EN,
++  LTQ_NL80211_VENDOR_SUBCMD_GET_AQM_STA_EN,
+   /* add new iw sub commands here */
+ 
+   /* used to define LTQ_NL80211_VENDOR_SUBCMD_MAX below */
+-- 
+2.43.0
+
