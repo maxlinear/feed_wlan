@@ -14,7 +14,7 @@ CONFIG_UGW_PKG_SOURCE_URL:=ssh://git@github.com
 PKG_SOURCE_URL:=$(CONFIG_UGW_PKG_SOURCE_URL)/$(PKG_PROJECT)/$(PKG_SOURCE_NAME)
 PKG_VERSION:=wlan_7.2.150@r1044+a+57-a6a7bd
 PKG_SOURCE_VERSION:=wlan_7.2.150@r1044+a+57-a6a7bd
-PKG_MIRROR_HASH:=33a30fb0917d288c05ebf0c0c561a93f4ee201a16a81a75bf1c4ca1fca6d5748
+PKG_MIRROR_HASH:=b97a7705c4db47b350d78ef830a30cedb1f2e0cea54f8a5b8e001dda8a96d66f
 #package_source
 # fw source url needed for gci automation
 FW_SOURCE_NAME:=fw_src.git
