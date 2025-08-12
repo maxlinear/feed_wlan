@@ -1,0 +1,29 @@
+From 306be91fd96c81a1aa204ee46d552ce4f697d8ac Mon Sep 17 00:00:00 2001
+From: "rramasamy@maxlinear.com" <rramasamy@lvdocker8.lvsw.maxlinear.com>
+Date: Thu, 14 Aug 2025 03:23:29 -0700
+Subject: [PATCH] Issue : client is not connecting to the Ap
+
+Root cause : This is a regression due to typo.
+
+Fix : Add "vendor_elems" instead of "vendor_elements" into the config
+file.
+---
+ src/whm_mxl_supp_cfg.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/src/whm_mxl_supp_cfg.c b/src/whm_mxl_supp_cfg.c
+index 80c6a5c..72f946f 100644
+--- a/src/whm_mxl_supp_cfg.c
++++ b/src/whm_mxl_supp_cfg.c
+@@ -34,7 +34,7 @@ static swl_rc_ne s_whm_mxl_ep_updateGlobalConfig(T_EndPoint* pEP, wld_wpaSupp_co
+     char* vendorElems       = amxd_object_get_value(cstring_t, pEpVendorObj, "VendorElements", NULL);
+ 
+     if(!(swl_str_isEmpty(vendorElems))) {
+-        swl_mapCharFmt_addValStr(global, "vendor_elements", "%s", vendorElems);
++        swl_mapCharFmt_addValStr(global, "vendor_elems", "%s", vendorElems);
+     }
+     free(vendorElems);
+ 
+-- 
+2.43.5
+
