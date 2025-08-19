@@ -1,4 +1,4 @@
-From 001b9eee856fc3ecf31648ef3498d0b93fb5a892 Mon Sep 17 00:00:00 2001
+From bf6fd7eeaddf48f8ed20f02c992e028ee7575634 Mon Sep 17 00:00:00 2001
 From: spatel <spatel@maxlinear.com>
 Date: Thu, 10 Oct 2024 15:42:40 +0530
 Subject: [PATCH] WLANRTSYS-50170 [MXL] Smart ACS implementation
@@ -10,36 +10,36 @@ Subject: [PATCH] WLANRTSYS-50170 [MXL] Smart ACS implementation
  hostapd/ctrl_iface.c                  |   30 +
  hostapd/main.c                        |    5 +-
  hostapd/mxl_config.c                  |   29 +-
- hostapd/mxl_config_proprietary.c      |  480 ++++
- hostapd/mxl_ctrl_iface.c              |   14 +-
+ hostapd/mxl_config_proprietary.c      |  468 +++
+ hostapd/mxl_ctrl_iface.c              |   19 +-
  hostapd/mxl_ctrl_iface.h              |    8 +
- hostapd/mxl_ctrl_iface_proprietary.c  |  368 +++
+ hostapd/mxl_ctrl_iface_proprietary.c  |  407 +++
  hostapd/mxl_hostapd_cli.c             |    2 +-
- hostapd/mxl_hostapd_cli.h             |   31 +
- hostapd/mxl_hostapd_cli_proprietary.c |   99 +
+ hostapd/mxl_hostapd_cli.h             |   42 +
+ hostapd/mxl_hostapd_cli_proprietary.c |  139 +
  src/ap/acs.c                          |   38 +
  src/ap/ap_config.c                    |   14 +-
  src/ap/ap_drv_ops.c                   |   10 +-
  src/ap/dfs.c                          |   14 +
  src/ap/drv_callbacks.c                |    7 +
- src/ap/hostapd.c                      |   33 +
+ src/ap/hostapd.c                      |   37 +
  src/ap/hostapd.h                      |    6 +
  src/ap/hw_features.c                  |   10 +
  src/ap/hw_features.h                  |    7 +
  src/ap/ieee802_11_ht.c                |   10 +
- src/ap/mxl_acs.c                      | 3802 +++++++++++++++++++++++++
- src/ap/mxl_acs.h                      |  179 ++
+ src/ap/mxl_acs.c                      | 3959 +++++++++++++++++++++++++
+ src/ap/mxl_acs.h                      |  182 ++
  src/ap/mxl_coexistence.c              |    9 +
- src/ap/mxl_config.h                   |   81 +-
+ src/ap/mxl_config.h                   |   84 +-
  src/ap/mxl_dfs_common.c               |   32 +-
  src/ap/mxl_dfs_file.c                 |    1 -
  src/ap/mxl_events.c                   |   53 +
- src/ap/mxl_hostapd.c                  |   23 +
- src/ap/mxl_hostapd.h                  |   56 +
+ src/ap/mxl_hostapd.c                  |   68 +-
+ src/ap/mxl_hostapd.h                  |   59 +-
  src/ap/mxl_hostapd_proprietary.c      |   40 +
  src/ap/mxl_rrm.c                      |    5 +-
  src/ap/mxl_sub_band_dfs.c             |   39 +
- src/ap/mxl_zwdfs.c                    |   73 +-
+ src/ap/mxl_zwdfs.c                    |   81 +-
  src/ap/mxl_zwdfs.h                    |    2 +
  src/common/ieee802_11_common.c        |    7 +
  src/common/ieee802_11_common.h        |    6 +
@@ -62,7 +62,7 @@ Subject: [PATCH] WLANRTSYS-50170 [MXL] Smart ACS implementation
  wpa_supplicant/scan.c                 |   13 +
  wpa_supplicant/wpa_supplicant.c       |    3 +
  wpa_supplicant/wpa_supplicant_i.h     |    3 +
- 58 files changed, 5945 insertions(+), 18 deletions(-)
+ 58 files changed, 6245 insertions(+), 24 deletions(-)
  create mode 100644 LICENSE
  create mode 100644 hostapd/mxl_config_proprietary.c
  create mode 100644 hostapd/mxl_ctrl_iface_proprietary.c
@@ -255,10 +255,10 @@ index d862e3912..954d1658c 100644
  	} else if (os_strcmp(buf, "acs_unii4") == 0) {
  		int val = atoi(pos);
 diff --git a/hostapd/ctrl_iface.c b/hostapd/ctrl_iface.c
-index 337017af4..3d58a03a6 100644
+index 3a1421180..97f070871 100644
 --- a/hostapd/ctrl_iface.c
 +++ b/hostapd/ctrl_iface.c
-@@ -2978,6 +2978,14 @@ static int hostapd_ctrl_iface_chan_switch(struct hostapd_iface *iface,
+@@ -2994,6 +2994,14 @@ static int hostapd_ctrl_iface_chan_switch(struct hostapd_iface *iface,
  		settings.freq_params.eht_enabled = iface->conf->ieee80211be;
  	}
  
@@ -273,7 +273,7 @@ index 337017af4..3d58a03a6 100644
  	ret = hostapd_ctrl_check_freq_params(&settings.freq_params,
  					     settings.punct_bitmap);
  	if (ret) {
-@@ -3048,6 +3056,13 @@ static int hostapd_ctrl_iface_chan_switch(struct hostapd_iface *iface,
+@@ -3064,6 +3072,13 @@ static int hostapd_ctrl_iface_chan_switch(struct hostapd_iface *iface,
  		break;
  	}
  
@@ -287,7 +287,7 @@ index 337017af4..3d58a03a6 100644
  	if (settings.freq_params.center_freq1)
  		dfs_range += hostapd_is_dfs_overlap(
  			iface, bandwidth, settings.freq_params.center_freq1);
-@@ -3134,7 +3149,10 @@ static int hostapd_ctrl_iface_chan_switch(struct hostapd_iface *iface,
+@@ -3150,7 +3165,10 @@ static int hostapd_ctrl_iface_chan_switch(struct hostapd_iface *iface,
  			   settings.freq_params.bandwidth,
  			   settings.freq_params.center_freq1);
  
@@ -298,7 +298,7 @@ index 337017af4..3d58a03a6 100644
  		if (!iface->cac_started && switch_type_scan)
  			iface->block_tx = true;
  		hostapd_switch_channel_fallback(iface, &settings.freq_params);
-@@ -3166,6 +3184,9 @@ static int hostapd_ctrl_iface_chan_switch(struct hostapd_iface *iface,
+@@ -3182,6 +3200,9 @@ static int hostapd_ctrl_iface_chan_switch(struct hostapd_iface *iface,
  
  #endif /* CONFIG_VENDOR_MXL */
  
@@ -308,7 +308,7 @@ index 337017af4..3d58a03a6 100644
  	return 0;
  #else /* NEED_AP_MLME */
  	return -1;
-@@ -5076,6 +5097,10 @@ static int hostapd_ctrl_iface_get_radio_state (enum hostapd_iface_state state)
+@@ -5092,6 +5113,10 @@ static int hostapd_ctrl_iface_get_radio_state (enum hostapd_iface_state state)
  	switch (state) {
  	case HAPD_IFACE_ENABLED:
  		return 1;
@@ -319,7 +319,7 @@ index 337017af4..3d58a03a6 100644
  	default:
  		return 0;
  	}
-@@ -8239,6 +8264,11 @@ void hostapd_global_ctrl_iface_deinit(struct hapd_interfaces *interfaces)
+@@ -8255,6 +8280,11 @@ void hostapd_global_ctrl_iface_deinit(struct hapd_interfaces *interfaces)
  	os_free(interfaces->global_iface_path);
  	interfaces->global_iface_path = NULL;
  
@@ -355,7 +355,7 @@ index 5ac01bf03..53db09285 100644
  		c = getopt(argc, argv, "b:Bde:f:hi:KP:sSTtu:vg:G:q");
  		if (c < 0)
 diff --git a/hostapd/mxl_config.c b/hostapd/mxl_config.c
-index 1fdc2df97..43fdb9d95 100644
+index 437806cce..ca6908084 100644
 --- a/hostapd/mxl_config.c
 +++ b/hostapd/mxl_config.c
 @@ -13,6 +13,7 @@
@@ -374,7 +374,7 @@ index 1fdc2df97..43fdb9d95 100644
  
  	if (os_strcmp(buf, "scan_passive_dwell") == 0) {
  		int val = atoi(pos);
-@@ -1691,6 +1691,10 @@ int mxl_hostapd_config_fill (struct hostapd_config *conf,
+@@ -1698,6 +1698,10 @@ int mxl_hostapd_config_fill (struct hostapd_config *conf,
  			if (*pos != '\0') pos++;
  		}
  		pos = start;
@@ -385,7 +385,7 @@ index 1fdc2df97..43fdb9d95 100644
  	} else if  (os_strcmp(buf, "allow_scan_during_cac") == 0) {
  		int val = atoi(pos);
  		if (!IS_VALID_BOOL_RANGE(val)) {
-@@ -2002,6 +2006,10 @@ void mxl_hostapd_config_defaults_bss(struct hostapd_bss_config *bss)
+@@ -2019,6 +2023,10 @@ void mxl_hostapd_config_defaults_bss(struct hostapd_bss_config *bss)
  	/* no need to initlize with 0 or NULL - this is done by hostapd with memset */
  	struct mxl_hostapd_bss_config *mxl_bss_conf = &bss->mxl_bss_conf;
  
@@ -396,7 +396,7 @@ index 1fdc2df97..43fdb9d95 100644
  	/* Soft Block ACL */
  	mxl_bss_conf->soft_block_acl_enable = SOFT_BLOCK_ENABLE_DEFAULT;
  	mxl_bss_conf->soft_block_acl_wait_time = SOFT_BLOCK_WAIT_TIME_DEFAULT;
-@@ -2034,7 +2042,7 @@ void mxl_hostapd_config_defaults_bss(struct hostapd_bss_config *bss)
+@@ -2051,7 +2059,7 @@ void mxl_hostapd_config_defaults_bss(struct hostapd_bss_config *bss)
  	mxl_bss_conf->disable_pbac = false;
  }
  
@@ -405,7 +405,7 @@ index 1fdc2df97..43fdb9d95 100644
  {
  
  #ifdef CONFIG_EPCS_MXL
-@@ -2076,6 +2084,12 @@ void mxl_hostapd_config_defaults(struct hostapd_config *conf)
+@@ -2093,6 +2101,12 @@ void mxl_hostapd_config_defaults(struct hostapd_config *conf)
  	mxl_conf->epcs_wmm_ac_params[3] = epcs_ac_vo;
  #endif /* CONFIG_EPCS_MXL */
  
@@ -418,7 +418,7 @@ index 1fdc2df97..43fdb9d95 100644
  	/* Advertisement protocol IE */
  	conf->adv_proto_query_resp_len = ADV_PROTO_QUERY_RESP_LEN_DEFAULT;
  	/* To check client mode */
-@@ -2101,6 +2115,7 @@ void mxl_hostapd_config_defaults(struct hostapd_config *conf)
+@@ -2118,6 +2132,7 @@ void mxl_hostapd_config_defaults(struct hostapd_config *conf)
  	mxl_conf->nlmsg_default_size = 8 * 1024;
  #endif
  
@@ -426,7 +426,7 @@ index 1fdc2df97..43fdb9d95 100644
  }
  
  void mxl_hostapd_config_free_bss(struct hostapd_bss_config *bss)
-@@ -2114,6 +2129,10 @@ void mxl_hostapd_config_free(struct hostapd_config *conf)
+@@ -2131,6 +2146,10 @@ void mxl_hostapd_config_free(struct hostapd_config *conf)
  {
  	struct mxl_hostapd_config *mxl_conf = &conf->mxl_conf;
  
@@ -437,7 +437,7 @@ index 1fdc2df97..43fdb9d95 100644
  	os_free(mxl_conf->dfs_channels_state_file);
  }
  
-@@ -2136,6 +2155,12 @@ int mxl_hostapd_config_check_bss_6g(struct hostapd_bss_config *bss) {
+@@ -2153,6 +2172,12 @@ int mxl_hostapd_config_check_bss_6g(struct hostapd_bss_config *bss) {
  int mxl_hostapd_config_check(struct hostapd_config *conf, int full_config)
  {
  
@@ -452,10 +452,10 @@ index 1fdc2df97..43fdb9d95 100644
  	if (!conf->ieee80211be) {
 diff --git a/hostapd/mxl_config_proprietary.c b/hostapd/mxl_config_proprietary.c
 new file mode 100644
-index 000000000..ed680d8ae
+index 000000000..c1431817d
 --- /dev/null
 +++ b/hostapd/mxl_config_proprietary.c
-@@ -0,0 +1,480 @@
+@@ -0,0 +1,468 @@
 +/******************************************************************************
 +
 +         Copyright (c) 2024, MaxLinear, Inc.
@@ -541,46 +541,29 @@ index 000000000..ed680d8ae
 +static int hostapd_parse_opclass_ch_list(struct acs_exclude **op_list, char *val, int *ch_count)
 +{
 +	struct acs_exclude *list;
-+	int count=0, slash=0, coma=0, num=0;
++	int count = 0;
++	int iter = 0;
++	char chlist[2048] = {'\0'};
 +	char *pos, *end, *ch;
 +
-+	os_free(*op_list);
-+	*op_list = NULL;
++	if (sscanf(val, "%d %s", &count, chlist) != 2) {
++		return -1;
++	}
 +
-+	pos = val;
-+	count = 0;
-+	while (*pos != '\0') {
-+		if (*pos == '/') {
-+			coma = 0;
-+			num = 0;
-+			slash++;
++	if (os_strncmp(chlist, "0", 1) == 0) {
++		if (*op_list != NULL) {
++			os_free(*op_list);
++			*op_list = NULL;
 +		}
-+		else
-+			num++;
-+
-+		if (*pos == ',') {
-+			if (slash > 1) {
-+				return -1;
-+			}
-+			slash = 0;
-+			num = 0;
-+			coma++;
-+			count++;
-+		}
-+
-+		if (num > 3 || coma > 1) {
-+			return -1;
-+		}
-+
-+		pos++;
++		*ch_count = 0;
++		return 0;
 +	}
 +
 +	list = os_malloc(sizeof(struct acs_exclude) * count);
 +	if (list == NULL) {
 +		return -1;
 +	}
-+	pos = val;
-+	count = 0;
++	pos = chlist;
 +	while (*pos != '\0') {
 +		end = os_strchr(pos, ',');
 +		if (end)
@@ -588,14 +571,19 @@ index 000000000..ed680d8ae
 +
 +		ch = os_strchr(pos, '/');
 +		if (ch != NULL) {
-+			list[count].op_class = atoi(pos);
-+			list[count].channel = atoi(ch + 1);
-+			count++;
++			list[iter].op_class = atoi(pos);
++			list[iter].channel = atoi(ch + 1);
++			iter++;
 +		}
 +
 +		if (!end)
 +			break;
 +		pos = end + 1;
++	}
++
++	if (*op_list != NULL) {
++		os_free(*op_list);
++		*op_list = NULL;
 +	}
 +
 +	*ch_count = count;
@@ -865,8 +853,8 @@ index 000000000..ed680d8ae
 +	}
 +
 +	mxl_conf->acs_policy = 0;
-+	mxl_conf->acs_switch_thresh = 20;
-+	mxl_conf->acs_bw_comparison  =  0;
++	mxl_conf->acs_switch_thresh = 35;
++	mxl_conf->acs_bw_comparison  =  1;
 +
 +	goto continue_no_fail;
 +
@@ -937,7 +925,7 @@ index 000000000..ed680d8ae
 +	}
 +}
 diff --git a/hostapd/mxl_ctrl_iface.c b/hostapd/mxl_ctrl_iface.c
-index a8748e493..f16f2a9e4 100644
+index 05bffd789..69269cda6 100644
 --- a/hostapd/mxl_ctrl_iface.c
 +++ b/hostapd/mxl_ctrl_iface.c
 @@ -25,6 +25,9 @@
@@ -950,7 +938,7 @@ index a8748e493..f16f2a9e4 100644
  #include "drivers/mxl_driver_nl80211.h"
  #include "mxl_ctrl_iface.h"
  #include "ap/mxl_softblock.h"
-@@ -3112,7 +3115,12 @@ int mxl_hostapd_ctrl_iface_receive_process(struct hostapd_data *hapd,
+@@ -3141,7 +3144,12 @@ int mxl_hostapd_ctrl_iface_receive_process(struct hostapd_data *hapd,
  					      int *reply_len)
  {
  
@@ -963,7 +951,19 @@ index a8748e493..f16f2a9e4 100644
  	if (os_strncmp(buf, "GET_HW_FEATURES", 15) == 0) {
  		*reply_len = mxl_hostapd_ctrl_iface_get_hw_features(hapd->iface, NULL, reply, reply_size);
  	} else if (os_strncmp(buf, "SET_FAILSAFE_CHAN ", 18) == 0) {
-@@ -3805,7 +3813,11 @@ int mxl_hostapd_ctrl_iface_set_beacon(struct hostapd_data *hapd)
+@@ -3394,6 +3402,11 @@ int mxl_hostapd_ctrl_iface_set(struct hostapd_data *hapd, char *cmd, int *ret)
+ 		}
+ 	} else if ((os_strcmp(cmd, "vht_oper_chwidth") == 0) || (os_strcmp(cmd, "he_oper_chwidth") == 0)
+ 			   || (os_strcmp(cmd, "eht_oper_chwidth") == 0)) {
++#ifdef CONFIG_VENDOR_MXL_PROPRIETARY
++#ifdef CONFIG_ACS
++		hapd->iface->conf->mxl_conf.acs_user_cw_done = 0;
++#endif /* CONFIG_ACS */
++#endif /* CONFIG_VENDOR_MXL_PROPRIETARY */
+ 		mxl_hostapd_update_user_conf_cw(hapd->iface);
+ 	/* add new config item here as "} else if...{" */
+ 	} else
+@@ -3839,7 +3852,11 @@ int mxl_hostapd_ctrl_iface_set_beacon(struct hostapd_data *hapd)
  {
  	enum hostapd_iface_state istate = hapd->iface->state;
  
@@ -995,10 +995,10 @@ index 505c43632..751685422 100644
  #endif /* MXL_CTRL_IFACE_H */
 diff --git a/hostapd/mxl_ctrl_iface_proprietary.c b/hostapd/mxl_ctrl_iface_proprietary.c
 new file mode 100644
-index 000000000..483ab7042
+index 000000000..8d9c5965d
 --- /dev/null
 +++ b/hostapd/mxl_ctrl_iface_proprietary.c
-@@ -0,0 +1,368 @@
+@@ -0,0 +1,407 @@
 +/******************************************************************************
 +
 +         Copyright (c) 2024, MaxLinear, Inc.
@@ -1020,6 +1020,9 @@ index 000000000..483ab7042
 +#include "ap/mxl_acs.h"
 +#include "drivers/mxl_driver_nl80211.h"
 +#include "mxl_ctrl_iface.h"
++
++#define ACS_SW_THRESH_MAX 100
++#define ACS_SW_THRESH_MIN 0
 +
 +#ifdef CONFIG_ACS
 +static int mxl_hostapd_ctrl_iface_acs_recalc(struct hostapd_iface *iface)
@@ -1115,7 +1118,7 @@ index 000000000..483ab7042
 +static int mxl_hostapd_ctrl_iface_acs_bgscan(struct hostapd_data *hapd,
 +				  char *buf, char *reply, size_t reply_len)
 +{
-+	int ret=-1;
++	int ret = -1;
 +	u16 acs_bgscan_interval = -1;
 +
 +	if (sscanf(buf, " %hu", &acs_bgscan_interval) != 1) {
@@ -1129,23 +1132,18 @@ index 000000000..483ab7042
 +	acs_bgscan_interval *= 60;
 +
 +	if (eloop_is_timeout_registered(mxl_acs_bgscan_timer_cb, hapd, NULL)) {
-+		wpa_printf(MSG_DEBUG, "acs_bgscan removing existing timer handler");
++		wpa_printf(MSG_DEBUG, "%s : acs_bgscan removing existing timer handler", hapd->conf->iface);
 +		eloop_cancel_timeout(mxl_acs_bgscan_timer_cb, hapd, NULL);
 +	}
 +
 +	if (acs_bgscan_interval != 0) {
-+		hapd->iface->mxl_iface.dfs_bg_cac = true;
-+		ret = mxl_acs_check_bgscan(hapd->iface);
-+		if (ret == 0) {
-+			wpa_printf(MSG_DEBUG, "acs_bgscan starting a new background scan with timer value %d", acs_bgscan_interval);
-+			eloop_register_timeout(acs_bgscan_interval, 0, mxl_acs_bgscan_timer_cb,
-+					hapd, NULL);
-+		} else {
-+			wpa_printf(MSG_DEBUG, "failed to start acs_bgscan");
-+		}
++		/* bgscan_interval is set ACS will be triggered once it expires */
++		eloop_register_timeout(acs_bgscan_interval, 0, mxl_acs_bgscan_timer_cb,
++				hapd, NULL);
++		wpa_printf(MSG_INFO, "%s : acs_bgscan timer started", hapd->conf->iface);
 +	} else {
-+		hapd->iface->mxl_iface.dfs_bg_cac = false;
-+		wpa_printf(MSG_DEBUG, "acs_bgscan timer cancelled and removed");
++		hapd->iface->mxl_iface.acs_bgscan_enable = false;
++		wpa_printf(MSG_DEBUG, "%s : acs_bgscan timer cancelled and removed", hapd->conf->iface);
 +	}
 +
 +	ret = sprintf_s(reply, reply_len, "OK\n",acs_bgscan_interval);
@@ -1153,61 +1151,83 @@ index 000000000..483ab7042
 +	return ret;
 +}
 +
++static int mxl_hostapd_ctrl_iface_set_acs_bw_comparison(struct hostapd_data *hapd,
++				  char *buf, char *reply, size_t reply_len)
++{
++	int ret = -1;
++	struct mxl_hostapd_config *mxl_conf = &hapd->iface->conf->mxl_conf;
++	int acs_bw_cmp = 0;
++
++	if (sscanf(buf, " %d", &acs_bw_cmp) != 1) {
++		wpa_printf(MSG_ERROR, "ACS invalid bw comparison value");
++		goto fail;
++	}
++
++	if (acs_bw_cmp == 0 || acs_bw_cmp == 1) {
++		mxl_conf->acs_bw_comparison = acs_bw_cmp;
++		ret = sprintf_s(reply, reply_len, "OK\n");
++		return ret;
++	}
++fail:
++	ret = sprintf_s(reply, reply_len, "Fail\n");
++	return ret;
++}
++
++static int mxl_hostapd_ctrl_iface_set_acs_switch_tresh(struct hostapd_data *hapd,
++				  char *buf, char *reply, size_t reply_len)
++{
++	int ret = -1;
++	struct mxl_hostapd_config *mxl_conf = &hapd->iface->conf->mxl_conf;
++	int acs_sw_tresh = 0;
++
++	if (sscanf(buf, " %d", &acs_sw_tresh) != 1) {
++		wpa_printf(MSG_ERROR, "ACS invalid switch treshold value");
++		goto fail;
++	}
++
++	if (acs_sw_tresh >= ACS_SW_THRESH_MIN && acs_sw_tresh <= ACS_SW_THRESH_MAX) {
++		mxl_conf->acs_switch_thresh = acs_sw_tresh;
++		ret = sprintf_s(reply, reply_len, "OK\n");
++		return ret;
++	}
++fail:
++	ret = sprintf_s(reply, reply_len, "Fail\n");
++	return ret;
++}
++
 +static int mxl_hostapd_ctrl_iface_acs_ex_op_list(struct hostapd_data *hapd,
 +				  char *buf, char *reply, size_t reply_len)
 +{
 +	int ret=-1;
-+	char chlist[128];
++	char chlist[2048];
 +	struct mxl_hostapd_config *mxl_conf = &hapd->iface->conf->mxl_conf;
 +	struct acs_exclude **op_list = &mxl_conf->acs_exclude_opclass_ch_list;
 +	struct acs_exclude *list;
-+	int count=0, slash=0, coma=0, num=0;
++	int count = 0;
++	int iter = 0;
 +	char *pos, *end, *ch;
 +
-+	if (sscanf(buf, " %s", chlist) != 1) {
++	if (sscanf(buf, " %d %s", &count, chlist) != 2) {
 +		wpa_printf(MSG_ERROR, "ACS Invalid exclude opclass channel list");
 +		goto fail;
 +	}
 +
-+	/* fill the hapd_list */
-+	os_free(*op_list);
-+	*op_list = NULL;
-+
-+	pos = chlist;
-+	count = 0;
-+	while (*pos != '\0') {
-+		if (*pos == '/') {
-+			coma = 0;
-+			num = 0;
-+			slash++;
++	if (os_strncmp(chlist, "0", 1) == 0) {
++		if (*op_list != NULL) {
++			os_free(*op_list);
++			*op_list = NULL;
 +		}
-+		else
-+			num++;
-+
-+		if (*pos == ',') {
-+			if (slash > 1) {
-+				goto fail;
-+			}
-+			slash = 0;
-+			num = 0;
-+			coma++;
-+			count++;
-+		}
-+
-+		if (num > 3 || coma > 1) {
-+			goto fail;
-+		}
-+
-+		pos++;
++		mxl_conf->acs_exclude_opclass_ch_count = 0;
++		ret = sprintf_s(reply, reply_len, "OK\n");
++		return ret;
 +	}
 +
-+	list = os_malloc(sizeof(struct acs_exclude) * count+1);
++	list = os_malloc(sizeof(struct acs_exclude) * count);
 +	if (list == NULL) {
 +		wpa_printf(MSG_INFO, "ACS exclude list failed to allocate memory");
 +		goto fail;
 +	}
 +	pos = chlist;
-+	count = 0;
 +	while (*pos != '\0') {
 +		end = os_strchr(pos, ',');
 +		if (end)
@@ -1215,9 +1235,9 @@ index 000000000..483ab7042
 +
 +		ch = os_strchr(pos, '/');
 +		if (ch != NULL) {
-+			list[count].op_class = atoi(pos);
-+			list[count].channel = atoi(ch + 1);
-+			count++;
++			list[iter].op_class = atoi(pos);
++			list[iter].channel = atoi(ch + 1);
++			iter++;
 +		}
 +
 +		if (!end)
@@ -1225,6 +1245,10 @@ index 000000000..483ab7042
 +		pos = end + 1;
 +	}
 +
++	if (*op_list != NULL) {
++		os_free(*op_list);
++		*op_list = NULL;
++	}
 +	mxl_conf->acs_exclude_opclass_ch_count = count;
 +	*op_list = list;
 +
@@ -1232,6 +1256,7 @@ index 000000000..483ab7042
 +
 +	return ret;
 +fail:
++	mxl_conf->acs_exclude_opclass_ch_count = 0;
 +	ret = sprintf_s(reply, reply_len, "Fail\n");
 +	return ret;
 +}
@@ -1257,6 +1282,10 @@ index 000000000..483ab7042
 +		*reply_len = mxl_hostapd_ctrl_iface_acs_bgscan(hapd, buf + 20, reply, reply_size);
 +	} else if (os_strncmp(buf, "ACS_EX_OP_LIST", 14) == 0) {
 +		*reply_len = mxl_hostapd_ctrl_iface_acs_ex_op_list(hapd, buf + 14, reply, reply_size);
++	} else if (os_strncmp(buf, "ACS_BW_COMPARISON", 17) == 0) {
++		*reply_len = mxl_hostapd_ctrl_iface_set_acs_bw_comparison(hapd, buf + 17, reply, reply_size);
++	} else if (os_strncmp(buf, "ACS_SWITCH_TRESH", 16) == 0) {
++		*reply_len = mxl_hostapd_ctrl_iface_set_acs_switch_tresh(hapd, buf + 16, reply, reply_size);
 +	} else {
 +		return 0;
 +	}
@@ -1365,10 +1394,20 @@ index 000000000..483ab7042
 +	if (iface->state == HAPD_IFACE_ENABLED)
 +		iface->mxl_iface.acs_reenable_iface = 1;
 +
++	/* Reset bgscan timer if it is running */
++	if (bgscan && acs_bgscan_interval > 0) {
++		if (eloop_is_timeout_registered(mxl_acs_bgscan_timer_cb, iface->bss[0], NULL)) {
++			eloop_cancel_timeout(mxl_acs_bgscan_timer_cb, iface->bss[0], NULL);
++			eloop_register_timeout(acs_bgscan_interval, 0, mxl_acs_bgscan_timer_cb,
++				 	iface->bss[0], NULL);
++			wpa_printf(MSG_DEBUG, "%s : CHAN SWITCH : acs_bgscan timer reset done", iface->bss[0]->conf->iface);
++		}
++	}
++
 +	return mxl_acs_start(iface);
 +}
 diff --git a/hostapd/mxl_hostapd_cli.c b/hostapd/mxl_hostapd_cli.c
-index bbf1098ff..75e1e1108 100644
+index b54914572..70689e2ee 100644
 --- a/hostapd/mxl_hostapd_cli.c
 +++ b/hostapd/mxl_hostapd_cli.c
 @@ -38,7 +38,7 @@ int mxl_hostapd_cli_cmd_deny_macacl(struct wpa_ctrl *ctrl, int argc,
@@ -1381,7 +1420,7 @@ index bbf1098ff..75e1e1108 100644
  	char cmd[64];
  	int res;
 diff --git a/hostapd/mxl_hostapd_cli.h b/hostapd/mxl_hostapd_cli.h
-index 7cfe7e97d..19be2f73a 100644
+index 29007e8b1..dd714f440 100644
 --- a/hostapd/mxl_hostapd_cli.h
 +++ b/hostapd/mxl_hostapd_cli.h
 @@ -35,6 +35,7 @@ int mxl_wpa_ctrl_command(struct wpa_ctrl *ctrl, const char *cmd);
@@ -1392,7 +1431,7 @@ index 7cfe7e97d..19be2f73a 100644
  	MXL_CLI_COMMANDS_AFC		\
  	MXL_CLI_COMMANDS_EPCS		\
  	MXL_CLI_COMMANDS_MLO		\
-@@ -113,8 +114,38 @@ int mxl_wpa_ctrl_command(struct wpa_ctrl *ctrl, const char *cmd);
+@@ -115,8 +116,49 @@ int mxl_wpa_ctrl_command(struct wpa_ctrl *ctrl, const char *cmd);
  	{ "reset_acs_state", mxl_hostapd_cli_cmd_reset_acs_state, NULL,           \
  	  " = reset acs state" },                                                 \
  
@@ -1407,7 +1446,14 @@ index 7cfe7e97d..19be2f73a 100644
 +
 +int mxl_hostapd_cli_cmd_acs_bgscan(struct wpa_ctrl *ctrl,
 +                                        int argc, char *argv[]);
++
 +int mxl_hostapd_cli_cmd_acs_ex_op_ch_list(struct wpa_ctrl *ctrl,
++                                        int argc, char *argv[]);
++
++int mxl_hostapd_cli_cmd_acs_bw_comparison(struct wpa_ctrl *ctrl,
++                                        int argc, char *argv[]);
++
++int mxl_hostapd_cli_cmd_acs_switch_threshold(struct wpa_ctrl *ctrl,
 +                                        int argc, char *argv[]);
 +#define MXL_CLI_COMMANDS_ACS_PROPRIETARY \
 +        { "acs_recalc", mxl_hostapd_cli_cmd_acs_recalc, NULL,                     \
@@ -1418,8 +1464,12 @@ index 7cfe7e97d..19be2f73a 100644
 +          "get ACS report" },                                                     \
 +        { "acs_report_all_ch", mxl_hostapd_cli_cmd_acs_report_all_ch, NULL,       \
 +          "get ACS report for all channels (channel filter is disabled)" },       \
-+        { "acs_ex_op_ch_list", mxl_hostapd_cli_cmd_acs_ex_op_ch_list, NULL,       \
-+          "set ACS excluded channel list for mentioned op_class)" },              \
++        { "acs_ex_op_ch_list", mxl_hostapd_cli_cmd_acs_ex_op_ch_list, NULL,      \
++          "set ACS excluded channel list for mentioned op_class" },               \
++        { "acs_bw_comparison", mxl_hostapd_cli_cmd_acs_bw_comparison, NULL,       \
++          "set ACS enable/disable bw comparison"  },                              \
++        { "acs_switch_tresh", mxl_hostapd_cli_cmd_acs_switch_threshold, NULL,         \
++          "set ACS enable/disable switch treshold"  },                            \
 +
 +#else /* CONFIG_VENDOR_MXL_PROPRIETARY */
 +#define MXL_CLI_COMMANDS_ACS_PROPRIETARY
@@ -1433,10 +1483,10 @@ index 7cfe7e97d..19be2f73a 100644
  #ifdef CONFIG_AFC
 diff --git a/hostapd/mxl_hostapd_cli_proprietary.c b/hostapd/mxl_hostapd_cli_proprietary.c
 new file mode 100644
-index 000000000..c5d61a43d
+index 000000000..8c433d7e8
 --- /dev/null
 +++ b/hostapd/mxl_hostapd_cli_proprietary.c
-@@ -0,0 +1,99 @@
+@@ -0,0 +1,139 @@
 +/******************************************************************************
 +
 +         Copyright (c) 2024, MaxLinear, Inc.
@@ -1478,7 +1528,7 @@ index 000000000..c5d61a43d
 +int mxl_hostapd_cli_cmd_acs_ex_op_ch_list(struct wpa_ctrl *ctrl,
 +					int argc, char *argv[])
 +{
-+	char cmd[128];
++	char cmd[2048];
 +	int res;
 +
 +	if (argc < 1 || argc > 1) {
@@ -1487,6 +1537,46 @@ index 000000000..c5d61a43d
 +	}
 +
 +	res = sprintf_s(cmd, sizeof(cmd), "ACS_EX_OP_LIST %s", argv[0]);
++	if (res <= 0) {
++		printf("%s: sprintf_s error %d", __func__, res);
++		return -1;
++	}
++
++	return mxl_wpa_ctrl_command(ctrl, cmd);
++}
++
++int mxl_hostapd_cli_cmd_acs_bw_comparison(struct wpa_ctrl *ctrl,
++					int argc, char *argv[])
++{
++	char cmd[30];
++	int res;
++
++	if (argc < 1 || argc > 1) {
++		printf("acs_bw_comparison is invalid");
++		return -1;
++	}
++
++	res = sprintf_s(cmd, sizeof(cmd), "ACS_BW_COMPARISON %s", argv[0]);
++	if (res <= 0) {
++		printf("%s: sprintf_s error %d", __func__, res);
++		return -1;
++	}
++
++	return mxl_wpa_ctrl_command(ctrl, cmd);
++}
++
++int mxl_hostapd_cli_cmd_acs_switch_threshold(struct wpa_ctrl *ctrl,
++					int argc, char *argv[])
++{
++	char cmd[30];
++	int res;
++
++	if (argc < 1 || argc > 1) {
++		printf("acs_switch_tresh is invalid");
++		return -1;
++	}
++
++	res = sprintf_s(cmd, sizeof(cmd), "ACS_SWITCH_TRESH %s", argv[0]);
 +	if (res <= 0) {
 +		printf("%s: sprintf_s error %d", __func__, res);
 +		return -1;
@@ -1757,10 +1847,19 @@ index ca001bf52..56e1ce23e 100644
  	case EVENT_WPS_BUTTON_PUSHED:
  		hostapd_wps_button_pushed(hapd, NULL);
 diff --git a/src/ap/hostapd.c b/src/ap/hostapd.c
-index a47dd7a0d..e5ef6af88 100644
+index a5581b90e..586b1482b 100644
 --- a/src/ap/hostapd.c
 +++ b/src/ap/hostapd.c
-@@ -2451,6 +2451,12 @@ hostapd_change_country(struct hostapd_iface *iface, struct channel_list_changed
+@@ -366,6 +366,8 @@ int hostapd_reload_config(struct hostapd_iface *iface)
+ 				   "Failed to prepare config for reload");
+ 		return -1;
+ 	}
++	/* Restoring user configured cw on reload */
++	mxl_hostapd_restore_user_configured_cw(iface, oldconf);
+ #endif /* CONFIG_VENDOR_MXL */
+ 
+ 	for (j = 0; j < iface->num_bss; j++) {
+@@ -2477,6 +2479,12 @@ hostapd_change_country(struct hostapd_iface *iface, struct channel_list_changed
  		return 0;
  	}
  
@@ -1773,7 +1872,7 @@ index a47dd7a0d..e5ef6af88 100644
  	/* Update channels and flags */
  	if (hostapd_get_hw_features(iface)) {
  		wpa_printf(MSG_ERROR, "Failed to get new regulatory data");
-@@ -3380,6 +3386,11 @@ static int hostapd_setup_interface_complete_sync(struct hostapd_iface *iface,
+@@ -3406,6 +3414,11 @@ static int hostapd_setup_interface_complete_sync(struct hostapd_iface *iface,
  			}
  			iface->set_freq_done = 1;
  		} else {
@@ -1785,7 +1884,7 @@ index a47dd7a0d..e5ef6af88 100644
  			struct csa_settings settings;
  			memset(&settings, 0, sizeof(settings));
  			if (hostapd_set_freq_params(&settings.freq_params,
-@@ -4416,9 +4427,19 @@ static int hostapd_add_bss(struct hostapd_iface *iface,
+@@ -4442,9 +4455,19 @@ static int hostapd_add_bss(struct hostapd_iface *iface,
  
  	/* Set up BSS will be done after interface enabled */
  	if (iface->state != HAPD_IFACE_ENABLED) {
@@ -1805,15 +1904,17 @@ index a47dd7a0d..e5ef6af88 100644
  	}
  
  	if (hostapd_setup_bss(hapd, false, true)) {
-@@ -4672,6 +4693,7 @@ int hostapd_disable_iface(struct hostapd_iface *hapd_iface)
+@@ -4706,6 +4729,9 @@ int hostapd_disable_iface(struct hostapd_iface *hapd_iface)
  	if (hapd_iface->radar_background.cac_started) {
  		mxl_hostapd_set_zwdfs_antenna(hapd_iface->bss[0], 0);
  	}
 +	mxl_acs_set_bg_cac(hapd_iface);
++	/* stop existing bgscan_interval timer */
++	mxl_acs_stop_bgscan_timer(hapd_iface->bss[0]);
  #endif /* CONFIG_VENDOR_MXL */
  
  	/* same as hostapd_interface_deinit without deinitializing ctrl-iface */
-@@ -5231,6 +5253,10 @@ const char * hostapd_state_text(enum hostapd_iface_state s)
+@@ -5265,6 +5291,10 @@ const char * hostapd_state_text(enum hostapd_iface_state s)
  		return "COUNTRY_UPDATE";
  	case HAPD_IFACE_ACS:
  		return "ACS";
@@ -1824,7 +1925,7 @@ index a47dd7a0d..e5ef6af88 100644
  	case HAPD_IFACE_HT_SCAN:
  		return "HT_SCAN";
  	case HAPD_IFACE_DFS:
-@@ -5308,6 +5334,9 @@ void hostapd_set_state(struct hostapd_iface *iface, enum hostapd_iface_state s)
+@@ -5342,6 +5372,9 @@ void hostapd_set_state(struct hostapd_iface *iface, enum hostapd_iface_state s)
  	wpa_printf(MSG_INFO, "%s: interface state %s->%s",
  		   iface->conf ? iface->conf->bss[0]->iface : "N/A",
  		   hostapd_state_text(iface->state), hostapd_state_text(s));
@@ -1834,7 +1935,7 @@ index a47dd7a0d..e5ef6af88 100644
  	iface->state = s;
  
  	if(HAPD_IFACE_ENABLED == s)
-@@ -6208,6 +6237,10 @@ int hostapd_get_psd_val(struct hostapd_iface *iface, u8 *val)
+@@ -6242,6 +6275,10 @@ int hostapd_get_psd_val(struct hostapd_iface *iface, u8 *val)
  
  void hostapd_handle_acs_whm_warning (struct hostapd_iface *iface)
  {
@@ -1953,10 +2054,10 @@ index f44dbd5d8..06e6eda87 100644
  			if (is_40_allowed(iface, chan))
 diff --git a/src/ap/mxl_acs.c b/src/ap/mxl_acs.c
 new file mode 100644
-index 000000000..9b7e81281
+index 000000000..b817fbb01
 --- /dev/null
 +++ b/src/ap/mxl_acs.c
-@@ -0,0 +1,3802 @@
+@@ -0,0 +1,3959 @@
 +/******************************************************************************
 +
 +         Copyright (c) 2023 - 2024, MaxLinear, Inc.
@@ -2312,8 +2413,114 @@ index 000000000..9b7e81281
 +	{ 207, 221, 217, STARTING_6G_FREQ_IN_MHZ + 193*5 }
 +};
 +
-+static void acs_push_chandef(struct hostapd_iface *iface, mxl_acs_chandef *chan);
-+static void acs_pop_chandef(struct hostapd_iface *iface, mxl_acs_chandef *chan);
++mxl_acs_chan g_channels320_1_6G[NUM_CHAN_PAIRS_320_6G] =
++{
++	{ 31,  1,  5, STARTING_6G_FREQ_IN_MHZ + 1*5 },
++	{ 31,  9, 13, STARTING_6G_FREQ_IN_MHZ + 1*5 },
++	{ 31, 17, 21, STARTING_6G_FREQ_IN_MHZ + 1*5 },
++	{ 31, 25, 29, STARTING_6G_FREQ_IN_MHZ + 1*5 },
++	{ 31, 33, 37, STARTING_6G_FREQ_IN_MHZ + 1*5 },
++	{ 31, 41, 45, STARTING_6G_FREQ_IN_MHZ + 1*5 },
++	{ 31, 49, 53, STARTING_6G_FREQ_IN_MHZ + 1*5 },
++	{ 31, 57, 61, STARTING_6G_FREQ_IN_MHZ + 1*5 },
++	{ 31,  5,  1, STARTING_6G_FREQ_IN_MHZ + 1*5 },
++	{ 31, 13,  9, STARTING_6G_FREQ_IN_MHZ + 1*5 },
++	{ 31, 21, 17, STARTING_6G_FREQ_IN_MHZ + 1*5 },
++	{ 31, 29, 25, STARTING_6G_FREQ_IN_MHZ + 1*5 },
++	{ 31, 37, 33, STARTING_6G_FREQ_IN_MHZ + 1*5 },
++	{ 31, 45, 41, STARTING_6G_FREQ_IN_MHZ + 1*5 },
++	{ 31, 53, 49, STARTING_6G_FREQ_IN_MHZ + 1*5 },
++	{ 31, 61, 57, STARTING_6G_FREQ_IN_MHZ + 1*5 },
++
++	{ 95,  65,  69, STARTING_6G_FREQ_IN_MHZ + 65*5 },
++	{ 95,  73,  77, STARTING_6G_FREQ_IN_MHZ + 65*5 },
++	{ 95,  81,  85, STARTING_6G_FREQ_IN_MHZ + 65*5 },
++	{ 95,  89,  93, STARTING_6G_FREQ_IN_MHZ + 65*5 },
++	{ 95,  97, 101, STARTING_6G_FREQ_IN_MHZ + 65*5 },
++	{ 95, 105, 109, STARTING_6G_FREQ_IN_MHZ + 65*5 },
++	{ 95, 113, 117, STARTING_6G_FREQ_IN_MHZ + 65*5 },
++	{ 95, 121, 125, STARTING_6G_FREQ_IN_MHZ + 65*5 },
++	{ 95,  69,  65, STARTING_6G_FREQ_IN_MHZ + 65*5 },
++	{ 95,  77,  73, STARTING_6G_FREQ_IN_MHZ + 65*5 },
++	{ 95,  85,  81, STARTING_6G_FREQ_IN_MHZ + 65*5 },
++	{ 95,  93,  89, STARTING_6G_FREQ_IN_MHZ + 65*5 },
++	{ 95, 101,  97, STARTING_6G_FREQ_IN_MHZ + 65*5 },
++	{ 95, 109, 105, STARTING_6G_FREQ_IN_MHZ + 65*5 },
++	{ 95, 117, 113, STARTING_6G_FREQ_IN_MHZ + 65*5 },
++	{ 95, 125, 121, STARTING_6G_FREQ_IN_MHZ + 65*5 },
++
++	{ 159, 129, 133, STARTING_6G_FREQ_IN_MHZ + 129*5 },
++	{ 159, 137, 141, STARTING_6G_FREQ_IN_MHZ + 129*5 },
++	{ 159, 145, 149, STARTING_6G_FREQ_IN_MHZ + 129*5 },
++	{ 159, 153, 157, STARTING_6G_FREQ_IN_MHZ + 129*5 },
++	{ 159, 161, 165, STARTING_6G_FREQ_IN_MHZ + 129*5 },
++	{ 159, 169, 173, STARTING_6G_FREQ_IN_MHZ + 129*5 },
++	{ 159, 177, 181, STARTING_6G_FREQ_IN_MHZ + 129*5 },
++	{ 159, 185, 189, STARTING_6G_FREQ_IN_MHZ + 129*5 },
++	{ 159, 133, 129, STARTING_6G_FREQ_IN_MHZ + 129*5 },
++	{ 159, 141, 137, STARTING_6G_FREQ_IN_MHZ + 129*5 },
++	{ 159, 149, 145, STARTING_6G_FREQ_IN_MHZ + 129*5 },
++	{ 159, 157, 153, STARTING_6G_FREQ_IN_MHZ + 129*5 },
++	{ 159, 165, 161, STARTING_6G_FREQ_IN_MHZ + 129*5 },
++	{ 159, 173, 169, STARTING_6G_FREQ_IN_MHZ + 129*5 },
++	{ 159, 181, 177, STARTING_6G_FREQ_IN_MHZ + 129*5 },
++	{ 159, 189, 185, STARTING_6G_FREQ_IN_MHZ + 129*5 },
++};
++
++mxl_acs_chan g_channels320_2_6G[NUM_CHAN_PAIRS_320_6G] =
++{
++	{ 63, 33, 37, STARTING_6G_FREQ_IN_MHZ + 33*5 },
++	{ 63, 41, 45, STARTING_6G_FREQ_IN_MHZ + 33*5 },
++	{ 63, 49, 53, STARTING_6G_FREQ_IN_MHZ + 33*5 },
++	{ 63, 57, 61, STARTING_6G_FREQ_IN_MHZ + 33*5 },
++	{ 63, 65, 69, STARTING_6G_FREQ_IN_MHZ + 33*5 },
++	{ 63, 73, 77, STARTING_6G_FREQ_IN_MHZ + 33*5 },
++	{ 63, 81, 85, STARTING_6G_FREQ_IN_MHZ + 33*5 },
++	{ 63, 89, 93, STARTING_6G_FREQ_IN_MHZ + 33*5 },
++	{ 63, 37, 33, STARTING_6G_FREQ_IN_MHZ + 33*5 },
++	{ 63, 45, 41, STARTING_6G_FREQ_IN_MHZ + 33*5 },
++	{ 63, 53, 49, STARTING_6G_FREQ_IN_MHZ + 33*5 },
++	{ 63, 61, 57, STARTING_6G_FREQ_IN_MHZ + 33*5 },
++	{ 63, 69, 65, STARTING_6G_FREQ_IN_MHZ + 33*5 },
++	{ 63, 77, 73, STARTING_6G_FREQ_IN_MHZ + 33*5 },
++	{ 63, 85, 81, STARTING_6G_FREQ_IN_MHZ + 33*5 },
++	{ 63, 93, 89, STARTING_6G_FREQ_IN_MHZ + 33*5 },
++
++	{ 127,  97, 101, STARTING_6G_FREQ_IN_MHZ + 97*5 },
++	{ 127, 105, 109, STARTING_6G_FREQ_IN_MHZ + 97*5 },
++	{ 127, 113, 117, STARTING_6G_FREQ_IN_MHZ + 97*5 },
++	{ 127, 121, 125, STARTING_6G_FREQ_IN_MHZ + 97*5 },
++	{ 127, 129, 133, STARTING_6G_FREQ_IN_MHZ + 97*5 },
++	{ 127, 137, 141, STARTING_6G_FREQ_IN_MHZ + 97*5 },
++	{ 127, 145, 149, STARTING_6G_FREQ_IN_MHZ + 97*5 },
++	{ 127, 153, 157, STARTING_6G_FREQ_IN_MHZ + 97*5 },
++	{ 127, 101,  97, STARTING_6G_FREQ_IN_MHZ + 97*5 },
++	{ 127, 109, 105, STARTING_6G_FREQ_IN_MHZ + 97*5 },
++	{ 127, 117, 113, STARTING_6G_FREQ_IN_MHZ + 97*5 },
++	{ 127, 125, 121, STARTING_6G_FREQ_IN_MHZ + 97*5 },
++	{ 127, 133, 129, STARTING_6G_FREQ_IN_MHZ + 97*5 },
++	{ 127, 141, 137, STARTING_6G_FREQ_IN_MHZ + 97*5 },
++	{ 127, 149, 145, STARTING_6G_FREQ_IN_MHZ + 97*5 },
++	{ 127, 157, 153, STARTING_6G_FREQ_IN_MHZ + 97*5 },
++
++	{ 191, 161, 165, STARTING_6G_FREQ_IN_MHZ + 161*5 },
++	{ 191, 169, 173, STARTING_6G_FREQ_IN_MHZ + 161*5 },
++	{ 191, 177, 181, STARTING_6G_FREQ_IN_MHZ + 161*5 },
++	{ 191, 185, 189, STARTING_6G_FREQ_IN_MHZ + 161*5 },
++	{ 191, 193, 197, STARTING_6G_FREQ_IN_MHZ + 161*5 },
++	{ 191, 201, 205, STARTING_6G_FREQ_IN_MHZ + 161*5 },
++	{ 191, 209, 213, STARTING_6G_FREQ_IN_MHZ + 161*5 },
++	{ 191, 217, 221, STARTING_6G_FREQ_IN_MHZ + 161*5 },
++	{ 191, 165, 161, STARTING_6G_FREQ_IN_MHZ + 161*5 },
++	{ 191, 173, 169, STARTING_6G_FREQ_IN_MHZ + 161*5 },
++	{ 191, 181, 177, STARTING_6G_FREQ_IN_MHZ + 161*5 },
++	{ 191, 189, 185, STARTING_6G_FREQ_IN_MHZ + 161*5 },
++	{ 191, 197, 193, STARTING_6G_FREQ_IN_MHZ + 161*5 },
++	{ 191, 205, 201, STARTING_6G_FREQ_IN_MHZ + 161*5 },
++	{ 191, 213, 209, STARTING_6G_FREQ_IN_MHZ + 161*5 },
++	{ 191, 221, 217, STARTING_6G_FREQ_IN_MHZ + 161*5 },
++};
++
 +enum hostapd_chan_status mxl_hostapd_check_chans(struct hostapd_iface *iface);
 +void mxl_hostapd_notify_bad_chans(struct hostapd_iface *iface);
 +struct hostapd_channel_data * mxl_hostapd_get_mode_channel(struct hostapd_iface *iface, unsigned int freq);
@@ -3890,12 +4097,23 @@ index 000000000..9b7e81281
 +	int i;
 +	struct hostapd_hw_modes *mode = iface->current_mode;
 +	struct acs_candidate_table *candidates = iface->mxl_iface.candidates;
++	int bw_80_160_320 = 0;
 +
 +	memset(candidates, 0, sizeof(iface->mxl_iface.candidates));
 +	iface->mxl_iface.num_candidates = 0;
-+	iface->mxl_iface.selected_candidate = -1;
 +
 +	wpa_printf(MSG_DEBUG, "ACS: init candidate table, num_chan = %d", mode->num_channels);
++
++	/* Restore CW from user config */
++#ifdef CONFIG_ACS
++	if (iface->conf->mxl_conf.acs_user_config_cw) {
++		wpa_printf(MSG_DEBUG, "ACS : old CW : %d, op_class : %d User Configured CW : %d, op_class : %d",
++			   hostapd_get_oper_chwidth(iface->conf), iface->conf->op_class,
++			   iface->conf->mxl_conf.acs_user_config_cw, iface->conf->mxl_conf.acs_user_config_op_class);
++		hostapd_set_oper_chwidth(iface->conf, iface->conf->mxl_conf.acs_user_config_cw);
++		iface->conf->op_class = iface->conf->mxl_conf.acs_user_config_op_class;
++	}
++#endif /* CONFIG_ACS */
 +
 +	for (i = 0; i < mode->num_channels; i++) {
 +		struct hostapd_channel_data *chan = &mode->channels[i];
@@ -4321,7 +4539,9 @@ index 000000000..9b7e81281
 +			wpa_printf(MSG_INFO, "Current rank %d prev_rank %d", candidates[min_rank_cand_idx].rank, selected_cand_rank);
 +		}
 +
-+		if (candidates[iface->mxl_iface.selected_candidate].width != actual_width) {
++		if ((candidates[iface->mxl_iface.selected_candidate].width != actual_width) ||
++		    (candidates[iface->mxl_iface.selected_candidate].exclude_reason != ACS_NO_EXCLUSION) ||
++		    (candidates[iface->mxl_iface.selected_candidate].rank == -1)) {
 +			wpa_printf(MSG_WARNING, "invalid previously candidate %d detected, width %d",
 +				   iface->mxl_iface.selected_candidate, actual_width);
 +			iface->mxl_iface.selected_candidate = -1; /* invalid */
@@ -4337,6 +4557,7 @@ index 000000000..9b7e81281
 +	    (switch_reason == SWR_RADAR) || (switch_reason == SWR_INITIAL) || /* in these cases, switch regardless of threshold */
 +	    (candidates[iface->mxl_iface.selected_candidate].rank == -1)) && !bg_scan) { /* If previously selected candidates rank is now invalid, switch regardless of threshold*/
 +		wpa_printf(MSG_DEBUG, "ACS going from candidate regardless of threshold %d to %d", iface->mxl_iface.selected_candidate, min_rank_cand_idx);
++		wpa_printf(MSG_INFO, "%s : ACS switching channel regardless of threshold", iface->bss[0]->conf->iface);
 +		acs_print_info_header(MSG_DEBUG);
 +		acs_print_info_header_file(fp_hist);
 +		acs_print_cand_no(MSG_DEBUG, iface, min_rank_cand_idx);
@@ -4346,9 +4567,11 @@ index 000000000..9b7e81281
 +	else {
 +		acs_print_info_header(MSG_DEBUG);
 +		acs_print_info_header_file(fp_hist);
-+		if (((iface->mxl_iface.selected_candidate != min_rank_cand_idx) && (iface->mxl_iface.selected_candidate >= 0) &&
++		if (((iface->mxl_iface.selected_candidate != min_rank_cand_idx) &&
++		    (iface->mxl_iface.selected_candidate != -1) && (iface->mxl_iface.selected_candidate >= 0) &&
 +		    ((candidates[iface->mxl_iface.selected_candidate].rank * (100 - iface->conf->mxl_conf.acs_switch_thresh) / 100) < candidates[min_rank_cand_idx].rank))) {
 +			wpa_printf(MSG_DEBUG, "ACS previous selected candidate rank is better than current candidate");
++			wpa_printf(MSG_INFO, "%s : ACS not switching channel", iface->bss[0]->conf->iface);
 +			acs_print_cand_no(MSG_DEBUG, iface, iface->mxl_iface.selected_candidate);
 +			acs_print_cand_no_file(fp_hist, iface, iface->mxl_iface.selected_candidate);
 +			if (!iface->conf->channel) {
@@ -4362,6 +4585,7 @@ index 000000000..9b7e81281
 +		}
 +		else {
 +			wpa_printf(MSG_DEBUG, "ACS going from candidate %d to %d as current candidate rank is better", iface->mxl_iface.selected_candidate, min_rank_cand_idx);
++			wpa_printf(MSG_INFO, "%s : ACS switching channel", iface->bss[0]->conf->iface);
 +			acs_print_cand_no(MSG_DEBUG, iface, min_rank_cand_idx);
 +			acs_print_cand_no_file(fp_hist, iface, min_rank_cand_idx);
 +
@@ -4780,6 +5004,12 @@ index 000000000..9b7e81281
 +		}
 +	}
 +
++	/* In case second best channel was not found */
++	if (iface->mxl_iface.sec_best_ch.flag) {
++		res = -1;
++		goto end;
++	}
++
 +	/* if we are still here - use the fallback channel */
 +	iface->conf->channel = iface->conf->mxl_conf.acs_fallback_chan.primary;
 +	iface->freq = hostapd_hw_get_freq(iface->bss[0], iface->conf->channel);
@@ -4858,7 +5088,7 @@ index 000000000..9b7e81281
 +	return 0;
 +}
 +
-+static void acs_push_chandef(struct hostapd_iface *iface, mxl_acs_chandef *chan)
++void acs_push_chandef(struct hostapd_iface *iface, mxl_acs_chandef *chan)
 +{
 +	chan->pri = iface->conf->channel;
 +	chan->sec = iface->conf->secondary_channel,
@@ -4867,7 +5097,7 @@ index 000000000..9b7e81281
 +	chan->sel_cand = iface->mxl_iface.selected_candidate;
 +}
 +
-+static void acs_pop_chandef(struct hostapd_iface *iface, mxl_acs_chandef *chan)
++void acs_pop_chandef(struct hostapd_iface *iface, mxl_acs_chandef *chan)
 +{
 +	iface->conf->channel = chan->pri;
 +	iface->conf->secondary_channel = chan->sec;
@@ -5622,8 +5852,27 @@ index 000000000..9b7e81281
 +
 +void mxl_event_scan_results(struct hostapd_data *hapd, union wpa_event_data *data)
 +{
-+	if (!hapd->iface->conf->mxl_conf.acs_init_done)
++	if (hapd->iface->mxl_iface.retrigger_acs) {
++		hapd->iface->mxl_iface.retrigger_acs = false;
++		if (data->scan_info.aborted && !hapd->iface->cac_started) {
++			if (mxl_acs_start(hapd->iface))
++				wpa_printf(MSG_INFO, "ACS: Failed to restart ACS");
++		}
++		return;
++	}
++
++	if (hapd->iface->scan_cb)
++		hapd->iface->scan_cb(hapd->iface);
++
++	if (!hapd->iface->conf->mxl_conf.acs_init_done) {
 +		mxl_acs_recalc_ranks_and_set_chan(hapd->iface, SWR_BG_SCAN);
++	}
++
++	if (hapd->iface->mxl_iface.cac_required){
++		wpa_printf(MSG_DEBUG, "CAC pending, need to restart CAC");
++		hapd->iface->mxl_iface.cac_required = 0;
++		mxl_hostapd_dfs_cac_restart(hapd->iface);
++	}
 +}
 +
 +
@@ -5716,8 +5965,6 @@ index 000000000..9b7e81281
 +	if (iface->state == HAPD_IFACE_ENABLED)
 +		iface->mxl_iface.acs_reenable_iface = 1;
 +
-+	iface->conf->mxl_conf.acs_init_done = 0;
-+
 +	return mxl_acs_start(iface);
 +}
 +
@@ -5731,17 +5978,20 @@ index 000000000..9b7e81281
 +	/* Set values to initiate a bg scan */
 +	hapd->iface->mxl_iface.dfs_bg_cac = true;
 +
-+	wpa_printf(MSG_DEBUG, "Acs_bgscan Interval Expired, Interval secs %d", interval);
++	wpa_printf(MSG_DEBUG, "%s : acs_bgscan Interval secs %d", hapd->conf->iface, interval);
 +	if (interval) {
 +		ret = mxl_acs_check_bgscan(hapd->iface);
 +		if (ret == 0) {
-+			wpa_printf(MSG_DEBUG, "ACS Triggered acs_bgscan");
-+			eloop_register_timeout(interval, 0, mxl_acs_bgscan_timer_cb,
-+					hapd, NULL);
++			wpa_printf(MSG_INFO, "%s : ACS Triggered acs_bgscan", hapd->conf->iface);
 +		}
 +		else {
-+			wpa_printf(MSG_ERROR, "ACS Failed to trigger scan acs_bgscan");
++			hapd->iface->mxl_iface.acs_bgscan_enable = false;
++			wpa_printf(MSG_ERROR, "%s : ACS Failed to trigger scan acs_bgscan retrying in %d sec", hapd->conf->iface, interval);
 +		}
++		/* Timer will retry in the next interval cycle*/
++		eloop_register_timeout(interval, 0, mxl_acs_bgscan_timer_cb,
++				hapd, NULL);
++		wpa_printf(MSG_INFO, "%s : acs_bgscan Timer started from cb", hapd->conf->iface);
 +	}
 +}
 +
@@ -5753,18 +6003,26 @@ index 000000000..9b7e81281
 +
 +	if (interval != 0) {
 +		if (!eloop_is_timeout_registered(mxl_acs_bgscan_timer_cb, hapd, NULL)) {
-+			hapd->iface->mxl_iface.dfs_bg_cac = true;
++			wpa_printf(MSG_DEBUG, "%s : acs_bgscan trigger timer handler", hapd->conf->iface);
 +			eloop_register_timeout(interval, 0, mxl_acs_bgscan_timer_cb,
 +					hapd, NULL);
 +		}
 +	}
 +}
++
++void mxl_acs_stop_bgscan_timer_interval(struct hostapd_data *hapd)
++{
++	if (eloop_is_timeout_registered(mxl_acs_bgscan_timer_cb, hapd, NULL)) {
++		wpa_printf(MSG_DEBUG, "%s : acs_bgscan removing existing timer handler", hapd->conf->iface);
++		eloop_cancel_timeout(mxl_acs_bgscan_timer_cb, hapd, NULL);
++	}
++}
 diff --git a/src/ap/mxl_acs.h b/src/ap/mxl_acs.h
 new file mode 100644
-index 000000000..cbb5b62aa
+index 000000000..158ced990
 --- /dev/null
 +++ b/src/ap/mxl_acs.h
-@@ -0,0 +1,179 @@
+@@ -0,0 +1,182 @@
 +/******************************************************************************
 +
 +         Copyright (c) 2023 - 2024, MaxLinear, Inc.
@@ -5942,6 +6200,9 @@ index 000000000..cbb5b62aa
 +void mxl_acs_bgscan_timer_cb(void *eloop_data, void *user_ctx);
 +int mxl_acs_check_bgscan(struct hostapd_iface *iface);
 +void mxl_acs_set_bgscan_int(struct hostapd_data *hapd);
++void mxl_acs_stop_bgscan_timer_interval(struct hostapd_data *hapd);
++void acs_push_chandef(struct hostapd_iface *iface, mxl_acs_chandef *chan);
++void acs_pop_chandef(struct hostapd_iface *iface, mxl_acs_chandef *chan);
 +
 +#endif /* MXL_ACS_H */
 diff --git a/src/ap/mxl_coexistence.c b/src/ap/mxl_coexistence.c
@@ -5972,7 +6233,7 @@ index 14824cc61..8f6b9b7ab 100644
  		if (iface->conf->secondary_channel) {
  			hostapd_logger(hapd, mgmt->sa,
 diff --git a/src/ap/mxl_config.h b/src/ap/mxl_config.h
-index 76abc45e5..1e75a45a2 100644
+index 759b092dd..8b913d490 100644
 --- a/src/ap/mxl_config.h
 +++ b/src/ap/mxl_config.h
 @@ -17,6 +17,39 @@
@@ -6015,7 +6276,7 @@ index 76abc45e5..1e75a45a2 100644
  #define CCA_TH_SIZE 5
  
  struct duplicate_beacon {
-@@ -312,6 +345,47 @@ struct mxl_hostapd_config {
+@@ -313,6 +346,50 @@ struct mxl_hostapd_config {
  	u8 ap_retry_limit_data;
  	u8 ap_retry_limit_probe_resp;
  	colocated_6g_ap_info_t coloc_6g_ap_info[MAX_SUPPORTED_6GHZ_RADIO];
@@ -6058,12 +6319,15 @@ index 76abc45e5..1e75a45a2 100644
 +	u16 acs_bgscan_interval;
 +	struct acs_exclude *acs_exclude_opclass_ch_list;
 +	int acs_exclude_opclass_ch_count;
++	int acs_user_config_cw;
++	int acs_user_config_op_class;
++	int acs_user_cw_done;
 +#endif /* CONFIG_ACS */
 +#endif /* CONFIG_VENDOR_MXL_PROPRIETARY */
  
  	int allow_scan_during_cac;
  	int sub_band_dfs;
-@@ -372,6 +446,9 @@ enum duplicate_beacon_bw {
+@@ -373,6 +450,9 @@ enum duplicate_beacon_bw {
   * struct mxl_hostapd_bss_config - Per-BSS configuration
   */
  struct mxl_hostapd_bss_config {
@@ -6073,8 +6337,8 @@ index 76abc45e5..1e75a45a2 100644
  
  	/* Soft Block ACL */
  	struct soft_block_acl_db deny_mac_sb;
-@@ -420,14 +497,12 @@ struct mxl_hostapd_bss_config {
- #endif /* CONFIG_LEGACY_MULTI_AP_MXL */
+@@ -424,14 +504,12 @@ struct mxl_hostapd_bss_config {
+ #endif
  };
  
 -struct hostapd_config;
@@ -6272,7 +6536,7 @@ index 0f75c114f..8dbd2bc7a 100644
  {
  	union mxl_event_data event;
 diff --git a/src/ap/mxl_hostapd.c b/src/ap/mxl_hostapd.c
-index 6e274334c..8fd5608a5 100644
+index baa692b4f..0019a55c6 100644
 --- a/src/ap/mxl_hostapd.c
 +++ b/src/ap/mxl_hostapd.c
 @@ -36,6 +36,9 @@
@@ -6285,7 +6549,7 @@ index 6e274334c..8fd5608a5 100644
  
  #define COC_POWER_1x1_STATE 1
  #define COC_POWER_2x2_STATE 2
-@@ -1780,6 +1783,8 @@ void mxl_hostapd_setup_interface_post(struct hostapd_iface *iface)
+@@ -1786,6 +1789,8 @@ void mxl_hostapd_setup_interface_post(struct hostapd_iface *iface)
  	struct mxl_hostapd_config *mxl_conf = &hapd->iconf->mxl_conf;
  	int ap_retry_limit_cfg[3];
  
@@ -6294,7 +6558,7 @@ index 6e274334c..8fd5608a5 100644
  	/* Set AP retry limit only if user configured this */
  	ap_retry_limit_cfg[0] = mxl_conf->ap_retry_limit;
  	ap_retry_limit_cfg[1] = mxl_conf->ap_retry_limit_data;
-@@ -2021,6 +2026,7 @@ int is_5ghz_op_class(u8 op_class)
+@@ -2027,6 +2032,7 @@ int is_5ghz_op_class(u8 op_class)
  {
  	return op_class >= 115 && op_class <= 130;
  }
@@ -6302,7 +6566,7 @@ index 6e274334c..8fd5608a5 100644
  int nl80211_nlmsg_set_default_size_vendor_mxl(size_t nlmsg_new_size);
  
  static void mxl_hostapd_nl80211_driver_init(struct hostapd_iface *iface)
-@@ -2039,7 +2045,14 @@ static void mxl_hostapd_nl80211_driver_init(struct hostapd_iface *iface)
+@@ -2045,7 +2051,14 @@ static void mxl_hostapd_nl80211_driver_init(struct hostapd_iface *iface)
  
  void mxl_hostapd_driver_init(struct hostapd_iface *iface, struct wpa_init_params *params)
  {
@@ -6317,7 +6581,28 @@ index 6e274334c..8fd5608a5 100644
  
  	mxl_hostapd_nl80211_driver_init(iface);
  }
-@@ -2677,6 +2690,9 @@ int mxl_hostapd_no_ir_channel_list_updated(struct hostapd_iface *iface)
+@@ -2289,6 +2302,20 @@ int mxl_hostapd_prepare_reload_bss(struct hostapd_data *hapd)
+ 	return 0;
+ }
+ 
++void mxl_hostapd_restore_user_configured_cw(struct hostapd_iface *iface, struct hostapd_config *oldconf)
++{
++#ifdef CONFIG_VENDOR_MXL_PROPRIETARY
++#ifdef CONFIG_ACS
++	if (!iface->conf->mxl_conf.acs_user_cw_done) {
++		iface->conf->mxl_conf.acs_user_config_cw = oldconf->mxl_conf.acs_user_config_cw;
++		iface->conf->mxl_conf.acs_user_config_op_class = oldconf->mxl_conf.acs_user_config_op_class;
++		iface->conf->mxl_conf.acs_user_cw_done = oldconf->mxl_conf.acs_user_cw_done;
++	}
++#endif /* CONFIG_ACS */
++#endif /* CONFIG_VENDOR_MXL_PROPRIETARY */
++	return;
++}
++
+ void mxl_hostapd_cleanup_iface(struct hostapd_iface *iface)
+ {
+ 	mxl_hostapd_dfs_history_deinit(iface);
+@@ -2683,6 +2710,9 @@ int mxl_hostapd_no_ir_channel_list_updated(struct hostapd_iface *iface)
  	 *   channel of the connected AP interface.
  	 */
  	if (iface->conf->acs && !iface->conf->mxl_conf.is_client_mode) {
@@ -6327,7 +6612,34 @@ index 6e274334c..8fd5608a5 100644
  		iface->conf->channel = 0;
  	}
  
-@@ -3538,3 +3554,10 @@ size_t mxl_hostapd_get_mbssid_tx_bss_idx(struct hostapd_iface *iface)
+@@ -3219,9 +3249,23 @@ void mxl_hostapd_set_conf_from_freq_params(struct hostapd_iface *iface, const st
+ void mxl_hostapd_update_user_conf_cw(struct hostapd_iface *iface)
+ {
+ 	/* Align MXL Proprietary ch_width (4 - 320MHz) according to hostapd (9 - 320MHz) */
+-	iface->mxl_iface.acs_user_config_cw = is_6ghz_op_class(iface->conf->op_class) ?
+-		op_class_to_ch_width(iface->conf->op_class) : hostapd_get_oper_chwidth(iface->conf);
+-	iface->mxl_iface.acs_user_config_op_class = iface->conf->op_class;
++#ifdef CONFIG_VENDOR_MXL_PROPRIETARY
++#ifdef CONFIG_ACS
++	if (is_6ghz_op_class(iface->conf->op_class) && !iface->conf->mxl_conf.acs_user_cw_done) {
++		iface->conf->mxl_conf.acs_user_config_cw = op_class_to_ch_width(iface->conf->op_class);
++		iface->conf->mxl_conf.acs_user_config_op_class = iface->conf->op_class;
++		iface->conf->mxl_conf.acs_user_cw_done = 1;
++		iface->mxl_iface.selected_candidate = -1;
++	}
++	else if (!iface->conf->mxl_conf.acs_user_cw_done) {
++		iface->conf->mxl_conf.acs_user_config_cw = hostapd_get_oper_chwidth(iface->conf);
++		iface->conf->mxl_conf.acs_user_config_op_class = iface->conf->op_class;
++		iface->conf->mxl_conf.acs_user_cw_done = 1;
++		iface->mxl_iface.selected_candidate = -1;
++	}
++#endif /* CONFIG_ACS */
++#endif /* CONFIG_VENDOR_MXL_PROPRIETARY */
++	return;
+ }
+ 
+ void mxl_hostapd_init(struct hostapd_iface * hapd_iface)
+@@ -3544,3 +3588,21 @@ size_t mxl_hostapd_get_mbssid_tx_bss_idx(struct hostapd_iface *iface)
  
  	return MULTIBSS_REFERENCE_BSS_IDX;
  }
@@ -6335,11 +6647,22 @@ index 6e274334c..8fd5608a5 100644
 +void mxl_acs_set_bgscan_interval(struct hostapd_data *hapd)
 +{
 +#ifdef CONFIG_VENDOR_MXL_PROPRIETARY
++#ifdef CONFIG_ACS
 +	mxl_acs_set_bgscan_int(hapd);
++#endif /* CONFIG_ACS */
++#endif /* CONFIG_VENDOR_MXL_PROPRIETARY */
++}
++
++void mxl_acs_stop_bgscan_timer(struct hostapd_data *hapd)
++{
++#ifdef CONFIG_VENDOR_MXL_PROPRIETARY
++#ifdef CONFIG_ACS
++	mxl_acs_stop_bgscan_timer_interval(hapd);
++#endif /* CONFIG_ACS */
 +#endif /* CONFIG_VENDOR_MXL_PROPRIETARY */
 +}
 diff --git a/src/ap/mxl_hostapd.h b/src/ap/mxl_hostapd.h
-index 53130e588..6fd0d2424 100644
+index 53130e588..504515693 100644
 --- a/src/ap/mxl_hostapd.h
 +++ b/src/ap/mxl_hostapd.h
 @@ -16,6 +16,9 @@
@@ -6352,10 +6675,12 @@ index 53130e588..6fd0d2424 100644
  #include "mxl_sub_band_dfs.h"
  #include "mxl_zwdfs.h"
  #include "sta_info.h"
-@@ -70,8 +73,51 @@ struct hostapd_failsafe_freq_params {
+@@ -70,8 +73,49 @@ struct hostapd_failsafe_freq_params {
  struct mxl_hostapd_iface {
  	u32 sta_aid_link[MXL_AID_WORDS];
  	s8 stas_free_reason; /* the reason for all stations remove */
+-	int acs_user_config_cw;
+-	int acs_user_config_op_class;
 +#ifdef CONFIG_VENDOR_MXL_PROPRIETARY
 +	unsigned int acs_update_in_progress:1;
 +	unsigned int cac_required:1;
@@ -6397,14 +6722,12 @@ index 53130e588..6fd0d2424 100644
 +	bool dfs_bg_cac;
 +	int acs_reenable_iface;
 +#endif /* CONFIG_VENDOR_MXL_PROPRIETARY */
- 	int acs_user_config_cw;
- 	int acs_user_config_op_class;
 +#endif /* CONFIG_ACS */
 +
  	int allow_scan_during_cac;
  	struct hostapd_failsafe_freq_params failsafe;
  	u8 rbm; /* Radar Bit Map */
-@@ -188,6 +234,15 @@ int mxl_hostapd_get_aid(struct hostapd_data *hapd, struct sta_info *sta);
+@@ -188,6 +232,15 @@ int mxl_hostapd_get_aid(struct hostapd_data *hapd, struct sta_info *sta);
  void mxl_hostapd_free_aid(struct hostapd_data *hapd, struct sta_info *sta);
  void mxl_hostapd_clear_old(struct hostapd_iface *iface, s32 flush);
  bool mxl_hostapd_is_recovery(struct hostapd_iface *iface);
@@ -6420,11 +6743,12 @@ index 53130e588..6fd0d2424 100644
  int mxl_hostapd_get_num_width(enum oper_chan_width width, int secondary);
  const char * mxl_hostapd_channel_switch_text(enum hostapd_channel_switch_reason s);
  void mxl_hostapd_channel_switch_reason_set(struct hostapd_iface *iface,
-@@ -269,4 +324,5 @@ void mxl_hostapd_check_limit_reached(struct hostapd_data *hapd, const u8 *sta_ad
+@@ -269,4 +322,6 @@ void mxl_hostapd_check_limit_reached(struct hostapd_data *hapd, const u8 *sta_ad
  int mxl_hostapd_check_and_reorder_bss_conf(struct hostapd_iface *iface, struct hostapd_config *newconf);
  struct hostapd_data *mxl_hostapd_get_setup_mbssid_bss(struct hostapd_iface *iface, size_t idx);
  size_t mxl_hostapd_get_mbssid_tx_bss_idx(struct hostapd_iface *iface);
 +void mxl_acs_set_bgscan_interval(struct hostapd_data *hapd);
++void mxl_acs_stop_bgscan_timer(struct hostapd_data *hapd);
  #endif /* MXL_HOSTAPD_H */
 diff --git a/src/ap/mxl_hostapd_proprietary.c b/src/ap/mxl_hostapd_proprietary.c
 new file mode 100644
@@ -6539,7 +6863,7 @@ index 05c811744..7403a3b41 100644
  }
  
 diff --git a/src/ap/mxl_zwdfs.c b/src/ap/mxl_zwdfs.c
-index 3699af882..8097199f1 100644
+index 3699af882..cff154d45 100644
 --- a/src/ap/mxl_zwdfs.c
 +++ b/src/ap/mxl_zwdfs.c
 @@ -22,7 +22,6 @@
@@ -6550,7 +6874,43 @@ index 3699af882..8097199f1 100644
  
  static bool mxl_hostapd_is_zwdfs_iface(struct hostapd_iface *iface)
  {
-@@ -694,3 +693,75 @@ int mxl_hostapd_handle_zwdfs_switch(struct hostapd_iface *iface, int success, in
+@@ -147,6 +146,7 @@ int mxl_hostapd_zwdfs_switch(struct hostapd_iface *iface, int cac_status,
+ 			     int freq, int chan_width, int cf1, int cf2)
+ {
+ 	size_t i;
++	int status = 1;
+ 	int ret = 0;
+ 	int expected_num_chans;
+ 	struct hapd_interfaces *ifaces = iface->interfaces;
+@@ -206,21 +206,26 @@ int mxl_hostapd_zwdfs_switch(struct hostapd_iface *iface, int cac_status,
+ 				if (!(ret = mxl_hostapd_zwdfs_restart_cac(iface, iface->radar_background.channel, chan_width))) {
+ 					goto end;
+ 				}
++				status = 0;
+ 			}
+ 			wpa_printf(MSG_ERROR, "ZWDFS: hostapd_switch_channel failed: %s", csa_iface->bss[0]->conf->iface);
+ 			goto cleanup;
+ 		}
+ 	}
++	status = 0;
+ 
+ cleanup:
+ 	ret = mxl_hostapd_set_zwdfs_antenna(iface->bss[0], 0);
+-	if (ret)
++	if (ret) {
+ 		wpa_printf(MSG_ERROR, "ZWDFS: Failed to disable antenna");
++		status = 1;
++	}
+ 
+ 	iface->mxl_iface.zwdfs_info.csa_iface = NULL;
+ 	os_free(iface->mxl_iface.zwdfs_info.csa_settings);
+ 	iface->mxl_iface.zwdfs_info.csa_settings = NULL;
+ end:
++	ret = status;
+ 	return ret;
+ }
+ 
+@@ -694,3 +699,75 @@ int mxl_hostapd_handle_zwdfs_switch(struct hostapd_iface *iface, int success, in
  	}
  	return 0;
  }
@@ -6638,7 +6998,7 @@ index b84cd8f89..7977e21a8 100644
 +bool mxl_acs_set_bg_cac(struct hostapd_iface *iface);
  #endif /* MXL_ZWDFS_H */
 diff --git a/src/common/ieee802_11_common.c b/src/common/ieee802_11_common.c
-index 13c2e3531..c0384ea73 100644
+index b45e52f7c..fe211b89b 100644
 --- a/src/common/ieee802_11_common.c
 +++ b/src/common/ieee802_11_common.c
 @@ -253,6 +253,13 @@ static int ieee802_11_parse_vendor_specific(const u8 *pos, size_t elen,
@@ -6750,7 +7110,7 @@ index 764074a38..2d8838086 100644
  bool mxl_is_6ghz_unii5_unii7(int freq);
  
 diff --git a/src/common/mxl_ieee802_11_defs.h b/src/common/mxl_ieee802_11_defs.h
-index 26b7ef448..654571a53 100644
+index a87408867..06f17706f 100644
 --- a/src/common/mxl_ieee802_11_defs.h
 +++ b/src/common/mxl_ieee802_11_defs.h
 @@ -16,7 +16,7 @@
@@ -6777,10 +7137,10 @@ index 670acca98..d5ad20826 100644
  MXL_EXPORT_HOSTAPD_EVENT_API(mxl_drv_event_softblock_drop)
  MXL_EXPORT_HOSTAPD_EVENT_API(mxl_drv_event_wds_connect)
 diff --git a/src/common/vendor_cmds_copy.h b/src/common/vendor_cmds_copy.h
-index 569c9e4da..ee74d4c0c 100644
+index 3a132e037..3c2a21af1 100644
 --- a/src/common/vendor_cmds_copy.h
 +++ b/src/common/vendor_cmds_copy.h
-@@ -796,6 +796,35 @@ struct mxl_vendor_ml_critical_update {
+@@ -857,6 +857,35 @@ struct mxl_vendor_ml_critical_update {
  *                           Event structures                                   *
  *******************************************************************************/
  

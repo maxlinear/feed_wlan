@@ -1,4 +1,4 @@
-From 68c29f2e0aed188bd1c977db3bb2cd7ab92fc199 Mon Sep 17 00:00:00 2001
+From d469a7c2f5c3ca32f443ca53ec49a11da3b9edd8 Mon Sep 17 00:00:00 2001
 From: spatel <spatel@maxlinear.com>
 Date: Thu, 10 Oct 2024 20:20:23 +0530
 Subject: [PATCH] WLANRTSYS-50839 [MXL] MXL DFS Dynamic failsafe
@@ -14,9 +14,8 @@ Subject: [PATCH] WLANRTSYS-50839 [MXL] MXL DFS Dynamic failsafe
  src/ap/mxl_common_proprietary.c      | 109 +++++++++++++++++++++++++++
  src/ap/mxl_config.h                  |   2 +
  src/ap/mxl_dfs_common.c              |  21 +++++-
- src/ap/mxl_dfs_common.h              |   6 ++
  src/ap/mxl_zwdfs.c                   |  20 +++++
- 12 files changed, 215 insertions(+), 1 deletion(-)
+ 11 files changed, 209 insertions(+), 1 deletion(-)
  create mode 100644 src/ap/mxl_common_proprietary.c
 
 diff --git a/hostapd/Makefile b/hostapd/Makefile
@@ -32,10 +31,10 @@ index 26c8381ec..e0a384698 100644
  ifdef CONFIG_AFC
  OBJS += ../src/ap/mxl_afc.o
 diff --git a/hostapd/ctrl_iface.c b/hostapd/ctrl_iface.c
-index 3d58a03a6..13364e89d 100644
+index 97f070871..cad6ee347 100644
 --- a/hostapd/ctrl_iface.c
 +++ b/hostapd/ctrl_iface.c
-@@ -1500,6 +1500,10 @@ static int hostapd_ctrl_iface_get(struct hostapd_data *hapd, char *cmd,
+@@ -1516,6 +1516,10 @@ static int hostapd_ctrl_iface_get(struct hostapd_data *hapd, char *cmd,
  		if (os_snprintf_error(buflen, res))
  			return -1;
  		return res;
@@ -47,10 +46,10 @@ index 3d58a03a6..13364e89d 100644
  
  	return -1;
 diff --git a/hostapd/mxl_config.c b/hostapd/mxl_config.c
-index b4d112683..dd42fbe8a 100644
+index 49a1aff3c..93b576995 100644
 --- a/hostapd/mxl_config.c
 +++ b/hostapd/mxl_config.c
-@@ -1715,6 +1715,10 @@ int mxl_hostapd_config_fill (struct hostapd_config *conf,
+@@ -1722,6 +1722,10 @@ int mxl_hostapd_config_fill (struct hostapd_config *conf,
  		mxl_conf->sub_band_dfs = val;
  	} else if (os_strcmp(buf, "dfs_channels_state_file_location") == 0) {
  		mxl_conf->dfs_channels_state_file = os_strdup(pos);
@@ -62,7 +61,7 @@ index b4d112683..dd42fbe8a 100644
  		int val = atoi(pos);
  		if (!IS_VALID_BOOL_RANGE(val)) {
 diff --git a/hostapd/mxl_config_proprietary.c b/hostapd/mxl_config_proprietary.c
-index 96148962f..ec51404f4 100644
+index e8517f6f5..aeb1a7d2c 100644
 --- a/hostapd/mxl_config_proprietary.c
 +++ b/hostapd/mxl_config_proprietary.c
 @@ -22,6 +22,22 @@
@@ -88,7 +87,7 @@ index 96148962f..ec51404f4 100644
  int mxl_config_check_dfs_debug_chan(struct hostapd_config *conf, const char *buf, char* pos)
  {
  	struct mxl_hostapd_config *mxl_conf = &conf->mxl_conf;
-@@ -447,6 +463,7 @@ memcpy_fail:
+@@ -435,6 +451,7 @@ memcpy_fail:
  continue_no_fail:
  #endif /* CONFIG_ACS */
  
@@ -97,10 +96,10 @@ index 96148962f..ec51404f4 100644
  }
  
 diff --git a/hostapd/mxl_ctrl_iface.c b/hostapd/mxl_ctrl_iface.c
-index f16f2a9e4..a084d5e16 100644
+index 69269cda6..2026a24c9 100644
 --- a/hostapd/mxl_ctrl_iface.c
 +++ b/hostapd/mxl_ctrl_iface.c
-@@ -3376,6 +3376,16 @@ int mxl_hostapd_ctrl_iface_set(struct hostapd_data *hapd, char *cmd, int *ret)
+@@ -3415,6 +3415,16 @@ int mxl_hostapd_ctrl_iface_set(struct hostapd_data *hapd, char *cmd, int *ret)
  	return 1;
  }
  
@@ -137,10 +136,10 @@ index 751685422..073229852 100644
  #endif /* CONFIG_VENDOR_MXL_PROPRIETARY */
  #endif /* MXL_CTRL_IFACE_H */
 diff --git a/hostapd/mxl_ctrl_iface_proprietary.c b/hostapd/mxl_ctrl_iface_proprietary.c
-index 483ab7042..3de573258 100644
+index 8d9c5965d..65c65d7ea 100644
 --- a/hostapd/mxl_ctrl_iface_proprietary.c
 +++ b/hostapd/mxl_ctrl_iface_proprietary.c
-@@ -366,3 +366,23 @@ int mxl_hostapd_ctrl_iface_acs_start(struct hostapd_iface *iface, enum chan_widt
+@@ -405,3 +405,23 @@ int mxl_hostapd_ctrl_iface_acs_start(struct hostapd_iface *iface, enum chan_widt
  
  	return mxl_acs_start(iface);
  }
@@ -280,7 +279,7 @@ index 000000000..e4f7ad46d
 +#endif
 +}
 diff --git a/src/ap/mxl_config.h b/src/ap/mxl_config.h
-index 39916336b..ce462ba9a 100644
+index 0987c8ca6..f4bc7bb1e 100644
 --- a/src/ap/mxl_config.h
 +++ b/src/ap/mxl_config.h
 @@ -49,6 +49,7 @@ void mxl_hostapd_config_fill_acs(struct hostapd_config *conf, char *pos);
@@ -291,8 +290,8 @@ index 39916336b..ce462ba9a 100644
  #endif /* CONFIG_VENDOR_MXL_PROPRIETARY */
  
  #define CCA_TH_SIZE 5
-@@ -387,6 +388,7 @@ struct mxl_hostapd_config {
- 	int acs_exclude_opclass_ch_count;
+@@ -391,6 +392,7 @@ struct mxl_hostapd_config {
+ 	int acs_user_cw_done;
  #endif /* CONFIG_ACS */
  	int dfs_debug_chan;
 +	int dynamic_failsafe;
@@ -300,10 +299,10 @@ index 39916336b..ce462ba9a 100644
  
  	int allow_scan_during_cac;
 diff --git a/src/ap/mxl_dfs_common.c b/src/ap/mxl_dfs_common.c
-index 36ee9f13f..c1e5f41a9 100644
+index 9c79222d1..0531f869f 100644
 --- a/src/ap/mxl_dfs_common.c
 +++ b/src/ap/mxl_dfs_common.c
-@@ -128,6 +128,20 @@ mxl_dfs_get_valid_channel_failsafe(struct hostapd_iface *iface,
+@@ -150,6 +150,20 @@ mxl_dfs_get_valid_channel_failsafe(struct hostapd_iface *iface,
  {
  	struct hostapd_channel_data *channel = NULL;
  
@@ -324,7 +323,7 @@ index 36ee9f13f..c1e5f41a9 100644
  	if (0 != iface->mxl_iface.failsafe.freq) {
  		wpa_printf(MSG_DEBUG, "Failsafe channel: switching to fixed fail-safe channel %d", iface->mxl_iface.failsafe.freq);
  		channel = mxl_dfs_get_channel_fixed_failsafe(iface, secondary_channel,
-@@ -140,6 +154,9 @@ mxl_dfs_get_valid_channel_failsafe(struct hostapd_iface *iface,
+@@ -162,6 +176,9 @@ mxl_dfs_get_valid_channel_failsafe(struct hostapd_iface *iface,
  
  bool mxl_dfs_is_failsafe_enabled(struct hostapd_iface *iface)
  {
@@ -334,7 +333,7 @@ index 36ee9f13f..c1e5f41a9 100644
  	return (0 != iface->mxl_iface.failsafe.freq);
  }
  
-@@ -175,9 +192,11 @@ void mxl_hostapd_dfs_cac_restart(struct hostapd_iface *iface)
+@@ -197,9 +214,11 @@ void mxl_hostapd_dfs_cac_restart(struct hostapd_iface *iface)
  #ifdef CONFIG_ACS
  #ifdef CONFIG_VENDOR_MXL_PROPRIETARY
  		if (!mxl_dfs_is_failsafe_enabled(iface) && iface->conf->mxl_conf.acs_init_done)
@@ -347,28 +346,11 @@ index 36ee9f13f..c1e5f41a9 100644
  #endif
  			mxl_hostapd_dfs_start_channel_switch(iface);
  		return;
-diff --git a/src/ap/mxl_dfs_common.h b/src/ap/mxl_dfs_common.h
-index 0eadd3ea4..d897ebc62 100644
---- a/src/ap/mxl_dfs_common.h
-+++ b/src/ap/mxl_dfs_common.h
-@@ -75,6 +75,12 @@ int mxl_hostapd_dfs_start_cac(struct hostapd_iface *iface, int freq,
- 			      int ht_enabled, int chan_offset, int chan_width,
- 			      int cf1, int cf2);
- int mxl_dfs_check_chans_available(struct hostapd_iface *iface, int start_chan_idx, int n_chans);
-+#ifdef CONFIG_VENDOR_MXL_PROPRIETARY
-+struct hostapd_channel_data *
-+mxl_dfs_get_channel_dynamic_failsafe(struct hostapd_iface *iface, int *secondary_channel,
-+				     u8 *vht_oper_centr_freq_seg0_idx, u8 *vht_oper_centr_freq_seg1_idx,
-+				     bool skip_usable, struct hostapd_freq_params* freq_params);
-+#endif /* CONFIG_VENDOR_MXL_PROPRIETARY */
- void mxl_dfs_cut_cw_by_half(struct hostapd_iface *iface, bool backup);
- void mxl_dfs_restore_original_cw(struct hostapd_iface *iface);
- 
 diff --git a/src/ap/mxl_zwdfs.c b/src/ap/mxl_zwdfs.c
-index 34c6dfc89..1cda4e3b6 100644
+index 862cb116b..f5caa40a6 100644
 --- a/src/ap/mxl_zwdfs.c
 +++ b/src/ap/mxl_zwdfs.c
-@@ -301,6 +301,10 @@ int mxl_hostapd_set_zwdfs_antenna(struct hostapd_data *hapd, int enable)
+@@ -307,6 +307,10 @@ int mxl_hostapd_set_zwdfs_antenna(struct hostapd_data *hapd, int enable)
  		return -1;
  	}
  
@@ -379,7 +361,7 @@ index 34c6dfc89..1cda4e3b6 100644
  	/* set failsafe channel to channel retreived by set_first_non_dfs_channel().
  	 * this + disabling dynamic failsafe, will make sure zwdfs radio will not
  	 * jump to another DFS channel upon radar hit
-@@ -604,6 +608,9 @@ void mxl_hostapd_zwdfs_cac_on_radar(struct hostapd_iface *iface, struct csa_sett
+@@ -610,6 +614,9 @@ void mxl_hostapd_zwdfs_cac_on_radar(struct hostapd_iface *iface, struct csa_sett
  	int err = -1;
  	struct csa_settings new_chan_settings;
  	struct hostapd_channel_data *channel = NULL;
@@ -389,7 +371,7 @@ index 34c6dfc89..1cda4e3b6 100644
  
  	/* If the new channel is a static failsafe channel, then no need for ZWDFS and
  	 * directly set the channel to operational vaps.
-@@ -644,6 +651,19 @@ void mxl_hostapd_zwdfs_cac_on_radar(struct hostapd_iface *iface, struct csa_sett
+@@ -650,6 +657,19 @@ void mxl_hostapd_zwdfs_cac_on_radar(struct hostapd_iface *iface, struct csa_sett
  		goto fail;
  	}
  

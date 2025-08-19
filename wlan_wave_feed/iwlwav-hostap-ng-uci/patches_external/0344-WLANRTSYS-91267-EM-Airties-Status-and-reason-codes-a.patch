@@ -1,0 +1,139 @@
+From d98928861bb51e02490747bb574067ce2fd45957 Mon Sep 17 00:00:00 2001
+From: Balaji <bmanoharan@maxlinear.com>
+Date: Fri, 4 Jul 2025 14:04:28 +0800
+Subject: [PATCH] WLANRTSYS-91267 [EM] [Airties] Status and reason codes are
+ not proper in Failed Connection Message
+
+Issue: Status and reason codes are not proper in Failed Connection Message.
+
+Fix: Extend PSK mismatch logging to include status codes for SAE failures
+and reason codes for WPA-PSK failures.
+---
+ src/ap/ieee802_11.c    |  4 ++++
+ src/ap/wpa_auth.c      | 20 ++++++++++++++++++++
+ src/ap/wpa_auth.h      |  4 ++++
+ src/ap/wpa_auth_glue.c | 16 ++++++++++++++++
+ 4 files changed, 44 insertions(+)
+
+diff --git a/src/ap/ieee802_11.c b/src/ap/ieee802_11.c
+index 652fccd26..e94962c7d 100644
+--- a/src/ap/ieee802_11.c
++++ b/src/ap/ieee802_11.c
+@@ -1605,6 +1605,10 @@ static void handle_auth_sae(struct hostapd_data *hapd, struct sta_info *sta,
+ 			if (sae_check_confirm(sta->sae, var, var_len,
+ 					      NULL) < 0) {
+ 				resp = WLAN_STATUS_CHALLENGE_FAIL;
++#ifdef CONFIG_VENDOR_MXL
++				wpa_msg(hapd->msg_ctx, MSG_INFO, AP_STA_POSSIBLE_PSK_MISMATCH MACSTR " status=%d",
++					MAC2STR(sta->addr), resp);
++#endif /* CONFIG_VENDOR_MXL */
+ 				goto reply;
+ 			}
+ 			sta->sae->rc = peer_send_confirm;
+diff --git a/src/ap/wpa_auth.c b/src/ap/wpa_auth.c
+index ade809559..b0d1d7571 100644
+--- a/src/ap/wpa_auth.c
++++ b/src/ap/wpa_auth.c
+@@ -120,12 +120,21 @@ static inline int wpa_auth_mic_failure_report(
+ }
+ 
+ 
++#ifdef CONFIG_VENDOR_MXL
++static inline void wpa_auth_psk_failure_report(
++	struct wpa_authenticator *wpa_auth, const u8 *addr, u16 disconnect_reason)
++{
++	if (wpa_auth->cb->psk_failure_report)
++		wpa_auth->cb->psk_failure_report(wpa_auth->cb_ctx, addr, disconnect_reason);
++}
++#else
+ static inline void wpa_auth_psk_failure_report(
+ 	struct wpa_authenticator *wpa_auth, const u8 *addr)
+ {
+ 	if (wpa_auth->cb->psk_failure_report)
+ 		wpa_auth->cb->psk_failure_report(wpa_auth->cb_ctx, addr);
+ }
++#endif /* CONFIG_VENDOR_MXL */
+ 
+ 
+ static inline void wpa_auth_set_eapol(struct wpa_authenticator *wpa_auth,
+@@ -3423,7 +3432,11 @@ SM_STATE(WPA_PTK, PTKCALCNEGOTIATING)
+ 				"invalid MIC in msg 2/4 of 4-Way Handshake");
+ 		if (psk_found) {
+ 			sm->disconnect_reason = WLAN_REASON_MICHAEL_MIC_FAILURE;
++#ifdef CONFIG_VENDOR_MXL
++			wpa_auth_psk_failure_report(sm->wpa_auth, sm->addr, sm->disconnect_reason);
++#else
+ 			wpa_auth_psk_failure_report(sm->wpa_auth, sm->addr);
++#endif /* CONFIG_VENDOR_MXL */
+ 		}
+ 		goto out;
+ 	}
+@@ -4787,8 +4800,15 @@ SM_STEP(WPA_PTK)
+ 					 LOGGER_DEBUG,
+ 					 "PTKSTART: Retry limit %u reached",
+ 					 conf->wpa_pairwise_update_count);
++#ifdef CONFIG_VENDOR_MXL
++			if (sm->disconnect_reason != WLAN_REASON_MICHAEL_MIC_FAILURE) {
++				sm->disconnect_reason = WLAN_REASON_4WAY_HANDSHAKE_TIMEOUT;
++				wpa_auth_psk_failure_report(sm->wpa_auth, sm->addr, sm->disconnect_reason);
++			}
++#else
+ 			if (sm->disconnect_reason != WLAN_REASON_MICHAEL_MIC_FAILURE)
+ 				sm->disconnect_reason = WLAN_REASON_4WAY_HANDSHAKE_TIMEOUT;
++#endif /* CONFIG_VENDOR_MXL */
+ 			SM_ENTER(WPA_PTK, DISCONNECT);
+ 		} else if (sm->TimeoutEvt)
+ 			SM_ENTER(WPA_PTK, PTKSTART);
+diff --git a/src/ap/wpa_auth.h b/src/ap/wpa_auth.h
+index e6c112d45..eb45d6f36 100644
+--- a/src/ap/wpa_auth.h
++++ b/src/ap/wpa_auth.h
+@@ -360,7 +360,11 @@ struct wpa_auth_callbacks {
+ 		       const char *txt);
+ 	void (*disconnect)(void *ctx, const u8 *addr, u16 reason);
+ 	int (*mic_failure_report)(void *ctx, const u8 *addr);
++#ifdef CONFIG_VENDOR_MXL
++	void (*psk_failure_report)(void *ctx, const u8 *addr, u16 disconnect_reason);
++#else
+ 	void (*psk_failure_report)(void *ctx, const u8 *addr);
++#endif /* CONFIG_VENDOR_MXL */
+ 	void (*set_eapol)(void *ctx, const u8 *addr, wpa_eapol_variable var,
+ 			  int value);
+ 	int (*get_eapol)(void *ctx, const u8 *addr, wpa_eapol_variable var);
+diff --git a/src/ap/wpa_auth_glue.c b/src/ap/wpa_auth_glue.c
+index 2c77fb482..65f1b7d7f 100644
+--- a/src/ap/wpa_auth_glue.c
++++ b/src/ap/wpa_auth_glue.c
+@@ -280,6 +280,21 @@ static int hostapd_wpa_auth_mic_failure_report(void *ctx, const u8 *addr)
+ }
+ 
+ 
++#ifdef CONFIG_VENDOR_MXL
++/* hostapd_wpa_auth_psk_failure_report is modified to support Airties feature [CORE_AIR_0031].
++ * And these changes are submitted to opensource for review. Once it is successfully merged to
++ * opensource, below conditional CONFIG_VENDOR_MXL compilation flags need to be removed.
++ */
++static void hostapd_wpa_auth_psk_failure_report(void *ctx, const u8 *addr, u16 disconnect_reason)
++{
++	struct hostapd_data *hapd = ctx;
++	wpa_msg(hapd->msg_ctx, MSG_INFO, AP_STA_POSSIBLE_PSK_MISMATCH MACSTR " reason=%d",
++		MAC2STR(addr), disconnect_reason);
++#ifdef UBUS_SUPPORT
++	hostapd_ubus_notify(hapd, "key-mismatch", addr);
++#endif /* UBUS_SUPPORT */
++}
++#else
+ static void hostapd_wpa_auth_psk_failure_report(void *ctx, const u8 *addr)
+ {
+ 	struct hostapd_data *hapd = ctx;
+@@ -289,6 +304,7 @@ static void hostapd_wpa_auth_psk_failure_report(void *ctx, const u8 *addr)
+ 	hostapd_ubus_notify(hapd, "key-mismatch", addr);
+ #endif /* UBUS_SUPPORT */
+ }
++#endif /* CONFIG_VENDOR_MXL */
+ 
+ 
+ static void hostapd_wpa_auth_set_eapol(void *ctx, const u8 *addr,
+-- 
+2.43.0
+

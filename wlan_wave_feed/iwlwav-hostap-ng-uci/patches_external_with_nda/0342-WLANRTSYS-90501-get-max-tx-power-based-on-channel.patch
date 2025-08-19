@@ -1,0 +1,35 @@
+From f0a73d31ba1fdf7aec92ebf417a111248d505cff Mon Sep 17 00:00:00 2001
+From: mj <mj@maxlinear.com>
+Date: Tue, 8 Jul 2025 23:27:37 +0530
+Subject: [PATCH] WLANRTSYS-90501 get max tx power based on channel
+
+Requirement: Get the max tx power from driver based on the channel
+Implementation: Implemented channel-specific logic to retrieve maximum TX power via a new vendor command. The command determines the PHY mode and maximum bandwidth based on the input channel and regulatory domain.
+
+For FCC regulatory domains:
+Channels in the 2.4 GHz band use the 11AG PHY mode with a maximum bandwidth of 20 MHz.
+Channels in the 5 GHz band use the 11AX PHY mode with a maximum bandwidth of 160 MHz.
+Channels in the 6 GHz band use the 11BE PHY mode with a maximum bandwidth of 320 MHz.
+The TX power is returned based on the PHY mode and its corresponding maximum supported bandwidth.
+
+For non-FCC regulatory domains:
+All bands return the TX power for 20 MHz bandwidth, regardless of the PHY mode.
+---
+ src/common/vendor_cmds_copy.h | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/src/common/vendor_cmds_copy.h b/src/common/vendor_cmds_copy.h
+index 3970cd209..927dbb154 100644
+--- a/src/common/vendor_cmds_copy.h
++++ b/src/common/vendor_cmds_copy.h
+@@ -427,6 +427,7 @@ enum ltq_nl80211_vendor_subcmds {
+   LTQ_NL80211_VENDOR_SUBCMD_GET_AQM_STA_EN,
+   LTQ_NL80211_VENDOR_SUBCMD_SET_SCS_ENABLE,
+   LTQ_NL80211_VENDOR_SUBCMD_GET_SCS_ENABLE,
++  LTQ_NL80211_VENDOR_SUBCMD_GET_MAX_TX_POWER,
+   /* add new iw sub commands here */
+ 
+   /* used to define LTQ_NL80211_VENDOR_SUBCMD_MAX below */
+-- 
+2.43.0
+

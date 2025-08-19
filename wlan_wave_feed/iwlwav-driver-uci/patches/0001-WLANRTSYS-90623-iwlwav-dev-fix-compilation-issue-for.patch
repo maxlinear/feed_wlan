@@ -1,0 +1,125 @@
+diff --git a/drivers/net/wireless/intel/iwlwav/Makefile b/drivers/net/wireless/intel/iwlwav/Makefile
+index 2130cb7..89e2692 100644
+--- a/drivers/net/wireless/intel/iwlwav/Makefile
++++ b/drivers/net/wireless/intel/iwlwav/Makefile
+@@ -13,7 +13,7 @@ logger_binary_name	:= mtlk.o
+ logger_origin_id	:= 8
+ 
+ ifeq ($(CPTCFG_BACKPORTED_WIRELESS),y)
+-CC := abs_top_srcdir=$(abs_top) abs_builddir=$(abs_builddir) \
++override CC := abs_top_srcdir=$(abs_top) abs_builddir=$(abs_builddir) \
+   abs_logprep_srcdir=$(abs_logprep_srcdir) logger_origin_name=$(logger_origin_name) \
+   logger_binary_name=$(logger_binary_name) logger_origin_id=$(logger_origin_id) \
+   $(abs_top)/support/mtlkfront.sh $(CC)
+diff --git a/drivers/net/wireless/intel/iwlwav/tools/mtlkroot/Makefile b/drivers/net/wireless/intel/iwlwav/tools/mtlkroot/Makefile
+index 3689dba..068751a 100644
+--- a/drivers/net/wireless/intel/iwlwav/tools/mtlkroot/Makefile
++++ b/drivers/net/wireless/intel/iwlwav/tools/mtlkroot/Makefile
+@@ -9,7 +9,7 @@ logger_origin_name	:= mtlkroot
+ logger_binary_name	:= mtlkroot.o
+ 
+ ifeq ($(CPTCFG_BACKPORTED_WIRELESS),y)
+-CC := abs_top_srcdir=$(abs_top) abs_builddir=$(abs_builddir) \
++override CC := abs_top_srcdir=$(abs_top) abs_builddir=$(abs_builddir) \
+   abs_logprep_srcdir=$(abs_logprep_srcdir) logger_origin_name=$(logger_origin_name) \
+   logger_binary_name=$(logger_binary_name) logger_origin_id=$(logger_origin_id) \
+   $(abs_top)/support/mtlkfront.sh `echo $(CC) |sed -e 's/.*mtlkfront.sh //g'`
+diff --git a/drivers/net/wireless/intel/iwlwav/wireless/driver/core.c b/drivers/net/wireless/intel/iwlwav/wireless/driver/core.c
+index 9a18e31..372f55e 100644
+--- a/drivers/net/wireless/intel/iwlwav/wireless/driver/core.c
++++ b/drivers/net/wireless/intel/iwlwav/wireless/driver/core.c
+@@ -219,7 +219,7 @@ static int _mtlk_core_set_amsdu_num(mtlk_handle_t hcore, const void* data, uint3
+ static int _mtlk_core_get_vap_measurements(mtlk_handle_t hcore, const void *data, uint32 data_size);
+ static int _mtlk_core_get_radio_info(mtlk_handle_t hcore, const void *data, uint32 data_size);
+ static int _wave_core_bss_tx_status_get(mtlk_handle_t hcore, const void* data, uint32 data_size);
+-static int _mtlk_core_cfg_store_chan_switch_deauth_params(mtlk_handle_t hcore, const void* data, uint32 data_size);
++static mtlk_error_t  _mtlk_core_cfg_store_chan_switch_deauth_params(mtlk_handle_t hcore, const void* data, uint32 data_size);
+ 
+ static void _mtlk_core_get_vap_info_stats(mtlk_core_t* core, struct driver_vap_info *vap_info);
+ static void _mtlk_core_get_tr181_hw(mtlk_core_t* core,  mtlk_wssa_drv_tr181_hw_t* tr181_hw);
+diff --git a/drivers/net/wireless/intel/iwlwav/wireless/driver/core.h b/drivers/net/wireless/intel/iwlwav/wireless/driver/core.h
+index b7b9652..d4fbb9f 100644
+--- a/drivers/net/wireless/intel/iwlwav/wireless/driver/core.h
++++ b/drivers/net/wireless/intel/iwlwav/wireless/driver/core.h
+@@ -566,7 +566,7 @@ typedef struct _ieee_addr_list_t {
+   mtlk_hash_t               hash;
+ } ieee_addr_list_t;
+ 
+-int __MTLK_IFUNC mtlk_dut_core_register(mtlk_core_t *core);
++mtlk_error_t __MTLK_IFUNC mtlk_dut_core_register(mtlk_core_t *core);
+ void __MTLK_IFUNC mtlk_dut_core_unregister(mtlk_core_t *core);
+ 
+ typedef struct wave_core_acl
+@@ -1005,7 +1005,7 @@ enum dfsband_e
+ int __MTLK_IFUNC mtlk_core_get_dev_spec_info(struct net_device *dev, mtlk_nbuf_t *nbuf, mtlk_core_dev_spec_info_t *dev_spec_info);
+ 
+ uint16 __MTLK_IFUNC mtlk_core_get_sid_by_addr(mtlk_core_t *nic, uint8 *addr);
+-int __MTLK_IFUNC mtlk_core_set_bss(mtlk_core_t *core, mtlk_core_t *context_core, UMI_SET_BSS *fw_params);
++mtlk_error_t __MTLK_IFUNC mtlk_core_set_bss(mtlk_core_t *core, mtlk_core_t *context_core, UMI_SET_BSS *fw_params);
+ int core_change_bss(mtlk_handle_t hcore, const void* data, uint32 data_size);
+ 
+ mtlk_error_t __MTLK_IFUNC wave_core_ap_stop_traffic (struct nic *nic, uint16 sid, IEEE_ADDR *sta_addr);
+diff --git a/drivers/net/wireless/intel/iwlwav/wireless/driver/core_config.h b/drivers/net/wireless/intel/iwlwav/wireless/driver/core_config.h
+index 23c7259..6be36ac 100644
+--- a/drivers/net/wireless/intel/iwlwav/wireless/driver/core_config.h
++++ b/drivers/net/wireless/intel/iwlwav/wireless/driver/core_config.h
+@@ -51,7 +51,7 @@ int __MTLK_IFUNC finish_and_prevent_fw_set_chan_clpb (mtlk_handle_t hcore, const
+ int __MTLK_IFUNC core_cfg_request_aid (mtlk_handle_t hcore, const void *data, uint32 data_size);
+ int __MTLK_IFUNC core_cfg_internal_request_sid (mtlk_core_t *core, IEEE_ADDR *addr, uint16 *p_sid);
+ int __MTLK_IFUNC core_cfg_remove_aid (mtlk_handle_t hcore, const void *data, uint32 data_size);
+-int core_cfg_remove_all_sids_if_needed (mtlk_core_t *core);
++mtlk_error_t __MTLK_IFUNC core_cfg_remove_all_sids_if_needed (mtlk_core_t *core);
+ mtlk_error_t __MTLK_IFUNC core_cfg_ap_disconnect_all (mtlk_handle_t hcore, const void* data, uint32 data_size);
+ BOOL core_cfg_is_current_channel (mtlk_handle_t hcore, uint32 channel);
+ int wv_ieee80211_vendor_event_coc(uint8 event_num, struct wireless_dev *wdev, const void * data, int data_len);
+@@ -162,7 +162,6 @@ int __MTLK_IFUNC mtlk_core_cfg_get_mcast_range_list_ipv6 (mtlk_handle_t hcore, c
+ int __MTLK_IFUNC mtlk_core_cfg_set_forward_unknown_mcast_flag (mtlk_handle_t hcore, const void* data, uint32 data_size);
+ int __MTLK_IFUNC mtlk_core_cfg_get_forward_unknown_mcast_flag (mtlk_handle_t hcore, const void* data, uint32 data_size);
+ 
+-int __MTLK_IFUNC mtlk_core_get_unconnected_station (mtlk_handle_t hcore, const void* data, uint32 data_size);
+ int __MTLK_IFUNC mtlk_core_cfg_set_max_mpdu_length (mtlk_handle_t hcore, const void *data, uint32 data_size);
+ int __MTLK_IFUNC mtlk_core_cfg_get_max_mpdu_length (mtlk_handle_t hcore, const void *data, uint32 data_size);
+ mtlk_error_t __MTLK_IFUNC wave_core_cfg_set_ap_retry_limit (mtlk_handle_t hcore, const void *data, uint32 data_size);
+@@ -420,7 +419,7 @@ int __MTLK_IFUNC wave_core_get_max_tx_power_info (mtlk_handle_t hcore, const voi
+ int __MTLK_IFUNC wave_core_get_max_tx_power (struct wiphy *wiphy, struct net_device *ndev, uint32 *channel);
+ mtlk_error_t wave_core_get_connected_ml_sta_list (struct wiphy *wiphy, struct net_device *ndev);
+ int __MTLK_IFUNC wave_core_get_ml_sta_list (mtlk_handle_t hcore, const void *data, uint32 data_size);
+-int __MTLK_IFUNC wave_core_get_ml_vap_list (mtlk_handle_t hcore, const void *data, uint32 data_size);
++mtlk_error_t __MTLK_IFUNC wave_core_get_ml_vap_list (mtlk_handle_t hcore, const void *data, uint32 data_size);
+ #ifdef BEST_EFFORT_TID_SPREADING
+ int __MTLK_IFUNC wave_core_set_str_tid_link_spreading_cfg (mtlk_handle_t hcore, const void* data, uint32 data_size);
+ void __MTLK_IFUNC wave_core_set_assigned_tid_to_link (wave_ml_str_sta_tid_spreading_info_t *ml_sta_info, mtlk_vap_handle_t high_rate_vap);
+diff --git a/drivers/net/wireless/intel/iwlwav/wireless/driver/hw_mmb.h b/drivers/net/wireless/intel/iwlwav/wireless/driver/hw_mmb.h
+index 6fca88a..0c56a53 100644
+--- a/drivers/net/wireless/intel/iwlwav/wireless/driver/hw_mmb.h
++++ b/drivers/net/wireless/intel/iwlwav/wireless/driver/hw_mmb.h
+@@ -376,7 +376,6 @@ void __MTLK_IFUNC mtlk_hw_store_logger_fifo_mux_cfg(mtlk_vap_handle_t vap_handle
+ int  __MTLK_IFUNC mtlk_mmb_fw_rcvry_rtlog_init(mtlk_hw_t *hw);
+ #endif
+ #endif
+-void __MTLK_IFUNC mtlk_hw_mmb_set_msi_intr_mode(mtlk_hw_t *hw, uint32 mode);
+ #ifdef CPTCFG_IWLWAV_SET_PM_QOS
+ int  __MTLK_IFUNC mtlk_mmb_update_cpu_dma_latency(mtlk_hw_t *hw, s32 new_cpu_dma_latency);
+ #endif
+@@ -431,6 +430,8 @@ typedef enum
+   WHM_STATE_BUSY
+ } wave_whm_state_mac;
+ 
++void __MTLK_IFUNC mtlk_hw_mmb_set_msi_intr_mode(mtlk_hw_t *hw, mtlk_irq_mode_e mode);
++
+ uint8 __MTLK_IFUNC
+ mtlk_hw_eeprom_get_nic_type(mtlk_hw_t *hw);
+ 
+diff --git a/drivers/net/wireless/intel/iwlwav/wireless/driver/mtlk_vap_manager.h b/drivers/net/wireless/intel/iwlwav/wireless/driver/mtlk_vap_manager.h
+index d427194..ec4906d 100644
+--- a/drivers/net/wireless/intel/iwlwav/wireless/driver/mtlk_vap_manager.h
++++ b/drivers/net/wireless/intel/iwlwav/wireless/driver/mtlk_vap_manager.h
+@@ -97,7 +97,7 @@ int                  __MTLK_IFUNC mtlk_vap_manager_get_vap_handle(mtlk_vap_manag
+                                                                   uint8               vap_id,
+                                                                   mtlk_vap_handle_t  *vap_handle)   __MTLK_INT_HANDLER_SECTION;
+ #ifdef MTLK_WAVE_700
+-int                  __MTLK_IFUNC wave_vap_manager_get_vap_handle_by_fw_id(mtlk_vap_manager_t *obj,
++mtlk_error_t         __MTLK_IFUNC wave_vap_manager_get_vap_handle_by_fw_id(mtlk_vap_manager_t *obj,
+                                                                            uint8              vap_id,
+                                                                            mtlk_vap_handle_t  *vap_handle)  __MTLK_INT_HANDLER_SECTION;
+ void                 __MTLK_IFUNC wave_vap_manager_update_ml_vap_info(mtlk_vap_handle_t vap_handle,

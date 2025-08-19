@@ -1,4 +1,4 @@
-From 17c5061bd0b33bfa5da1d0ce05542721cf9d627c Mon Sep 17 00:00:00 2001
+From 9e8518af219a73d865abb5bce5556f02a2f1ba12 Mon Sep 17 00:00:00 2001
 From: rmunjewar <rmunjewar@maxlinear.com>
 Date: Tue, 5 Nov 2024 12:16:43 +0530
 Subject: [PATCH] WLANRTSYS-83953 [MXL] Overall feature for infusing the
@@ -22,16 +22,16 @@ WLANRTSYS-83953 [MXL] Correcting the pri_20 and sec_20 values based on afc datab
  hostapd/mxl_ctrl_iface.c              |   8 +
  hostapd/mxl_ctrl_iface_proprietary.c  |   6 +-
  hostapd/mxl_hostapd_cli_proprietary.c |   6 +-
- src/ap/mxl_acs.c                      | 369 +++++++++++++++++++++++---
+ src/ap/mxl_acs.c                      | 326 +++++++++++++++++++++++---
  src/ap/mxl_acs.h                      |   8 +-
  src/ap/mxl_common_proprietary.c       |   6 +-
  src/ap/mxl_dfs_debug.c                |   2 +-
  src/ap/mxl_dfs_debug.h                |   2 +-
  src/ap/mxl_hostapd_proprietary.c      |   6 +-
- 10 files changed, 387 insertions(+), 39 deletions(-)
+ 10 files changed, 348 insertions(+), 35 deletions(-)
 
 diff --git a/hostapd/mxl_config_proprietary.c b/hostapd/mxl_config_proprietary.c
-index 3f10876c7..db26afb02 100644
+index bfc152c58..64fe9f172 100644
 --- a/hostapd/mxl_config_proprietary.c
 +++ b/hostapd/mxl_config_proprietary.c
 @@ -1,6 +1,10 @@
@@ -46,7 +46,7 @@ index 3f10876c7..db26afb02 100644
  
    For licensing information, see the file 'LICENSE' in the root folder of
    this software module.
-@@ -402,6 +406,13 @@ int mxl_config_check_smart_acs_config(struct hostapd_config *conf, struct hostap
+@@ -390,6 +394,13 @@ int mxl_config_check_smart_acs_config(struct hostapd_config *conf, struct hostap
  			return 1;
  		}
  		mxl_conf->acs_eht_mode = (enum acs_eht_modes)val;
@@ -61,10 +61,10 @@ index 3f10876c7..db26afb02 100644
  		int val = atoi(pos);
  		if (!IS_VALID_RANGE(val, SCAN_TIMEOUT_MIN, SCAN_TIMEOUT_MAX)) {
 diff --git a/hostapd/mxl_ctrl_iface.c b/hostapd/mxl_ctrl_iface.c
-index ee798a467..8fad15bb5 100644
+index 2cfd0197a..b717638ee 100644
 --- a/hostapd/mxl_ctrl_iface.c
 +++ b/hostapd/mxl_ctrl_iface.c
-@@ -3799,6 +3799,14 @@ int mxl_hostapd_ctrl_iface_set_power_mode(struct hostapd_iface *iface, const cha
+@@ -3838,6 +3838,14 @@ int mxl_hostapd_ctrl_iface_set_power_mode(struct hostapd_iface *iface, const cha
  		mxl_hostapd_afc_clear_and_load_lpi(iface);
  		mxl_hostap_afc_construct_regrule_from_afc_data(iface);
  	}
@@ -80,7 +80,7 @@ index ee798a467..8fad15bb5 100644
  
  	return os_snprintf(buf, buflen, "Power Mode=%s\n", mxl_he_6ghz_pwr_mode_text(val));
 diff --git a/hostapd/mxl_ctrl_iface_proprietary.c b/hostapd/mxl_ctrl_iface_proprietary.c
-index 2fa600c13..9c574e13e 100644
+index 718d089f4..fea687307 100644
 --- a/hostapd/mxl_ctrl_iface_proprietary.c
 +++ b/hostapd/mxl_ctrl_iface_proprietary.c
 @@ -1,6 +1,10 @@
@@ -96,7 +96,7 @@ index 2fa600c13..9c574e13e 100644
    For licensing information, see the file 'LICENSE' in the root folder of
    this software module.
 diff --git a/hostapd/mxl_hostapd_cli_proprietary.c b/hostapd/mxl_hostapd_cli_proprietary.c
-index c5d61a43d..d54560131 100644
+index 8c433d7e8..1d9ecb989 100644
 --- a/hostapd/mxl_hostapd_cli_proprietary.c
 +++ b/hostapd/mxl_hostapd_cli_proprietary.c
 @@ -1,6 +1,10 @@
@@ -112,7 +112,7 @@ index c5d61a43d..d54560131 100644
    For licensing information, see the file 'LICENSE' in the root folder of
    this software module.
 diff --git a/src/ap/mxl_acs.c b/src/ap/mxl_acs.c
-index 3078b82b6..b44b4841c 100644
+index 916f5c9d2..7281366cc 100644
 --- a/src/ap/mxl_acs.c
 +++ b/src/ap/mxl_acs.c
 @@ -1,6 +1,6 @@
@@ -140,7 +140,7 @@ index 3078b82b6..b44b4841c 100644
  #define FILS_FIXED_LEN 12
  #define MXL_OUI_LEN 3
  #define FILS_PRIMARY_CHANNEL_OFFSET 1
-@@ -2448,7 +2458,6 @@ typedef struct {
+@@ -2430,7 +2440,6 @@ typedef struct {
  	int ex_rank_util_primary;
  } calibration_group;
  
@@ -148,15 +148,7 @@ index 3078b82b6..b44b4841c 100644
  #ifndef MIN
  #define MIN(x,y) ((x)<(y)?(x):(y))
  #endif
-@@ -2457,7 +2466,6 @@ typedef struct {
- #define MAX(x,y) ((x)>(y)?(x):(y))
- #endif
- 
--
- static int get_secondary_offset(int primary, int secondary)
- {
- 	if (secondary)
-@@ -2571,7 +2579,6 @@ int mxl_acs_do_switch_channel(struct hostapd_iface *iface, int block_tx)
+@@ -2544,7 +2553,6 @@ int mxl_acs_do_switch_channel(struct hostapd_iface *iface, int block_tx)
  	return 0;
  }
  
@@ -164,30 +156,17 @@ index 3078b82b6..b44b4841c 100644
  void acs_print_info_header(int level)
  {
  	wpa_printf(level, " #  1y  2y freq  BW    R#   RB# u_p u_bw l_p l_s ls40 ls80 ls160 bss  pri aff rdr Ovl int40 c_p c_s cs40 cs80 cs160 tx_p tx_s tx40 tx80 tx160");
-@@ -2701,8 +2708,20 @@ const char *sw_reasons[] = {
- 	"periodic update",
- };
- 
-+static bool mxl_acs_set_new_chan_if_ok(struct hostapd_iface *iface, int min_rank_cand_idx)
-+{
-+	struct acs_candidate_table *candidates = iface->mxl_iface.candidates;
-+	/* set the new channel */
-+	iface->conf->channel = candidates[min_rank_cand_idx].primary;
-+	iface->freq = hostapd_hw_get_freq(iface->bss[0], iface->conf->channel);
-+	iface->conf->secondary_channel = get_secondary_offset(candidates[min_rank_cand_idx].primary, candidates[min_rank_cand_idx].secondary);
-+	iface->mxl_iface.selected_candidate = min_rank_cand_idx;
-+	hostapd_set_oper_chwidth(iface->conf, mxl_get_oper_width(candidates[min_rank_cand_idx].width));
-+	acs_smart_adjust_center_freq(iface, candidates[min_rank_cand_idx].chan);
-+	return true;
-+}
+@@ -2687,7 +2695,7 @@ static bool mxl_acs_set_new_chan_if_ok(struct hostapd_iface *iface, int min_rank
+ 	return true;
+ }
  
 -int acs_set_new_chan_if_ok(struct hostapd_iface *iface, int min_rank_cand_idx, int switch_reason, FILE *fp_hist)
 +static bool mxl_acs_check_new_chan_is_ok(struct hostapd_iface *iface, int min_rank_cand_idx, int switch_reason, FILE *fp_hist)
  {
  	struct acs_candidate_table *candidates = iface->mxl_iface.candidates;
  	int actual_width, selected_cand_rank;
-@@ -2761,20 +2780,13 @@ int acs_set_new_chan_if_ok(struct hostapd_iface *iface, int min_rank_cand_idx, i
- 			wpa_printf(MSG_DEBUG, "ACS going from candidate %d to %d as current candidate rank is better", iface->mxl_iface.selected_candidate, min_rank_cand_idx);
+@@ -2751,14 +2759,6 @@ int acs_set_new_chan_if_ok(struct hostapd_iface *iface, int min_rank_cand_idx, i
+ 			wpa_printf(MSG_INFO, "%s : ACS switching channel", iface->bss[0]->conf->iface);
  			acs_print_cand_no(MSG_DEBUG, iface, min_rank_cand_idx);
  			acs_print_cand_no_file(fp_hist, iface, min_rank_cand_idx);
 -
@@ -201,14 +180,7 @@ index 3078b82b6..b44b4841c 100644
  			res = true;
  		}
  	}
- 
- 	return res;
- }
-+
- #ifndef CONFIG_NO_STDOUT_DEBUG
- static const char * acs_penalty_fact_to_str(int penalty_factor)
- {
-@@ -3072,6 +3084,21 @@ static bool mxl_acs_is_freq_rule_present_parse_power(struct hostapd_iface *iface
+@@ -3160,6 +3160,21 @@ static bool mxl_acs_is_freq_rule_present_parse_power(struct hostapd_iface *iface
  	return false;
  }
  
@@ -230,7 +202,7 @@ index 3078b82b6..b44b4841c 100644
  static int mxl_acs_get_chan_id_freq_range_sec_tx(struct hostapd_iface *iface, int freq, int pri, int sec_bw, int *new_freq) {
  	int start_freq = freq - 10;
  	int mid_freq = start_freq + sec_bw;
-@@ -3094,9 +3121,7 @@ static int mxl_acs_get_chan_id_freq_range_sec_tx(struct hostapd_iface *iface, in
+@@ -3182,9 +3197,7 @@ static int mxl_acs_get_chan_id_freq_range_sec_tx(struct hostapd_iface *iface, in
  	if(sec_bw_center_chan_idx == -1)
  		return tx;
  
@@ -241,7 +213,7 @@ index 3078b82b6..b44b4841c 100644
  
  	return tx;
  }
-@@ -3107,6 +3132,7 @@ static void mxl_acs_tx_power_update(struct hostapd_iface *iface)
+@@ -3195,6 +3208,7 @@ static void mxl_acs_tx_power_update(struct hostapd_iface *iface)
  	struct acs_candidate_table *candidates = iface->mxl_iface.candidates;
  
  	for (i = 0; (i < iface->mxl_iface.num_candidates && i < MAX_CANDIDATES); i++) {
@@ -249,7 +221,7 @@ index 3078b82b6..b44b4841c 100644
  		if (candidates[i].width ==  320) {
  			candidates[i].tx_power[SEC_MAX_160] = mxl_acs_get_chan_id_freq_range_sec_tx(iface, candidates[i].freq, candidates[i].primary, 160, &sub_freq);
  			candidates[i].tx_power[SEC_MAX_160] += 9; /* compensation factor eight channels */
-@@ -3114,18 +3140,276 @@ static void mxl_acs_tx_power_update(struct hostapd_iface *iface)
+@@ -3202,19 +3216,277 @@ static void mxl_acs_tx_power_update(struct hostapd_iface *iface)
  			candidates[i].tx_power[SEC_MAX_80] += 6; /* compensation factor four channels */
  			candidates[i].tx_power[SEC_MAX_40] = mxl_acs_get_chan_id_freq_range_sec_tx(iface, sub_freq, candidates[i].primary, 40, &sub_freq);
  			candidates[i].tx_power[SEC_MAX_40] += 3; /* compensation factor two channels */
@@ -266,13 +238,13 @@ index 3078b82b6..b44b4841c 100644
  			candidates[i].tx_power[SEC_MAX_40] = mxl_acs_get_chan_id_freq_range_sec_tx(iface, candidates[i].freq, candidates[i].primary, 40, &sub_freq);
  			candidates[i].tx_power[SEC_MAX_40] += 3; /* compensation factor two channels */
 +			if ((new_power = mxl_acs_get_chan_id_freq_range_sec_tx(iface, sub_freq, candidates[i].primary, 20, &sub_freq)) != 0) candidates[i].tx_power[SEC_20] = new_power;
-+		}
+ 		}
 +		if (candidates[i].width ==  40) {
 +			if ((new_power = mxl_acs_get_chan_id_freq_range_sec_tx(iface, sub_freq, candidates[i].primary, 20, &sub_freq)) != 0) candidates[i].tx_power[SEC_20] = new_power;
 +		}
 +		if ((new_power = mxl_acs_if_afc_rule_present_parse_power_pri20(iface, candidates[i].primary)) != 0) candidates[i].tx_power[PRI_20] = new_power;
-+	}
-+}
+ 	}
+ }
 +
 +
 +/* IEEE P802.11be/D3.0, Table 36-30 - Definition of the Punctured Channel
@@ -393,8 +365,8 @@ index 3078b82b6..b44b4841c 100644
 +	for (int chan_idx = 0; chan_idx < iface->afc.num_chan_info; chan_idx++) {
 +		if(center_idx == iface->afc.chan_info_list[chan_idx].chan){
 +			return iface->afc.chan_info_list[chan_idx].power;
- 		}
- 	}
++		}
++	}
 +	/* TODO : if not found update the chan_idx and check in higher BW database */
 +
 +	return 0;
@@ -523,10 +495,11 @@ index 3078b82b6..b44b4841c 100644
 +		}
 +	}
 +	return (rank < candidate->rank) ? best_bitmap : 0;
- }
++}
  #endif
  
-@@ -3208,12 +3492,6 @@ int mxl_acs_recalc_ranks_and_set_chan (struct hostapd_iface *iface, int switch_r
+ /* Return: -1: error; 0: stay on the same channel; 1: set new channel */
+@@ -3325,12 +3597,6 @@ int mxl_acs_recalc_ranks_and_set_chan (struct hostapd_iface *iface, int switch_r
  			wpa_printf(MSG_DEBUG, "ACS calc rank for tx power(%d) and max tx power(%d): %d",
  				   candidates[i].tx_power[PRI_20], iface->mxl_iface.max_tx_power, tx_power_rank);
  
@@ -539,7 +512,7 @@ index 3078b82b6..b44b4841c 100644
  			chan_load_rank = acs_apply_penalty_factor(iface, K_CL, candidates[i].channel_load[PRI_20]);
  			wpa_printf(MSG_DEBUG, "ACS calc primary rank for channel load(%d): %d",
  				   candidates[i].channel_load[PRI_20], chan_load_rank);
-@@ -3221,7 +3499,7 @@ int mxl_acs_recalc_ranks_and_set_chan (struct hostapd_iface *iface, int switch_r
+@@ -3338,7 +3604,7 @@ int mxl_acs_recalc_ranks_and_set_chan (struct hostapd_iface *iface, int switch_r
  			cwi_rank = acs_apply_penalty_factor(iface, K_CWI, acs_get_cwi_penalty(candidates[i].cwi_noise[PRI_20]));
  			wpa_printf(MSG_DEBUG, "ACS calc primary rank for CWI(%d): %d", candidates[i].cwi_noise[PRI_20], cwi_rank);
  
@@ -548,7 +521,7 @@ index 3078b82b6..b44b4841c 100644
  			rank_util_primary = chan_load_rank + cwi_rank;
  
  			if (candidates[i].width > 20) {
-@@ -3239,6 +3517,7 @@ int mxl_acs_recalc_ranks_and_set_chan (struct hostapd_iface *iface, int switch_r
+@@ -3356,6 +3622,7 @@ int mxl_acs_recalc_ranks_and_set_chan (struct hostapd_iface *iface, int switch_r
  					   candidates[i].cwi_noise[SEC_20], cwi_rank);
  
  				candidates[i].rank += acs_get_rank_bw_factor(candidates[i].width, SEC_20) * (chan_load_rank + cwi_rank + tx_power_rank) / 100;
@@ -556,7 +529,7 @@ index 3078b82b6..b44b4841c 100644
  			}
  
  			if (candidates[i].width > 40) {
-@@ -3256,6 +3535,7 @@ int mxl_acs_recalc_ranks_and_set_chan (struct hostapd_iface *iface, int switch_r
+@@ -3373,6 +3640,7 @@ int mxl_acs_recalc_ranks_and_set_chan (struct hostapd_iface *iface, int switch_r
  					   candidates[i].cwi_noise[SEC_MAX_40], cwi_rank);
  
  				candidates[i].rank += acs_get_rank_bw_factor(candidates[i].width, SEC_MAX_40) * (chan_load_rank + cwi_rank + tx_power_rank) / 100;
@@ -564,7 +537,7 @@ index 3078b82b6..b44b4841c 100644
  			}
  
  			if (candidates[i].width > 80) {
-@@ -3273,6 +3553,7 @@ int mxl_acs_recalc_ranks_and_set_chan (struct hostapd_iface *iface, int switch_r
+@@ -3390,6 +3658,7 @@ int mxl_acs_recalc_ranks_and_set_chan (struct hostapd_iface *iface, int switch_r
  					   candidates[i].cwi_noise[SEC_MAX_80], cwi_rank);
  
  				candidates[i].rank += acs_get_rank_bw_factor(candidates[i].width, SEC_MAX_80) * (chan_load_rank + cwi_rank + tx_power_rank) / 100;
@@ -572,7 +545,7 @@ index 3078b82b6..b44b4841c 100644
  			}
  
  			if (candidates[i].width > 160) {
-@@ -3292,6 +3573,13 @@ int mxl_acs_recalc_ranks_and_set_chan (struct hostapd_iface *iface, int switch_r
+@@ -3409,6 +3678,13 @@ int mxl_acs_recalc_ranks_and_set_chan (struct hostapd_iface *iface, int switch_r
  				candidates[i].rank += acs_get_rank_bw_factor(candidates[i].width, SEC_MAX_160) * (chan_load_rank + cwi_rank + tx_power_rank) / 100;
  			}
  
@@ -586,50 +559,7 @@ index 3078b82b6..b44b4841c 100644
  			candidates[i].rank = iface->conf->mxl_conf.acs_chan_cust_penalty[candidates[i].chan] * candidates[i].rank / 100;
  			candidates[i].bw_comp_rank = candidates[i].rank - tx_power_rank - num_bss_rank;
  			acs_calculate_rank_utilization(&candidates[i], rank_util_primary);
-@@ -3396,7 +3684,11 @@ int mxl_acs_recalc_ranks_and_set_chan (struct hostapd_iface *iface, int switch_r
- 		/* comparison between bandwidth categories - pick up the one with the best rank */
- 		if ((iface->conf->mxl_conf.acs_bw_comparison) &&
- 		    (iface->conf->mxl_conf.acs_policy == ACS_POLICY_THROUGHPUT) &&
--		    ((prio + 1) < ACS_NUM_GRP_PRIORITIES)) /* for the last category, there will be no rank to compare with */
-+		    ((prio + 1) < ACS_NUM_GRP_PRIORITIES) &&
-+		    !(iface->conf->mxl_conf.acs_6g_punct_mode &&
-+			he_reg_is_sp(iface->conf->he_6ghz_reg_pwr_type) &&
-+			is_6ghz_op_class(iface->conf->op_class)))
-+		/* for the last category, there will be no rank to compare with */
- 		{
- 			if ((-1 == bw_comp_util) || (-1 == cg[grp_map[prio + 1]].bw_comp_util))
- 				continue;
-@@ -3412,8 +3704,27 @@ int mxl_acs_recalc_ranks_and_set_chan (struct hostapd_iface *iface, int switch_r
- 
- set_chan:
- 		wpa_printf(MSG_DEBUG, "ACS: exit recalculate, selected prio %d min_rank_cand_idx %d", prio, min_rank_cand_idx);
--		res = acs_set_new_chan_if_ok(iface, min_rank_cand_idx, switch_reason, fp_hist);
--		if (res) {
-+		res = mxl_acs_check_new_chan_is_ok(iface, min_rank_cand_idx, switch_reason, fp_hist);
-+#ifdef CONFIG_AFC
-+		/* In SP/ISP, we will rank the best candidate + valid punctured pattern
-+		 * If rank of any punctured pattern + best candidate is higher than rank of original puncture pattern
-+		 * we will apply that puncture pattern with the best candidate
-+		 * else stick to original best candidate
-+		 */
-+		if (res && iface->conf->mxl_conf.acs_6g_punct_mode && he_reg_is_sp(iface->conf->he_6ghz_reg_pwr_type) && is_6ghz_op_class(iface->conf->op_class))
-+		{
-+			u16 bitmap = mxl_acs_rank_punct_pattern_best_candidate(iface, min_rank_cand_idx);
-+			if(bitmap == 0) {
-+				wpa_printf(MSG_INFO, "ACS + Punct : Selected candidate has best rank without any puncture pattern, NO PUNCTURING");
-+			}
-+			else {
-+				wpa_printf(MSG_INFO, "ACS + Punct: Selected candidate that has best rank with punture pattern 0x%04x", bitmap);
-+			}
-+			mxl_hostapd_set_eht_punct_bitmap(iface->bss[0], bitmap);
-+			iface->conf->punct_bitmap = bitmap;
-+		}
-+#endif
-+		if (res && mxl_acs_set_new_chan_if_ok(iface, min_rank_cand_idx)) {
- 			int width = mxl_hostapd_get_num_width(hostapd_get_oper_chwidth(iface->conf), candidates[min_rank_cand_idx].secondary);
- 			int seg0_idx = hostapd_get_oper_centr_freq_seg0_idx(iface->conf);
- 			int seg1_idx = hostapd_get_oper_centr_freq_seg1_idx(iface->conf);
-@@ -3468,7 +3779,6 @@ end:
+@@ -3630,7 +3906,6 @@ end:
  	return res;
  }
  
@@ -637,7 +567,7 @@ index 3078b82b6..b44b4841c 100644
  static int bt_find_clean_channel(struct hostapd_iface *iface, int width)
  {
  	struct hostapd_hw_modes *mode;
-@@ -3751,7 +4061,6 @@ void mxl_acs_update_intolerant_channels(struct hostapd_iface *iface, u8 chan)
+@@ -3913,7 +4188,6 @@ void mxl_acs_update_intolerant_channels(struct hostapd_iface *iface, u8 chan)
  	}
  }
  
@@ -645,7 +575,7 @@ index 3078b82b6..b44b4841c 100644
  void mxl_acs_update_radar(struct hostapd_iface *iface)
  {
  	struct acs_candidate_table *candidates = iface->mxl_iface.candidates;
-@@ -3873,6 +4182,7 @@ enum acs_failsafe_bw
+@@ -4035,6 +4309,7 @@ enum acs_failsafe_bw
  
  	FAILSAFE_NUM_BW,
  };
@@ -653,7 +583,7 @@ index 3078b82b6..b44b4841c 100644
  struct acs_failsafe_table
  {
  	int index_rank[FAILSAFE_NUM_BW];
-@@ -4374,7 +4684,6 @@ void mxl_event_scan_results(struct hostapd_data *hapd, union wpa_event_data *dat
+@@ -4541,7 +4816,6 @@ void mxl_event_scan_results(struct hostapd_data *hapd, union wpa_event_data *dat
  	}
  }
  
@@ -661,7 +591,7 @@ index 3078b82b6..b44b4841c 100644
  void mxl_acs_init_defaults(struct hostapd_iface *iface)
  {
  	int i;
-@@ -4430,7 +4739,6 @@ int mxl_hostapd_get_chan_data_from_candidates_5g(int primary_chan, enum oper_cha
+@@ -4599,7 +4873,6 @@ int mxl_hostapd_get_chan_data_from_candidates_5g(int primary_chan, enum oper_cha
  	return 1;
  }
  
@@ -669,7 +599,7 @@ index 3078b82b6..b44b4841c 100644
  int mxl_hostapd_drv_abort_scan(struct hostapd_data *hapd)
  {
  	if (hapd->driver && hapd->driver->abort_scan)
-@@ -4438,7 +4746,6 @@ int mxl_hostapd_drv_abort_scan(struct hostapd_data *hapd)
+@@ -4607,7 +4880,6 @@ int mxl_hostapd_drv_abort_scan(struct hostapd_data *hapd)
  	return -1;
  }
  
@@ -678,7 +608,7 @@ index 3078b82b6..b44b4841c 100644
  {
  	if (nl80211_scan_running(iface->bss[0]->drv_priv)) {
 diff --git a/src/ap/mxl_acs.h b/src/ap/mxl_acs.h
-index f8eb73d89..325d2761a 100644
+index a553049fc..b9e897c8b 100644
 --- a/src/ap/mxl_acs.h
 +++ b/src/ap/mxl_acs.h
 @@ -1,6 +1,6 @@

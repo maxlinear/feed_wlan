@@ -1,4 +1,4 @@
-From 86ad19ccdc6f8eaa95d7604d1ee9f4ebbae40bb1 Mon Sep 17 00:00:00 2001
+From aefceb2c71c2423d1d608a01049742f64b16300d Mon Sep 17 00:00:00 2001
 From: spatel <spatel@maxlinear.com>
 Date: Thu, 10 Oct 2024 18:47:24 +0530
 Subject: [PATCH] WLANRTSYS-50839 [MXL] MXL DFS debug channel simulation
@@ -8,21 +8,24 @@ Subject: [PATCH] WLANRTSYS-50839 [MXL] MXL DFS debug channel simulation
  hostapd/mxl_config.c             |   4 +
  hostapd/mxl_config_proprietary.c |  16 ++
  src/ap/ap_drv_ops.c              |   8 +
- src/ap/dfs.c                     |  18 ++
- src/ap/drv_callbacks.c           |   5 +
- src/ap/hostapd.c                 |   8 +
+ src/ap/dfs.c                     |  25 +++
+ src/ap/drv_callbacks.c           |  10 ++
+ src/ap/hostapd.c                 |  10 ++
  src/ap/hw_features.c             |   8 +-
- src/ap/mxl_acs.c                 |  40 +++++
+ src/ap/mxl_acs.c                 | 249 +++++++++++++++++++++++++--
  src/ap/mxl_acs.h                 |  10 ++
  src/ap/mxl_config.h              |   2 +
- src/ap/mxl_dfs_common.c          |  27 ++-
- src/ap/mxl_dfs_common.h          |   3 +
+ src/ap/mxl_dfs_common.c          | 176 ++++++++++++++++++-
+ src/ap/mxl_dfs_common.h          |  13 ++
  src/ap/mxl_dfs_debug.c           | 281 +++++++++++++++++++++++++++++++
  src/ap/mxl_dfs_debug.h           |  31 ++++
- src/ap/mxl_hostapd.h             |   4 +
+ src/ap/mxl_drv_callbacks.c       |  18 ++
+ src/ap/mxl_drv_callbacks.h       |   2 +-
+ src/ap/mxl_hostapd.c             |  16 ++
+ src/ap/mxl_hostapd.h             |  23 ++-
  src/ap/mxl_hostapd_proprietary.c |  29 ++++
- src/ap/mxl_zwdfs.c               |  18 ++
- 18 files changed, 509 insertions(+), 4 deletions(-)
+ src/ap/mxl_zwdfs.c               |  19 +++
+ 21 files changed, 928 insertions(+), 23 deletions(-)
  create mode 100644 src/ap/mxl_dfs_debug.c
  create mode 100644 src/ap/mxl_dfs_debug.h
 
@@ -39,10 +42,10 @@ index 20f4f5874..26c8381ec 100644
  endif
  ifdef CONFIG_AFC
 diff --git a/hostapd/mxl_config.c b/hostapd/mxl_config.c
-index 43fdb9d95..b4d112683 100644
+index ca6908084..49a1aff3c 100644
 --- a/hostapd/mxl_config.c
 +++ b/hostapd/mxl_config.c
-@@ -1702,6 +1702,10 @@ int mxl_hostapd_config_fill (struct hostapd_config *conf,
+@@ -1709,6 +1709,10 @@ int mxl_hostapd_config_fill (struct hostapd_config *conf,
  			return 0;
  		}
  		mxl_conf->allow_scan_during_cac = val;
@@ -54,7 +57,7 @@ index 43fdb9d95..b4d112683 100644
  		int val = atoi(pos);
  		if(!IS_VALID_RANGE(val, SUBBAND_DFS_MIN, SUBBAND_DFS_MAX)) {
 diff --git a/hostapd/mxl_config_proprietary.c b/hostapd/mxl_config_proprietary.c
-index ed680d8ae..96148962f 100644
+index c1431817d..e8517f6f5 100644
 --- a/hostapd/mxl_config_proprietary.c
 +++ b/hostapd/mxl_config_proprietary.c
 @@ -22,6 +22,22 @@
@@ -107,7 +110,7 @@ index 973aacc47..ca8cdc496 100644
  }
  
 diff --git a/src/ap/dfs.c b/src/ap/dfs.c
-index dabfff4c5..1addac4c2 100644
+index dabfff4c5..2f526ef7e 100644
 --- a/src/ap/dfs.c
 +++ b/src/ap/dfs.c
 @@ -921,6 +921,11 @@ int hostapd_handle_dfs(struct hostapd_iface *iface)
@@ -145,7 +148,17 @@ index dabfff4c5..1addac4c2 100644
  	mxl_hostapd_cac_wpa_msg(iface, success, freq, ht_enabled, chan_offset, chan_width, cf1, cf2);
  #else
  	wpa_msg(iface->bss[0]->msg_ctx, MSG_INFO, DFS_EVENT_CAC_COMPLETED
-@@ -1608,6 +1622,10 @@ int hostapd_dfs_radar_detected(struct hostapd_iface *iface, int freq,
+@@ -1282,6 +1296,9 @@ int hostapd_dfs_complete_cac(struct hostapd_iface *iface, int success, int freq,
+ 
+ #ifdef CONFIG_VENDOR_MXL
+ 	/* In case of CAC completion in ZWDFS antenna/interface, set CAC cleared channel to operational 5G vaps.*/
++	if (mxl_validate_second_best_chan(iface)) {
++		return 0;
++	}
+ 	return mxl_hostapd_handle_zwdfs_switch(iface, success, freq, chan_width, cf1, cf2);
+ #endif /* CONFIG_VENDOR_MXL */
+ 
+@@ -1608,6 +1625,10 @@ int hostapd_dfs_radar_detected(struct hostapd_iface *iface, int freq,
  		return 0;
  
  #ifdef CONFIG_VENDOR_MXL
@@ -156,8 +169,19 @@ index dabfff4c5..1addac4c2 100644
  	/* Ignore radar event for background zwdfs antenna if zwdfs debug chan is enabled */
  	if ((mxl_hostapd_dfs_is_background_event(iface, freq, cf1)) &&
  	    (iface->conf->mxl_conf.zwdfs_debug_chan))
+@@ -1623,6 +1644,10 @@ int hostapd_dfs_radar_detected(struct hostapd_iface *iface, int freq,
+ #ifdef CONFIG_VENDOR_MXL
+ 	mxl_hostapd_dfs_file_radar(iface);
+ 
++	if (mxl_switch_second_best_channel(iface)) {
++		return 0;
++	}
++
+ 	if (mxl_hostapd_handle_background_radar(iface, freq, cf1, chan_width))
+ 		return 0;
+ 
 diff --git a/src/ap/drv_callbacks.c b/src/ap/drv_callbacks.c
-index 56e1ce23e..3e08ec63e 100644
+index 56e1ce23e..2d90fc33c 100644
 --- a/src/ap/drv_callbacks.c
 +++ b/src/ap/drv_callbacks.c
 @@ -1274,6 +1274,11 @@ void hostapd_event_ch_switch(struct hostapd_data *hapd, int freq, int ht,
@@ -172,11 +196,23 @@ index 56e1ce23e..3e08ec63e 100644
  	wpa_msg(hapd->msg_ctx, MSG_INFO,
  		"%sfreq=%d ht_enabled=%d ch_offset=%d ch_width=%s cf1=%d cf2=%d is_dfs0=%d dfs=%d puncturing_bitmap=0x%04x",
  		finished ? WPA_EVENT_CHANNEL_SWITCH :
+@@ -1325,6 +1330,11 @@ void hostapd_event_ch_switch(struct hostapd_data *hapd, int freq, int ht,
+ 	ieee802_11_set_beacon_per_bss_only(hapd);
+ #endif
+ 
++#ifdef CONFIG_VENDOR_MXL
++	/* do CAC for second best channel */
++	mxl_check_ch_switch_status_and_get_second_best_channel(finished, hapd);
++#endif /* CONFIG_VENDOR_MXL */
++ 
+ #ifdef CONFIG_OCV
+ 	if (hapd->conf->ocv &&
+ 	    !(hapd->iface->drv_flags2 &
 diff --git a/src/ap/hostapd.c b/src/ap/hostapd.c
-index e5ef6af88..48d8b2c37 100644
+index 586b1482b..070896efa 100644
 --- a/src/ap/hostapd.c
 +++ b/src/ap/hostapd.c
-@@ -2751,6 +2751,9 @@ static int setup_interface2(struct hostapd_iface *iface)
+@@ -2779,6 +2779,9 @@ static int setup_interface2(struct hostapd_iface *iface)
  				   "channel. (%d)", ret);
  			goto fail;
  		}
@@ -186,7 +222,7 @@ index e5ef6af88..48d8b2c37 100644
  		if (ret == 1) {
  			wpa_printf(MSG_DEBUG, "Interface initialization will be completed in a callback (ACS)");
  			return 0;
-@@ -4693,6 +4696,11 @@ int hostapd_disable_iface(struct hostapd_iface *hapd_iface)
+@@ -4729,9 +4732,16 @@ int hostapd_disable_iface(struct hostapd_iface *hapd_iface)
  	if (hapd_iface->radar_background.cac_started) {
  		mxl_hostapd_set_zwdfs_antenna(hapd_iface->bss[0], 0);
  	}
@@ -196,8 +232,13 @@ index e5ef6af88..48d8b2c37 100644
 +#endif /* CONFIG_VENDOR_MXL_PROPRIETARY */
 +	/* disable dfs_bg_cac when iface is disabled */
  	mxl_acs_set_bg_cac(hapd_iface);
+ 	/* stop existing bgscan_interval timer */
+ 	mxl_acs_stop_bgscan_timer(hapd_iface->bss[0]);
++	/* reset second best channel params */
++	mxl_acs_clear_second_bg_cac_param(hapd_iface);
  #endif /* CONFIG_VENDOR_MXL */
  
+ 	/* same as hostapd_interface_deinit without deinitializing ctrl-iface */
 diff --git a/src/ap/hw_features.c b/src/ap/hw_features.c
 index d2b3b47a5..e939afc9c 100644
 --- a/src/ap/hw_features.c
@@ -219,11 +260,299 @@ index d2b3b47a5..e939afc9c 100644
  	hostapd_set_state(iface, HAPD_IFACE_HT_SCAN);
  	wpa_printf(MSG_DEBUG, "Scan for neighboring BSSes prior to enabling "
 diff --git a/src/ap/mxl_acs.c b/src/ap/mxl_acs.c
-index 9b7e81281..2715d98af 100644
+index b817fbb01..1c78935d4 100644
 --- a/src/ap/mxl_acs.c
 +++ b/src/ap/mxl_acs.c
-@@ -3682,6 +3682,46 @@ void mxl_acs_init_defaults(struct hostapd_iface *iface)
+@@ -2236,15 +2236,6 @@ typedef struct {
+ #define MAX(x,y) ((x)>(y)?(x):(y))
+ #endif
+ 
+-
+-static int get_secondary_offset(int primary, int secondary)
+-{
+-	if (secondary)
+-		return ((secondary > primary) ? 1 : -1);
+-	else
+-		return 0;
+-}
+-
+ int hostapd_csa_in_progress(struct hostapd_iface *iface);
+ int hostapd_dfs_start_channel_switch_cac(struct hostapd_iface *iface);
+ 
+@@ -2462,6 +2453,18 @@ const char *sw_reasons[] = {
+ 	"periodic update",
+ };
+ 
++static bool mxl_acs_set_new_chan_if_ok(struct hostapd_iface *iface, int min_rank_cand_idx)
++{
++	struct acs_candidate_table *candidates = iface->mxl_iface.candidates;
++	/* set the new channel */
++	iface->conf->channel = candidates[min_rank_cand_idx].primary;
++	iface->freq = hostapd_hw_get_freq(iface->bss[0], iface->conf->channel);
++	iface->conf->secondary_channel = mxl_get_secondary_offset(candidates[min_rank_cand_idx].primary, candidates[min_rank_cand_idx].secondary);
++	iface->mxl_iface.selected_candidate = min_rank_cand_idx;
++	hostapd_set_oper_chwidth(iface->conf, mxl_get_oper_width(candidates[min_rank_cand_idx].width));
++	acs_smart_adjust_center_freq(iface, candidates[min_rank_cand_idx].chan);
++	return true;
++}
+ 
+ int acs_set_new_chan_if_ok(struct hostapd_iface *iface, int min_rank_cand_idx, int switch_reason, FILE *fp_hist)
+ {
+@@ -2518,7 +2521,7 @@ int acs_set_new_chan_if_ok(struct hostapd_iface *iface, int min_rank_cand_idx, i
+ 				/* set the previous channel */
+ 				iface->conf->channel = candidates[iface->mxl_iface.selected_candidate].primary;
+ 				iface->freq = hostapd_hw_get_freq(iface->bss[0], iface->conf->channel);
+-				iface->conf->secondary_channel = get_secondary_offset(candidates[iface->mxl_iface.selected_candidate].primary, candidates[iface->mxl_iface.selected_candidate].secondary);
++				iface->conf->secondary_channel = mxl_get_secondary_offset(candidates[iface->mxl_iface.selected_candidate].primary, candidates[iface->mxl_iface.selected_candidate].secondary);
+ 				hostapd_set_oper_chwidth(iface->conf, mxl_get_oper_width(candidates[iface->mxl_iface.selected_candidate].width));
+ 				acs_smart_adjust_center_freq(iface, candidates[iface->mxl_iface.selected_candidate].chan);
+ 			}
+@@ -2542,6 +2545,104 @@ int acs_set_new_chan_if_ok(struct hostapd_iface *iface, int min_rank_cand_idx, i
+ 
+ 	return res;
+ }
++
++int mxl_do_bg_cac_with_second_best_channel(struct hostapd_iface *iface)
++{
++	int i, cur_freq;
++	u8 cf1 = 0;
++	u8 cf2 = 0;
++	u8 op_class;
++	struct csa_settings settings = {0};
++	struct hostapd_hw_modes *cmode = iface->current_mode;
++	enum oper_chan_width chwidth = mxl_get_oper_width(iface->mxl_iface.sec_best_ch.width);
++	int sec_channel = mxl_get_secondary_offset(iface->mxl_iface.sec_best_ch.primary, iface->mxl_iface.sec_best_ch.secondary);
++
++	ieee80211_freq_to_channel_ext(iface->mxl_iface.sec_best_ch.freq, 0, chwidth, &op_class, &cf1);
++	switch(chwidth) {
++		case CONF_OPER_CHWIDTH_80MHZ:
++			cf1 = cf1 + 6;
++			break;
++		case CONF_OPER_CHWIDTH_160MHZ:
++			cf1 = cf1 + 14;
++			break;
++		case CONF_OPER_CHWIDTH_USE_HT:
++			/* no changes in cf_1 for 20 and 40 Mhz */
++			break;
++		default:
++			wpa_printf(MSG_DEBUG, "Unsupported width : %d", chwidth);
++			return -1;
++	}
++
++	wpa_printf(MSG_DEBUG, "second best freq : %d", iface->mxl_iface.sec_best_ch.freq);
++
++	/* check non DFS channel */
++	if (!mxl_is_dfs_channel(iface->mxl_iface.sec_best_ch.freq, sec_channel, iface->mxl_iface.sec_best_ch.width)) {
++		wpa_printf(MSG_DEBUG, "non DFS channel for second best freq : %d", iface->mxl_iface.sec_best_ch.freq);
++		return -1;
++	}
++
++	settings.cs_count = DEFAULT_CS_COUNT;
++	hostapd_set_freq_params(&settings.freq_params, iface->conf->hw_mode, iface->mxl_iface.sec_best_ch.freq,
++			iface->mxl_iface.sec_best_ch.primary, iface->conf->enable_edmg,
++			iface->conf->edmg_channel, iface->conf->ieee80211n,
++			iface->conf->ieee80211ac, iface->conf->ieee80211ax, iface->conf->ieee80211be,
++			sec_channel,
++			chwidth,
++			cf1,
++			cf2,
++			cmode ? cmode->vht_capab : 0,
++			cmode ? &cmode->he_capab[IEEE80211_MODE_AP] : NULL,
++			cmode ? &cmode->eht_capab[IEEE80211_MODE_AP] : NULL);
++
++	int n_chans = settings.freq_params.bandwidth / 20;
++	struct hostapd_hw_modes *mode = iface->current_mode;
++	int low_freq  = settings.freq_params.center_freq1 - (settings.freq_params.bandwidth / 2) + 10;
++
++	for (i = 0; i < n_chans; i++) {
++		int chan_idx;
++		cur_freq = low_freq + i * 20;
++		chan_idx = mxl_hapd_get_chan_idx(mode, cur_freq);
++
++		/* Check whether the channel is a DFS channel */
++		if (mxl_dfs_check_chans_radar(iface, chan_idx, 1)) {
++			if (mxl_hostapd_set_chan_dfs_state(iface, NL80211_DFS_USABLE, cur_freq, 0, 1)) {
++				wpa_printf(MSG_ERROR, "DFS_DEBUG: Update kernel DFS state to 0x%x for channel %d failed",
++					NL80211_DFS_USABLE, cur_freq);
++				return -1;
++			}
++
++			if (mxl_set_dfs_state_freq(iface, cur_freq, HOSTAPD_CHAN_DFS_USABLE) != 1) {
++				wpa_printf(MSG_ERROR, "DFS_DEBUG: Update hostapd DFS state to 0x%x for channel %d failed",
++					HOSTAPD_CHAN_DFS_USABLE, cur_freq);
++				return -1;
++			}
++		}
++	}
++
++	/* Start ZWDFS CAC in background */
++	if (mxl_hostapd_start_background_cac(iface, &settings)) {
++		wpa_printf(MSG_ERROR, "%s: Failed to start Background CAC in ZWDFS antenna\n", __func__);
++		return -1;
++	}
++
++	wpa_printf(MSG_DEBUG, "Second DFS-CAC-START freq : %d", iface->mxl_iface.sec_best_ch.freq);
++	return 0;
++}
++
++void mxl_get_second_best_channel(struct hostapd_iface *iface)
++{
++	int res;
++
++	res = mxl_do_bg_cac_with_second_best_channel(iface);
++	if (res == 0) {
++		wpa_printf(MSG_DEBUG, "ZWDFS CAC triggered success with second best channel");
++	} else {
++		wpa_printf(MSG_ERROR, "ZWDFS CAC is not triggered with second best channel");
++	}
++	/* set this on both DFS and non DFS */
++	iface->mxl_iface.sec_best_ch.bg_cac = true;
++}
++
+ #ifndef CONFIG_NO_STDOUT_DEBUG
+ static const char * acs_penalty_fact_to_str(int penalty_factor)
+ {
+@@ -2736,14 +2837,43 @@ int mxl_acs_recalc_ranks_and_set_chan (struct hostapd_iface *iface, int switch_r
+ 		int cg_idx = CALIB_20;
+ 		int cwi_rank, chan_load_rank, tx_power_rank, num_bss_rank = 0;
+ 		int rank_util_primary = 0;
++		bool acs_cand_skip = false;
++		int first_rank_freq = hostapd_hw_get_freq(iface->bss[0], iface->conf->channel);
++		int first_rank_width = mxl_hostapd_get_num_width(hostapd_get_oper_chwidth(iface->conf), iface->conf->secondary_channel);
+ 
+ 		wpa_printf(MSG_DEBUG, "ACS: recalculate candidate idx %d", i);
+-
++		
+ 		acs_print_info_header(MSG_DEBUG);
+ 		acs_print_cand_no(MSG_DEBUG, iface, i);
+ 
+ 		candidates[i].exclude_reason = acs_to_exclude_candidate(iface, i, &now);
+ 
++		if (iface->mxl_iface.sec_best_ch.flag) {
++			acs_print_cand_no_file(fp, iface, i);
++			acs_cand_skip = true;
++		}
++
++		if (iface->mxl_iface.sec_best_ch.ch_switch_done) {
++			first_rank_freq = iface->mxl_iface.sec_best_ch.freq;
++			first_rank_width = iface->mxl_iface.sec_best_ch.width;
++			iface->mxl_iface.sec_best_ch.ch_switch_done = false;
++			wpa_printf(MSG_DEBUG, "ACS: ch_switch_done sec_best_ch freq : %d sec_best_ch width : %d", iface->mxl_iface.sec_best_ch.freq, iface->mxl_iface.sec_best_ch.width);
++		}
++		else if (iface->mxl_iface.sec_best_ch.first_rank_idx >= 0)
++			first_rank_freq = candidates[iface->mxl_iface.sec_best_ch.first_rank_idx].freq;
++
++		if (iface->mxl_iface.sec_best_ch.first_rank_idx && iface->mxl_iface.sec_best_ch.flag) {
++			/* dont consider disabled channel */
++			if ((candidates[i].exclude_reason != ACS_NO_EXCLUSION)) {
++				wpa_printf(MSG_DEBUG, "channel disabled %d", candidates[i].primary);
++				continue;
++			}
++			if (channels_overlap(first_rank_freq, first_rank_width, candidates[i].freq, candidates[i].width)) {
++				wpa_printf(MSG_ERROR, "channel overlapped  first freq %d, : candidates[i].freq %d", candidates[iface->mxl_iface.sec_best_ch.first_rank_idx].freq, candidates[i].freq);
++				continue;
++			}
++		}
++
+ 		/* Do not calculate rank for channels to be excluded, special case for
+ 		 * not in chanlist candidates (ACS_EXCLUDE_DISABLED), for them rank always
+ 		 * should be calculted, but they should be skipped after rank calculation */
+@@ -2822,7 +2952,9 @@ int mxl_acs_recalc_ranks_and_set_chan (struct hostapd_iface *iface, int switch_r
+ 		wpa_printf(MSG_DEBUG, "ACS: candidate idx %d rank %d, bw_rank %d, primary util %d, util %d",
+ 			   i, candidates[i].rank, candidates[i].bw_comp_rank, candidates[i].rank_util_primary, candidates[i].bw_comp_util);
+ 
+-		acs_print_cand_no_file(fp, iface, i);
++		/* Avoid duplicate print in the acs table */
++		if (!acs_cand_skip)
++			acs_print_cand_no_file(fp, iface, i);
+ 
+ 		if (candidates[i].exclude_reason != ACS_NO_EXCLUSION &&
+ 		    candidates[i].exclude_reason != ACS_EXCLUDE_LOW_PRIMARY_UTIL)
+@@ -2907,7 +3039,12 @@ int mxl_acs_recalc_ranks_and_set_chan (struct hostapd_iface *iface, int switch_r
+ 		/* comparison between bandwidth categories - pick up the one with the best rank */
+ 		if ((iface->conf->mxl_conf.acs_bw_comparison) &&
+ 		    (iface->conf->mxl_conf.acs_policy == ACS_POLICY_THROUGHPUT) &&
+-		    ((prio + 1) < ACS_NUM_GRP_PRIORITIES)) /* for the last category, there will be no rank to compare with */
++		    ((prio + 1) < ACS_NUM_GRP_PRIORITIES) &&
++		    !(iface->conf->mxl_conf.acs_6g_punct_mode &&
++			he_reg_is_sp(iface->conf->he_6ghz_reg_pwr_type) &&
++			is_6ghz_op_class(iface->conf->op_class) &&
++			iface->mxl_iface.sec_best_ch.flag))
++		/* for the last category, there will be no rank to compare with */
+ 		{
+ 			if ((-1 == bw_comp_util) || (-1 == cg[grp_map[prio + 1]].bw_comp_util))
+ 				continue;
+@@ -2923,8 +3060,40 @@ int mxl_acs_recalc_ranks_and_set_chan (struct hostapd_iface *iface, int switch_r
+ 
+ set_chan:
+ 		wpa_printf(MSG_DEBUG, "ACS: exit recalculate, selected prio %d min_rank_cand_idx %d", prio, min_rank_cand_idx);
+-		res = acs_set_new_chan_if_ok(iface, min_rank_cand_idx, switch_reason, fp_hist);
+-		if (res) {
++		if (iface->mxl_iface.sec_best_ch.flag) {
++			wpa_printf(MSG_DEBUG, "ACS: prio %d second rank_cand_idx %d,  chan : %d", prio, min_rank_cand_idx, candidates[min_rank_cand_idx].freq);
++			iface->mxl_iface.sec_best_ch.second_rank_idx = min_rank_cand_idx;
++			iface->mxl_iface.sec_best_ch.channel = candidates[min_rank_cand_idx].chan;
++			iface->mxl_iface.sec_best_ch.freq = candidates[min_rank_cand_idx].freq;
++			iface->mxl_iface.sec_best_ch.width = candidates[min_rank_cand_idx].width;
++			iface->mxl_iface.sec_best_ch.primary = candidates[min_rank_cand_idx].primary;
++			iface->mxl_iface.sec_best_ch.secondary = candidates[min_rank_cand_idx].secondary;
++			res = 0;
++			goto end;
++		}
++		iface->mxl_iface.sec_best_ch.first_rank_idx = min_rank_cand_idx;
++
++		res = mxl_acs_check_new_chan_is_ok(iface, min_rank_cand_idx, switch_reason, fp_hist);
++#ifdef CONFIG_AFC
++		/* In SP/ISP, we will rank the best candidate + valid punctured pattern
++		 * If rank of any punctured pattern + best candidate is higher than rank of original puncture pattern
++		 * we will apply that puncture pattern with the best candidate
++		 * else stick to original best candidate
++		 */
++		if (res && iface->conf->mxl_conf.acs_6g_punct_mode && he_reg_is_sp(iface->conf->he_6ghz_reg_pwr_type) && is_6ghz_op_class(iface->conf->op_class))
++		{
++			u16 bitmap = mxl_acs_rank_punct_pattern_best_candidate(iface, min_rank_cand_idx);
++			if(bitmap == 0) {
++				wpa_printf(MSG_INFO, "ACS + Punct : Selected candidate has best rank without any puncture pattern, NO PUNCTURING");
++			}
++			else {
++				wpa_printf(MSG_INFO, "ACS + Punct: Selected candidate that has best rank with punture pattern 0x%04x", bitmap);
++			}
++			mxl_hostapd_set_eht_punct_bitmap(iface->bss[0], bitmap);
++			iface->conf->punct_bitmap = bitmap;
++		}
++#endif
++		if (res && mxl_acs_set_new_chan_if_ok(iface, min_rank_cand_idx)) {
+ 			int width = mxl_hostapd_get_num_width(hostapd_get_oper_chwidth(iface->conf), candidates[min_rank_cand_idx].secondary);
+ 			int seg0_idx = hostapd_get_oper_centr_freq_seg0_idx(iface->conf);
+ 			int seg1_idx = hostapd_get_oper_centr_freq_seg1_idx(iface->conf);
+@@ -2953,8 +3122,8 @@ set_chan:
+ 	/* if we are still here - use the fallback channel */
+ 	iface->conf->channel = iface->conf->mxl_conf.acs_fallback_chan.primary;
+ 	iface->freq = hostapd_hw_get_freq(iface->bss[0], iface->conf->channel);
+-	iface->conf->secondary_channel = get_secondary_offset(iface->conf->mxl_conf.acs_fallback_chan.primary, iface->conf->mxl_conf.acs_fallback_chan.secondary);
+-	hostapd_set_oper_chwidth(iface->conf, get_oper_width(iface->conf->mxl_conf.acs_fallback_chan.width));
++	iface->conf->secondary_channel = mxl_get_secondary_offset(iface->conf->mxl_conf.acs_fallback_chan.primary, iface->conf->mxl_conf.acs_fallback_chan.secondary);
++	hostapd_set_oper_chwidth(iface->conf, mxl_get_oper_width(iface->conf->mxl_conf.acs_fallback_chan.width));
+ 	acs_smart_adjust_center_freq(iface, 0);
+ 	wpa_printf(MSG_DEBUG, "ACS: exit recalculate, using fallback channel");
+ 	fprintf(fp_hist, "ACS: using fallback channel\n");
+@@ -3642,6 +3811,10 @@ void mxl_smart_acs_scan_complete(struct hostapd_iface *iface)
  	}
+ 
+ 	mxl_acs_smart_process_bsses(iface, scan_res);
++	if (WAVE_FREQ_IS_5G(iface->freq)) {
++		iface->mxl_iface.sec_best_ch.flag = true;
++		mxl_acs_recalc_ranks_and_set_chan(iface, SWR_INITIAL);
++	}
+ 
+ 	/* After 2.4 and 5 RNR Processing call 6G ACS Scan Request with RNR Data */
+ 	if (!(is_6ghz_op_class(iface->conf->op_class))) {
+@@ -3828,8 +4001,50 @@ void mxl_acs_init_defaults(struct hostapd_iface *iface)
+ 		candidates[i].cwi_noise[SEC_MAX_40] = 0;
+ 		candidates[i].cwi_noise[SEC_MAX_80] = 0;
+ 	}
++	/* reset second best channel params */
++	memset(&iface->mxl_iface.sec_best_ch, 0, sizeof(iface->mxl_iface.sec_best_ch));
  }
  
 +/* Gets secondary channel offset and VHT operational center frequency segment 0 index
@@ -270,7 +599,7 @@ index 9b7e81281..2715d98af 100644
  {
  	if (hapd->driver && hapd->driver->abort_scan)
 diff --git a/src/ap/mxl_acs.h b/src/ap/mxl_acs.h
-index cbb5b62aa..ba49de19d 100644
+index 158ced990..a72f2b042 100644
 --- a/src/ap/mxl_acs.h
 +++ b/src/ap/mxl_acs.h
 @@ -123,6 +123,14 @@ enum {
@@ -298,7 +627,7 @@ index cbb5b62aa..ba49de19d 100644
  					    int secondary_offset, int bandwidth);
  bool mxl_hostapd_acs_compare_ranks(struct hostapd_iface *iface, int rank1_idx, int rank2_idx);
 diff --git a/src/ap/mxl_config.h b/src/ap/mxl_config.h
-index 1e75a45a2..39916336b 100644
+index 8b913d490..0987c8ca6 100644
 --- a/src/ap/mxl_config.h
 +++ b/src/ap/mxl_config.h
 @@ -48,6 +48,7 @@ int mxl_hostapd_acs_config_defaults(struct hostapd_config *conf);
@@ -309,19 +638,48 @@ index 1e75a45a2..39916336b 100644
  #endif /* CONFIG_VENDOR_MXL_PROPRIETARY */
  
  #define CCA_TH_SIZE 5
-@@ -385,6 +386,7 @@ struct mxl_hostapd_config {
- 	struct acs_exclude *acs_exclude_opclass_ch_list;
- 	int acs_exclude_opclass_ch_count;
+@@ -389,6 +390,7 @@ struct mxl_hostapd_config {
+ 	int acs_user_config_op_class;
+ 	int acs_user_cw_done;
  #endif /* CONFIG_ACS */
 +	int dfs_debug_chan;
  #endif /* CONFIG_VENDOR_MXL_PROPRIETARY */
  
  	int allow_scan_during_cac;
 diff --git a/src/ap/mxl_dfs_common.c b/src/ap/mxl_dfs_common.c
-index a32b235c4..36ee9f13f 100644
+index a32b235c4..9c79222d1 100644
 --- a/src/ap/mxl_dfs_common.c
 +++ b/src/ap/mxl_dfs_common.c
-@@ -49,7 +49,22 @@ int mxl_hostapd_drv_set_antenna(struct hostapd_iface *iface, u32 tx, u32 rx)
+@@ -26,6 +26,28 @@
+ #include "common/mxl_wpa_ctrl.h"
+ #include "ap/mxl_hostapd.h"
+ 
++int mxl_is_dfs_channel(int freq, int sec_offset, int bandwidth_mhz)
++{
++	freq += (sec_offset * 10);
++	int lower_freq = freq - bandwidth_mhz / 2;
++	int upper_freq = freq + bandwidth_mhz / 2;
++
++	/* DFS range in 5 GHz (example for many regulatory domains) */
++	if ((lower_freq < 5330 && upper_freq > 5250) ||
++		(lower_freq < 5710 && upper_freq > 5490)) {
++		return 1; /* DFS */
++	}
++	return 0; /* Non-DFS */
++}
++
++int mxl_get_secondary_offset(int primary, int secondary)
++{
++	if (secondary)
++		return ((secondary > primary) ? 1 : -1);
++	else
++		return 0;
++}
++
+ int mxl_hostapd_set_chan_dfs_state(struct hostapd_iface *iface, enum nl80211_dfs_state dfs_state,
+ 				   int freq, int dfs_time, int dfs_debug)
+ {
+@@ -49,7 +71,22 @@ int mxl_hostapd_drv_set_antenna(struct hostapd_iface *iface, u32 tx, u32 rx)
  	u32 tx_ant = iface->mxl_iface.failsafe.tx_ant;
  	struct hostapd_data *hapd = iface->bss[0];
  
@@ -345,7 +703,7 @@ index a32b235c4..36ee9f13f 100644
  		return 0;
  
  	if (!hapd->drv_priv)
-@@ -212,6 +227,13 @@ struct hostapd_channel_data * mxl_dfs_get_valid_channel(struct hostapd_iface *if
+@@ -212,6 +249,13 @@ struct hostapd_channel_data * mxl_dfs_get_valid_channel(struct hostapd_iface *if
  	struct hostapd_channel_data *channel = NULL;
  	*secondary_channel = *oper_centr_freq_seg0_idx = *oper_centr_freq_seg1_idx = 0;
  
@@ -359,7 +717,7 @@ index a32b235c4..36ee9f13f 100644
  	if (mxl_dfs_is_failsafe_enabled(iface)) {
  		/* switch to failsafe channel */
  		channel = mxl_dfs_get_valid_channel_failsafe(iface, secondary_channel,
-@@ -240,6 +262,9 @@ bool mxl_hostapd_handle_radar(struct hostapd_iface *iface, int cf1, int bw)
+@@ -240,6 +284,9 @@ bool mxl_hostapd_handle_radar(struct hostapd_iface *iface, int cf1, int bw)
  		wpa_printf(MSG_INFO, "CAC pending, not initiating channel switch");
  		return true;
  	}
@@ -369,8 +727,139 @@ index a32b235c4..36ee9f13f 100644
  #endif /* CONFIG_VENDOR_MXL_PROPRIETARY */
  
  	if (cf1 && bw) {
+@@ -548,3 +595,130 @@ void mxl_dfs_restore_original_cw(struct hostapd_iface *iface)
+ 	iface->conf->secondary_channel = iface->mxl_iface.current_secondary_channel;
+ 	hostapd_set_oper_chwidth(iface->conf, iface->mxl_iface.current_oper_chwidth);
+ }
++
++bool mxl_validate_second_best_chan(struct hostapd_iface *iface)
++{
++#ifdef CONFIG_VENDOR_MXL_PROPRIETARY
++	if (iface->mxl_iface.sec_best_ch.bg_cac)
++		return true;
++#endif /* CONFIG_VENDOR_MXL_PROPRIETARY */
++	 return false;
++}
++
++bool mxl_switch_second_best_channel(struct hostapd_iface *iface)
++{
++#ifdef CONFIG_VENDOR_MXL_PROPRIETARY
++#ifdef CONFIG_ACS
++	if(!iface->conf->acs) {
++		wpa_printf(MSG_DEBUG, "%s ZWDFS: acs is disabled after zwdfs CAC on second best channel",  __func__);
++		return false;
++	}
++#endif /* CONFIG_ACS */
++	if (iface->mxl_iface.sec_best_ch.bg_cac && (iface->dfs_domain == HOSTAPD_DFS_REGION_FCC))
++	{
++		enum oper_chan_width chwidth;
++		u8 cf_1 = 0;
++		u8 cf_2 = 0;
++		u8 op_class;
++
++#ifdef CONFIG_ACS
++		/* back up current channel data */
++		mxl_acs_chandef cur_chan;
++		acs_push_chandef(iface, &cur_chan);
++#endif /* CONFIG_ACS */
++
++		iface->conf->channel = iface->mxl_iface.sec_best_ch.primary;
++		iface->freq = iface->mxl_iface.sec_best_ch.freq;
++		iface->conf->secondary_channel  = mxl_get_secondary_offset(iface->mxl_iface.sec_best_ch.primary, iface->mxl_iface.sec_best_ch.secondary);
++		hostapd_set_oper_chwidth(iface->conf, mxl_get_oper_width(iface->mxl_iface.sec_best_ch.width));
++		chwidth = hostapd_get_oper_chwidth(iface->conf);
++		ieee80211_freq_to_channel_ext(iface->mxl_iface.sec_best_ch.freq, 0, chwidth, &op_class, &cf_1);
++		cf_2 = (iface->mxl_iface.sec_best_ch.width <= 80) ? 0 : iface->mxl_iface.sec_best_ch.secondary;
++
++		switch(chwidth) {
++			case CONF_OPER_CHWIDTH_80MHZ:
++				cf_1 = cf_1 + 6;
++				break;
++			case CONF_OPER_CHWIDTH_160MHZ:
++				cf_1 = cf_1 + 14;
++				break;
++			case CONF_OPER_CHWIDTH_USE_HT:
++				/* no changes in cf_1 for 20 and 40 Mhz */
++				break;
++			default:
++				wpa_printf(MSG_ERROR, "Unsupported width : %d", chwidth);
++#ifdef CONFIG_ACS
++				acs_pop_chandef(iface, &cur_chan);
++#endif /* CONFIG_ACS */
++				return false;
++		}
++		hostapd_set_oper_centr_freq_seg0_idx(iface->conf, cf_1);
++		hostapd_set_oper_centr_freq_seg1_idx(iface->conf, cf_2);
++
++		wpa_printf(MSG_DEBUG, "Switch to second best channel freq: %d, width : %d, cf1 = %d", iface->freq, chwidth, cf_1);
++		/* check non DFS channel */
++		if (!mxl_is_dfs_channel(iface->freq, iface->conf->secondary_channel, iface->mxl_iface.sec_best_ch.width)) {
++			int i;
++			int ret;
++			struct csa_settings settings = {0};
++			struct hostapd_hw_modes *cmode = iface->current_mode;
++
++			wpa_printf(MSG_DEBUG, "Switch to non DFS channel");
++			iface->conf->channel = iface->mxl_iface.sec_best_ch.primary;
++			iface->freq = iface->mxl_iface.sec_best_ch.freq;
++			iface->conf->secondary_channel  = mxl_get_secondary_offset(iface->mxl_iface.sec_best_ch.primary, iface->mxl_iface.sec_best_ch.secondary);
++			hostapd_set_oper_chwidth(iface->conf, mxl_get_oper_width(iface->mxl_iface.sec_best_ch.width));
++			settings.cs_count = DEFAULT_CS_COUNT;
++			hostapd_set_freq_params(&settings.freq_params, iface->conf->hw_mode, iface->freq,
++				iface->conf->channel, iface->conf->enable_edmg,
++				iface->conf->edmg_channel, iface->conf->ieee80211n,
++				iface->conf->ieee80211ac, iface->conf->ieee80211ax, iface->conf->ieee80211be,
++				iface->conf->secondary_channel,
++				hostapd_get_oper_chwidth(iface->conf),
++				hostapd_get_oper_centr_freq_seg0_idx(iface->conf),
++				hostapd_get_oper_centr_freq_seg1_idx(iface->conf),
++				cmode ? cmode->vht_capab : 0,
++				cmode ? &cmode->he_capab[IEEE80211_MODE_AP] : NULL,
++				cmode ? &cmode->eht_capab[IEEE80211_MODE_AP] : NULL);
++
++			for (i = 0; i < iface->num_bss; i++) {
++				ret = hostapd_switch_channel(iface->bss[i], &settings);
++				if (ret) {
++					wpa_printf(MSG_ERROR, "Unable to switch non DFS channel !");
++#ifdef CONFIG_ACS
++					acs_pop_chandef(iface, &cur_chan);
++#endif /* CONFIG_ACS */
++					return false;
++				}
++			}
++
++		} else {
++			if (mxl_hostapd_zwdfs_switch(iface, HOSTAPD_CAC_STAT_SUCCESS, iface->freq, chwidth, cf_1, cf_2)) {
++				wpa_printf(MSG_DEBUG, "Failed to switch to second best DFS channel");
++#ifdef CONFIG_ACS
++				acs_pop_chandef(iface, &cur_chan);
++#endif /* CONFIG_ACS */
++				return false;
++			}
++			wpa_printf(MSG_DEBUG, "Switch to second best DFS channel");
++		}
++
++		/* get second best channel again after RADAR detected */
++		iface->mxl_iface.sec_best_ch.first_rank_idx = iface->mxl_iface.sec_best_ch.second_rank_idx;
++		iface->mxl_iface.sec_best_ch.flag = true;
++		iface->mxl_iface.sec_best_ch.bg_cac = false;
++		iface->mxl_iface.sec_best_ch.ch_switch_done = true;
++		if (!(mxl_acs_recalc_ranks_and_set_chan(iface, SWR_INITIAL))) {
++			wpa_printf(MSG_DEBUG, "get sec best channel again");
++			mxl_get_second_best_channel(iface);
++		} else {
++			wpa_printf(MSG_DEBUG, "Unable to get second best channel again ");
++		}
++		return true;
++
++	} else {
++		wpa_printf(MSG_ERROR, "No need to switch second best channel");
++	}
++#endif
++	return false;
++}
 diff --git a/src/ap/mxl_dfs_common.h b/src/ap/mxl_dfs_common.h
-index 9b44d3970..0eadd3ea4 100644
+index 9b44d3970..68f6fe049 100644
 --- a/src/ap/mxl_dfs_common.h
 +++ b/src/ap/mxl_dfs_common.h
 @@ -15,6 +15,9 @@
@@ -383,6 +872,31 @@ index 9b44d3970..0eadd3ea4 100644
  
  /* CAC finished reason code */
  enum mxl_hostapd_cac_finished_stat {
+@@ -23,6 +26,7 @@ enum mxl_hostapd_cac_finished_stat {
+ 	HOSTAPD_CAC_STAT_PAUSED  = 2
+ };
+ 
++int mxl_get_secondary_offset(int primary, int secondary);
+ int mxl_hostapd_drv_set_antenna(struct hostapd_iface *iface, u32 tx, u32 rx);
+ void mxl_hostapd_event_dfs_cac_paused(struct hostapd_data *hapd, struct dfs_event *radar);
+ struct hostapd_channel_data *
+@@ -72,7 +76,16 @@ int mxl_hostapd_dfs_start_cac(struct hostapd_iface *iface, int freq,
+ 			      int ht_enabled, int chan_offset, int chan_width,
+ 			      int cf1, int cf2);
+ int mxl_dfs_check_chans_available(struct hostapd_iface *iface, int start_chan_idx, int n_chans);
++#ifdef CONFIG_VENDOR_MXL_PROPRIETARY
++int mxl_is_dfs_channel(int freq, int sec_offset, int bandwidth_mhz);
++struct hostapd_channel_data *
++mxl_dfs_get_channel_dynamic_failsafe(struct hostapd_iface *iface, int *secondary_channel,
++				     u8 *vht_oper_centr_freq_seg0_idx, u8 *vht_oper_centr_freq_seg1_idx,
++				     bool skip_usable, struct hostapd_freq_params* freq_params);
++#endif /* CONFIG_VENDOR_MXL_PROPRIETARY */
+ void mxl_dfs_cut_cw_by_half(struct hostapd_iface *iface, bool backup);
+ void mxl_dfs_restore_original_cw(struct hostapd_iface *iface);
++bool mxl_validate_second_best_chan(struct hostapd_iface *iface);
++bool mxl_switch_second_best_channel(struct hostapd_iface *iface);
+ 
+ #endif /* MXL_DFS_COMMON_H */
 diff --git a/src/ap/mxl_dfs_debug.c b/src/ap/mxl_dfs_debug.c
 new file mode 100644
 index 000000000..74cc27f7d
@@ -708,28 +1222,141 @@ index 000000000..98c29bcd9
 +
 +#endif /* MXL_DFS_DEBUG_H */
 \ No newline at end of file
+diff --git a/src/ap/mxl_drv_callbacks.c b/src/ap/mxl_drv_callbacks.c
+index 2ee64e398..26c0e7475 100644
+--- a/src/ap/mxl_drv_callbacks.c
++++ b/src/ap/mxl_drv_callbacks.c
+@@ -24,6 +24,7 @@
+ #include "ap_drv_ops.h"
+ #include "beacon.h"
+ #include "drivers/mxl_driver.h"
++#include "mxl_hostapd.h"
+ 
+ #ifdef CONFIG_IEEE80211BE_MXL_MLO
+ void mxl_hostapd_notif_disassoc(struct hostapd_data *hapd, const u8 *addr)
+@@ -224,3 +225,20 @@ void mxl_hostapd_event_eapol_rx(struct hostapd_data *hapd, const u8 *src,
+ 
+ 	ieee802_1x_receive(hapd, src, data, data_len, encrypted);
+ }
++
++void mxl_check_ch_switch_status_and_get_second_best_channel(int finished, struct hostapd_data *hapd)
++{
++#ifdef CONFIG_VENDOR_MXL_PROPRIETARY
++	if(!hapd->iface->conf->mxl_conf.acs_init_done) {
++		return;
++	}
++	if (hapd->iface->mxl_iface.sec_best_ch.flag) {
++		if (finished && hapd->iface->mxl_iface.sec_best_ch.second_rank_idx) {
++			if (!(hapd->iface->mxl_iface.sec_best_ch.bg_cac)) {
++				mxl_get_second_best_channel(hapd->iface);
++			}
++		}
++	}
++#endif
++	return;
++}
+diff --git a/src/ap/mxl_drv_callbacks.h b/src/ap/mxl_drv_callbacks.h
+index 4778c616d..ed4cb9af0 100644
+--- a/src/ap/mxl_drv_callbacks.h
++++ b/src/ap/mxl_drv_callbacks.h
+@@ -26,5 +26,5 @@ void mxl_hostapd_event_eapol_rx(struct hostapd_data *hapd, const u8 *src,
+ 				enum frame_encryption encrypted,
+ 				int link_id,
+ 				u16 vlan_id);
+-
++void mxl_check_ch_switch_status_and_get_second_best_channel(int finished, struct hostapd_data *hapd);
+ #endif /* MXL_DRV_CALLBACKS_H */
+diff --git a/src/ap/mxl_hostapd.c b/src/ap/mxl_hostapd.c
+index 0019a55c6..f7a181e8a 100644
+--- a/src/ap/mxl_hostapd.c
++++ b/src/ap/mxl_hostapd.c
+@@ -1789,6 +1789,14 @@ void mxl_hostapd_setup_interface_post(struct hostapd_iface *iface)
+ 	struct mxl_hostapd_config *mxl_conf = &hapd->iconf->mxl_conf;
+ 	int ap_retry_limit_cfg[3];
+ 
++#ifdef CONFIG_VENDOR_MXL_PROPRIETARY
++	if (iface->mxl_iface.sec_best_ch.flag) {
++		if (WAVE_FREQ_IS_5G(iface->freq) && !(iface->mxl_iface.sec_best_ch.bg_cac)) {
++			iface->mxl_iface.sec_best_ch.flag = true;
++			mxl_get_second_best_channel(iface);
++		}
++	}
++#endif
+ 	mxl_acs_set_bgscan_interval(hapd);
+ 
+ 	/* Set AP retry limit only if user configured this */
+@@ -3606,3 +3614,11 @@ void mxl_acs_stop_bgscan_timer(struct hostapd_data *hapd)
+ #endif /* CONFIG_ACS */
+ #endif /* CONFIG_VENDOR_MXL_PROPRIETARY */
+ }
++
++void mxl_acs_clear_second_bg_cac_param(struct hostapd_iface *iface)
++{
++#ifdef CONFIG_VENDOR_MXL_PROPRIETARY
++	memset(&iface->mxl_iface.sec_best_ch, 0, sizeof(iface->mxl_iface.sec_best_ch));
++#endif /* CONFIG_VENDOR_MXL_PROPRIETARY */
++	return;
++}
 diff --git a/src/ap/mxl_hostapd.h b/src/ap/mxl_hostapd.h
-index 6fd0d2424..6d24b23d3 100644
+index 504515693..1a43d3146 100644
 --- a/src/ap/mxl_hostapd.h
 +++ b/src/ap/mxl_hostapd.h
-@@ -113,6 +113,8 @@ struct mxl_hostapd_iface {
+@@ -70,6 +70,19 @@ struct hostapd_failsafe_freq_params {
+ 	u32 tx_ant, rx_ant;
+ };
+ 
++struct acs_second_best_channel_params {
++	u8 first_rank_idx;
++	u8 second_rank_idx;
++	bool ch_switch_done;
++	bool bg_cac;
++	bool flag;
++	u32 channel;
++	u32 freq;
++	u32 primary;
++	u32 secondary;
++	int width;
++};
++
+ struct mxl_hostapd_iface {
+ 	u32 sta_aid_link[MXL_AID_WORDS];
+ 	s8 stas_free_reason; /* the reason for all stations remove */
+@@ -77,7 +90,7 @@ struct mxl_hostapd_iface {
+ 	unsigned int acs_update_in_progress:1;
+ 	unsigned int cac_required:1;
+ 	int in_scan;
+-
++	struct acs_second_best_channel_params sec_best_ch;
+ #endif /* CONFIG_VENDOR_MXL_PROPRIETARY */
+ #ifdef CONFIG_ACS
+ #ifdef CONFIG_VENDOR_MXL_PROPRIETARY
+@@ -113,6 +126,8 @@ struct mxl_hostapd_iface {
  	bool acs_bgscan;
  	bool dfs_bg_cac;
  	int acs_reenable_iface;
 +	int dfs_dbg_need_cac;
 +	int dfs_dbg_in_cac;
  #endif /* CONFIG_VENDOR_MXL_PROPRIETARY */
- 	int acs_user_config_cw;
- 	int acs_user_config_op_class;
-@@ -241,6 +243,8 @@ enum hostapd_iface_state;
+ #endif /* CONFIG_ACS */
+ 
+@@ -239,6 +254,11 @@ enum hostapd_iface_state;
  void mxl_hostapd_update_channel_data(struct hostapd_iface *iface, const u8 *data, size_t data_len);
  #endif /* CONFIG_ACS */
  void mxl_hostapd_set_state_pre(struct hostapd_iface *iface, enum hostapd_iface_state s);
 +bool mxl_hostapd_ieee80211n_check_40mhz(struct hostapd_iface *iface);
 +int mxl_hostapd_restart_iface(struct hostapd_iface *iface);
++void mxl_dynamic_wmm_param_init(struct hostapd_data *hapd);
++void mxl_hostapd_setup_interface_pre_wmm(struct hostapd_iface *iface, struct hostapd_data *hapd);
++void mxl_get_second_best_channel(struct hostapd_iface *iface);
  #endif /* CONFIG_VENDOR_MXL_PROPRIETARY */
  
  int mxl_hostapd_get_num_width(enum oper_chan_width width, int secondary);
+@@ -324,4 +344,5 @@ struct hostapd_data *mxl_hostapd_get_setup_mbssid_bss(struct hostapd_iface *ifac
+ size_t mxl_hostapd_get_mbssid_tx_bss_idx(struct hostapd_iface *iface);
+ void mxl_acs_set_bgscan_interval(struct hostapd_data *hapd);
+ void mxl_acs_stop_bgscan_timer(struct hostapd_data *hapd);
++void mxl_acs_clear_second_bg_cac_param(struct hostapd_iface *iface);
+ #endif /* MXL_HOSTAPD_H */
 diff --git a/src/ap/mxl_hostapd_proprietary.c b/src/ap/mxl_hostapd_proprietary.c
 index be657927f..f44e13d90 100644
 --- a/src/ap/mxl_hostapd_proprietary.c
@@ -768,7 +1395,7 @@ index be657927f..f44e13d90 100644
 +        return res;
 +}
 diff --git a/src/ap/mxl_zwdfs.c b/src/ap/mxl_zwdfs.c
-index 8097199f1..34c6dfc89 100644
+index cff154d45..862cb116b 100644
 --- a/src/ap/mxl_zwdfs.c
 +++ b/src/ap/mxl_zwdfs.c
 @@ -116,6 +116,13 @@ int mxl_hostapd_start_background_cac(struct hostapd_iface *iface, const struct c
@@ -798,7 +1425,7 @@ index 8097199f1..34c6dfc89 100644
  
  end:
  	/* settings->beacon_data not filled/required, so os_memdup is enough here */
-@@ -527,6 +540,11 @@ int mxl_hostapd_zwdfs_restart_cac(struct hostapd_iface *iface, u8 chan, enum cha
+@@ -533,6 +546,11 @@ int mxl_hostapd_zwdfs_restart_cac(struct hostapd_iface *iface, u8 chan, enum cha
  	if (chanwidth <= CHAN_WIDTH_20) {
  		centr_freq_seg0_idx = chan;
  		chan_offset = 0;
@@ -810,6 +1437,14 @@ index 8097199f1..34c6dfc89 100644
  	}
  
  	if (!centr_freq_seg0_idx) {
+@@ -681,6 +699,7 @@ fail:
+ 
+ int mxl_hostapd_handle_zwdfs_switch(struct hostapd_iface *iface, int success, int freq, int chan_width, int cf1, int cf2)
+ {
++	wpa_printf(MSG_DEBUG, "%s ZWDFS: Switching channel is triggered", __func__);
+ 	if (mxl_hostapd_is_zwdfs_iface(iface)) {
+ 		if (mxl_dfs_use_radar_background(iface)) {
+ 			if (mxl_hostapd_dfs_is_background_event(iface, freq, cf1)) {
 -- 
 2.43.0
 

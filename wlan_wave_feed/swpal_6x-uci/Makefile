@@ -9,7 +9,7 @@ include $(INCLUDE_DIR)/kernel.mk
 
 #### Package Info ############################### 
 PKG_NAME:=swpal_6x-uci
-PKG_REV:=38e9aa85b0b0a119f59ebc35014e9de3ed5df408
+PKG_REV:=7bda331139a1463387f9ffc3aa1d1eb95db56028
 PKG_VERSION:=1.0.0.1
 PKG_RELEASE:=$(PKG_REV)
 PKG_BASE_NAME:=$(PKG_NAME)
@@ -18,10 +18,10 @@ PKG_PROJECT:=maxlinear
 PKG_SOURCE_NAME:=swpal.git
 CONFIG_UGW_PKG_SOURCE_URL:=https://github.com
 PKG_SOURCE_URL:=$(CONFIG_UGW_PKG_SOURCE_URL)/$(PKG_PROJECT)/$(PKG_SOURCE_NAME)
-PKG_SOURCE_VERSION:=r1044+a+57
+PKG_SOURCE_VERSION:=r1044+a+165+a+5
 PKG_SOURCE_SUBDIR:=$(PKG_BASE_NAME)-$(PKG_VERSION)
 PKG_SOURCE_PROTO:=git
-PKG_MIRROR_HASH:=c9fba7f02897c91b725e116be74261b174179ff258c98fcbd70a44d66e19bbbb
+PKG_MIRROR_HASH:=ed904671f95e2918a1e989f2287799ad5806a5d233c9104a5b2accda122dec4a
 #PKG_MD5SUM:=40b89c61036add0c2dd1fc10767d3b5f
 
 PKG_BUILD_DIR:=$(BUILD_DIR)/$(PKG_NAME)-$(BUILD_VARIANT)/$(PKG_BASE_NAME)-$(PKG_VERSION)
@@ -230,6 +230,8 @@ endif
 
 	$(INSTALL_BIN) $(PKG_BUILD_DIR)/files/scripts/$(NETIFD_VERSION_DIR)/etc/wave/scripts/load_dut.sh $(1)/opt/intel/wave/scripts/
 	$(INSTALL_BIN) $(PKG_BUILD_DIR)/files/scripts/$(NETIFD_VERSION_DIR)/etc/wave/scripts/wl-wifi.sh $(1)/opt/intel/wave/scripts/
+	$(INSTALL_BIN) $(PKG_BUILD_DIR)/files/scripts/$(NETIFD_VERSION_DIR)/etc/wave/scripts/wnc_wifi_helper.sh $(1)/opt/intel/wave/scripts/
+	$(INSTALL_BIN) $(PKG_BUILD_DIR)/files/scripts/$(NETIFD_VERSION_DIR)/etc/wave/scripts/wnc_wifi_util.sh $(1)/opt/intel/wave/scripts/
 	$(INSTALL_BIN) $(PKG_BUILD_DIR)/files/scripts/$(NETIFD_VERSION_DIR)/etc/wave/scripts/flash_file_saver.sh $(1)/opt/intel/wave/scripts/
 	$(INSTALL_BIN) $(PKG_BUILD_DIR)/files/scripts/$(NETIFD_VERSION_DIR)/etc/wave/scripts/wave_factory_reset.sh $(1)/opt/intel/wave/scripts/
 	$(INSTALL_BIN) $(PKG_BUILD_DIR)/files/scripts/$(NETIFD_VERSION_DIR)/etc/wave/scripts/wave_factory_reset_ex.sh $(1)/opt/intel/wave/scripts/

@@ -1,0 +1,13 @@
+diff --git a/include_priv/whm_mxl_vap.h b/include_priv/whm_mxl_vap.h
+index b6f1e6a..580cc79 100644
+--- a/include_priv/whm_mxl_vap.h
++++ b/include_priv/whm_mxl_vap.h
+@@ -68,7 +68,7 @@ int whm_mxl_vap_createHook(T_AccessPoint* pAP);
+ void whm_mxl_vap_destroyHook(T_AccessPoint* pAP);
+ mxl_VapVendorData_t* mxl_vap_getVapVendorData(const T_AccessPoint* pAP);
+ swl_rc_ne whm_mxl_vap_getSingleStationStats(T_AssociatedDevice* pAD);
+-int whm_mxl_vap_getStationStats(T_AccessPoint* pAP);
++swl_rc_ne whm_mxl_vap_getStationStats(T_AccessPoint* pAP);
+ 
+ int whm_mxl_vap_updateApStats(T_AccessPoint* pAP);
+ int whm_mxl_vap_enable(T_AccessPoint* pAP, int enable, int set);

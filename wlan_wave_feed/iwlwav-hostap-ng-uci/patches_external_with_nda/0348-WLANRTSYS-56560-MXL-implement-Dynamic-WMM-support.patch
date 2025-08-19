@@ -1,4 +1,4 @@
-From a959817514927812ea07cf8735da194f7fa44a1b Mon Sep 17 00:00:00 2001
+From 86ff84faa8b74b1d0301740318d4000867f1f0da Mon Sep 17 00:00:00 2001
 From: spatel <spatel@maxlinear.com>
 Date: Thu, 31 Oct 2024 18:31:57 +0530
 Subject: [PATCH] WLANRTSYS-56560 [MXL] implement Dynamic WMM support
@@ -15,14 +15,13 @@ Subject: [PATCH] WLANRTSYS-56560 [MXL] implement Dynamic WMM support
  src/ap/mxl_common_proprietary.c    | 55 ++++++++++++++++++++++++++++++
  src/ap/mxl_config.h                |  4 +++
  src/ap/mxl_hostapd.c               |  3 ++
- src/ap/mxl_hostapd.h               |  2 ++
  src/ap/wmm.c                       | 14 ++++++++
  src/common/ieee802_11_common.h     |  9 +++++
  src/common/vendor_cmds_copy.h      | 18 ++++++++++
  src/drivers/driver.h               | 17 +++++++++
  src/drivers/driver_common.c        |  3 ++
  src/drivers/driver_nl80211_event.c | 13 +++++++
- 18 files changed, 213 insertions(+)
+ 17 files changed, 211 insertions(+)
 
 diff --git a/hostapd/config_file.c b/hostapd/config_file.c
 index 954d1658c..7e1b0856b 100644
@@ -39,10 +38,10 @@ index 954d1658c..7e1b0856b 100644
  		if (hostapd_config_bss(conf, pos)) {
  			wpa_printf(MSG_ERROR, "Line %d: invalid bss item",
 diff --git a/hostapd/ctrl_iface.c b/hostapd/ctrl_iface.c
-index 13364e89d..546f9f15f 100644
+index cad6ee347..ce62a6874 100644
 --- a/hostapd/ctrl_iface.c
 +++ b/hostapd/ctrl_iface.c
-@@ -1452,6 +1452,9 @@ static int hostapd_ctrl_iface_set(struct hostapd_data *hapd, char *cmd)
+@@ -1468,6 +1468,9 @@ static int hostapd_ctrl_iface_set(struct hostapd_data *hapd, char *cmd)
  			wpa_auth_set_transition_disable(hapd->wpa_auth,
  							hapd->conf->transition_disable);
  #ifdef CONFIG_VENDOR_MXL
@@ -53,7 +52,7 @@ index 13364e89d..546f9f15f 100644
  #endif /* CONFIG_VENDOR_MXL */
  		}
 diff --git a/hostapd/mxl_config_proprietary.c b/hostapd/mxl_config_proprietary.c
-index ec51404f4..e13d97d9d 100644
+index aeb1a7d2c..4c179e1b8 100644
 --- a/hostapd/mxl_config_proprietary.c
 +++ b/hostapd/mxl_config_proprietary.c
 @@ -54,6 +54,58 @@ int mxl_config_check_dfs_debug_chan(struct hostapd_config *conf, const char *buf
@@ -116,10 +115,10 @@ index ec51404f4..e13d97d9d 100644
  {
  #define MAX_OPT_CH_LIST 5
 diff --git a/hostapd/mxl_ctrl_iface.c b/hostapd/mxl_ctrl_iface.c
-index a084d5e16..ee798a467 100644
+index 2026a24c9..2cfd0197a 100644
 --- a/hostapd/mxl_ctrl_iface.c
 +++ b/hostapd/mxl_ctrl_iface.c
-@@ -3381,6 +3381,8 @@ int mxl_hostapd_ctrl_iface_get(struct hostapd_data *hapd, char *cmd, char *buf,
+@@ -3420,6 +3420,8 @@ int mxl_hostapd_ctrl_iface_get(struct hostapd_data *hapd, char *cmd, char *buf,
  #ifdef CONFIG_VENDOR_MXL_PROPRIETARY
  	if (mxl_hostapd_ctrl_iface_get_dynamic_failsafe(hapd, cmd, buf, buflen, reply_len)) {
  		return *reply_len;
@@ -143,10 +142,10 @@ index 10b1e2b8a..15024c6d3 100644
  	int ht_op_mode_fixed;
  	u16 ht_capab;
 diff --git a/src/ap/drv_callbacks.c b/src/ap/drv_callbacks.c
-index 3e08ec63e..a4b5fb552 100644
+index 2d90fc33c..0e2170f75 100644
 --- a/src/ap/drv_callbacks.c
 +++ b/src/ap/drv_callbacks.c
-@@ -2809,6 +2809,11 @@ void wpa_supplicant_event(void *ctx, enum wpa_event_type event,
+@@ -2814,6 +2814,11 @@ void wpa_supplicant_event(void *ctx, enum wpa_event_type event,
  			   hapd->conf->iface);
  		hostapd_event_cca(hapd, event);
  		break;
@@ -159,10 +158,10 @@ index 3e08ec63e..a4b5fb552 100644
  	case EVENT_LTQ_UNCONNECTED_STA_RX:
  		hostapd_event_ltq_unconnected_sta_rx(hapd,
 diff --git a/src/ap/hostapd.c b/src/ap/hostapd.c
-index 48d8b2c37..6bb8d7722 100644
+index 070896efa..2910346e9 100644
 --- a/src/ap/hostapd.c
 +++ b/src/ap/hostapd.c
-@@ -3914,6 +3914,10 @@ hostapd_alloc_bss_data(struct hostapd_iface *hapd_iface,
+@@ -3942,6 +3942,10 @@ hostapd_alloc_bss_data(struct hostapd_iface *hapd_iface,
  	hapd->mxl_data.sibling_hapd = NULL;
  #endif /* CONFIG_IEEE80211BE_MXL_MLO */
  
@@ -254,7 +253,7 @@ index e4f7ad46d..fc806497a 100644
  mxl_dfs_get_channel_dynamic_failsafe(struct hostapd_iface *iface,
                                       int *secondary_channel,
 diff --git a/src/ap/mxl_config.h b/src/ap/mxl_config.h
-index ce462ba9a..b758cbcf1 100644
+index f4bc7bb1e..1e5ea0ee8 100644
 --- a/src/ap/mxl_config.h
 +++ b/src/ap/mxl_config.h
 @@ -50,6 +50,10 @@ void mxl_hostapd_config_free_acs(struct hostapd_config *conf);
@@ -269,10 +268,10 @@ index ce462ba9a..b758cbcf1 100644
  
  #define CCA_TH_SIZE 5
 diff --git a/src/ap/mxl_hostapd.c b/src/ap/mxl_hostapd.c
-index 8fd5608a5..92cf86507 100644
+index f7a181e8a..1918da38d 100644
 --- a/src/ap/mxl_hostapd.c
 +++ b/src/ap/mxl_hostapd.c
-@@ -2142,6 +2142,9 @@ void mxl_hostapd_setup_interface_pre(struct hostapd_iface *iface)
+@@ -2156,6 +2156,9 @@ void mxl_hostapd_setup_interface_pre(struct hostapd_iface *iface)
  					NESTED_ATTR_NOT_USED,NULL))
  		wpa_printf(MSG_WARNING, "set sInterferDetThresh failed");
  
@@ -282,19 +281,6 @@ index 8fd5608a5..92cf86507 100644
  	if (MXL_DRV_VENDOR_SET(LTQ_NL80211_VENDOR_SUBCMD_SET_DYNAMIC_EDCA,
  			       &mxl_conf->dynamic_edca, sizeof(mxl_conf->dynamic_edca)))
  		wpa_printf(MSG_WARNING, "set dynamic_edca failed");
-diff --git a/src/ap/mxl_hostapd.h b/src/ap/mxl_hostapd.h
-index 6d24b23d3..64a134175 100644
---- a/src/ap/mxl_hostapd.h
-+++ b/src/ap/mxl_hostapd.h
-@@ -245,6 +245,8 @@ void mxl_hostapd_update_channel_data(struct hostapd_iface *iface, const u8 *data
- void mxl_hostapd_set_state_pre(struct hostapd_iface *iface, enum hostapd_iface_state s);
- bool mxl_hostapd_ieee80211n_check_40mhz(struct hostapd_iface *iface);
- int mxl_hostapd_restart_iface(struct hostapd_iface *iface);
-+void mxl_dynamic_wmm_param_init(struct hostapd_data *hapd);
-+void mxl_hostapd_setup_interface_pre_wmm(struct hostapd_iface *iface, struct hostapd_data *hapd);
- #endif /* CONFIG_VENDOR_MXL_PROPRIETARY */
- 
- int mxl_hostapd_get_num_width(enum oper_chan_width width, int secondary);
 diff --git a/src/ap/wmm.c b/src/ap/wmm.c
 index d9fd7502f..605dd1ea8 100644
 --- a/src/ap/wmm.c
@@ -341,10 +327,10 @@ index 31985ecd8..87e0a192f 100644
  			  const char *name, const char *val);
  
 diff --git a/src/common/vendor_cmds_copy.h b/src/common/vendor_cmds_copy.h
-index ee74d4c0c..1f0dd06ca 100644
+index 3c2a21af1..7fbc65643 100644
 --- a/src/common/vendor_cmds_copy.h
 +++ b/src/common/vendor_cmds_copy.h
-@@ -450,6 +450,9 @@ enum ltq_nl80211_vendor_events {
+@@ -453,6 +453,9 @@ enum ltq_nl80211_vendor_events {
    LTQ_NL80211_VENDOR_EVENT_COC_BEACON_UPDATE   = 14,
    LTQ_NL80211_VENDOR_EVENT_WHM                 = 15,
    LTQ_NL80211_VENDOR_EVENT_CSI_STATS           = 16,
@@ -354,7 +340,7 @@ index ee74d4c0c..1f0dd06ca 100644
    LTQ_NL80211_VENDOR_EVENT_REGDB_INFO_UPDATE   = 18,
    LTQ_NL80211_VENDOR_EVENT_RX_MEASURE          = 19,
  };
-@@ -917,6 +920,21 @@ struct intel_vendor_whm_event_cfg {
+@@ -978,6 +981,21 @@ struct intel_vendor_whm_event_cfg {
    u32               num_cards;
  } __attribute__ ((packed));
  
