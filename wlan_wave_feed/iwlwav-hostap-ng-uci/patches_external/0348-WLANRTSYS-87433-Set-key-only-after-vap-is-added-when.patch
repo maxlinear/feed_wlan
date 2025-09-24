@@ -1,0 +1,51 @@
+From 9e5827e203ad18c239ced6682f8cfecbdaa61693 Mon Sep 17 00:00:00 2001
+From: nchernikov <nchernikov@maxlinear.com>
+Date: Sun, 10 Aug 2025 09:25:37 +0300
+Subject: [PATCH] WLANRTSYS-87433 Set key only after vap is added when
+ interface is enabled by driver
+
+Issue:
+When interface is enabled by driver, the OS behaviour is to set the group key before starting the VAP
+The proper order as per our FW expectation is to set the key only when vap is added, hence order is reversed.
+
+Fix:
+Reverse the order and set group key only after vap is added when EVENT_INTERFACE_ENABLED is handled
+
+Signed-off-by: nchernikov <nchernikov@maxlinear.com>
+---
+ src/ap/drv_callbacks.c | 8 ++++++++
+ 1 file changed, 8 insertions(+)
+
+diff --git a/src/ap/drv_callbacks.c b/src/ap/drv_callbacks.c
+index ca001bf52..e493762c4 100644
+--- a/src/ap/drv_callbacks.c
++++ b/src/ap/drv_callbacks.c
+@@ -2723,10 +2723,12 @@ void wpa_supplicant_event(void *ctx, enum wpa_event_type event,
+ 				wpa_printf(MSG_ERROR, "Failed to set multi_ap");
+ 			}
+ #endif /* CONFIG_VENDOR_MXL */
++#ifndef CONFIG_VENDOR_MXL
+ 			if (hapd->wpa_auth)
+ 				wpa_auth_reconfig_group_keys(hapd->wpa_auth);
+ 			else
+ 				hostapd_reconfig_encryption(hapd);
++#endif /* CONFIG_VENDOR_MXL */
+ 			hapd->reenable_beacon = 1;
+ 			if (ieee802_11_update_beacon(hapd) < 0) {
+ 				hapd->iface->set_freq_done = 0;
+@@ -2737,6 +2739,12 @@ void wpa_supplicant_event(void *ctx, enum wpa_event_type event,
+ 				/* Required for FW add VAP bringup sequence */
+ 				hostapd_tx_queue_params(hapd);
+ 			}
++#ifdef CONFIG_VENDOR_MXL
++			if (hapd->wpa_auth)
++				wpa_auth_reconfig_group_keys(hapd->wpa_auth);
++			else
++				hostapd_reconfig_encryption(hapd);
++#endif /* CONFIG_VENDOR_MXL */
+ #ifdef NEED_AP_MLME
+ 		} else if (hapd->disabled && hapd->iface->cac_started) {
+ 			wpa_printf(MSG_DEBUG, "DFS: restarting pending CAC");
+-- 
+2.43.0
+

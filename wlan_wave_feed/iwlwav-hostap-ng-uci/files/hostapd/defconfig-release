@@ -185,6 +185,9 @@ CONFIG_IEEE80211BE_MXL_MLO=y
 # SCS support
 CONFIG_SCS_MXL=y
 
+# MSCS Support
+CONFIG_MSCS_MXL=y
+
 # Remove debugging code that is printing out debug messages to stdout.
 # This can be used to reduce the size of the hostapd considerably if debugging
 # code is not needed.

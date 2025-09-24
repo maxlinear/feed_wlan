@@ -1,0 +1,49 @@
+From 5f30364d6210afe1f32b7c7fa19bf263146954b9 Mon Sep 17 00:00:00 2001
+From: nchernikov <nchernikov@maxlinear.com>
+Date: Tue, 26 Aug 2025 17:31:24 +0300
+Subject: [PATCH] WLANRTSYS-93574 Fix wrong return handling during ML link
+ setup
+
+Issue:
+Wrong return handling which causes memleak and wrong deinit of structs
+
+Fix:
+Go to function common error handling
+
+Fixup:
+WLANRTSYS-60843 MLO changes: AP MLD configuration
+
+Signed-off-by: nchernikov <nchernikov@maxlinear.com>
+---
+ src/ap/mxl_mld.c | 8 ++++----
+ 1 file changed, 4 insertions(+), 4 deletions(-)
+
+diff --git a/src/ap/mxl_mld.c b/src/ap/mxl_mld.c
+index cc5e6c47a..173b37213 100644
+--- a/src/ap/mxl_mld.c
++++ b/src/ap/mxl_mld.c
+@@ -372,8 +372,8 @@ static int mxl_setup_link(struct p_ap_mld *mld)
+ 		goto err;
+ 
+ 	if (link1->wpa_auth && wpa_init_keys(link1->wpa_auth) < 0) {
+-		wpa_printf(MSG_ERROR, "wpa init failed for link1");
+-		return -1;
++		wpa_printf(MSG_ERROR, "wpa init keys failed for link1");
++		goto err;
+ 	}
+ 
+ 	ret = ieee802_11_set_beacon(link2);
+@@ -381,8 +381,8 @@ static int mxl_setup_link(struct p_ap_mld *mld)
+ 		goto err;
+ 
+ 	if (link2->wpa_auth && wpa_init_keys(link2->wpa_auth) < 0) {
+-		wpa_printf(MSG_ERROR, "wpa init failed for link2");
+-		return -1;
++		wpa_printf(MSG_ERROR, "wpa init keys failed for link2");
++		goto err;
+ 	}
+ 
+ 	if (link1->iconf->multibss_enable && (MULTIBSS_REFERENCE_BSS_IDX != link1->conf->bss_idx)) {
+-- 
+2.43.0
+

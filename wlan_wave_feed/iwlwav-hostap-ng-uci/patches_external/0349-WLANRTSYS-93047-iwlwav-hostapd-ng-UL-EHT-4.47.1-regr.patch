@@ -1,0 +1,44 @@
+From 9c1585a43a74e09026f358d87ad6c758159b269f Mon Sep 17 00:00:00 2001
+From: Karthik D A <karthikda@maxlinear.com>
+Date: Sat, 16 Aug 2025 00:03:11 +0800
+Subject: [PATCH] WLANRTSYS-93047 iwlwav-hostapd-ng: UL EHT-4.47.1 regression
+ fix
+
+Description: Post DL SCS merge, the UL wifi 7 4.47.1 cert TC cases failed.
+Root Cause: The fix was give in WLANRTSYS-91362, but the had to remove
+since the extra 8 bytes was not observed for the DL SCS changes.
+Fix: The workaround if that the in case 4.47.1, EHT is enabled and
+its not enabled in case of QM DL SCS. So when the sta->eht_enabled
+remove extra bytes.
+Test: Tested and verified the EHT and QM TCs are passed.
+
+Signed-off-by: Karthik D A <karthikda@maxlinear.com>
+---
+ src/ap/mxl_wmm.c | 11 +++++++++++
+ 1 file changed, 11 insertions(+)
+
+diff --git a/src/ap/mxl_wmm.c b/src/ap/mxl_wmm.c
+index 201384b81..4ac936b11 100644
+--- a/src/ap/mxl_wmm.c
++++ b/src/ap/mxl_wmm.c
+@@ -549,6 +549,17 @@ void mxl_handle_scs_req(struct hostapd_data *hapd,
+ 	struct mxl_scs_status_list status_list[8]; /* Assuming max 8 status duples for SCS response */
+ 	u8 scs_count = 0;
+ 
++	/* WLANRTSYS-93047: Workaround, Extra 8 bytes are appened to the frame from the lower layers *
++	 * in case of EHT UL 4.47.1 TC, once the fix is provided in the lower layers, remove the changes */
++	struct sta_info *sta = NULL;
++	sta = ap_get_sta(hapd, mgmt->sa);
++	if (sta == NULL) {
++		wpa_printf(MSG_ERROR, "SCS: mxl_scs_add_req - station not connected");
++		return;
++	}
++	if (sta->eht_capab)
++		len = len - 8;
++
+ 	end = ((const u8 *) mgmt) + len;
+ 
+ 	while (pos + 2 <= end) {
+-- 
+2.43.0
+
