@@ -15,7 +15,6 @@ PKG_VERSION:=2.10
 PKG_SOURCE:=$(PKG_NAME)-$(PKG_VERSION).tar.bz2
 PKG_PROJECT:=maxlinear
 PKG_SOURCE_NAME:=iwlwav-hostap-ng.git
-CONFIG_UGW_PKG_SOURCE_URL:=https://github.com
 PKG_SOURCE_URL:=https://w1.fi/hostap.git
 PKG_SOURCE_VERSION:=033634019ddf8a2a12ad9c367d82cce6275804a5
 PKG_SOURCE_PROTO:=git
