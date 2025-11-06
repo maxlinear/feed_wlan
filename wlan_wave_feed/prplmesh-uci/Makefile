@@ -6,7 +6,7 @@ PKG_RELEASE:=master
 PKG_SOURCE_URL:=https://gitlab.com/prpl-foundation/prplmesh/prplMesh.git
 PKG_SOURCE_PROTO:=git
 PKG_MIRROR_HASH:=d3240c6636be67a43f2b1d1692c236a7b737939050f4a31e684ae8e5af76ccf9
-PKG_SOURCE_VERSION:=996857380999b3f0966017cecbd25120dd958acc
+PKG_SOURCE_VERSION:=r1044+a+165+a+5+a+4
 PKG_VERSION:=$(PKG_SOURCE_VERSION)
 
 UGW_VERSION:=$(if $(wildcard $(TOPDIR)/ugw_version),$(shell cat $(TOPDIR)/ugw_version))
