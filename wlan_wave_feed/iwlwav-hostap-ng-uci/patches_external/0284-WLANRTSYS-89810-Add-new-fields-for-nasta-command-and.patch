@@ -1,0 +1,36 @@
+From 8a869b4f5bddf1f3e6918b54b854179e5f8ea9f5 Mon Sep 17 00:00:00 2001
+From: nchernikov <nchernikov@maxlinear.com>
+Date: Mon, 7 Jul 2025 12:11:02 +0300
+Subject: [PATCH] WLANRTSYS-89810 Add new fields for nasta command and align
+ vendor cmd file
+
+Signed-off-by: nchernikov <nchernikov@maxlinear.com>
+---
+ src/common/vendor_cmds_copy.h | 4 ++++
+ 1 file changed, 4 insertions(+)
+
+diff --git a/src/common/vendor_cmds_copy.h b/src/common/vendor_cmds_copy.h
+index 616e005c0..d37498cfc 100644
+--- a/src/common/vendor_cmds_copy.h
++++ b/src/common/vendor_cmds_copy.h
+@@ -483,6 +483,9 @@ struct mxl_ml_sta_info {
+ #define INTEL_MAX_PROTECTED_DEAUTH_FRAME_LEN  44
+ #define INTEL_NON_PROTECTED_DEAUTH_FRAME_LEN  26
+ 
++#define NASTA_STATS_REQ_ASYNC                 0
++#define NASTA_STATS_REQ_SYNC                  1
++
+ enum {
+   CSA_DEAUTH_MODE_DISABLED = 0,
+   CSA_DEAUTH_MODE_UNICAST,
+@@ -620,6 +623,7 @@ struct intel_vendor_unconnected_sta_req_cfg {
+   u32 center_freq1;
+   u32 center_freq2;
+   DEF_IEEE_ADDR(addr);
++  u8  req_type;
+ } __attribute__ ((packed));
+ 
+ struct intel_vendor_steer_cfg {
+-- 
+2.43.0
+

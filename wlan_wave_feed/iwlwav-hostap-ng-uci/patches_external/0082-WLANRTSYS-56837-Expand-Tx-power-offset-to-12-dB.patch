@@ -1,4 +1,4 @@
-From 3d6195fac2788b98fe6d3528724a1a466d5bf147 Mon Sep 17 00:00:00 2001
+From fdc6d3106bad1d61d49f03c76f72636e0e31f3bc Mon Sep 17 00:00:00 2001
 From: Gal Savion <gsavion@maxlinear.com>
 Date: Wed, 12 Jul 2023 18:14:14 +0300
 Subject: [PATCH] WLANRTSYS-56837: Expand Tx power offset to (-12) dB

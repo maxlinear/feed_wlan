@@ -1,4 +1,4 @@
-From 40d4d9e36d20044bfa64c158e2e1bc54890c6516 Mon Sep 17 00:00:00 2001
+From a14215a305e9e66e37bc4844054703ffc7da527d Mon Sep 17 00:00:00 2001
 From: Jurijs Soloveckis <jsoloveckis@maxlinear.com>
 Date: Mon, 21 Aug 2023 08:56:51 +0200
 Subject: [PATCH] WLANRTSYS-57988: Implement MU EDCA IE vendor extensions
@@ -38,7 +38,7 @@ index 026878abd..54da6b4d0 100644
  			set_he_cap(atoi(pos), HE_QOS_INFO_EDCA_PARAM_SET_COUNT);
  	} else if (os_strcmp(buf, "he_mu_edca_qos_info_q_ack") == 0) {
 diff --git a/hostapd/ctrl_iface.c b/hostapd/ctrl_iface.c
-index f4bdee2c0..f2aec2b55 100644
+index ef0bb76a1..48b65e2c8 100644
 --- a/hostapd/ctrl_iface.c
 +++ b/hostapd/ctrl_iface.c
 @@ -3400,6 +3400,20 @@ out :
@@ -62,7 +62,7 @@ index f4bdee2c0..f2aec2b55 100644
  #endif /* CONFIG_IEEE80211AX */
  
  static u8 hostapd_maxnss(struct hostapd_data *hapd, struct sta_info *sta)
-@@ -6657,6 +6671,9 @@ static int hostapd_ctrl_iface_receive_process(struct hostapd_data *hapd,
+@@ -6661,6 +6675,9 @@ static int hostapd_ctrl_iface_receive_process(struct hostapd_data *hapd,
  		reply_len = hostapd_ctrl_iface_get_he_spatial_reuse_parameter(hapd, reply, reply_size);
  	} else if (os_strncmp(buf, "SET_HE_SR_PARAM", 15) == 0) {
  		reply_len = hostapd_ctrl_iface_set_he_spatial_reuse_parameter(hapd->iface, buf + 15);

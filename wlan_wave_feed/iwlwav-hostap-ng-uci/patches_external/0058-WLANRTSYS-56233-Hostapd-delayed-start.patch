@@ -1,4 +1,4 @@
-From 9cb0dbe3b7b7ee11d16e933e713bf85827d9f5ae Mon Sep 17 00:00:00 2001
+From 31ff9f88b21924e0f40b53665b65b391c42b1206 Mon Sep 17 00:00:00 2001
 From: Dmitrijs Martinovs <dmartinovs@maxlinear.com>
 Date: Mon, 19 Jun 2023 12:39:04 +0200
 Subject: [PATCH] WLANRTSYS-56233: Hostapd delayed start
@@ -41,7 +41,7 @@ index 0878a7415..d3789dc83 100644
  		int val = atoi(pos);
  		if (!IS_VALID_BOOL_RANGE(val)) {
 diff --git a/hostapd/ctrl_iface.c b/hostapd/ctrl_iface.c
-index db971c559..a90057027 100644
+index 9b54e205c..8513c45b6 100644
 --- a/hostapd/ctrl_iface.c
 +++ b/hostapd/ctrl_iface.c
 @@ -1384,6 +1384,21 @@ static int hostapd_ctrl_iface_set(struct hostapd_data *hapd, char *cmd)

@@ -1,4 +1,4 @@
-From 0ad51bc8360c46182428a435f5ec0210b8957411 Mon Sep 17 00:00:00 2001
+From 90ffc27a20429e4ae10f2ca54658932a60cb30cc Mon Sep 17 00:00:00 2001
 From: Jurijs Soloveckis <jsoloveckis@maxlinear.com>
 Date: Thu, 13 Jul 2023 13:19:44 +0200
 Subject: [PATCH] WLANRTSYS-56882: Integrate repeater commits
@@ -56,7 +56,7 @@ Subject: [PATCH] WLANRTSYS-56882: Integrate repeater commits
  11 files changed, 320 insertions(+), 3 deletions(-)
 
 diff --git a/hostapd/ctrl_iface.c b/hostapd/ctrl_iface.c
-index 4c305cbe8..84cce43d2 100644
+index 503cacd26..21394c1c5 100644
 --- a/hostapd/ctrl_iface.c
 +++ b/hostapd/ctrl_iface.c
 @@ -1495,6 +1495,78 @@ static int hostapd_ctrl_iface_reload(struct hostapd_iface *iface)
@@ -161,7 +161,7 @@ index 4c305cbe8..84cce43d2 100644
  
  static int
  hostapd_ctrl_iface_kick_mismatch_psk_sta_iter(struct hostapd_data *hapd,
-@@ -6460,6 +6548,9 @@ static int hostapd_ctrl_iface_receive_process(struct hostapd_data *hapd,
+@@ -6464,6 +6552,9 @@ static int hostapd_ctrl_iface_receive_process(struct hostapd_data *hapd,
  	} else if (os_strncmp(buf, "GET_HE_PHY_CHANNEL_WIDTH_SET ", sizeof("GET_HE_PHY_CHANNEL_WIDTH_SET ") - 1) == 0) {
  		reply_len = hostapd_ctrl_iface_get_he_phy_channel_width_set(hapd,
  				buf + sizeof("GET_HE_PHY_CHANNEL_WIDTH_SET ") - 1, reply, reply_size);

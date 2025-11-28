@@ -1,4 +1,4 @@
-From a37078bfa8682528a109a3012694558a1158bf40 Mon Sep 17 00:00:00 2001
+From aefcbf9e86a8f504bf6438e0a50717f2d504698d Mon Sep 17 00:00:00 2001
 From: Jurijs Soloveckis <jsoloveckis@maxlinear.com>
 Date: Fri, 23 Feb 2024 13:53:56 +0200
 Subject: [PATCH] WLANRTSYS-63747 Increase default nl80211 msg size
@@ -8,14 +8,14 @@ This is not always enough for the MAX VAPS case.
 Therefore it is increased up to 8192 with possibility to increase it
 even more with config option nlmsg_default_size.
 ---
- hostapd/mxl_config.c         | 11 +++++++++++
+ hostapd/mxl_config.c         | 16 ++++++++++++++++
  src/ap/mxl_config.h          |  1 +
  src/ap/mxl_hostapd.c         | 18 ++++++++++++++++++
  src/drivers/driver_nl80211.c | 28 ++++++++++++++++++++++++++++
- 4 files changed, 58 insertions(+)
+ 4 files changed, 63 insertions(+)
 
 diff --git a/hostapd/mxl_config.c b/hostapd/mxl_config.c
-index 2df88d27d..2a8482803 100644
+index d20f880d4..70cc10e6c 100644
 --- a/hostapd/mxl_config.c
 +++ b/hostapd/mxl_config.c
 @@ -1795,6 +1795,10 @@ int mxl_hostapd_config_fill (struct hostapd_config *conf,
@@ -29,7 +29,7 @@ index 2df88d27d..2a8482803 100644
  	} else
  		return 0;
  
-@@ -1865,6 +1869,13 @@ void mxl_hostapd_config_defaults(struct hostapd_config *conf)
+@@ -1865,6 +1869,18 @@ void mxl_hostapd_config_defaults(struct hostapd_config *conf)
  	mxl_conf->basic_eht_mcs_nss_set[0] = set_he_cap(1, EHT_MCS_NSS_FOR_1SS);
  #endif /* CONFIG_IEEE80211BE */
  
@@ -38,13 +38,18 @@ index 2df88d27d..2a8482803 100644
 +	 * This is not always enough for the MAX VAPS case, therefore increased
 +	 * with possibility to increase it even more with config option.
 +	 */
++#ifdef CONFIG_AFC
++	/* AFC NL message to driver can exceed 8192 byte */
++	mxl_conf->nlmsg_default_size = 16 * 1024;
++#else
 +	mxl_conf->nlmsg_default_size = 8 * 1024;
++#endif
 +
  }
  
  void mxl_hostapd_config_free_bss(struct hostapd_bss_config *bss)
 diff --git a/src/ap/mxl_config.h b/src/ap/mxl_config.h
-index 080db8ac5..49c0e4c59 100644
+index ad861da79..b627254bf 100644
 --- a/src/ap/mxl_config.h
 +++ b/src/ap/mxl_config.h
 @@ -338,6 +338,7 @@ struct mxl_hostapd_config {
@@ -56,7 +61,7 @@ index 080db8ac5..49c0e4c59 100644
  
  /**
 diff --git a/src/ap/mxl_hostapd.c b/src/ap/mxl_hostapd.c
-index 485797cff..d03bb7994 100644
+index 2a3695757..c705ee8c4 100644
 --- a/src/ap/mxl_hostapd.c
 +++ b/src/ap/mxl_hostapd.c
 @@ -1806,9 +1806,27 @@ int is_5ghz_op_class(u8 op_class)
@@ -88,10 +93,10 @@ index 485797cff..d03bb7994 100644
  
  void mxl_hostapd_setup_interface_pre(struct hostapd_iface *iface)
 diff --git a/src/drivers/driver_nl80211.c b/src/drivers/driver_nl80211.c
-index 6cc7c9f9a..d36ca42c4 100644
+index 298360eef..54c3ece80 100644
 --- a/src/drivers/driver_nl80211.c
 +++ b/src/drivers/driver_nl80211.c
-@@ -14323,6 +14323,34 @@ static int nl80211_send_sync_done_vendor_mxl(void *priv)
+@@ -14324,6 +14324,34 @@ static int nl80211_send_sync_done_vendor_mxl(void *priv)
  }
  #endif /* CONFIG_DRIVER_NL80211_MXL */
  

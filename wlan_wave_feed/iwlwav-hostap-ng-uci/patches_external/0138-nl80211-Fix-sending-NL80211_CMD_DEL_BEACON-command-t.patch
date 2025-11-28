@@ -1,4 +1,4 @@
-From 8c6f0dab8ae720d6b73d06c2ad7352b377068ba1 Mon Sep 17 00:00:00 2001
+From a1e4d07d11544c855f7c86733191cb9030c28758 Mon Sep 17 00:00:00 2001
 From: Nikita Chernikov <nchernikov@maxlinear.com>
 Date: Mon, 11 Mar 2024 18:58:21 +0200
 Subject: [PATCH] nl80211: Fix sending NL80211_CMD_DEL_BEACON command to wrong
@@ -14,10 +14,10 @@ Signed-off-by: Nikita Chernikov <nchernikov@maxlinear.com>
  1 file changed, 2 insertions(+), 2 deletions(-)
 
 diff --git a/src/drivers/driver_nl80211.c b/src/drivers/driver_nl80211.c
-index a9863313a..a27ab27fd 100644
+index eb973d08d..808fa38ce 100644
 --- a/src/drivers/driver_nl80211.c
 +++ b/src/drivers/driver_nl80211.c
-@@ -3225,12 +3225,12 @@ static int wpa_driver_nl80211_del_beacon(struct i802_bss *bss,
+@@ -3226,12 +3226,12 @@ static int wpa_driver_nl80211_del_beacon(struct i802_bss *bss,
  		return 0;
  
  	wpa_printf(MSG_DEBUG, "nl80211: Remove beacon (ifindex=%d)",

@@ -1,4 +1,4 @@
-From 773e8352895ea0b661df902434981b9d8e047a4f Mon Sep 17 00:00:00 2001
+From 7fea1dd5e5c68d10a6d530ef8d67e0372d5fd3f5 Mon Sep 17 00:00:00 2001
 From: Dmitrijs Martinovs <dmartinovs@maxlinear.com>
 Date: Mon, 25 Sep 2023 10:40:38 +0300
 Subject: [PATCH] WLANRTSYS-58355: Implement support of DPP/EasyConnect
@@ -14,7 +14,7 @@ Subject: [PATCH] WLANRTSYS-58355: Implement support of DPP/EasyConnect
  7 files changed, 43 insertions(+), 6 deletions(-)
 
 diff --git a/hostapd/ctrl_iface.c b/hostapd/ctrl_iface.c
-index e8becdced..6fab569f7 100644
+index 4e256f20f..1d3c74b3f 100644
 --- a/hostapd/ctrl_iface.c
 +++ b/hostapd/ctrl_iface.c
 @@ -1422,7 +1422,9 @@ static int hostapd_ctrl_iface_set(struct hostapd_data *hapd, char *cmd)

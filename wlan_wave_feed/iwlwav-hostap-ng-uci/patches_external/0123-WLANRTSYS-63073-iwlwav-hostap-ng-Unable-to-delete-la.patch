@@ -1,4 +1,4 @@
-From 2e90cd36f209888b49062fe01dbafcae557541fd Mon Sep 17 00:00:00 2001
+From aea422f2febabc9ca72c87dfc53b1f3ccd410b1e Mon Sep 17 00:00:00 2001
 From: mujiburrahimank <mujiburrahimank@maxlinear.com>
 Date: Wed, 14 Feb 2024 15:33:25 +0530
 Subject: [PATCH] WLANRTSYS-63073 : iwlwav-hostap-ng : Unable to delete last
@@ -13,10 +13,10 @@ Signed-Off-By : Mujibur Rahiman K mujiburrahimank@maxlinear.com
  1 file changed, 1 insertion(+), 1 deletion(-)
 
 diff --git a/hostapd/ctrl_iface.c b/hostapd/ctrl_iface.c
-index 231ecbb1b..1408b0a97 100644
+index ab16898b1..bdcdc4e35 100644
 --- a/hostapd/ctrl_iface.c
 +++ b/hostapd/ctrl_iface.c
-@@ -7818,7 +7818,7 @@ static void hostapd_global_ctrl_iface_receive(int sock, void *eloop_ctx,
+@@ -7822,7 +7822,7 @@ static void hostapd_global_ctrl_iface_receive(int sock, void *eloop_ctx,
  			reply_len = -1;
  	} else if (os_strncmp(buf, "INTERFACES", 10) == 0) {
  		reply_len = hostapd_global_ctrl_iface_interfaces(

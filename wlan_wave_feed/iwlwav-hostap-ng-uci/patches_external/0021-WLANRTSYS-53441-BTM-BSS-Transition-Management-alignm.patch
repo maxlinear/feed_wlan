@@ -1,4 +1,4 @@
-From 940e59775b9ce6597952cbc85280e445af12368c Mon Sep 17 00:00:00 2001
+From 21003ab114bc8d92a3980b7ddfae812db496cf53 Mon Sep 17 00:00:00 2001
 From: Jurijs Soloveckis <jsoloveckis@maxlinear.com>
 Date: Tue, 28 Feb 2023 16:29:58 +0100
 Subject: [PATCH] WLANRTSYS-53441: BTM: BSS Transition Management alignment
@@ -38,7 +38,7 @@ index eef4d0d03..2e1beadd7 100644
  		bss->gas_address3 = atoi(pos);
  	} else if (os_strcmp(buf, "stationary_ap") == 0) {
 diff --git a/hostapd/ctrl_iface.c b/hostapd/ctrl_iface.c
-index 315442fb7..84650be23 100644
+index 2fb934099..ad467dc2a 100644
 --- a/hostapd/ctrl_iface.c
 +++ b/hostapd/ctrl_iface.c
 @@ -3320,6 +3320,121 @@ fail:
@@ -263,7 +263,7 @@ index 315442fb7..84650be23 100644
  	} else if (os_strncmp(buf, "COLOC_INTF_REQ ", 15) == 0) {
  		if (hostapd_ctrl_iface_coloc_intf_req(hapd, buf + 15))
  			reply_len = -1;
-@@ -4932,12 +5089,21 @@ static int hostapd_ctrl_iface_receive_process(struct hostapd_data *hapd,
+@@ -4936,12 +5093,21 @@ static int hostapd_ctrl_iface_receive_process(struct hostapd_data *hapd,
  	} else if (os_strncmp(buf, "SET_NEIGHBOR ", 13) == 0) {
  		if (hostapd_ctrl_iface_set_neighbor(hapd, buf + 13))
  			reply_len = -1;

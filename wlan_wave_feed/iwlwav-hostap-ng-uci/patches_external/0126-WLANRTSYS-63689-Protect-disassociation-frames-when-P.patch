@@ -1,4 +1,4 @@
-From ee53ea40a57ab5ddf2a8ebfa4f058c155438ae02 Mon Sep 17 00:00:00 2001
+From fdd5892e81ac78ae9a0e10602de9f4fcfe5e31df Mon Sep 17 00:00:00 2001
 From: fromans <fromans@maxlinear.com>
 Date: Fri, 23 Feb 2024 13:56:03 +0200
 Subject: [PATCH] WLANRTSYS-63689 Protect disassociation frames when PMF is
@@ -27,10 +27,10 @@ index ab8cf50c6..8f93727ee 100644
  		hostapd_drv_sta_disassoc(hapd, addr, reason);
  	sta = ap_get_sta(hapd, addr);
 diff --git a/src/ap/mxl_hostapd.c b/src/ap/mxl_hostapd.c
-index 3d0a0d4b0..485797cff 100644
+index d37723aa7..2a3695757 100644
 --- a/src/ap/mxl_hostapd.c
 +++ b/src/ap/mxl_hostapd.c
-@@ -2487,3 +2487,51 @@ int mxl_hostapd_send_protected_deauth(struct hostapd_data *hapd, int reason)
+@@ -2490,3 +2490,51 @@ int mxl_hostapd_send_protected_deauth(struct hostapd_data *hapd, int reason)
  	os_free(mgmt_frame_buf_t);
  	return 1;
  }
@@ -83,11 +83,11 @@ index 3d0a0d4b0..485797cff 100644
 +	return 1;
 +}
 diff --git a/src/ap/mxl_hostapd.h b/src/ap/mxl_hostapd.h
-index 4dfea63fe..a35694546 100644
+index 22d4a762e..14daa9284 100644
 --- a/src/ap/mxl_hostapd.h
 +++ b/src/ap/mxl_hostapd.h
-@@ -201,4 +201,5 @@ int mxl_hostapd_remove_bss(struct hostapd_iface *iface, unsigned int idx);
- void mxl_hostapd_clear_drv_priv(struct hostapd_data *hapd);
+@@ -202,4 +202,5 @@ void mxl_hostapd_clear_drv_priv(struct hostapd_data *hapd);
+ int mxl_hostapd_flush_old_stations(struct hostapd_data *hapd, u16 reason);
  int mxl_update_rnr_check(struct hostapd_iface *iface);
  int mxl_hostapd_send_protected_deauth(struct hostapd_data *hapd, int reason);
 +int mxl_hostapd_send_protected_disassoc(struct hostapd_data *hapd, int reason);

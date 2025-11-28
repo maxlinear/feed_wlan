@@ -1,4 +1,4 @@
-From 90551ed8fbc634ca22dd6e290133bee4ad4fc54f Mon Sep 17 00:00:00 2001
+From 2976aa94c793ea33714945bbb3f4dbb1a14f73e6 Mon Sep 17 00:00:00 2001
 From: Jurijs Soloveckis <jsoloveckis@maxlinear.com>
 Date: Fri, 2 Jun 2023 08:15:52 +0200
 Subject: [PATCH] WLANRTSYS-55803: Add new API to send action frame
@@ -9,7 +9,7 @@ Subject: [PATCH] WLANRTSYS-55803: Add new API to send action frame
  2 files changed, 77 insertions(+)
 
 diff --git a/hostapd/ctrl_iface.c b/hostapd/ctrl_iface.c
-index 0de522b6c..fe51d9868 100644
+index d90b5f66d..2e42d26bb 100644
 --- a/hostapd/ctrl_iface.c
 +++ b/hostapd/ctrl_iface.c
 @@ -5109,6 +5109,73 @@ static int hostapd_ctrl_iface_get_sta_wpa_psk(struct hostapd_data *hapd, char *c
@@ -86,7 +86,7 @@ index 0de522b6c..fe51d9868 100644
  static int hostapd_ctrl_iface_receive_process(struct hostapd_data *hapd,
  					      char *buf, char *reply,
  					      int reply_size,
-@@ -5746,6 +5813,9 @@ static int hostapd_ctrl_iface_receive_process(struct hostapd_data *hapd,
+@@ -5750,6 +5817,9 @@ static int hostapd_ctrl_iface_receive_process(struct hostapd_data *hapd,
  #endif /* CONFIG_IEEE80211AX */
  	} else if (os_strncmp(buf, "GET_STA_WPA_PSK ", 16) == 0) {
  		reply_len = hostapd_ctrl_iface_get_sta_wpa_psk(hapd, buf + 16, reply, reply_size);

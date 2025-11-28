@@ -1,4 +1,4 @@
-From a87d7da86c25f3807ce969ab15eb0fec1ac07c6c Mon Sep 17 00:00:00 2001
+From a663285c1b82293afbe08d239a251fab6ec8a468 Mon Sep 17 00:00:00 2001
 From: fromans <fromans@maxlinear.com>
 Date: Tue, 10 Oct 2023 13:41:14 +0300
 Subject: [PATCH] WLANRTSYS-58367: Implement HE debug mode

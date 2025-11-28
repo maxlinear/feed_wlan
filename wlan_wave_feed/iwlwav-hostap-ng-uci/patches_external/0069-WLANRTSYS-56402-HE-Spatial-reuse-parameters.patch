@@ -1,4 +1,4 @@
-From 4a6bfec88df156a5f4d9f1b2720b3ab45bbf550e Mon Sep 17 00:00:00 2001
+From 63104f8b85c8a8190fbee449f07d7d812df2a11c Mon Sep 17 00:00:00 2001
 From: Jurijs Soloveckis <jsoloveckis@maxlinear.com>
 Date: Mon, 3 Jul 2023 16:24:12 +0200
 Subject: [PATCH] WLANRTSYS-56402: HE Spatial reuse parameters
@@ -86,7 +86,7 @@ index 94afd50f4..ad85f9bd7 100644
  		conf->he_oper_chwidth = atoi(pos);
  	} else if (os_strcmp(buf, "he_oper_centr_freq_seg0_idx") == 0) {
 diff --git a/hostapd/ctrl_iface.c b/hostapd/ctrl_iface.c
-index cabe4de54..d4690279b 100644
+index cd7fcdd96..2dfb725bc 100644
 --- a/hostapd/ctrl_iface.c
 +++ b/hostapd/ctrl_iface.c
 @@ -2961,6 +2961,219 @@ static int hostapd_ctrl_iface_get_color_table(struct hostapd_iface *iface,
@@ -309,7 +309,7 @@ index cabe4de54..d4690279b 100644
  #endif /* CONFIG_IEEE80211AX */
  
  static u8 hostapd_maxnss(struct hostapd_data *hapd, struct sta_info *sta)
-@@ -6209,6 +6422,10 @@ static int hostapd_ctrl_iface_receive_process(struct hostapd_data *hapd,
+@@ -6213,6 +6426,10 @@ static int hostapd_ctrl_iface_receive_process(struct hostapd_data *hapd,
  	} else if (os_strncmp(buf, "SET_BSS_LOAD ", 13) == 0) {
  		wpa_printf(MSG_EXCESSIVE, "%s; *** Received: 'SET_BSS_LOAD' (buf= '%s') ***\n", __FUNCTION__, buf);
  		reply_len = hostapd_ctrl_iface_set_bss_load(hapd, buf + 13, reply, reply_size);

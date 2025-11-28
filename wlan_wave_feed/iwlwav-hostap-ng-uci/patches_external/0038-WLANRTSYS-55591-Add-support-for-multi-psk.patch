@@ -1,4 +1,4 @@
-From f0c374f1a57940806a79c9cfa99aaf8aa3be8cc3 Mon Sep 17 00:00:00 2001
+From 51a016cbb143fac61e316291d742a2b18ae45c61 Mon Sep 17 00:00:00 2001
 From: Jurijs Soloveckis <jsoloveckis@maxlinear.com>
 Date: Fri, 26 May 2023 09:19:57 +0200
 Subject: [PATCH] WLANRTSYS-55591: Add support for multi-psk
@@ -19,7 +19,7 @@ Subject: [PATCH] WLANRTSYS-55591: Add support for multi-psk
  10 files changed, 190 insertions(+), 3 deletions(-)
 
 diff --git a/hostapd/ctrl_iface.c b/hostapd/ctrl_iface.c
-index f5b8c76e8..0de522b6c 100644
+index fb175bce4..d90b5f66d 100644
 --- a/hostapd/ctrl_iface.c
 +++ b/hostapd/ctrl_iface.c
 @@ -549,12 +549,22 @@ static const char * pbc_status_str(enum pbc_status status)
@@ -120,7 +120,7 @@ index f5b8c76e8..0de522b6c 100644
  	} else if (os_strcmp(buf, "WPS_PBC") == 0) {
  		if (hostapd_wps_button_pushed(hapd, NULL))
  			reply_len = -1;
-@@ -5680,6 +5744,8 @@ static int hostapd_ctrl_iface_receive_process(struct hostapd_data *hapd,
+@@ -5684,6 +5748,8 @@ static int hostapd_ctrl_iface_receive_process(struct hostapd_data *hapd,
  		wpa_printf(MSG_EXCESSIVE, "%s; *** Received: 'SET_BSS_LOAD' (buf= '%s') ***\n", __FUNCTION__, buf);
  		reply_len = hostapd_ctrl_iface_set_bss_load(hapd, buf + 13, reply, reply_size);
  #endif /* CONFIG_IEEE80211AX */

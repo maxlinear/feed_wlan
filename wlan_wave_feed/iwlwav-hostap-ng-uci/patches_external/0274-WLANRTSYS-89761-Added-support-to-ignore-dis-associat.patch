@@ -1,0 +1,83 @@
+From d4eb6e1cc2582a108edef0fb985fcfee9e58aec4 Mon Sep 17 00:00:00 2001
+From: dkolhe <dkolhe@maxlinear.com>
+Date: Wed, 11 Jun 2025 14:42:22 +0800
+Subject: [PATCH] WLANRTSYS-89761 Added support to ignore dis-association timer
+ in BTM request
+
+Signed-off-by: dkolhe <dkolhe@maxlinear.com>
+---
+ hostapd/mxl_config.c |  7 +++++++
+ src/ap/mxl_config.h  |  1 +
+ src/ap/wnm_ap.c      | 13 +++++++++++--
+ 3 files changed, 19 insertions(+), 2 deletions(-)
+
+diff --git a/hostapd/mxl_config.c b/hostapd/mxl_config.c
+index 779bb445a..5ad436640 100644
+--- a/hostapd/mxl_config.c
++++ b/hostapd/mxl_config.c
+@@ -1634,6 +1634,13 @@ int mxl_hostapd_config_fill (struct hostapd_config *conf,
+ 			return 0;
+ 		}
+ #endif /* CONFIG_EPCS_MXL */
++	} else if (os_strcmp(buf, "ignore_da_timer") == 0) {
++		int val = atoi(pos);
++		if (!IS_VALID_BOOL_RANGE(val)) {
++			wpa_printf(MSG_ERROR, "Invalid ignore_da_timer value %d, range is 0..1", val);
++			return 0;
++		}
++		mxl_conf->ignore_da_timer = val;
+ 	} else if (os_strcmp(buf, "sBridgeMode") == 0) {
+ 		mxl_bss_conf->sBridgeMode = atoi(pos);
+ 	} else if (os_strcmp(buf, "colocated_6g_radio_info") == 0) {
+diff --git a/src/ap/mxl_config.h b/src/ap/mxl_config.h
+index bd6769389..859013e49 100644
+--- a/src/ap/mxl_config.h
++++ b/src/ap/mxl_config.h
+@@ -358,6 +358,7 @@ struct mxl_hostapd_config {
+ 	u16 scan_activity_threshold;
+ 	int obss_beacon_rssi_threshold;
+ 	int ignore_40_mhz_intolerant;
++	int ignore_da_timer;
+ 	int sCcaTh[CCA_TH_SIZE];
+ 	struct duplicate_beacon dup_beacon;
+ 	u8 ap_retry_limit;
+diff --git a/src/ap/wnm_ap.c b/src/ap/wnm_ap.c
+index f4a532c71..1b8ebde57 100644
+--- a/src/ap/wnm_ap.c
++++ b/src/ap/wnm_ap.c
+@@ -1183,6 +1183,9 @@ int wnm_send_bss_tm_req(struct hostapd_data *hapd, struct sta_info *sta,
+ 	u8 *buf, *pos;
+ 	struct ieee80211_mgmt *mgmt;
+ 	size_t url_len;
++#ifdef CONFIG_VENDOR_MXL
++	struct mxl_hostapd_config *mxl_conf = &hapd->iconf->mxl_conf;
++#endif /* CONFIG_VENDOR_MXL */
+ 
+ 	wpa_printf(MSG_DEBUG, "WNM: Send BSS Transition Management Request to "
+ 		   MACSTR " dialog_token=%u req_mode=0x%x disassoc_timer=%d valid_int=0x%x",
+@@ -1251,14 +1254,20 @@ int wnm_send_bss_tm_req(struct hostapd_data *hapd, struct sta_info *sta,
+ 	}
+ 	os_free(buf);
+ 
+-	if (disassoc_timer) {
++#ifdef CONFIG_VENDOR_MXL
++	if (disassoc_timer && !(mxl_conf->ignore_da_timer)) {
+ #ifdef CONFIG_IEEE80211BE_MXL_MLO
+ 		if (!hapd->conf->mxl_bss_conf.mlo_t2lm_support)
+ #endif /* CONFIG_IEEE80211BE_MXL_MLO */
+ 		/* send disassociation frame after time-out */
+ 		set_disassoc_timer(hapd, sta, disassoc_timer);
+ 	}
+-
++#else /* CONFIG_VENDOR_MXL */
++	if (disassoc_timer) {
++		/* send disassociation frame after time-out */
++		set_disassoc_timer(hapd, sta, disassoc_timer);
++	}
++#endif /* CONFIG_VENDOR_MXL */
+ 	return dialog_token;
+ }
+ 
+-- 
+2.43.0
+

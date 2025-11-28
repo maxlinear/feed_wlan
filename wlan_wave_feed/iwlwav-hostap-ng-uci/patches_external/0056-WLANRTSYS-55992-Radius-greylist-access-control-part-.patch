@@ -1,4 +1,4 @@
-From 33556f9d9e523a85eac1ec9d384cfff5051a823d Mon Sep 17 00:00:00 2001
+From 1e81cf92a5e3ca3cbdf620e3bf0e7f3e19c04196 Mon Sep 17 00:00:00 2001
 From: Dmitrijs Martinovs <dmartinovs@maxlinear.com>
 Date: Tue, 13 Jun 2023 09:18:10 +0200
 Subject: [PATCH] WLANRTSYS-55992: Radius greylist access control part 2
@@ -142,7 +142,7 @@ index f50f247c5..2b3c2298f 100644
  		os_free(conf->whm_config_file);
  		conf->whm_config_file = os_strdup(pos);
 diff --git a/hostapd/ctrl_iface.c b/hostapd/ctrl_iface.c
-index 7de89162a..db971c559 100644
+index 2b50ecdfe..9b54e205c 100644
 --- a/hostapd/ctrl_iface.c
 +++ b/hostapd/ctrl_iface.c
 @@ -77,6 +77,9 @@
@@ -197,7 +197,7 @@ index 7de89162a..db971c559 100644
  static int hostapd_ctrl_iface_get_he_phy_channel_width_set(struct hostapd_data *hapd, const char *cmd, char *reply, size_t reply_len)
  {
  	int i, ret, len = 0;
-@@ -6120,6 +6158,15 @@ static int hostapd_ctrl_iface_receive_process(struct hostapd_data *hapd,
+@@ -6124,6 +6162,15 @@ static int hostapd_ctrl_iface_receive_process(struct hostapd_data *hapd,
  		if (hostapd_ctrl_iface_cellular_pref_set(hapd, buf + 18))
  			reply_len = -1;
  #endif /* CONFIG_MBO */

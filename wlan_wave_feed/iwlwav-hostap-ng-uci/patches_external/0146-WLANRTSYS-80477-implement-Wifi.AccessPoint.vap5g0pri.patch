@@ -1,4 +1,4 @@
-From f0a1086a12beffb4e7ba073b178c73e48d335dc2 Mon Sep 17 00:00:00 2001
+From 5475d8b22e88b333a5378213815628b52ba15834 Mon Sep 17 00:00:00 2001
 From: Gal Savion <gsavion@maxlinear.com>
 Date: Fri, 3 May 2024 18:20:43 +0300
 Subject: [PATCH] WLANRTSYS-80477 implement Wifi.AccessPoint.vap5g0priv
@@ -13,28 +13,18 @@ frame (after quiet DEAUTH) or DEAUTH frame (after quiet DISASSOC) to
 the client after some inactivity timeout, where the original command
 has tx=0 parameter.
 ---
- src/ap/ctrl_iface_ap.c | 44 +++++++++++++++++++++++++-----------------
- 1 file changed, 26 insertions(+), 18 deletions(-)
+ src/ap/ctrl_iface_ap.c | 28 ++++++++++++++--------------
+ 1 file changed, 14 insertions(+), 14 deletions(-)
 
 diff --git a/src/ap/ctrl_iface_ap.c b/src/ap/ctrl_iface_ap.c
-index 8f93727ee..df2e6f0d7 100644
+index fcbd3f86d..a7dcbff8c 100644
 --- a/src/ap/ctrl_iface_ap.c
 +++ b/src/ap/ctrl_iface_ap.c
-@@ -644,20 +644,24 @@ int hostapd_ctrl_iface_deauthenticate(struct hostapd_data *hapd,
- 	}
- #endif /* CONFIG_P2P_MANAGER */
- 
--	if (os_strstr(txtaddr, " tx=0"))
-+	sta = ap_get_sta(hapd, addr);
-+
-+	if (os_strstr(txtaddr, " tx=0")) {
- 		hostapd_drv_sta_remove(hapd, addr);
-+		if (sta)
-+			ap_free_sta(hapd, sta);
+@@ -663,16 +663,16 @@ int hostapd_ctrl_iface_deauthenticate(struct hostapd_data *hapd,
+ #endif
  #ifdef CONFIG_VENDOR_MXL
--	else if (is_broadcast_ether_addr(addr) &&
+ 	} else if (is_broadcast_ether_addr(addr) &&
 -		(hapd->wpa_auth) && (hapd->conf->ieee80211w != NO_MGMT_FRAME_PROTECTION))
-+	} else if (is_broadcast_ether_addr(addr) &&
 +		(hapd->wpa_auth) && (hapd->conf->ieee80211w != NO_MGMT_FRAME_PROTECTION)) {
  		mxl_hostapd_send_protected_deauth(hapd, reason);
  #endif /* CONFIG_VENDOR_MXL */
@@ -54,21 +44,11 @@ index 8f93727ee..df2e6f0d7 100644
  
  	return 0;
  }
-@@ -718,20 +722,24 @@ int hostapd_ctrl_iface_disassociate(struct hostapd_data *hapd,
- 	}
- #endif /* CONFIG_P2P_MANAGER */
- 
--	if (os_strstr(txtaddr, " tx=0"))
-+	sta = ap_get_sta(hapd, addr);
-+
-+	if (os_strstr(txtaddr, " tx=0")) {
- 		hostapd_drv_sta_remove(hapd, addr);
-+		if (sta)
-+			ap_free_sta(hapd, sta);
+@@ -751,16 +751,16 @@ int hostapd_ctrl_iface_disassociate(struct hostapd_data *hapd,
+ #endif
  #ifdef CONFIG_VENDOR_MXL
--	else if (is_broadcast_ether_addr(addr) &&
+ 	} else if (is_broadcast_ether_addr(addr) &&
 -		(hapd->wpa_auth) && (hapd->conf->ieee80211w != NO_MGMT_FRAME_PROTECTION))
-+	} else if (is_broadcast_ether_addr(addr) &&
 +		(hapd->wpa_auth) && (hapd->conf->ieee80211w != NO_MGMT_FRAME_PROTECTION)) {
  		mxl_hostapd_send_protected_disassoc(hapd, reason);
  #endif /* CONFIG_VENDOR_MXL */

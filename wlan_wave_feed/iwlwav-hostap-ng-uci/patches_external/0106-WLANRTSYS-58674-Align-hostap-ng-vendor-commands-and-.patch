@@ -1,4 +1,4 @@
-From 3eff582076de19a2738ab8d26bb7aec0f628a744 Mon Sep 17 00:00:00 2001
+From 7ace71a920e32089fa4b468246c54060a976f38e Mon Sep 17 00:00:00 2001
 From: Dmitrijs Martinovs <dmartinovs@maxlinear.com>
 Date: Thu, 14 Sep 2023 12:02:51 +0200
 Subject: [PATCH] WLANRTSYS-58674: Align hostap-ng vendor commands and events

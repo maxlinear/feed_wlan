@@ -1,4 +1,4 @@
-From 08dcf932c69421428247e0f02ccb83ee516377e5 Mon Sep 17 00:00:00 2001
+From fbbf6a846c9b9a2a685974f29875cb7a84fab560 Mon Sep 17 00:00:00 2001
 From: mvulsx <mvuls@maxlinear.com>
 Date: Wed, 28 Jun 2023 05:50:41 +0000
 Subject: [PATCH] WLANRTSYS-56499: add ACS and DFS support for U-NII-4 channels

@@ -1,4 +1,4 @@
-From 9daf6cc13abca792cd184adce377e20882a38d8a Mon Sep 17 00:00:00 2001
+From 4f1f03869f89e1539a12c56b69b38a5cb2ba3bd9 Mon Sep 17 00:00:00 2001
 From: Jurijs Soloveckis <jsoloveckis@maxlinear.com>
 Date: Wed, 2 Aug 2023 16:07:59 +0200
 Subject: [PATCH] WLANRTSYS-57523: Implement CONFIG_WIFI_CERTIFICATION
@@ -195,7 +195,7 @@ index 47254b9a8..881897e5f 100644
  	} else if (mxl_hostapd_config_fill(conf, bss, buf, pos, line)) {
  #endif /* CONFIG_VENDOR_MXL */
 diff --git a/hostapd/ctrl_iface.c b/hostapd/ctrl_iface.c
-index 44aca196c..f4bdee2c0 100644
+index 19f6ea03a..ef0bb76a1 100644
 --- a/hostapd/ctrl_iface.c
 +++ b/hostapd/ctrl_iface.c
 @@ -68,6 +68,7 @@
@@ -334,7 +334,7 @@ index 44aca196c..f4bdee2c0 100644
  
  #ifdef CONFIG_TESTING_OPTIONS
  
-@@ -6567,6 +6689,29 @@ static int hostapd_ctrl_iface_receive_process(struct hostapd_data *hapd,
+@@ -6571,6 +6693,29 @@ static int hostapd_ctrl_iface_receive_process(struct hostapd_data *hapd,
  	} else if (os_strncmp(buf, "UPDATE_RELOAD ", 14) == 0) {
  		if (hostapd_ctrl_iface_update_reload(hapd, buf + 14))
  			reply_len = -1;

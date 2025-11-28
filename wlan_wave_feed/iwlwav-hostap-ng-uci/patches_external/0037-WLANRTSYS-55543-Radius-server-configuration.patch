@@ -1,4 +1,4 @@
-From aa400d546526387acc8c578abb560d22a11a7411 Mon Sep 17 00:00:00 2001
+From fe26fad22ea868ffcf45f0409d454fc80f58b679 Mon Sep 17 00:00:00 2001
 From: Dmitrijs Martinovs <dmartinovs@maxlinear.com>
 Date: Wed, 24 May 2023 18:04:30 +0300
 Subject: [PATCH] WLANRTSYS-55543: Radius server configuration

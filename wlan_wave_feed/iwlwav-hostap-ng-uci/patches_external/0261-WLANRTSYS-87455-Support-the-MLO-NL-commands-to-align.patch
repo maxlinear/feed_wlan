@@ -1,0 +1,47 @@
+From dae4327ce1e2448a541e8e386264b5b89b839c4c Mon Sep 17 00:00:00 2001
+From: hmgokhale <hmgokhale@maxlinear.com>
+Date: Mon, 21 Apr 2025 19:23:47 +0530
+Subject: [PATCH] WLANRTSYS-87455 Support the MLO NL commands to align to MLO
+ opensource design
+
+Signed-off-by: hmgokhale <hmgokhale@maxlinear.com>
+---
+ src/ap/mxl_ieee802_11.c          | 2 ++
+ src/common/mxl_ieee802_11_defs.h | 1 +
+ 2 files changed, 3 insertions(+)
+
+diff --git a/src/ap/mxl_ieee802_11.c b/src/ap/mxl_ieee802_11.c
+index 0258904fb..24653fbb6 100644
+--- a/src/ap/mxl_ieee802_11.c
++++ b/src/ap/mxl_ieee802_11.c
+@@ -702,6 +702,7 @@ int mxl_mlo_add_associated_sta(struct hostapd_data *hapd, struct sta_info *sta,
+ 		memcpy_s(ml_sta_info.linked_sta_mac, ETH_ALEN, sta1->addr, ETH_ALEN);
+ 
+ 	ml_sta_info.is_ml = true;
++	ml_sta_info.assoc_link_id = hapd->conf->mxl_bss_conf.link_id;
+ 	mxl_hostapd_ml_sta_info_set(sta, ml_sta_info);
+ #endif /* CONFIG_IEEE80211BE */
+ 
+@@ -753,6 +754,7 @@ int mxl_mlo_add_associated_sta(struct hostapd_data *hapd, struct sta_info *sta,
+ 				wpa_auth_sta_fils_tk_already_set(sta1->wpa_sm));
+ 
+ 		memcpy_s(ml_sta_info.linked_sta_mac, ETH_ALEN, sta1->mxl_sta_info.linked_sta->addr, ETH_ALEN);
++		ml_sta_info.assoc_link_id = hapd1->conf->mxl_bss_conf.link_id;
+ 		mxl_hostapd_ml_sta_info_set(sta1, ml_sta_info);
+ 		mxl_hostapd_sta_ext_capab_set(hapd1, sta1);
+ 		if (hostapd_sta_add(hapd1, sta1->addr, sta1->aid, sta1->capability,
+diff --git a/src/common/mxl_ieee802_11_defs.h b/src/common/mxl_ieee802_11_defs.h
+index 26b7ef448..7fb867896 100644
+--- a/src/common/mxl_ieee802_11_defs.h
++++ b/src/common/mxl_ieee802_11_defs.h
+@@ -192,6 +192,7 @@ struct ieee80211_ml_sta_info {
+ 	bool is_ml;
+ 	u8 mld_mac[ETH_ALEN];
+ 	u8 linked_sta_mac[ETH_ALEN];
++	int assoc_link_id;
+ } STRUCT_PACKED;
+ 
+ struct beacon_request {
+-- 
+2.43.0
+

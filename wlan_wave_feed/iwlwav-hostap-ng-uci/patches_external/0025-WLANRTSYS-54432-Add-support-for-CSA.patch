@@ -1,4 +1,4 @@
-From 6b4ac7a8b3afb313cd771aaf5307b24850cfa8aa Mon Sep 17 00:00:00 2001
+From bec48b2c9f4a736b9390477679f6bf9faf797ddd Mon Sep 17 00:00:00 2001
 From: mvuls <mvuls@maxlinear.com>
 Date: Wed, 1 Nov 2023 14:39:32 +0200
 Subject: [PATCH] WLANRTSYS-54432: Add support for CSA
@@ -21,7 +21,7 @@ Subject: [PATCH] WLANRTSYS-54432: Add support for CSA
  14 files changed, 539 insertions(+), 26 deletions(-)
 
 diff --git a/hostapd/ctrl_iface.c b/hostapd/ctrl_iface.c
-index 84650be23..b7eabb5a3 100644
+index ad467dc2a..5d358733b 100644
 --- a/hostapd/ctrl_iface.c
 +++ b/hostapd/ctrl_iface.c
 @@ -2409,6 +2409,10 @@ static int hostapd_ctrl_check_freq_params(struct hostapd_freq_params *params,
@@ -120,7 +120,7 @@ index 84650be23..b7eabb5a3 100644
  static int hostapd_ctrl_iface_get_hidden_mode(struct hostapd_data *hapd, char *reply, size_t reply_size)
  {
  	int ret = 0;
-@@ -5394,6 +5469,12 @@ static int hostapd_ctrl_iface_receive_process(struct hostapd_data *hapd,
+@@ -5398,6 +5473,12 @@ static int hostapd_ctrl_iface_receive_process(struct hostapd_data *hapd,
  		reply_len = hostapd_ctrl_iface_is_transmitted_bssid(hapd,reply,reply_size);
  	} else if (os_strncmp(buf, "GET_HIDDEN_MODE", 15) == 0) {
  		reply_len = hostapd_ctrl_iface_get_hidden_mode(hapd,reply,reply_size);

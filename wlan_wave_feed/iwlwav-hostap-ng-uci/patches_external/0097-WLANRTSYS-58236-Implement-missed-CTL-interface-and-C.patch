@@ -1,4 +1,4 @@
-From 01d4dde02e2931d82ebb46ae1fca58c19f4a1760 Mon Sep 17 00:00:00 2001
+From 999a52012660b5d4db9cb47650dd4dd0a6d8ff78 Mon Sep 17 00:00:00 2001
 From: Jurijs Soloveckis <jsoloveckis@maxlinear.com>
 Date: Wed, 30 Aug 2023 10:43:53 +0200
 Subject: [PATCH] WLANRTSYS-58236: Implement missed CTL interface and CLI APIs
@@ -12,7 +12,7 @@ Subject: [PATCH] WLANRTSYS-58236: Implement missed CTL interface and CLI APIs
  5 files changed, 220 insertions(+)
 
 diff --git a/hostapd/ctrl_iface.c b/hostapd/ctrl_iface.c
-index f2aec2b55..b79e1403f 100644
+index 48b65e2c8..30b056297 100644
 --- a/hostapd/ctrl_iface.c
 +++ b/hostapd/ctrl_iface.c
 @@ -6029,6 +6029,153 @@ static int hostapd_ctrl_iface_get_he_phy_channel_width_set(struct hostapd_data *
@@ -169,7 +169,7 @@ index f2aec2b55..b79e1403f 100644
  static int hostapd_ctrl_iface_receive_process(struct hostapd_data *hapd,
  					      char *buf, char *reply,
  					      int reply_size,
-@@ -6703,6 +6850,9 @@ static int hostapd_ctrl_iface_receive_process(struct hostapd_data *hapd,
+@@ -6707,6 +6854,9 @@ static int hostapd_ctrl_iface_receive_process(struct hostapd_data *hapd,
  	} else if (os_strncmp(buf, "GET_HE_PHY_CHANNEL_WIDTH_SET ", sizeof("GET_HE_PHY_CHANNEL_WIDTH_SET ") - 1) == 0) {
  		reply_len = hostapd_ctrl_iface_get_he_phy_channel_width_set(hapd,
  				buf + sizeof("GET_HE_PHY_CHANNEL_WIDTH_SET ") - 1, reply, reply_size);
@@ -179,7 +179,7 @@ index f2aec2b55..b79e1403f 100644
  	} else if (os_strncmp(buf, "UPDATE_RELOAD ", 14) == 0) {
  		if (hostapd_ctrl_iface_update_reload(hapd, buf + 14))
  			reply_len = -1;
-@@ -6729,6 +6879,8 @@ static int hostapd_ctrl_iface_receive_process(struct hostapd_data *hapd,
+@@ -6733,6 +6883,8 @@ static int hostapd_ctrl_iface_receive_process(struct hostapd_data *hapd,
  		if (hostapd_ctrl_set_ptk_rekey_timer(hapd, buf + 20) < 0)
  			reply_len = -1;
  #endif /*CONFIG_WIFI_CERTIFICATION */

@@ -1,4 +1,4 @@
-From 51ac459f1f142a420f7f45ca1bd560a90739c2ea Mon Sep 17 00:00:00 2001
+From 9b9442451f3d0b014911296db5e82ff9258ab1c0 Mon Sep 17 00:00:00 2001
 From: "Maneendra,Pokuri Naga" <pnmaneendra@maxlinear.com>
 Date: Sat, 9 Mar 2024 20:49:03 +0530
 Subject: [PATCH] WLANRTSYS-63948 EPCS Feature support
@@ -12,9 +12,9 @@ Subject: [PATCH] WLANRTSYS-63948 EPCS Feature support
  src/ap/ieee802_11.c                |  26 ++++-
  src/ap/mxl_config.h                |   4 +
  src/ap/mxl_hostapd.c               |   4 +
- src/ap/mxl_mld.c                   |  48 +++++++-
+ src/ap/mxl_mld.c                   |  37 ++++++-
  src/ap/mxl_mld.h                   |  14 +++
- src/ap/mxl_sta_info.h              |   5 +
+ src/ap/mxl_sta_info.h              |   1 +
  src/ap/mxl_wmm.c                   | 169 +++++++++++++++++++++++++++++
  src/ap/mxl_wmm.h                   |  22 ++++
  src/ap/wmm.c                       |   8 +-
@@ -23,7 +23,7 @@ Subject: [PATCH] WLANRTSYS-63948 EPCS Feature support
  src/common/mxl_ieee802_11_common.h |  11 ++
  src/common/mxl_ieee802_11_defs.h   |   5 +
  src/drivers/driver_nl80211.c       |   5 +
- 19 files changed, 563 insertions(+), 6 deletions(-)
+ 19 files changed, 548 insertions(+), 6 deletions(-)
  create mode 100644 src/ap/mxl_wmm.c
  create mode 100644 src/ap/mxl_wmm.h
 
@@ -45,7 +45,7 @@ index b4327c719..742df6f4f 100644
  endif
  
 diff --git a/hostapd/mxl_config.c b/hostapd/mxl_config.c
-index 4a0319d04..f2adfbc81 100644
+index 841705d3b..d11009eea 100644
 --- a/hostapd/mxl_config.c
 +++ b/hostapd/mxl_config.c
 @@ -1612,6 +1612,14 @@ int mxl_hostapd_config_fill (struct hostapd_config *conf,
@@ -97,7 +97,7 @@ index 4a0319d04..f2adfbc81 100644
  	/* Advertisement protocol IE */
  	conf->adv_proto_query_resp_len = ADV_PROTO_QUERY_RESP_LEN_DEFAULT;
 diff --git a/hostapd/mxl_ctrl_iface.c b/hostapd/mxl_ctrl_iface.c
-index 0f49565e8..68640f59b 100644
+index a378fb987..ff2252398 100644
 --- a/hostapd/mxl_ctrl_iface.c
 +++ b/hostapd/mxl_ctrl_iface.c
 @@ -75,6 +75,167 @@ struct hostapd_data *mxl_get_bss_index(const char **cmd, struct hostapd_data *ha
@@ -268,9 +268,9 @@ index 0f49565e8..68640f59b 100644
  static int mxl_hostapd_ctrl_iface_get_hw_features(struct hostapd_iface *iface, const char *cmd, char *buf, size_t buflen)
  {
  	int ret = 0, len = 0;
-@@ -2916,6 +3077,14 @@ int mxl_hostapd_ctrl_iface_receive_process(struct hostapd_data *hapd,
- 	} else if (os_strncmp(buf, "DISASSOCIATE ", 13) == 0) {
- 		mxl_mlo_hostapd_ctrl_disassociate(hapd, buf + 13, reply_len);
+@@ -2951,6 +3112,14 @@ int mxl_hostapd_ctrl_iface_receive_process(struct hostapd_data *hapd,
+ 		*reply_len = mxl_hostapd_ctrl_iface_send_t2lm_teardown_frame(hapd, buf + sizeof("SEND_T2LM_TEARDOWN_FRAME ") - 1);
+ 	} else if (os_strncmp(buf, "ML_BSS_CRITICAL_UPDATE", 22) == 0) {
  #endif /* CONFIG_IEEE80211BE_MXL_MLO */
 +#ifdef CONFIG_EPCS_MXL
 +	} else if (os_strncmp(buf, "SEND_EPCS_TEARDOWN_FRAME ", sizeof("SEND_EPCS_TEARDOWN_FRAME ") - 1) == 0) {
@@ -339,7 +339,7 @@ index 70ecf32e7..92817c31f 100644
  int mxl_hostapd_cli_cmd_set_failsafe_chan(struct wpa_ctrl *ctrl, int argc, char *argv[]);
  int mxl_hostapd_cli_cmd_get_failsafe_chan(struct wpa_ctrl *ctrl, int argc, char *argv[]);
 diff --git a/src/ap/ieee802_11.c b/src/ap/ieee802_11.c
-index a5ff8e47b..e32665e6f 100644
+index 81c597624..0ffe45225 100644
 --- a/src/ap/ieee802_11.c
 +++ b/src/ap/ieee802_11.c
 @@ -65,6 +65,8 @@
@@ -362,7 +362,7 @@ index a5ff8e47b..e32665e6f 100644
  
  	for (i = 0; i < RRM_CAPABILITIES_IE_LEN; i++) {
  		if (hapd->conf->radio_measurements[i]) {
-@@ -4217,7 +4223,13 @@ static int __check_assoc_ies(struct hostapd_data *hapd, struct sta_info *sta,
+@@ -4235,7 +4241,13 @@ static int __check_assoc_ies(struct hostapd_data *hapd, struct sta_info *sta,
  					  elems->eht_capabilities_len);
  		if (resp != WLAN_STATUS_SUCCESS)
  			return resp;
@@ -377,7 +377,7 @@ index a5ff8e47b..e32665e6f 100644
  #ifndef CONFIG_IEEE80211BE_MXL_MLO
  		if (!link) {
  			resp = hostapd_process_ml_assoc_req(hapd, elems, sta);
-@@ -6444,7 +6456,6 @@ void notify_action_frame(struct hostapd_data *hapd, const u8 *action_frame,
+@@ -6488,7 +6500,6 @@ void notify_action_frame(struct hostapd_data *hapd, const u8 *action_frame,
  	os_free(buf);
  }
  
@@ -385,7 +385,7 @@ index a5ff8e47b..e32665e6f 100644
  static int handle_action(struct hostapd_data *hapd,
  			 const struct ieee80211_mgmt *mgmt, size_t len,
  			 unsigned int freq)
-@@ -6452,7 +6463,13 @@ static int handle_action(struct hostapd_data *hapd,
+@@ -6496,7 +6507,13 @@ static int handle_action(struct hostapd_data *hapd,
  	struct sta_info *sta;
  	u8 *action __maybe_unused;
  
@@ -399,7 +399,7 @@ index a5ff8e47b..e32665e6f 100644
  		hostapd_logger(hapd, mgmt->sa, HOSTAPD_MODULE_IEEE80211,
  			       HOSTAPD_LEVEL_DEBUG,
  			       "handle_action - too short payload (len=%lu)",
-@@ -6521,6 +6538,11 @@ static int handle_action(struct hostapd_data *hapd,
+@@ -6565,6 +6582,11 @@ static int handle_action(struct hostapd_data *hapd,
  	case WLAN_ACTION_WMM:
  		hostapd_wmm_action(hapd, mgmt, len);
  		return 1;
@@ -412,7 +412,7 @@ index a5ff8e47b..e32665e6f 100644
  		ieee802_11_sa_query_action(hapd, mgmt, len);
  		return 1;
 diff --git a/src/ap/mxl_config.h b/src/ap/mxl_config.h
-index 8d3cc2cbf..f9ac03a86 100644
+index 6d5cd1241..e1ecc3bf3 100644
 --- a/src/ap/mxl_config.h
 +++ b/src/ap/mxl_config.h
 @@ -340,6 +340,10 @@ struct mxl_hostapd_config {
@@ -427,10 +427,10 @@ index 8d3cc2cbf..f9ac03a86 100644
  	int ProbeReqListTimer;
  	size_t nlmsg_default_size;
 diff --git a/src/ap/mxl_hostapd.c b/src/ap/mxl_hostapd.c
-index fe95e6737..8a804a991 100644
+index dccd3b855..fb2aeeb84 100644
 --- a/src/ap/mxl_hostapd.c
 +++ b/src/ap/mxl_hostapd.c
-@@ -1483,6 +1483,10 @@ mxl_hostapd_set_debug_mode_eht_cap(struct hostapd_data *hapd)
+@@ -1498,6 +1498,10 @@ mxl_hostapd_set_debug_mode_eht_cap(struct hostapd_data *hapd)
  		mxl_hostapd_set_debug_eht_txrx_mcs_support(hw->mcs, conf->optional, override_cap_idx);
  		mxl_hostapd_set_debug_eht_ppe_thresholds(hw->ppet, conf->optional + EHT_MCS_NSS_CAPAB_LEN, override_cap_idx);
  	}
@@ -442,35 +442,10 @@ index fe95e6737..8a804a991 100644
  
  static void mxl_hostapd_send_debug_mode_eht_cap (struct hostapd_data *hapd)
 diff --git a/src/ap/mxl_mld.c b/src/ap/mxl_mld.c
-index 26e0ee572..a11d3ef08 100644
+index 245f729b6..69f26e8d2 100644
 --- a/src/ap/mxl_mld.c
 +++ b/src/ap/mxl_mld.c
-@@ -27,6 +27,7 @@
- #include "mxl_wpa_auth_glue.h"
- #include "mxl_wds.h"
- #include "mxl_beacon.h"
-+#include "mxl_wmm.h"
- 
- static void mxl_set_link_id(struct hostapd_data *hapd)
- {
-@@ -38,6 +39,16 @@ static void mxl_set_link_id(struct hostapd_data *hapd)
- 		hapd->conf->mxl_bss_conf.link_id = LINK_ID_2G;
- }
- 
-+#ifdef CONFIG_EPCS_MXL
-+static u8 * mxl_hostapd_eid_mld_staprof_epcs(struct hostapd_data *hapd, u8 *eid)
-+{
-+	eid = mxl_hostapd_eid_wmm_epcs(hapd, eid);
-+	eid = hostapd_eid_he_mu_edca_parameter_set(hapd, eid);
-+
-+	return eid;
-+}
-+#endif /* CONFIG_EPCS_MXL */
-+
- static void mxl_update_mld_info(struct hostapd_data *hapd, int mld_id, bool set_ap_mld_mac)
- {
- 	struct p_ap_mld *p_ap_mld = NULL;
-@@ -824,10 +835,18 @@ u8 * mxl_hostapd_eid_multilink(struct hostapd_data *hapd, struct sta_info *sta,
+@@ -943,10 +943,18 @@ u8 * mxl_hostapd_eid_multilink(struct hostapd_data *hapd, struct sta_info *sta,
  
  	/* Multi-Link control element */
  	/* B0..B2 */
@@ -491,7 +466,7 @@ index 26e0ee572..a11d3ef08 100644
  		multilink_ctrl |= (MLO_LINK_ID_INFO_PRESENT | MLO_BSS_PARAM_CHANGE_COUNT_PRESENT |
  				MLO_MLD_CAPAB_PRESENT);
  		if (mld_num_simul_links) {
-@@ -844,7 +863,11 @@ u8 * mxl_hostapd_eid_multilink(struct hostapd_data *hapd, struct sta_info *sta,
+@@ -963,7 +971,11 @@ u8 * mxl_hostapd_eid_multilink(struct hostapd_data *hapd, struct sta_info *sta,
  	eid += sizeof(multilink_ctrl);
  
  	/* Multi-Link Common info */
@@ -503,7 +478,7 @@ index 26e0ee572..a11d3ef08 100644
  		common_info_len = COMMON_INFO_LEN_AUTH;
  	else {
  		if (mld_num_simul_links) {
-@@ -861,7 +884,11 @@ u8 * mxl_hostapd_eid_multilink(struct hostapd_data *hapd, struct sta_info *sta,
+@@ -980,7 +992,11 @@ u8 * mxl_hostapd_eid_multilink(struct hostapd_data *hapd, struct sta_info *sta,
  
  	memcpy_s(eid, ETH_ALEN, hapd->conf->mxl_bss_conf.ap_mld_mac, ETH_ALEN);
  	eid += ETH_ALEN;
@@ -515,7 +490,7 @@ index 26e0ee572..a11d3ef08 100644
  		*eid++ =  hapd->conf->mxl_bss_conf.link_id;
  		/* BSS Parameters Change Count */
  		*eid++ = 0;
-@@ -905,6 +932,14 @@ u8 * mxl_hostapd_eid_multilink(struct hostapd_data *hapd, struct sta_info *sta,
+@@ -1024,6 +1040,14 @@ u8 * mxl_hostapd_eid_multilink(struct hostapd_data *hapd, struct sta_info *sta,
  		/* size not known yet */
  		*eid++ = 0;
  		link_info_data_pos = eid;
@@ -530,7 +505,7 @@ index 26e0ee572..a11d3ef08 100644
  		sta_ctrl |= (sibling_hapd->conf->mxl_bss_conf.link_id | MLO_LINK_INFO_COMPLETE_PROFILE | MLO_LINK_INFO_MACADDR_PRESENT |
  				MLO_LINK_INFO_BI_PRESENT | MLO_LINK_INFO_TSF_OFFSET_PRESENT | MLO_LINK_INFO_DTIM_INFO_PRESENT);
  		if (ml_type == ML_ASSOC)
-@@ -941,6 +976,9 @@ u8 * mxl_hostapd_eid_multilink(struct hostapd_data *hapd, struct sta_info *sta,
+@@ -1060,6 +1084,9 @@ u8 * mxl_hostapd_eid_multilink(struct hostapd_data *hapd, struct sta_info *sta,
  		}
  
  		*sta_info_size_pos = eid - sta_info_size_pos;
@@ -540,7 +515,7 @@ index 26e0ee572..a11d3ef08 100644
  		/* Per-STA profile */
  		switch (ml_type) {
  			case ML_BASIC:
-@@ -962,7 +1000,11 @@ u8 * mxl_hostapd_eid_multilink(struct hostapd_data *hapd, struct sta_info *sta,
+@@ -1081,7 +1108,11 @@ u8 * mxl_hostapd_eid_multilink(struct hostapd_data *hapd, struct sta_info *sta,
  							sta->mxl_sta_info.linked_sta, eid, link_sta_status);
  				}
  				break;
@@ -554,10 +529,10 @@ index 26e0ee572..a11d3ef08 100644
  				wpa_printf(MSG_ERROR,"MLD: NO valid ML type!!!");
  				return eid;
 diff --git a/src/ap/mxl_mld.h b/src/ap/mxl_mld.h
-index de1d71879..8efc390c3 100644
+index b5aa4fcc8..25d7e1b7a 100644
 --- a/src/ap/mxl_mld.h
 +++ b/src/ap/mxl_mld.h
-@@ -57,6 +57,17 @@
+@@ -58,6 +58,17 @@
  /* To-do: this is place holder */
  #define PER_STA_PROFILE_LENGTH 500
  
@@ -575,7 +550,7 @@ index de1d71879..8efc390c3 100644
  /* To-do: For EMLSR,Max numer of simultaneous links is 1
   * this may chnage for EMLMR */
  #define MAX_NUM_MLD_SIMUL_LINKS                 1
-@@ -109,6 +120,9 @@ enum multilink_type {
+@@ -110,6 +121,9 @@ enum multilink_type {
  	ML_BASIC,
  	ML_PROBE,
  	ML_ASSOC,
@@ -586,7 +561,7 @@ index de1d71879..8efc390c3 100644
  
  static inline bool mxl_is_mlo_enabled(struct hostapd_bss_config *conf)
 diff --git a/src/ap/mxl_sta_info.h b/src/ap/mxl_sta_info.h
-index 554c54445..51b5d47c5 100644
+index 5176c97eb..81dfd1170 100644
 --- a/src/ap/mxl_sta_info.h
 +++ b/src/ap/mxl_sta_info.h
 @@ -11,6 +11,7 @@
@@ -597,24 +572,6 @@ index 554c54445..51b5d47c5 100644
  struct mxl_sta_info {
  #ifdef CONFIG_IEEE80211BE_MXL_MLO
  	u8 non_ap_mld_mac[ETH_ALEN];
-@@ -22,6 +23,9 @@ struct mxl_sta_info {
- 	struct ieee80211_ml_capab sta_ml_capab;
- 	u16 sta_profile_status;
- 	struct ieee80211_ml_sta_info ml_sta_info;
-+#ifdef CONFIG_EPCS_MXL
-+	unsigned int epcs_supported:1;
-+#endif /* CONFIG_EPCS_MXL */
- #endif /* CONFIG_IEEE80211BE_MXL_MLO */
- };
- 
-@@ -33,6 +37,7 @@ struct mxl_sta_info {
- #define WLAN_STA_MLD_WDS_STR_STA BIT(4)
- 
- void mxl_ml_ap_handle_timer(void *eloop_ctx, void *timeout_ctx);
-+struct sta_info * mxl_ap_get_sta_by_non_ap_mld_mac(struct hostapd_data *hapd, const u8 *mac);
- 
- #endif /* CONFIG_IEEE80211BE_MXL_MLO */
- #endif /* MXL_STA_INFO_H */
 diff --git a/src/ap/mxl_wmm.c b/src/ap/mxl_wmm.c
 new file mode 100644
 index 000000000..1268f3a16
@@ -921,10 +878,10 @@ index d19dea30d..1db104964 100644
  #endif /* MXL_IEEE802_11_DEFS_H */
  
 diff --git a/src/drivers/driver_nl80211.c b/src/drivers/driver_nl80211.c
-index ef61c201c..96404492d 100644
+index 480070b4f..cda1806df 100644
 --- a/src/drivers/driver_nl80211.c
 +++ b/src/drivers/driver_nl80211.c
-@@ -2887,6 +2887,11 @@ static int nl80211_action_subscribe_ap(struct i802_bss *bss)
+@@ -2888,6 +2888,11 @@ static int nl80211_action_subscribe_ap(struct i802_bss *bss)
  	/* WMM */
  	if (nl80211_register_action_frame(bss, (u8 *) "\x11", 1) < 0)
  		ret = -1;

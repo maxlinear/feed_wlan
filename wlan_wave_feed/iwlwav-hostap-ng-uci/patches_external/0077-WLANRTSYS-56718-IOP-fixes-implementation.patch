@@ -1,4 +1,4 @@
-From db13df12aba1d61cc4be913e0821abe7331d95cf Mon Sep 17 00:00:00 2001
+From 6998dead4a065a11e5db8205c94a8141314a38d9 Mon Sep 17 00:00:00 2001
 From: Jurijs Soloveckis <jsoloveckis@maxlinear.com>
 Date: Thu, 6 Jul 2023 14:29:47 +0200
 Subject: [PATCH] WLANRTSYS-56718: IOP fixes implementation
@@ -12,10 +12,10 @@ Subject: [PATCH] WLANRTSYS-56718: IOP fixes implementation
  4 files changed, 4 insertions(+), 4 deletions(-)
 
 diff --git a/hostapd/ctrl_iface.c b/hostapd/ctrl_iface.c
-index bc1dcc16a..a1d14dfd5 100644
+index b02513ba4..8b27cfd5d 100644
 --- a/hostapd/ctrl_iface.c
 +++ b/hostapd/ctrl_iface.c
-@@ -6489,7 +6489,7 @@ static void hostapd_ctrl_iface_receive(int sock, void *eloop_ctx,
+@@ -6493,7 +6493,7 @@ static void hostapd_ctrl_iface_receive(int sock, void *eloop_ctx,
  	struct sockaddr_storage from;
  	socklen_t fromlen = sizeof(from);
  	char *reply, *pos = buf;

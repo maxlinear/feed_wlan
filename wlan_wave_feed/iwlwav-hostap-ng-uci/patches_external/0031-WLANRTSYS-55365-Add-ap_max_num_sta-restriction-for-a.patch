@@ -1,4 +1,4 @@
-From 4c8642c8aee83f165fdc5b20ddfe100863c513e2 Mon Sep 17 00:00:00 2001
+From 10d3ce877d97df3c071d454cf82ed0c5a732776f Mon Sep 17 00:00:00 2001
 From: Jurijs Soloveckis <jsoloveckis@maxlinear.com>
 Date: Fri, 19 May 2023 14:41:17 +0200
 Subject: [PATCH] WLANRTSYS-55365: Add ap_max_num_sta restriction for all VAPs

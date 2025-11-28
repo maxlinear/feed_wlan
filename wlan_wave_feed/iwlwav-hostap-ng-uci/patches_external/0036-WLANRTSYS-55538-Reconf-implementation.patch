@@ -1,4 +1,4 @@
-From fc29a76cbbb15acfdc58cfbf2759a695639106a7 Mon Sep 17 00:00:00 2001
+From 8541b03ef90d3655de65200e13cc6fa8b5af5587 Mon Sep 17 00:00:00 2001
 From: Jurijs Soloveckis <jsoloveckis@maxlinear.com>
 Date: Thu, 25 May 2023 09:18:47 +0200
 Subject: [PATCH] WLANRTSYS-55538: Reconf implementation
@@ -11,7 +11,7 @@ Subject: [PATCH] WLANRTSYS-55538: Reconf implementation
  4 files changed, 310 insertions(+)
 
 diff --git a/hostapd/ctrl_iface.c b/hostapd/ctrl_iface.c
-index 1c8e8f650..f5b8c76e8 100644
+index 0f5a1d74b..fb175bce4 100644
 --- a/hostapd/ctrl_iface.c
 +++ b/hostapd/ctrl_iface.c
 @@ -1400,6 +1400,49 @@ static int hostapd_ctrl_iface_reload(struct hostapd_iface *iface)

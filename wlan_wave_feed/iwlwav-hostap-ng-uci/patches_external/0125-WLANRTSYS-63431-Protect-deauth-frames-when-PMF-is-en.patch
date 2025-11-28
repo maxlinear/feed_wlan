@@ -1,4 +1,4 @@
-From ccd4599e00e27e4580c41344d69a9a937beac24b Mon Sep 17 00:00:00 2001
+From 8eceeb7595cca1a2428e3cebb02ca862e6c7ad76 Mon Sep 17 00:00:00 2001
 From: fromans <fromans@maxlinear.com>
 Date: Tue, 20 Feb 2024 14:24:39 +0200
 Subject: [PATCH] WLANRTSYS-63431 Protect deauth frames when PMF is enabled
@@ -32,7 +32,7 @@ index 46cc39696..ab8cf50c6 100644
  		hostapd_drv_sta_deauth(hapd, addr, reason);
  	sta = ap_get_sta(hapd, addr);
 diff --git a/src/ap/hostapd.c b/src/ap/hostapd.c
-index 3291c513a..5081a7f26 100644
+index 983eb2c16..759c47392 100644
 --- a/src/ap/hostapd.c
 +++ b/src/ap/hostapd.c
 @@ -221,6 +221,10 @@ static void hostapd_clear_old_bss(struct hostapd_data *bss)
@@ -46,7 +46,7 @@ index 3291c513a..5081a7f26 100644
  	hostapd_broadcast_wep_clear(bss);
  #endif /* CONFIG_WEP */
  
-@@ -861,7 +865,14 @@ static int hostapd_flush_old_stations(struct hostapd_data *hapd, u16 reason)
+@@ -865,7 +869,14 @@ static int hostapd_flush_old_stations(struct hostapd_data *hapd, u16 reason)
  		wpa_dbg(hapd->msg_ctx, MSG_DEBUG,
  			"Deauthenticate all stations");
  		os_memset(addr, 0xff, ETH_ALEN);
@@ -61,7 +61,7 @@ index 3291c513a..5081a7f26 100644
  	}
  	hostapd_free_stas(hapd);
  
-@@ -882,6 +893,10 @@ void hostapd_bss_deinit_no_free(struct hostapd_data *hapd)
+@@ -886,6 +897,10 @@ void hostapd_bss_deinit_no_free(struct hostapd_data *hapd)
  #endif /* CONFIG_VENDOR_MXL */
  	hostapd_flush_old_stations(hapd, WLAN_REASON_DEAUTH_LEAVING);
  #ifdef CONFIG_WEP
@@ -72,7 +72,7 @@ index 3291c513a..5081a7f26 100644
  	hostapd_clear_wep(hapd);
  #endif /* CONFIG_WEP */
  }
-@@ -1774,6 +1789,10 @@ static int hostapd_setup_bss(struct hostapd_data *hapd, int first,
+@@ -1786,6 +1801,10 @@ static int hostapd_setup_bss(struct hostapd_data *hapd, int first,
  	hostapd_set_privacy(hapd, 0);
  
  #ifdef CONFIG_WEP
@@ -83,7 +83,7 @@ index 3291c513a..5081a7f26 100644
  	if (!hostapd_drv_nl80211(hapd))
  		hostapd_broadcast_wep_clear(hapd);
  	if (hostapd_setup_encryption(conf->iface, hapd))
-@@ -3106,7 +3125,7 @@ static void hostapd_prepare_csa_deauth_frame(struct hostapd_data *hapd, u8 *mgmt
+@@ -3118,7 +3137,7 @@ static void hostapd_prepare_csa_deauth_frame(struct hostapd_data *hapd, u8 *mgmt
  	if (hapd->conf->ieee80211w != NO_MGMT_FRAME_PROTECTION) {
  #ifdef BIP_PROTECTION_WORKING
  		/* TODO invoke bip_protect or bip_protect_* on mgmt frame based on group_mgmt_cipher */
@@ -93,7 +93,7 @@ index 3291c513a..5081a7f26 100644
  		if (EOK != err) {
  			wpa_printf(MSG_ERROR, "%s: memcpy_s error %d", __func__, err);
 diff --git a/src/ap/mxl_hostapd.c b/src/ap/mxl_hostapd.c
-index be01ca6c0..3d0a0d4b0 100644
+index d9788ddd3..d37723aa7 100644
 --- a/src/ap/mxl_hostapd.c
 +++ b/src/ap/mxl_hostapd.c
 @@ -28,6 +28,7 @@
@@ -104,7 +104,7 @@ index be01ca6c0..3d0a0d4b0 100644
  
  #define COC_POWER_1x1_STATE 1
  #define COC_POWER_2x2_STATE 2
-@@ -2445,3 +2446,44 @@ void mxl_hostapd_deinit_mld_params(struct hostapd_data *hapd)
+@@ -2448,3 +2449,44 @@ void mxl_hostapd_deinit_mld_params(struct hostapd_data *hapd)
  	hapd->mxl_data.sibling_hapd = NULL;
  }
  #endif /* CONFIG_IEEE80211BE_MXL_MLO */
@@ -150,20 +150,20 @@ index be01ca6c0..3d0a0d4b0 100644
 +	return 1;
 +}
 diff --git a/src/ap/mxl_hostapd.h b/src/ap/mxl_hostapd.h
-index 2b7e1fa57..4dfea63fe 100644
+index 9866f01e5..22d4a762e 100644
 --- a/src/ap/mxl_hostapd.h
 +++ b/src/ap/mxl_hostapd.h
-@@ -200,4 +200,5 @@ void mxl_hostapd_bss_deinit(struct hostapd_data *hapd);
- int mxl_hostapd_remove_bss(struct hostapd_iface *iface, unsigned int idx);
+@@ -201,4 +201,5 @@ int mxl_hostapd_remove_bss(struct hostapd_iface *iface, unsigned int idx);
  void mxl_hostapd_clear_drv_priv(struct hostapd_data *hapd);
+ int mxl_hostapd_flush_old_stations(struct hostapd_data *hapd, u16 reason);
  int mxl_update_rnr_check(struct hostapd_iface *iface);
 +int mxl_hostapd_send_protected_deauth(struct hostapd_data *hapd, int reason);
  #endif /* MXL_HOSTAPD_H */
 diff --git a/src/ap/mxl_wpa_auth.c b/src/ap/mxl_wpa_auth.c
-index 8a0829db1..853ade5f6 100644
+index 8d62a36ee..7e02e436f 100644
 --- a/src/ap/mxl_wpa_auth.c
 +++ b/src/ap/mxl_wpa_auth.c
-@@ -60,3 +60,13 @@ void mxl_hostapd_wpa_auth_mlo_clear(struct wpa_authenticator *wpa1, struct wpa_a
+@@ -618,3 +618,13 @@ void mxl_wpa_rekey_gtk(void *eloop_ctx, void *timeout_ctx)
  }
  #endif /* CONFIG_IEEE80211BE_MXL_MLO */
  
@@ -178,12 +178,12 @@ index 8a0829db1..853ade5f6 100644
 +}
 +
 diff --git a/src/ap/mxl_wpa_auth.h b/src/ap/mxl_wpa_auth.h
-index c4a3c3ff1..645593d77 100644
+index a65fa75e5..190af2fca 100644
 --- a/src/ap/mxl_wpa_auth.h
 +++ b/src/ap/mxl_wpa_auth.h
-@@ -29,5 +29,14 @@ struct wpa_auth_mlo_conf {
- void mxl_hostapd_wpa_auth_mlo(struct wpa_authenticator *wpa1, struct wpa_authenticator *wpa2);
- void mxl_hostapd_wpa_auth_mlo_clear(struct wpa_authenticator *wpa1, struct wpa_authenticator *wpa2);
+@@ -54,5 +54,14 @@ void mxl_wpa_group_put(struct wpa_authenticator *wpa_auth, struct wpa_group *gro
+ void mxl_wpa_group_sm_step(struct wpa_authenticator *wpa_auth, struct wpa_group *group);
+ void mxl_wpa_rekey_gtk(void *eloop_ctx, void *timeout_ctx);
  #endif /* CONFIG_IEEE80211BE_MXL_MLO */
 +
 +/* broadcast deauth reason - Recovery */
@@ -197,10 +197,10 @@ index c4a3c3ff1..645593d77 100644
  #endif /* MXL_WPA_AUTH_H */
  
 diff --git a/src/ap/wpa_auth.c b/src/ap/wpa_auth.c
-index 2f9448e91..b4846cf98 100644
+index fa0ad74f8..a3ace071b 100644
 --- a/src/ap/wpa_auth.c
 +++ b/src/ap/wpa_auth.c
-@@ -6725,7 +6725,7 @@ void wpa_auth_set_ml_info(struct wpa_state_machine *sm, const u8 *mld_addr,
+@@ -6763,7 +6763,7 @@ void wpa_auth_set_ml_info(struct wpa_state_machine *sm, const u8 *mld_addr,
   * So the same is being used to generate MMIE IE here.
   */
  u8 * bip_protect(struct wpa_authenticator *wpa_auth,
@@ -209,7 +209,7 @@ index 2f9448e91..b4846cf98 100644
  {
  	errno_t err;
  	const u8 *igtk = wpa_auth->group->IGTK[wpa_auth->group->GN_igtk - 4];
-@@ -6733,7 +6733,7 @@ u8 * bip_protect(struct wpa_authenticator *wpa_auth,
+@@ -6771,7 +6771,7 @@ u8 * bip_protect(struct wpa_authenticator *wpa_auth,
  	size_t copied_bytes = 0, copied_prot = 0;
  	size_t buf_size;
  	u8 ipn[WPA_KEY_RSC_LEN] = {0};
@@ -218,7 +218,7 @@ index 2f9448e91..b4846cf98 100644
  	u8 *prot, *pos, *buf;
  	u8 mic[WLAN_MMIE_SUBELEM_MIC2_SIZE];
  	u16 fc;
-@@ -6767,10 +6767,22 @@ u8 * bip_protect(struct wpa_authenticator *wpa_auth,
+@@ -6805,10 +6805,22 @@ u8 * bip_protect(struct wpa_authenticator *wpa_auth,
  	WPA_PUT_LE16(pos, keyid);
  	pos += WLAN_MMIE_SUBELEM_KEYID_SIZE;
  	copied_prot += WLAN_MMIE_SUBELEM_KEYID_SIZE;
@@ -245,10 +245,10 @@ index 2f9448e91..b4846cf98 100644
  	if (EOK != err) {
  		wpa_printf(MSG_ERROR, "%s: memcpy_s error %d", __func__, err);
 diff --git a/src/ap/wpa_auth_i.h b/src/ap/wpa_auth_i.h
-index 8851d8094..6998e79cc 100644
+index c96a19b8e..e6ca9f022 100644
 --- a/src/ap/wpa_auth_i.h
 +++ b/src/ap/wpa_auth_i.h
-@@ -349,8 +349,6 @@ int wpa_ft_store_pmk_fils(struct wpa_state_machine *sm, const u8 *pmk_r0,
+@@ -351,8 +351,6 @@ int wpa_ft_store_pmk_fils(struct wpa_state_machine *sm, const u8 *pmk_r0,
  			  const u8 *pmk_r0_name);
  #endif /* CONFIG_IEEE80211R_AP */
  

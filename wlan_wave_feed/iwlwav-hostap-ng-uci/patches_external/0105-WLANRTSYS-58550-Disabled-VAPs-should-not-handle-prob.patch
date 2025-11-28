@@ -1,4 +1,4 @@
-From ee5b197222f83136dc0fb35c2d8a7f02c8c23b1a Mon Sep 17 00:00:00 2001
+From 82a9794ecca909064bb4fbebf468400a211f4528 Mon Sep 17 00:00:00 2001
 From: Dmitrijs Martinovs <dmartinovs@maxlinear.com>
 Date: Wed, 13 Sep 2023 14:48:17 +0200
 Subject: [PATCH] WLANRTSYS-58550: Disabled VAPs should not handle probes

@@ -1,4 +1,4 @@
-From 4490ba2914d71c57e77d71e24e6070ce0da3a4a0 Mon Sep 17 00:00:00 2001
+From 69124d29f204fa5000fb114a942383b721c66d41 Mon Sep 17 00:00:00 2001
 From: mvulsx <mvuls@maxlinear.com>
 Date: Thu, 6 Jul 2023 14:46:27 +0000
 Subject: [PATCH] WLANRTSYS-56767: Add additional info on STA
@@ -36,7 +36,7 @@ index 595661612..d82857c77 100644
  static int hostapd_parse_he_srg_bitmap(u8 *bitmap, char *val)
  {
 diff --git a/hostapd/ctrl_iface.c b/hostapd/ctrl_iface.c
-index a1d14dfd5..4c305cbe8 100644
+index 8b27cfd5d..503cacd26 100644
 --- a/hostapd/ctrl_iface.c
 +++ b/hostapd/ctrl_iface.c
 @@ -5753,12 +5753,6 @@ static int hostapd_ctrl_iface_get_he_phy_channel_width_set(struct hostapd_data *

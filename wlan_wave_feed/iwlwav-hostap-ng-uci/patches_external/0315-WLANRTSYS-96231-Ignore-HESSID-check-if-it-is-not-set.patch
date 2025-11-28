@@ -1,0 +1,44 @@
+From 778f4a5b0471e19cd1f523652fbc342a2b165b78 Mon Sep 17 00:00:00 2001
+From: hmgokhale <hmgokhale@maxlinear.com>
+Date: Sun, 26 Oct 2025 23:24:54 -0700
+Subject: [PATCH] WLANRTSYS-96231 Ignore HESSID check if it is not set in
+ hostapd conf
+
+Signed-off-by: hmgokhale <hmgokhale@maxlinear.com>
+---
+ src/ap/beacon.c | 12 ++++++++++++
+ 1 file changed, 12 insertions(+)
+
+diff --git a/src/ap/beacon.c b/src/ap/beacon.c
+index d04b11b35..80578fff6 100644
+--- a/src/ap/beacon.c
++++ b/src/ap/beacon.c
+@@ -1818,6 +1818,17 @@ void handle_probe_req(struct hostapd_data *hapd,
+ 			hessid = elems.interworking + 1;
+ 		else
+ 			hessid = elems.interworking + 1 + 2;
++#ifdef CONFIG_VENDOR_MXL
++		if (!is_broadcast_ether_addr(hessid) &&
++		    os_memcmp(hessid, hapd->conf->hessid, ETH_ALEN) != 0 &&
++			 !is_zero_ether_addr(hapd->conf->hessid)) {
++			wpa_printf(MSG_MSGDUMP, "Probe Request from " MACSTR
++				   " for mismatching HESSID " MACSTR
++				   " ignored",
++				   MAC2STR(mgmt->sa), MAC2STR(hessid));
++			return;
++		}
++#else
+ 		if (!is_broadcast_ether_addr(hessid) &&
+ 		    os_memcmp(hessid, hapd->conf->hessid, ETH_ALEN) != 0) {
+ 			wpa_printf(MSG_MSGDUMP, "Probe Request from " MACSTR
+@@ -1826,6 +1837,7 @@ void handle_probe_req(struct hostapd_data *hapd,
+ 				   MAC2STR(mgmt->sa), MAC2STR(hessid));
+ 			return;
+ 		}
++#endif /* CONFIG_VENDOR_MXL */
+ 	}
+ #endif /* CONFIG_INTERWORKING */
+ 
+-- 
+2.43.0
+

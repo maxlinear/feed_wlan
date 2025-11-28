@@ -1,4 +1,4 @@
-From fb7d0cba083fbd6a0e725213a98090cf691e90c6 Mon Sep 17 00:00:00 2001
+From 9d5a0791cc88ec70a4c4e035e69605fdbfba841c Mon Sep 17 00:00:00 2001
 From: Dmitrijs Martinovs <dmartinovs@maxlinear.com>
 Date: Mon, 17 Jul 2023 10:03:39 +0200
 Subject: [PATCH] WLANRTSYS-56963: Integrate WPS commits
@@ -33,7 +33,7 @@ index 627866a24..745a3814d 100644
  		int val = atoi(pos);
  		if (!IS_VALID_BOOL_RANGE(val)) {
 diff --git a/hostapd/ctrl_iface.c b/hostapd/ctrl_iface.c
-index 84cce43d2..44aca196c 100644
+index 21394c1c5..19f6ea03a 100644
 --- a/hostapd/ctrl_iface.c
 +++ b/hostapd/ctrl_iface.c
 @@ -171,15 +171,31 @@ static int hostapd_ctrl_iface_wps_pin(struct hostapd_data *hapd, char *txt)

@@ -1,4 +1,4 @@
-From 3fcb899e335ecc6ef6d95efe8e06a71eb81736e8 Mon Sep 17 00:00:00 2001
+From 29747aeb0c47b057a07322670ef13562203e2a21 Mon Sep 17 00:00:00 2001
 From: Jurijs Soloveckis <jsoloveckis@maxlinear.com>
 Date: Tue, 16 May 2023 17:30:58 +0200
 Subject: [PATCH] WLANRTSYS-55139: HE BSS color
@@ -140,7 +140,7 @@ index d27fec218..70b5d62b3 100644
  		conf->he_op.he_bss_color_partial = atoi(pos);
  	} else if (os_strcmp(buf, "he_default_pe_duration") == 0) {
 diff --git a/hostapd/ctrl_iface.c b/hostapd/ctrl_iface.c
-index b7eabb5a3..906bdeb99 100644
+index 5d358733b..e901cc545 100644
 --- a/hostapd/ctrl_iface.c
 +++ b/hostapd/ctrl_iface.c
 @@ -2578,6 +2578,12 @@ static int hostapd_ctrl_iface_chan_switch(struct hostapd_iface *iface,
@@ -268,7 +268,7 @@ index b7eabb5a3..906bdeb99 100644
  	if (hwaddr_aton(cmd, req.addr))
  		return -1;
  
-@@ -5475,6 +5579,13 @@ static int hostapd_ctrl_iface_receive_process(struct hostapd_data *hapd,
+@@ -5479,6 +5583,13 @@ static int hostapd_ctrl_iface_receive_process(struct hostapd_data *hapd,
  	} else if (os_strncmp(buf, "GET_CSA_DEAUTH ", sizeof("GET_CSA_DEAUTH ") - 1) == 0) {
  		reply_len = hostapd_ctrl_iface_get_csa_deauth(hapd, buf + sizeof("GET_CSA_DEAUTH ") - 1,
  			reply, reply_size);

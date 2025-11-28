@@ -1,29 +1,32 @@
-From 8ff0c65bf854feef047b317084bc002d03f12541 Mon Sep 17 00:00:00 2001
+From 1b6a9c5fb4ade9a3bf7c7cf5bd5e7a4f14f0e6b3 Mon Sep 17 00:00:00 2001
 From: "Maneendra,Pokuri Naga" <pnmaneendra@maxlinear.com>
 Date: Fri, 17 May 2024 14:34:01 +0530
 Subject: [PATCH] WLANRTSYS-81745 Porting Client Mode changes for wav700
 
 ---
- hostapd/ctrl_iface.c | 1 +
+ hostapd/ctrl_iface.c | 3 +++
  hostapd/mxl_config.c | 2 ++
+ src/ap/hostapd.c     | 4 ++++
  src/ap/mxl_config.h  | 1 +
  src/ap/mxl_hostapd.c | 7 +++++--
- 4 files changed, 9 insertions(+), 2 deletions(-)
+ 5 files changed, 15 insertions(+), 2 deletions(-)
 
 diff --git a/hostapd/ctrl_iface.c b/hostapd/ctrl_iface.c
-index ddf696f2c..5f289fb58 100644
+index e0f0c64fb..9529deb30 100644
 --- a/hostapd/ctrl_iface.c
 +++ b/hostapd/ctrl_iface.c
-@@ -1662,6 +1662,7 @@ static int hostapd_ctrl_iface_update_reload(struct hostapd_data *hapd, char *cmd
- 	struct hostapd_config *conf = hapd->iconf;
- 	int j;
- 
-+	hapd->iconf->mxl_conf.is_client_mode = true;
+@@ -1665,6 +1665,9 @@ static int hostapd_ctrl_iface_update_reload(struct hostapd_data *hapd, char *cmd
  	hostapd_ctrl_iface_disable(iface);
  
  	hostapd_ctrl_iface_config_update(conf, cmd);
++#ifdef CONFIG_VENDOR_MXL
++	hapd->iconf->mxl_conf.is_client_mode = true;
++#endif /* CONFIG_VENDOR_MXL */
+ 
+ 	for (j = 0; j < iface->num_bss; j++) {
+ 		iface->bss[j]->conf->start_disabled = 0;
 diff --git a/hostapd/mxl_config.c b/hostapd/mxl_config.c
-index 969625d49..4a59daa44 100644
+index d7d32fb1e..647e9148f 100644
 --- a/hostapd/mxl_config.c
 +++ b/hostapd/mxl_config.c
 @@ -2002,6 +2002,8 @@ void mxl_hostapd_config_defaults(struct hostapd_config *conf)
@@ -35,8 +38,24 @@ index 969625d49..4a59daa44 100644
  	mxl_conf->event_cache_interval = 1;
  
  #ifdef CONFIG_IEEE80211BE
+diff --git a/src/ap/hostapd.c b/src/ap/hostapd.c
+index ee6049eca..f88242900 100644
+--- a/src/ap/hostapd.c
++++ b/src/ap/hostapd.c
+@@ -2697,7 +2697,11 @@ static int setup_interface2(struct hostapd_iface *iface)
+ 		mxl_hostapd_set_eml_capab(iface);
+ #endif /* CONFIG_IEEE80211BE_MXL_MLO */
+ 
++#ifdef CONFIG_VENDOR_MXL
++		if (iface->conf->acs && !iface->conf->mxl_conf.is_client_mode) {
++#else
+ 		if (iface->conf->acs) {
++#endif /* CONFIG_VENDOR_MXL */
+ 			iface->freq = 0;
+ 			iface->conf->channel = 0;
+ 		}
 diff --git a/src/ap/mxl_config.h b/src/ap/mxl_config.h
-index c7e4b3732..2051960cc 100644
+index e9f729fa4..6f0688b01 100644
 --- a/src/ap/mxl_config.h
 +++ b/src/ap/mxl_config.h
 @@ -356,6 +356,7 @@ struct mxl_hostapd_config {
@@ -48,10 +67,10 @@ index c7e4b3732..2051960cc 100644
  
  enum duplicate_beacon_bw {
 diff --git a/src/ap/mxl_hostapd.c b/src/ap/mxl_hostapd.c
-index 07fcf93c4..cd78c5e14 100644
+index cd68e3683..1e17e6a65 100644
 --- a/src/ap/mxl_hostapd.c
 +++ b/src/ap/mxl_hostapd.c
-@@ -2401,12 +2401,15 @@ int mxl_hostapd_no_ir_channel_list_updated(struct hostapd_iface *iface)
+@@ -2529,12 +2529,15 @@ int mxl_hostapd_no_ir_channel_list_updated(struct hostapd_iface *iface)
  {
  	int i, j;
  	/*

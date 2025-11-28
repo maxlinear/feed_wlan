@@ -1,4 +1,4 @@
-From d8df621cf0be61753d4328cd21ed2afda96a0eeb Mon Sep 17 00:00:00 2001
+From 2a7f14b53ee2f57014ed694e5b2b308e13856241 Mon Sep 17 00:00:00 2001
 From: mvulsx <mvuls@maxlinear.com>
 Date: Thu, 6 Jul 2023 08:54:20 +0000
 Subject: [PATCH] WLANRTSYS-56761: Implement debug control interface commands
@@ -10,7 +10,7 @@ Signed-off-by: mvulsx <mvuls@maxlinear.com>
  1 file changed, 11 insertions(+)
 
 diff --git a/hostapd/ctrl_iface.c b/hostapd/ctrl_iface.c
-index d4690279b..bc1dcc16a 100644
+index 2dfb725bc..b02513ba4 100644
 --- a/hostapd/ctrl_iface.c
 +++ b/hostapd/ctrl_iface.c
 @@ -4094,6 +4094,13 @@ static int hostapd_ctrl_iface_link_remove(struct hostapd_data *hapd, char *cmd,
@@ -27,7 +27,7 @@ index d4690279b..bc1dcc16a 100644
  static int hostapd_ctrl_iface_deny_mac(struct hostapd_data *hapd, const char *cmd)
  {
  	const char *pos;
-@@ -6366,6 +6373,10 @@ static int hostapd_ctrl_iface_receive_process(struct hostapd_data *hapd,
+@@ -6370,6 +6377,10 @@ static int hostapd_ctrl_iface_receive_process(struct hostapd_data *hapd,
  #ifdef CONFIG_VENDOR_MXL
  	} else if (mxl_hostapd_ctrl_iface_receive_process(hapd, buf, reply, reply_size, &reply_len)) {
  #endif /* CONFIG_VENDOR_MXL */

@@ -1,4 +1,4 @@
-From 13a9030cc46b3b69cb848f6ca6c68ca8283dc259 Mon Sep 17 00:00:00 2001
+From b990dddff9f1441e5d32f8bc27cd8971b2534d3d Mon Sep 17 00:00:00 2001
 From: mvulsx <mvuls@maxlinear.com>
 Date: Wed, 28 Jun 2023 14:02:27 +0000
 Subject: [PATCH] WLANRTSYS-56559: implement unconnected STA API updates
@@ -12,7 +12,7 @@ Signed-off-by: mvulsx <mvuls@maxlinear.com>
  4 files changed, 90 insertions(+), 14 deletions(-)
 
 diff --git a/hostapd/ctrl_iface.c b/hostapd/ctrl_iface.c
-index a90057027..cabe4de54 100644
+index 8513c45b6..cd7fcdd96 100644
 --- a/hostapd/ctrl_iface.c
 +++ b/hostapd/ctrl_iface.c
 @@ -4704,21 +4704,65 @@ static int hostapd_ctrl_iface_unconnected_sta(struct hostapd_data *hapd, const c

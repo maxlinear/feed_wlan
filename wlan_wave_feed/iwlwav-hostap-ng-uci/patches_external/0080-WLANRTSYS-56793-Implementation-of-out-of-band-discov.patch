@@ -1,4 +1,4 @@
-From 6becdc565ae72b5e1cc0cfa21c268be7f01017c3 Mon Sep 17 00:00:00 2001
+From 79cba61915f73cd3b2aa67cd920919beaebd186b Mon Sep 17 00:00:00 2001
 From: mvulsx <mvuls@maxlinear.com>
 Date: Fri, 7 Jul 2023 09:03:55 +0000
 Subject: [PATCH] WLANRTSYS-56793: Implementation of out of band discovery of a

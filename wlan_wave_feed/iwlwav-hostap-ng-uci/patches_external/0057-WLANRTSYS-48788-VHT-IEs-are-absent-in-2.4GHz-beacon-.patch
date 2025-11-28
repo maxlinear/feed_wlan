@@ -1,4 +1,4 @@
-From 2e8596f9c3de7ad8019c10955d70abb45b879fa3 Mon Sep 17 00:00:00 2001
+From 6ec7989191dbe07471c29da2f5949bc11273af86 Mon Sep 17 00:00:00 2001
 From: Jurijs Soloveckis <jsoloveckis@maxlinear.com>
 Date: Tue, 13 Jun 2023 13:23:09 +0200
 Subject: [PATCH] WLANRTSYS-48788: VHT IEs are absent in 2.4GHz beacon from

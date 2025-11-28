@@ -1,4 +1,4 @@
-From 1301ad6670e986f44713551afcd023afa73d46d6 Mon Sep 17 00:00:00 2001
+From a9674aac7b4dfc5a9b16083648212f255afe0edb Mon Sep 17 00:00:00 2001
 From: rportnikh <rportnikh@maxlinear.com>
 Date: Wed, 14 Feb 2024 10:11:56 +0200
 Subject: [PATCH] WLANRTSYS-62335 updk-support-sccath
@@ -10,7 +10,7 @@ Subject: [PATCH] WLANRTSYS-62335 updk-support-sccath
  3 files changed, 55 insertions(+)
 
 diff --git a/hostapd/mxl_config.c b/hostapd/mxl_config.c
-index c42b8e4c1..2df88d27d 100644
+index a9fcef52a..d20f880d4 100644
 --- a/hostapd/mxl_config.c
 +++ b/hostapd/mxl_config.c
 @@ -652,6 +652,33 @@ mxl_conf_fill_he_ppe_thresholds(struct mxl_hostapd_config *conf, const char *buf
@@ -82,7 +82,7 @@ index c42b8e4c1..2df88d27d 100644
  	conf->adv_proto_query_resp_len = ADV_PROTO_QUERY_RESP_LEN_DEFAULT;
  	mxl_conf->event_cache_interval = 1;
 diff --git a/src/ap/mxl_config.h b/src/ap/mxl_config.h
-index f0e56701d..080db8ac5 100644
+index c38702452..ad861da79 100644
 --- a/src/ap/mxl_config.h
 +++ b/src/ap/mxl_config.h
 @@ -17,6 +17,8 @@
@@ -102,7 +102,7 @@ index f0e56701d..080db8ac5 100644
  	u8 ap_retry_limit;
  	u8 ap_retry_limit_data;
  	u8 ap_retry_limit_probe_resp;
-@@ -405,6 +408,8 @@ void mxl_hostapd_config_free_bss(struct hostapd_bss_config *bss);
+@@ -416,6 +419,8 @@ int mxl_hostapd_parse_intlist(int **int_list, char *val);
  #define AP_TX_RETRY_LIMIT_DEFAULT_DATA 7
  #define AP_TX_RETRY_LIMIT_DEFAULT_PROBE_RESP 2
  #define AP_RETRY_INVALID 255
@@ -112,7 +112,7 @@ index f0e56701d..080db8ac5 100644
  #define MAX_EVENT_CACHE_INTERVAL 3600
  
 diff --git a/src/ap/mxl_hostapd.c b/src/ap/mxl_hostapd.c
-index 98d3f9574..be01ca6c0 100644
+index f5a735e21..d9788ddd3 100644
 --- a/src/ap/mxl_hostapd.c
 +++ b/src/ap/mxl_hostapd.c
 @@ -1585,6 +1585,9 @@ void mxl_hostapd_setup_interface_post(struct hostapd_iface *iface)

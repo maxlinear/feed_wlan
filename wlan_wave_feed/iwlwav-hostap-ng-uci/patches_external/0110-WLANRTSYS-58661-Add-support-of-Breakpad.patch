@@ -1,4 +1,4 @@
-From 516a2e040dc0a61e8f69ee2ce4ee3015b12ea722 Mon Sep 17 00:00:00 2001
+From 1f4a41d83b614a667a5186edb86c730387b478c3 Mon Sep 17 00:00:00 2001
 From: Dmitrijs Martinovs <dmartinovs@maxlinear.com>
 Date: Mon, 25 Sep 2023 10:19:54 +0300
 Subject: [PATCH] WLANRTSYS-58661: Add support of Breakpad

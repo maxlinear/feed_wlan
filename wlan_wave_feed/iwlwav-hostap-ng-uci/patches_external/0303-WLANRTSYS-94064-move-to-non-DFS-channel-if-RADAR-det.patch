@@ -1,0 +1,106 @@
+From 2690e82dc30e008743249317209ca5d617574362 Mon Sep 17 00:00:00 2001
+From: mj <mj@maxlinear.com>
+Date: Tue, 2 Sep 2025 07:56:45 -0700
+Subject: [PATCH] WLANRTSYS-94064 move to non DFS channel if RADAR detected
+ before second best channel cac complete and trigger second best channel CAC
+ after ACS timer expired again
+
+Issue : Not moving to non DFS channel if RADAR detected before CAC complete for second best channel and second best channel CAC is not
+triggered after ACS timer expired.
+
+Fix: move to non DFS channel if RADAR detected before second best channel cac complete and trigger second best channel CAC after ACS
+timer expired again
+---
+ src/ap/dfs.c               |  7 +++++++
+ src/ap/drv_callbacks.c     |  5 +++++
+ src/ap/mxl_drv_callbacks.c | 25 +++++++++++++++++++++++++
+ src/ap/mxl_drv_callbacks.h |  1 +
+ 4 files changed, 38 insertions(+)
+
+diff --git a/src/ap/dfs.c b/src/ap/dfs.c
+index 0e23ea117..04095502e 100644
+--- a/src/ap/dfs.c
++++ b/src/ap/dfs.c
+@@ -1601,6 +1601,8 @@ int hostapd_dfs_radar_detected(struct hostapd_iface *iface, int freq,
+ 			       int cf1, int cf2)
+ {
+ #ifdef CONFIG_VENDOR_MXL
++	int seg0_chan;
++	int seg1_chan;
+ 	wpa_msg(iface->bss[0]->msg_ctx, MSG_INFO, DFS_EVENT_RADAR_DETECTED
+ 		"freq=%d ht_enabled=%d chan_offset=%d chan_width=%d cf1=%d cf2=%d rbm=%d",
+ 		freq, ht_enabled, chan_offset, chan_width, cf1, cf2, iface->mxl_iface.rbm);
+@@ -1641,6 +1643,11 @@ int hostapd_dfs_radar_detected(struct hostapd_iface *iface, int freq,
+ 
+ 	if (mxl_switch_second_best_channel(iface)) {
+ 		return 0;
++	} else {
++		ieee80211_freq_to_chan(cf1, &seg0_chan);
++		hostapd_set_oper_centr_freq_seg0_idx(iface->conf, seg0_chan);
++		ieee80211_freq_to_chan(cf2, &seg1_chan);
++		hostapd_set_oper_centr_freq_seg1_idx(iface->conf, seg1_chan);
+ 	}
+ 
+ 	if (mxl_hostapd_handle_background_radar(iface, freq, cf1, chan_width))
+diff --git a/src/ap/drv_callbacks.c b/src/ap/drv_callbacks.c
+index 4159350d7..a8ca41b80 100644
+--- a/src/ap/drv_callbacks.c
++++ b/src/ap/drv_callbacks.c
+@@ -1328,6 +1328,11 @@ void hostapd_event_ch_switch(struct hostapd_data *hapd, int freq, int ht,
+ 	ieee802_11_set_beacon_per_bss_only(hapd);
+ #endif
+ 
++#ifdef CONFIG_VENDOR_MXL
++	/* do CAC for second best channel */
++	mxl_check_ch_switch_status_and_get_second_best_channel(finished, hapd);
++#endif /* CONFIG_VENDOR_MXL */
++
+ #ifdef CONFIG_OCV
+ 	if (hapd->conf->ocv &&
+ 	    !(hapd->iface->drv_flags2 &
+diff --git a/src/ap/mxl_drv_callbacks.c b/src/ap/mxl_drv_callbacks.c
+index 1494e8d89..5fcf8f31c 100644
+--- a/src/ap/mxl_drv_callbacks.c
++++ b/src/ap/mxl_drv_callbacks.c
+@@ -231,3 +231,28 @@ void mxl_hostapd_event_eapol_rx(struct hostapd_data *hapd, const u8 *src,
+ 
+ 	ieee802_1x_receive(hapd, src, data, data_len, encrypted);
+ }
++
++void mxl_check_ch_switch_status_and_get_second_best_channel(int finished, struct hostapd_data *hapd)
++{
++#ifdef CONFIG_VENDOR_MXL_PROPRIETARY
++	if(!hapd->iface->conf->mxl_conf.acs_init_done) {
++		return;
++	}
++	if (finished && !hapd->iface->mxl_iface.sec_best_ch.flag) {
++		if (WAVE_FREQ_IS_5G(hapd->iface->freq) && !(hapd->iface->mxl_iface.sec_best_ch.bg_cac)) {
++			if (mxl_is_dfs_channel(hapd->iface->conf->channel, hostapd_get_oper_chwidth(hapd->iface->conf)))
++			{
++				if (mxl_get_second_best_channel_from_acs_table(hapd->iface)) {
++					wpa_printf(MSG_INFO, "ACS: second best channel is choosen");
++					mxl_get_second_best_channel(hapd->iface);
++				} else {
++					wpa_printf(MSG_ERROR, "ACS: second best channel is not choosen");
++				}
++			} else {
++				wpa_printf(MSG_INFO, "ACS: selected non DFS channel, so don't trigger CAC on second best channel");
++			}
++		}
++	}
++#endif
++	return;
++}
+diff --git a/src/ap/mxl_drv_callbacks.h b/src/ap/mxl_drv_callbacks.h
+index 74d1fe99c..ed4cb9af0 100644
+--- a/src/ap/mxl_drv_callbacks.h
++++ b/src/ap/mxl_drv_callbacks.h
+@@ -26,4 +26,5 @@ void mxl_hostapd_event_eapol_rx(struct hostapd_data *hapd, const u8 *src,
+ 				enum frame_encryption encrypted,
+ 				int link_id,
+ 				u16 vlan_id);
++void mxl_check_ch_switch_status_and_get_second_best_channel(int finished, struct hostapd_data *hapd);
+ #endif /* MXL_DRV_CALLBACKS_H */
+-- 
+2.43.0
+

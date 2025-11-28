@@ -1,4 +1,4 @@
-From 09223af754f25acb079207c4d298d27dea5b372d Mon Sep 17 00:00:00 2001
+From e0978f830b97a0d410dfde7c37f47312c97cc7a2 Mon Sep 17 00:00:00 2001
 From: Dmitrijs Martinovs <dmartinovs@maxlinear.com>
 Date: Tue, 23 May 2023 10:49:21 +0300
 Subject: [PATCH] WLANRTSYS-55434: Implement MXL proprietary configuration pipe

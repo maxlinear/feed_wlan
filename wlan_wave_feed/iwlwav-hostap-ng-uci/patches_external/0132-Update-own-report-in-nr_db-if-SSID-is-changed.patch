@@ -1,4 +1,4 @@
-From 54d05eec0548dc299d174f3a3ba977c9db1fefb2 Mon Sep 17 00:00:00 2001
+From 7713d064568c70dc7ce5d1b301f39866d02623c4 Mon Sep 17 00:00:00 2001
 From: Nikita Chernikov <ncherikov@maxlinear.com>
 Date: Thu, 1 Feb 2024 18:05:02 +0200
 Subject: [PATCH] Update own report in nr_db if SSID is changed
@@ -18,7 +18,7 @@ Signed-off-by: Nikita Chernikov <nchernikov@maxlinear.com>
  4 files changed, 39 insertions(+)
 
 diff --git a/hostapd/ctrl_iface.c b/hostapd/ctrl_iface.c
-index 9e2ce1235..526d3a14c 100644
+index bdcdc4e35..ce7565a90 100644
 --- a/hostapd/ctrl_iface.c
 +++ b/hostapd/ctrl_iface.c
 @@ -1425,6 +1425,8 @@ static int hostapd_ctrl_iface_set(struct hostapd_data *hapd, char *cmd)
@@ -31,7 +31,7 @@ index 9e2ce1235..526d3a14c 100644
  			   os_strncmp(cmd, "wmm_ac_", 7) == 0) {
  			hapd->parameter_set_count++;
 diff --git a/src/ap/hostapd.c b/src/ap/hostapd.c
-index 603758fba..5fd3a16bc 100644
+index 86646e557..fb3e28388 100644
 --- a/src/ap/hostapd.c
 +++ b/src/ap/hostapd.c
 @@ -197,6 +197,8 @@ static void hostapd_reload_bss(struct hostapd_data *hapd)

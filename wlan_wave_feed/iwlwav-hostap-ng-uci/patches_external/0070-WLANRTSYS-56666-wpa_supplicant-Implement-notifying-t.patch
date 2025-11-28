@@ -1,4 +1,4 @@
-From 399231d380b7da3dc88a258e0c0ced8d6c2ceac2 Mon Sep 17 00:00:00 2001
+From 0796e49bbe96f6228e8912e245ba33963a45082b Mon Sep 17 00:00:00 2001
 From: mvulsx <mvuls@maxlinear.com>
 Date: Mon, 3 Jul 2023 13:34:25 +0000
 Subject: [PATCH] WLANRTSYS-56666: wpa_supplicant: Implement notifying to upper

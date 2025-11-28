@@ -1,4 +1,4 @@
-From 077596521a75fe38880d45ee476775b75c3521a1 Mon Sep 17 00:00:00 2001
+From c85b01e96dc5df5aed9a152738e859b84e86bd88 Mon Sep 17 00:00:00 2001
 From: Jurijs Soloveckis <jsoloveckis@maxlinear.com>
 Date: Fri, 2 Jun 2023 08:23:41 +0200
 Subject: [PATCH] WLANRTSYS-55807: Implement new API: update_wan_metrics
@@ -38,7 +38,7 @@ index c98bdb683..e033c271a 100644
 +
  #endif /* CONFIG_FILE_H */
 diff --git a/hostapd/ctrl_iface.c b/hostapd/ctrl_iface.c
-index fe51d9868..25d24a755 100644
+index 2e42d26bb..877a28182 100644
 --- a/hostapd/ctrl_iface.c
 +++ b/hostapd/ctrl_iface.c
 @@ -5176,6 +5176,31 @@ static int hostapd_ctrl_iface_send_action_frame(struct hostapd_data *hapd, char
@@ -73,7 +73,7 @@ index fe51d9868..25d24a755 100644
  static int hostapd_ctrl_iface_receive_process(struct hostapd_data *hapd,
  					      char *buf, char *reply,
  					      int reply_size,
-@@ -5816,6 +5841,9 @@ static int hostapd_ctrl_iface_receive_process(struct hostapd_data *hapd,
+@@ -5820,6 +5845,9 @@ static int hostapd_ctrl_iface_receive_process(struct hostapd_data *hapd,
  	} else if (os_strncmp(buf, "SEND_ACTION_FRAME ", sizeof("SEND_ACTION_FRAME ") - 1) == 0) {
  		if (hostapd_ctrl_iface_send_action_frame(hapd, buf + sizeof("SEND_ACTION_FRAME ") - 1))
  			reply_len = -1;

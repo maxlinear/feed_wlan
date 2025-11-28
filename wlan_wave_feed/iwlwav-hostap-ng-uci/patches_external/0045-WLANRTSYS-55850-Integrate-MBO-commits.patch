@@ -1,4 +1,4 @@
-From efe9f339de9cd7c12eb8c6d1f079a4a71020f0f9 Mon Sep 17 00:00:00 2001
+From 966e417e0230f2b57dc8bdedc5f343c305f257ae Mon Sep 17 00:00:00 2001
 From: Jurijs Soloveckis <jsoloveckis@maxlinear.com>
 Date: Tue, 6 Jun 2023 14:14:25 +0200
 Subject: [PATCH] WLANRTSYS-55850: Integrate MBO commits
@@ -84,7 +84,7 @@ index f1a20e5a1..f0df44170 100644
  #ifdef CONFIG_TESTING_OPTIONS
  #define PARSE_TEST_PROBABILITY(_val)				\
 diff --git a/hostapd/ctrl_iface.c b/hostapd/ctrl_iface.c
-index 25d24a755..8f1a071ff 100644
+index 877a28182..f28617b08 100644
 --- a/hostapd/ctrl_iface.c
 +++ b/hostapd/ctrl_iface.c
 @@ -1301,6 +1301,23 @@ static int hostapd_ctrl_iface_set(struct hostapd_data *hapd, char *cmd)
@@ -227,7 +227,7 @@ index 25d24a755..8f1a071ff 100644
  static int hostapd_ctrl_iface_receive_process(struct hostapd_data *hapd,
  					      char *buf, char *reply,
  					      int reply_size,
-@@ -5844,6 +5970,14 @@ static int hostapd_ctrl_iface_receive_process(struct hostapd_data *hapd,
+@@ -5848,6 +5974,14 @@ static int hostapd_ctrl_iface_receive_process(struct hostapd_data *hapd,
  	} else if (os_strncmp(buf, "UPDATE_WAN_METRICS ", 19) == 0) {
  		if (hostapd_ctrl_iface_update_wan_metrics(hapd, buf + 19))
  			reply_len = -1;

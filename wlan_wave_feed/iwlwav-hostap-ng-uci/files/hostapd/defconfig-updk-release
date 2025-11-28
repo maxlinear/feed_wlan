@@ -33,6 +33,9 @@ CONFIG_EPCS_MXL=y
 # SCS support
 CONFIG_SCS_MXL=y
 
+# MSCS support
+CONFIG_MSCS_MXL=y
+
 # QCA vendor extensions to nl80211
 #CONFIG_DRIVER_NL80211_QCA=y
 

@@ -1,4 +1,4 @@
-From b903ed67e2631dc187239e07bf1ee19c5dac4eb1 Mon Sep 17 00:00:00 2001
+From 7377b01e71240993afed6467dc2877ff3e5a114b Mon Sep 17 00:00:00 2001
 From: Dmitrijs Martinovs <dmartinovs@maxlinear.com>
 Date: Tue, 30 May 2023 15:47:20 +0300
 Subject: [PATCH] WLANRTSYS-55761: Passpoint integration part 2
@@ -61,7 +61,7 @@ index f0df44170..9f17d7a9e 100644
  		int val = atoi(pos);
  		if (!IS_VALID_BOOL_RANGE(val)) {
 diff --git a/hostapd/ctrl_iface.c b/hostapd/ctrl_iface.c
-index 8f1a071ff..50d308ab2 100644
+index f28617b08..581de4a5d 100644
 --- a/hostapd/ctrl_iface.c
 +++ b/hostapd/ctrl_iface.c
 @@ -626,6 +626,17 @@ static int hostapd_ctrl_iface_hs20_wnm_notif(struct hostapd_data *hapd,

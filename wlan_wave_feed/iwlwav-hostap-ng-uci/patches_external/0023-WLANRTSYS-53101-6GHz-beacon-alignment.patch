@@ -1,4 +1,4 @@
-From 4817102ec2416264d4febaffbe0b04d52e71f5a5 Mon Sep 17 00:00:00 2001
+From d6cb8e5b4711fba6df43a05dcb39057168315405 Mon Sep 17 00:00:00 2001
 From: Jurijs Soloveckis <jsoloveckis@maxlinear.com>
 Date: Tue, 14 Mar 2023 15:36:34 +0100
 Subject: [PATCH] WLANRTSYS-53101: 6GHz beacon alignment
