@@ -1,0 +1,47 @@
+commit c10731605e9017ea883e07e843076b04c7636972
+Author: mj <mj@maxlinear.com>
+Date:   Sat Dec 13 17:10:45 2025 -0800
+
+    WLANRTSYS-97800 validate interface state
+    Issue: A null‑pointer exception occurs because the interface is not in the CONNECTED state.
+    Fix: Reject the NL request at the beginning if the interface is not in the connected state.
+
+diff --git a/drivers/net/wireless/intel/iwlwav/wireless/driver/core_config.c b/drivers/net/wireless/intel/iwlwav/wireless/driver/core_config.c
+index aae01c065..678623d45 100644
+--- a/drivers/net/wireless/intel/iwlwav/wireless/driver/core_config.c
++++ b/drivers/net/wireless/intel/iwlwav/wireless/driver/core_config.c
+@@ -11449,6 +11449,15 @@ wave_core_get_max_tx_power (struct wiphy *wiphy, struct net_device *ndev, uint32
+   mtlk_error_t res = MTLK_ERR_OK;
+   wave_wssa_max_tx_power_stats_t *max_tx_power_stats;
+   uint32 size;
++  mtlk_core_t *master_core;
++  struct ieee80211_hw *hw = wiphy_to_ieee80211_hw(wiphy);
++  wave_radio_t *radio = wv_ieee80211_hw_radio_get(hw);
++
++  master_core = wave_radio_master_core_get(radio);
++  if (mtlk_core_get_net_state(master_core) != NET_STATE_CONNECTED) {
++    ILOG1_S("interface %s: is not in CONNECTED state", ndev->name);
++    return _mtlk_df_mtlk_to_linux_error_code(MTLK_ERR_PARAMS);
++  }
+ 
+   df_user = mtlk_df_user_from_ndev(ndev);
+   MTLK_CHECK_DF_USER(df_user);
+diff --git a/drivers/net/wireless/intel/iwlwav/wireless/driver/vendor_cmds.c b/drivers/net/wireless/intel/iwlwav/wireless/driver/vendor_cmds.c
+index 129aab322..7f481ec76 100644
+--- a/drivers/net/wireless/intel/iwlwav/wireless/driver/vendor_cmds.c
++++ b/drivers/net/wireless/intel/iwlwav/wireless/driver/vendor_cmds.c
+@@ -5737,6 +5737,14 @@ static int _wave_cfg80211_vendor_reg_update_6ghz_oper_power_mode (struct wiphy *
+   mtlk_core_t *core;
+   mtlk_df_t *df;
+   mtlk_hw_band_e band;
++  struct ieee80211_hw *hw = wiphy_to_ieee80211_hw(wiphy);
++  wave_radio_t *radio = wv_ieee80211_hw_radio_get(hw);
++
++  core = wave_radio_master_core_get(radio);
++  if (mtlk_core_get_net_state(core) != NET_STATE_CONNECTED) {
++    ILOG1_S("interface %s: is not in CONNECTED state", wdev->netdev->name);
++    return _mtlk_df_mtlk_to_linux_error_code(MTLK_ERR_PARAMS);
++  }
+ 
+   ILOG1_SSD("%s: Invoked from %s (%i)", wdev->netdev->name, current->comm, current->pid);
+   if (!wdev)
