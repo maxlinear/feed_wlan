@@ -1,4 +1,4 @@
-From ce38b155b226cae3c5b9d79d0a803e68331f5433 Mon Sep 17 00:00:00 2001
+From 1ccfb4c06e5a766dc3eb7f3282abb3be3c268cad Mon Sep 17 00:00:00 2001
 From: Jouni Malinen <j@w1.fi>
 Date: Fri, 22 Dec 2023 20:54:19 +0200
 Subject: [PATCH] WLANRTSYS-82700 AP: Share a common helper function for

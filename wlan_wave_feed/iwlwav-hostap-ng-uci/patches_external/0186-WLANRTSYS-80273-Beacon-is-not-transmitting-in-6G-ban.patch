@@ -1,4 +1,4 @@
-From ec131525b21a6a7cbd506602c7762ce32e506181 Mon Sep 17 00:00:00 2001
+From 52450cd7550726b24412e240f4937dc8540c6c54 Mon Sep 17 00:00:00 2001
 From: Venkatasaiprudhvi Sannidhi <vsannidhi@maxlinear.com>
 Date: Mon, 23 Sep 2024 11:40:55 +0530
 Subject: [PATCH] WLANRTSYS-80273 Beacon is not transmitting in 6G band, when

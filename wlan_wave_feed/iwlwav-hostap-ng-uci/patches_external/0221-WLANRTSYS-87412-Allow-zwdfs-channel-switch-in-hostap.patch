@@ -1,4 +1,4 @@
-From 535e686520a6c6b85cb7f297559b19335c4fd30a Mon Sep 17 00:00:00 2001
+From dde2c1dbd7e2ef5159c65f3f03e051011b791168 Mon Sep 17 00:00:00 2001
 From: mj <mj@maxlinear.com>
 Date: Tue, 21 Jan 2025 08:34:06 +0530
 Subject: [PATCH] WLANRTSYS-87412 Allow zwdfs channel switch in hostapd
@@ -67,10 +67,10 @@ index a5b77aceb..6845b7c55 100644
  	if (dfs_range) {
  #ifdef CONFIG_IEEE80211BE_MXL_MLO
 diff --git a/hostapd/mxl_ctrl_iface.c b/hostapd/mxl_ctrl_iface.c
-index 55b93cd69..e3132a0ad 100644
+index 1d5eb118d..1938ba4cd 100644
 --- a/hostapd/mxl_ctrl_iface.c
 +++ b/hostapd/mxl_ctrl_iface.c
-@@ -3805,7 +3805,7 @@ int mxl_hostapd_ctrl_iface_set_beacon(struct hostapd_data *hapd)
+@@ -3804,7 +3804,7 @@ int mxl_hostapd_ctrl_iface_set_beacon(struct hostapd_data *hapd)
  }
  
  #ifdef CONFIG_IEEE80211BE_MXL_MLO
@@ -79,7 +79,7 @@ index 55b93cd69..e3132a0ad 100644
  {
  	uint8_t i;
  	struct hostapd_data *hapd = NULL;
-@@ -3814,12 +3814,16 @@ bool mxl_hostapd_ctrl_iface_is_channel_switch_allowed(struct hostapd_iface *ifac
+@@ -3813,12 +3813,16 @@ bool mxl_hostapd_ctrl_iface_is_channel_switch_allowed(struct hostapd_iface *ifac
  	{
  		hapd = iface->bss[i];
  		if (hapd && mxl_is_mlo_enabled(hapd->conf)) {

@@ -1,4 +1,4 @@
-From ddfdfc956a32addc42cbe9024fe38a7465766c12 Mon Sep 17 00:00:00 2001
+From 02f17f8678c181f3cfc2c93fe56e88e16c412f7d Mon Sep 17 00:00:00 2001
 From: "Ross-Ashikyan, William" <washikyan@maxlinear.com>
 Date: Tue, 27 Aug 2024 14:19:07 -0700
 Subject: [PATCH] WLANRTSYS-83162 Ported afcd and composite mode changes from
@@ -119,7 +119,7 @@ index b96518044..829f4abb0 100644
 -#CONFIG_AFC=y
 +CONFIG_AFC=y
 diff --git a/hostapd/mxl_ctrl_iface.c b/hostapd/mxl_ctrl_iface.c
-index 5eca66d4a..494ad1807 100644
+index 3d3890768..348f25b4f 100644
 --- a/hostapd/mxl_ctrl_iface.c
 +++ b/hostapd/mxl_ctrl_iface.c
 @@ -32,6 +32,9 @@
@@ -147,7 +147,7 @@ index 5eca66d4a..494ad1807 100644
  #ifdef CONFIG_EPCS_MXL
  static int mxl_hostapd_ctrl_iface_send_epcs_req_frame(struct hostapd_data *hapd,
  				const char *cmd)
-@@ -3116,6 +3127,10 @@ int mxl_hostapd_ctrl_iface_receive_process(struct hostapd_data *hapd,
+@@ -3115,6 +3126,10 @@ int mxl_hostapd_ctrl_iface_receive_process(struct hostapd_data *hapd,
  		*reply_len = mxl_hostapd_ctrl_iface_get_power_mode(hapd->iface, reply, reply_size);
  	} else if (os_strncmp(buf, "SET_POWER_MODE", 14) == 0) {
  		*reply_len = mxl_hostapd_ctrl_iface_set_power_mode(hapd->iface, buf + 14, reply, reply_size);
@@ -158,7 +158,7 @@ index 5eca66d4a..494ad1807 100644
  #ifdef CONFIG_IEEE80211BE_MXL_MLO
  	} else if (os_strncmp(buf, "SEND_T2LM_TEARDOWN_FRAME ", sizeof("SEND_T2LM_TEARDOWN_FRAME ") - 1) == 0) {
  		*reply_len = mxl_hostapd_ctrl_iface_send_t2lm_teardown_frame(hapd, buf + sizeof("SEND_T2LM_TEARDOWN_FRAME ") - 1);
-@@ -3563,15 +3578,36 @@ int mxl_hostapd_ctrl_iface_set_power_mode(struct hostapd_iface *iface, const cha
+@@ -3562,15 +3577,36 @@ int mxl_hostapd_ctrl_iface_set_power_mode(struct hostapd_iface *iface, const cha
  
  	pos++;
  	val = atoi(pos);

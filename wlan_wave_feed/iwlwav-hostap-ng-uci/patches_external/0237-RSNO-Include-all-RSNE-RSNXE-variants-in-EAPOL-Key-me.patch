@@ -1,4 +1,4 @@
-From 3087c7010a853203acee261e1332bebf747fcdff Mon Sep 17 00:00:00 2001
+From 58b3c0197023a6969af7678919e9e13a4b1b8ee3 Mon Sep 17 00:00:00 2001
 From: Jouni Malinen <quic_jouni@quicinc.com>
 Date: Mon, 29 Jul 2024 17:20:22 +0300
 Subject: [PATCH] RSNO: Include all RSNE/RSNXE variants in EAPOL-Key message

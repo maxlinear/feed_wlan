@@ -1,4 +1,4 @@
-From b301edf8d7032fb76ffc68e84c5884b37bba1efc Mon Sep 17 00:00:00 2001
+From f25cef41a4197821834a2dab63a71fb9988c2a93 Mon Sep 17 00:00:00 2001
 From: spatel <spatel@maxlinear.com>
 Date: Thu, 31 Oct 2024 18:31:57 +0530
 Subject: [PATCH] WLANRTSYS-56560 [MXL] implement Dynamic WMM support
@@ -128,10 +128,10 @@ index 8ddc68ded..b16bc84b8 100644
  {
  #define MAX_OPT_CH_LIST 5
 diff --git a/hostapd/mxl_ctrl_iface.c b/hostapd/mxl_ctrl_iface.c
-index 394d12827..28d2b4136 100644
+index b81dcd71f..61ee2f49d 100644
 --- a/hostapd/mxl_ctrl_iface.c
 +++ b/hostapd/mxl_ctrl_iface.c
-@@ -3391,6 +3391,8 @@ int mxl_hostapd_ctrl_iface_get(struct hostapd_data *hapd, char *cmd, char *buf,
+@@ -3390,6 +3390,8 @@ int mxl_hostapd_ctrl_iface_get(struct hostapd_data *hapd, char *cmd, char *buf,
  #ifdef CONFIG_VENDOR_MXL_PROPRIETARY
  	if (mxl_hostapd_ctrl_iface_get_dynamic_failsafe(hapd, cmd, buf, buflen, reply_len)) {
  		return *reply_len;

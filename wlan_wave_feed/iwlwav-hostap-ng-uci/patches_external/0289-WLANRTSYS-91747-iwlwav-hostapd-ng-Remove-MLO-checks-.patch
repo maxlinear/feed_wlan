@@ -1,4 +1,4 @@
-From d4d6c5da5efe4f657917dd6ac382b882425e87e3 Mon Sep 17 00:00:00 2001
+From ea5e9885599703e48624a139d7fea085567ec14e Mon Sep 17 00:00:00 2001
 From: Karthik D A <karthikda@maxlinear.com>
 Date: Thu, 31 Jul 2025 20:32:39 +0800
 Subject: [PATCH] WLANRTSYS-91747 iwlwav-hostapd-ng: Remove MLO checks for SCS

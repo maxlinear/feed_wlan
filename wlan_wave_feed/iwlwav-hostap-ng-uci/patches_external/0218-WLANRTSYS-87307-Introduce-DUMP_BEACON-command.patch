@@ -1,4 +1,4 @@
-From 8018e5032904c9f34c3495cb9aa4be290ad0101a Mon Sep 17 00:00:00 2001
+From bc3b6708a7a57dcd862afda6806be585fad0a862 Mon Sep 17 00:00:00 2001
 From: Marek Puzyniak <marek.puzyniak@gmail.com>
 Date: Wed, 9 Oct 2024 10:15:02 +0200
 Subject: [PATCH] WLANRTSYS-87307 Introduce DUMP_BEACON command

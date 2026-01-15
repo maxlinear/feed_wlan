@@ -1,4 +1,4 @@
-From 670dadec9de4e10b8618521e42b938ea0aa15c68 Mon Sep 17 00:00:00 2001
+From 78789e4fc4bbe7ccaff2d12a942f32643b0b8d60 Mon Sep 17 00:00:00 2001
 From: Jurijs Soloveckis <jsoloveckis@maxlinear.com>
 Date: Fri, 4 Aug 2023 11:50:49 +0200
 Subject: [PATCH] WLANRTSYS-57531: Improvement for max_listen_interval

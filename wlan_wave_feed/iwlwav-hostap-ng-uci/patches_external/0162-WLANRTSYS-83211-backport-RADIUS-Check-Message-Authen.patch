@@ -1,4 +1,4 @@
-From b2a36211fa5aa62929751f93b581f0a112a5aa89 Mon Sep 17 00:00:00 2001
+From dc2ecb8f8cd59386dc75e1823edcfeb6f7ab206b Mon Sep 17 00:00:00 2001
 From: Jouni Malinen <j@w1.fi>
 Date: Sun, 17 Mar 2024 10:47:58 +0200
 Subject: [PATCH] WLANRTSYS-83211 [backport] RADIUS: Check

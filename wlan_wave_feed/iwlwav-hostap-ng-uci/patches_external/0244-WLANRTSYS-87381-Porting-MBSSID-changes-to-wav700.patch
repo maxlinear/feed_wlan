@@ -1,4 +1,4 @@
-From f555bd673fe01f9c04969dd63e08b9a3c61a3edc Mon Sep 17 00:00:00 2001
+From de75b1e22a3ddb49ef211222b47692c4d433c203 Mon Sep 17 00:00:00 2001
 From: tchalivendra <tchalivendra@maxlinear.com>
 Date: Thu, 9 Jan 2025 21:33:24 +0530
 Subject: [PATCH] WLANRTSYS-87381 Porting MBSSID changes to wav700

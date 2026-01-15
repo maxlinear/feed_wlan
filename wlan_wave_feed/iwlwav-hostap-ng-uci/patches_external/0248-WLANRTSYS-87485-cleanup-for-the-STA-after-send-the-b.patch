@@ -1,4 +1,4 @@
-From 86dfdabd17b8ee67412d106df4d269e1cdd4c9f5 Mon Sep 17 00:00:00 2001
+From af66e27f4ab7da77b030d96501b7a1cddc563d7c Mon Sep 17 00:00:00 2001
 From: mj <mj@maxlinear.com>
 Date: Tue, 4 Mar 2025 18:14:14 +0530
 Subject: [PATCH] WLANRTSYS-87485 cleanup for the STA after send the broadcast

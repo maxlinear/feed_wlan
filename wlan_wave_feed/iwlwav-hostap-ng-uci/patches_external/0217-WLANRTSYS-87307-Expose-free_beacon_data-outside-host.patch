@@ -1,4 +1,4 @@
-From 2a58fa294fd4a8a7cac56bb78cc347fb85d6e215 Mon Sep 17 00:00:00 2001
+From 87e919bd5d730de4914e6c8169e5e6c8e0e61f2e Mon Sep 17 00:00:00 2001
 From: "Ross-Ashikyan, William" <washikyan@maxlinear.com>
 Date: Tue, 7 Jan 2025 15:24:39 -0800
 Subject: [PATCH] WLANRTSYS-87307 Expose free_beacon_data() outside hostapd.c

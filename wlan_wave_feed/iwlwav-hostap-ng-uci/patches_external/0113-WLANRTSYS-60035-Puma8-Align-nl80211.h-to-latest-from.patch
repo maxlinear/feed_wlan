@@ -1,4 +1,4 @@
-From 38e175e8f192a73d6c44982efbb11623780c5479 Mon Sep 17 00:00:00 2001
+From 117810215fd25c4c70ca1969fba0de0695d80a1f Mon Sep 17 00:00:00 2001
 From: Jurijs Soloveckis <jsoloveckis@maxlinear.com>
 Date: Wed, 8 Nov 2023 10:34:59 +0200
 Subject: [PATCH] WLANRTSYS-60035: Puma8: Align nl80211.h to latest from

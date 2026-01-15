@@ -1,4 +1,4 @@
-From 254e22527e8ef8ed8535cc8d193b423b34c3dbb1 Mon Sep 17 00:00:00 2001
+From 8251b3109450eca700334d7a199036fe62919eb3 Mon Sep 17 00:00:00 2001
 From: Karthik D A <karthikda@maxlinear.com>
 Date: Sun, 7 Sep 2025 20:37:13 +0800
 Subject: [PATCH] WLANRTSYS-93718 iwlwav-hostapd-ng: Fix for TC 4.5.3

@@ -1,4 +1,4 @@
-From a3016e08edb9ec042acfdce12af4b92188464072 Mon Sep 17 00:00:00 2001
+From 1403cdd3c1a965fd3c81386696bdebf1ed82c221 Mon Sep 17 00:00:00 2001
 From: Jouni Malinen <j@w1.fi>
 Date: Sat, 16 Mar 2024 11:22:43 +0200
 Subject: [PATCH] WLANRTSYS-83211 [backport] hostapd: Move

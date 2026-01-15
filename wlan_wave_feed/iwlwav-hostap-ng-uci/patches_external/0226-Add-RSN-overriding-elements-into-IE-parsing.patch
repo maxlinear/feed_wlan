@@ -1,4 +1,4 @@
-From a6ee7acedd1b6a5e855036157d1f01798bf697da Mon Sep 17 00:00:00 2001
+From b4fe1cd31699d1c052258fe50866a08a6aa5a5d5 Mon Sep 17 00:00:00 2001
 From: Jouni Malinen <quic_jouni@quicinc.com>
 Date: Wed, 11 Oct 2023 12:45:09 +0300
 Subject: [PATCH] Add RSN overriding elements into IE parsing

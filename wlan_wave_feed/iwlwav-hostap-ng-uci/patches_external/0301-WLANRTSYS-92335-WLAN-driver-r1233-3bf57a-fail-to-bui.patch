@@ -1,4 +1,4 @@
-From 8f27c5a13a51f459ceb168b557224ab028e6f5db Mon Sep 17 00:00:00 2001
+From af139ec373c203b22891e0a82614b22f01df7266 Mon Sep 17 00:00:00 2001
 From: "karthikgk@maxlinear.com" <karthikgk@lvdocker7.lvsw.maxlinear.com>
 Date: Fri, 29 Aug 2025 01:50:55 -0700
 Subject: [PATCH] WLANRTSYS-92335 : WLAN driver r1233-3bf57a fail to build

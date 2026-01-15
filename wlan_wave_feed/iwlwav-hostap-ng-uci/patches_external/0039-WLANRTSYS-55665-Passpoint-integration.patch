@@ -1,4 +1,4 @@
-From 33ea8f728c9b9f60ae46792f1302a3c31e95a80d Mon Sep 17 00:00:00 2001
+From 3d842159fab97fe2548dcb503dec96f8eae9880d Mon Sep 17 00:00:00 2001
 From: Dmitrijs Martinovs <dmartinovs@maxlinear.com>
 Date: Fri, 26 May 2023 13:45:31 +0300
 Subject: [PATCH] WLANRTSYS-55665: Passpoint integration

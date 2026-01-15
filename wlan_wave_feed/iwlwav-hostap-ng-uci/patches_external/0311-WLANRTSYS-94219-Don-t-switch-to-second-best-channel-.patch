@@ -1,4 +1,4 @@
-From 938120194aec62efbd9f971911f961892f7b070b Mon Sep 17 00:00:00 2001
+From 87f8ddba83934b7d926cbf2226b443d32e699ba6 Mon Sep 17 00:00:00 2001
 From: mj <mj@maxlinear.com>
 Date: Fri, 12 Sep 2025 00:46:54 -0700
 Subject: [PATCH] WLANRTSYS-94219 Don't switch to second best channel if

@@ -1,4 +1,4 @@
-From 75c4c4b3bc7c79eb5a35e2ad9c83a8db6a9fd04a Mon Sep 17 00:00:00 2001
+From 7c5e1a9084d576cada96b55bd92e4ae3065d5ce5 Mon Sep 17 00:00:00 2001
 From: Jouni Malinen <quic_jouni@quicinc.com>
 Date: Mon, 29 Jul 2024 15:41:59 +0300
 Subject: [PATCH] RSNO: Use the RSN Selection element to indicate which variant

@@ -1,4 +1,4 @@
-From 832085b53a5d3ce089137c0ceb56a7af654f486a Mon Sep 17 00:00:00 2001
+From 6613dc77bd800d073d98c87c68063e6d1a6b8349 Mon Sep 17 00:00:00 2001
 From: Dmitrijs Martinovs <dmartinovs@maxlinear.com>
 Date: Wed, 13 Sep 2023 11:49:25 +0200
 Subject: [PATCH] WLANRTSYS-58548: Race condition in ctrl interface init

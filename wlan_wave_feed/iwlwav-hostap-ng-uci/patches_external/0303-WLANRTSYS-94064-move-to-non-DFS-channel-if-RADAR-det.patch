@@ -1,4 +1,4 @@
-From 2690e82dc30e008743249317209ca5d617574362 Mon Sep 17 00:00:00 2001
+From aed476a90c844bfb58222668eab1d310e78d5584 Mon Sep 17 00:00:00 2001
 From: mj <mj@maxlinear.com>
 Date: Tue, 2 Sep 2025 07:56:45 -0700
 Subject: [PATCH] WLANRTSYS-94064 move to non DFS channel if RADAR detected

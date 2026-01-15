@@ -1,4 +1,4 @@
-From 25383404b2264a4148e2ce656fc99d0afc52b96b Mon Sep 17 00:00:00 2001
+From 6a15dba4246177e2c40e5011d9fa3e540ecc24f9 Mon Sep 17 00:00:00 2001
 From: mshankar <mshankar@maxlinear.com>
 Date: Mon, 4 Nov 2024 18:33:31 +0800
 Subject: [PATCH] WLANRTSYS-85533 Max channel Switch time IE is missing in the

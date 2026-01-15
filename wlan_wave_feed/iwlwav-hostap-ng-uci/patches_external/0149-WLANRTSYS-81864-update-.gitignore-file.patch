@@ -1,4 +1,4 @@
-From e1cedc37bc86775ef2955317089bcaa735bcfc6e Mon Sep 17 00:00:00 2001
+From 627607577f4a6d60dd422337bb3c2dca2d2ce826 Mon Sep 17 00:00:00 2001
 From: Gal Savion <gsavion@maxlinear.com>
 Date: Mon, 10 Jun 2024 18:15:32 +0300
 Subject: [PATCH] WLANRTSYS-81864 update .gitignore file

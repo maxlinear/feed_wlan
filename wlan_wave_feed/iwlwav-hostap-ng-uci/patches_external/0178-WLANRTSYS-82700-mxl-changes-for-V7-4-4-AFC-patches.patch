@@ -1,4 +1,4 @@
-From 8619fdfc902eec32dcbf2d94f776f0d6663c731e Mon Sep 17 00:00:00 2001
+From 3fb6bd9e6a094203ae7cb099b72e12bc4f69cd37 Mon Sep 17 00:00:00 2001
 From: rmunjewar <rmunjewar@maxlinear.com>
 Date: Mon, 29 Jul 2024 15:52:32 +0530
 Subject: [PATCH] WLANRTSYS-82700 mxl changes for V7[4/4] AFC  patches

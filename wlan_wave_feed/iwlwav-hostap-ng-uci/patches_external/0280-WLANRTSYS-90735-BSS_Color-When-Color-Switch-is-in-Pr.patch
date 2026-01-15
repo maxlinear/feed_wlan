@@ -1,4 +1,4 @@
-From b95efe36172824152cdd0c657ba30aba015e38d5 Mon Sep 17 00:00:00 2001
+From dcf35483dfc50a0b774338c0632b978cf855dbd6 Mon Sep 17 00:00:00 2001
 From: Venkatasaiprudhvi Sannidhi <vsannidhi@maxlinear.com>
 Date: Wed, 2 Jul 2025 15:59:22 +0530
 Subject: [PATCH] WLANRTSYS-90735 [BSS_Color] When Color Switch is in Process

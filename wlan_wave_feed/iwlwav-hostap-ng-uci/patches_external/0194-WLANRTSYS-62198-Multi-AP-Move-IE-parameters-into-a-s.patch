@@ -1,4 +1,4 @@
-From 231e271062754d60c93c7a04b36b7db3242dbf4f Mon Sep 17 00:00:00 2001
+From 8118de56ec1326c0dec73b8d904ef07f5b7c6169 Mon Sep 17 00:00:00 2001
 From: Manoj Sekar <quic_sekar@quicinc.com>
 Date: Mon, 26 Feb 2024 18:18:21 +0530
 Subject: [PATCH] WLANRTSYS-62198 Multi-AP: Move IE parameters into a struct

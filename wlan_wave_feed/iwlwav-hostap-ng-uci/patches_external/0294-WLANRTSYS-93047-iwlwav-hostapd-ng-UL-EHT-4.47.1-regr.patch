@@ -1,4 +1,4 @@
-From 7bf8618d9a96225e66f65573d94f63a6181ce411 Mon Sep 17 00:00:00 2001
+From 520ef6f678b95b6a83eacf30ff888c137e174309 Mon Sep 17 00:00:00 2001
 From: Karthik D A <karthikda@maxlinear.com>
 Date: Sat, 16 Aug 2025 00:03:11 +0800
 Subject: [PATCH] WLANRTSYS-93047 iwlwav-hostapd-ng: UL EHT-4.47.1 regression

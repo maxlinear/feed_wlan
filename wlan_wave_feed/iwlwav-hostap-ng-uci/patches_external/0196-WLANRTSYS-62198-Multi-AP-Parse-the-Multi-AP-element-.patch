@@ -1,4 +1,4 @@
-From 40ee35a210eafc32259edd40158a8ab666abfcf7 Mon Sep 17 00:00:00 2001
+From f2e340a92ad6a4e21cba26ba2941c630c804dcd1 Mon Sep 17 00:00:00 2001
 From: Manoj Sekar <quic_sekar@quicinc.com>
 Date: Mon, 26 Feb 2024 18:18:21 +0530
 Subject: [PATCH] WLANRTSYS-62198 Multi-AP: Parse the Multi-AP element using a

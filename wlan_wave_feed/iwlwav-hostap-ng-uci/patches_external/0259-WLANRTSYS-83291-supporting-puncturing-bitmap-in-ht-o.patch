@@ -1,4 +1,4 @@
-From cb1e232bb74946e11934d2039cb5150019295d1f Mon Sep 17 00:00:00 2001
+From cfab8d1f2792b32820627ad6b65b72a14c2b0a71 Mon Sep 17 00:00:00 2001
 From: "karthikgk@maxlinear.com" <karthikgk@lvdocker7.lvsw.maxlinear.com>
 Date: Wed, 16 Apr 2025 05:10:27 -0700
 Subject: [PATCH] WLANRTSYS-83291 : supporting puncturing bitmap in ht

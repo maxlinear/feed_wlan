@@ -1,4 +1,4 @@
-From 60f7813f22c45e7b793c358cf7434acac5c7a8a5 Mon Sep 17 00:00:00 2001
+From c834d567bef0f30aaf042d2da86016567a323555 Mon Sep 17 00:00:00 2001
 From: Manoj Sekar <quic_sekar@quicinc.com>
 Date: Mon, 26 Feb 2024 18:18:21 +0530
 Subject: [PATCH] WLANRTSYS-62198 Multi-AP: Parse Profile subelement

@@ -1,4 +1,4 @@
-From 3bd0c878b459be00fce9dfff73239245e4c95ce3 Mon Sep 17 00:00:00 2001
+From 53dc36bf2ed24c013f4a084635d1f47250666c0a Mon Sep 17 00:00:00 2001
 From: Ilan Peer <ilan.peer@intel.com>
 Date: Fri, 22 Dec 2023 11:04:18 +0200
 Subject: [PATCH] WLANRTSYS-82700 AP: Add configuration options for 6 GHz TPE

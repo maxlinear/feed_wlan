@@ -1,4 +1,4 @@
-From 9321d1303b0bb6cbd003b7a4858172e90181d9c4 Mon Sep 17 00:00:00 2001
+From 6646ebcde43b4b9d560fc18e9f130aa56cb48ad0 Mon Sep 17 00:00:00 2001
 From: mj <mj@maxlinear.com>
 Date: Mon, 30 Jun 2025 13:52:13 +0530
 Subject: [PATCH] WLANRTSYS-88676 ZWDFS - switch to second best channel after

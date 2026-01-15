@@ -1,4 +1,4 @@
-From bec48b2c9f4a736b9390477679f6bf9faf797ddd Mon Sep 17 00:00:00 2001
+From 32b813a910fa5d9bcaa2593a5809e010ed862583 Mon Sep 17 00:00:00 2001
 From: mvuls <mvuls@maxlinear.com>
 Date: Wed, 1 Nov 2023 14:39:32 +0200
 Subject: [PATCH] WLANRTSYS-54432: Add support for CSA

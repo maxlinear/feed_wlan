@@ -1,4 +1,4 @@
-From 9abff60c0a9f4680ecbe1d259aa141534ca0fa6e Mon Sep 17 00:00:00 2001
+From 4a010cafb73eff8f98b0d7128825e187654b109c Mon Sep 17 00:00:00 2001
 From: Ilan Peer <ilan.peer@intel.com>
 Date: Fri, 22 Dec 2023 11:04:17 +0200
 Subject: [PATCH] WLANRTSYS-82700 AP: Update the HE regulatory information AP

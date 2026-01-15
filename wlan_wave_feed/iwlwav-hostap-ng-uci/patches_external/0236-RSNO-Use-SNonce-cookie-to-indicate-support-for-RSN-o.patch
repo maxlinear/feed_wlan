@@ -1,4 +1,4 @@
-From 65bb78c933077aa8fecd101eb62503c64d3bf36b Mon Sep 17 00:00:00 2001
+From cf3d491f5252e7e326d54e710ddfa2dd008527c2 Mon Sep 17 00:00:00 2001
 From: Jouni Malinen <quic_jouni@quicinc.com>
 Date: Mon, 29 Jul 2024 16:43:50 +0300
 Subject: [PATCH] RSNO: Use SNonce cookie to indicate support for RSN

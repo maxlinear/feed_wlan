@@ -1,4 +1,4 @@
-From d1f795ae31a77aaddf53b0692181d8872e0c3046 Mon Sep 17 00:00:00 2001
+From 271b3bdb4cc69f983d8b0313ce6acd967cee1201 Mon Sep 17 00:00:00 2001
 From: Jurijs Soloveckis <jsoloveckis@maxlinear.com>
 Date: Thu, 23 Feb 2023 13:05:20 +0100
 Subject: [PATCH] WLANRTSYS-53245: Add support for MBSSID
@@ -7,7 +7,7 @@ Subject: [PATCH] WLANRTSYS-53245: Add support for MBSSID
  hostapd/config_file.c          |  27 ++-
  hostapd/ctrl_iface.c           |  56 +++++++
  hostapd/hostapd_cli.c          |  51 ++++++
- hostapd/mxl_ctrl_iface.c       |  81 +++++++++
+ hostapd/mxl_ctrl_iface.c       |  78 +++++++++
  hostapd/mxl_ctrl_iface.h       |   2 +
  src/ap/ap_config.c             |  12 ++
  src/ap/ap_config.h             |  21 +++
@@ -28,7 +28,7 @@ Subject: [PATCH] WLANRTSYS-53245: Add support for MBSSID
  src/common/wpa_common.h        |   4 +
  src/drivers/driver.h           |  16 ++
  src/drivers/driver_nl80211.c   |  30 ++++
- 24 files changed, 882 insertions(+), 8 deletions(-)
+ 24 files changed, 879 insertions(+), 8 deletions(-)
 
 diff --git a/hostapd/config_file.c b/hostapd/config_file.c
 index c38065225..eef4d0d03 100644
@@ -241,15 +241,13 @@ index c9c9e295e..14041f6d0 100644
  };
  
 diff --git a/hostapd/mxl_ctrl_iface.c b/hostapd/mxl_ctrl_iface.c
-index 6e42295dc..a4b60b157 100644
+index 6e42295dc..e6a3a2f33 100644
 --- a/hostapd/mxl_ctrl_iface.c
 +++ b/hostapd/mxl_ctrl_iface.c
-@@ -2687,6 +2687,87 @@ exit:
+@@ -2687,6 +2687,84 @@ exit:
  			rep_reason_p);
  }
  
-+<<<<<<< HEAD
-+=======
 +#ifdef CONFIG_IEEE80211BE_MXL_MLO
 +static int mxl_hostapd_ctrl_iface_send_t2lm_teardown_frame(struct hostapd_data *hapd,
 +		const char *cmd)
@@ -328,7 +326,6 @@ index 6e42295dc..a4b60b157 100644
 +	return 0;
 +}
 +
-+>>>>>>> 7b6c24cfb2 (WLANRTSYS-86232 6g ssid config is not getting applied)
  int mxl_hostapd_ctrl_iface_receive_process(struct hostapd_data *hapd,
  					      char *buf, char *reply,
  					      int reply_size,

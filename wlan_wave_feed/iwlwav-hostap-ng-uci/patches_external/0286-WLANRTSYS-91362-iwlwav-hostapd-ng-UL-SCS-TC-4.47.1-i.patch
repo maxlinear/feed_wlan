@@ -1,4 +1,4 @@
-From d03ca11d9b64935af52929fbcf887b0e65c45521 Mon Sep 17 00:00:00 2001
+From fdb05750eba876263d529cd510d354fba20e6969 Mon Sep 17 00:00:00 2001
 From: Karthik D A <karthikda@maxlinear.com>
 Date: Sun, 13 Jul 2025 14:09:03 +0800
 Subject: [PATCH] WLANRTSYS-91362 iwlwav-hostapd-ng: UL SCS TC 4.47.1 issue fix

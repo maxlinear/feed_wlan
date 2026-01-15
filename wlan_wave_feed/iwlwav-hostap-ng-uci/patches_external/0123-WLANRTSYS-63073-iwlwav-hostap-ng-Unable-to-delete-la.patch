@@ -1,4 +1,4 @@
-From aea422f2febabc9ca72c87dfc53b1f3ccd410b1e Mon Sep 17 00:00:00 2001
+From 3b81e7e51666efaec3b37e5180e85cc1647b7af0 Mon Sep 17 00:00:00 2001
 From: mujiburrahimank <mujiburrahimank@maxlinear.com>
 Date: Wed, 14 Feb 2024 15:33:25 +0530
 Subject: [PATCH] WLANRTSYS-63073 : iwlwav-hostap-ng : Unable to delete last

@@ -1,4 +1,4 @@
-From 3ac0dfdb2fcd8e153f0974a94d9439f028ca15f9 Mon Sep 17 00:00:00 2001
+From f449ed462520f1f399d05e3827357988ff181bc3 Mon Sep 17 00:00:00 2001
 From: "psathiyendran@maxlinear.com" <psathiyendran@maxlinear.com>
 Date: Tue, 1 Jul 2025 18:07:42 +0800
 Subject: [PATCH] WLANRTSYS-90145 [WiFi-6E Certification][UPDK][HE-4.3.3.1_6G]:

@@ -1,4 +1,4 @@
-From 4ca3abc43b88a7a9dda576510f49ea591bc48ed3 Mon Sep 17 00:00:00 2001
+From 428926ad37627e78d7fd10e10f5dce09986101a5 Mon Sep 17 00:00:00 2001
 From: npalanivel <npalanivel@maxlinear.com>
 Date: Fri, 26 Jul 2024 14:11:56 +0530
 Subject: [PATCH] WLANRTSYS-82145 : [Workaround] Made changes to hardcode HUNT

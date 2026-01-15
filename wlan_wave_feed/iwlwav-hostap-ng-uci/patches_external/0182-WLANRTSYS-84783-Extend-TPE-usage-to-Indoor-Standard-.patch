@@ -1,4 +1,4 @@
-From 9c64778da257096353adae21622407b4b21048c2 Mon Sep 17 00:00:00 2001
+From d30d1e591e3ae097af04042a241bb29e03a6feb6 Mon Sep 17 00:00:00 2001
 From: "Ross-Ashikyan, William" <washikyan@maxlinear.com>
 Date: Mon, 30 Sep 2024 10:31:17 -0700
 Subject: [PATCH] WLANRTSYS-84783 Extend TPE usage to Indoor Standard Power

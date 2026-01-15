@@ -1,4 +1,4 @@
-From 588f9bd94c8b659566b05db2c7da6696fc10e3d2 Mon Sep 17 00:00:00 2001
+From 7e09fd7c5abbf85b30df36817c9d570a05dab408 Mon Sep 17 00:00:00 2001
 From: Jouni Malinen <quic_jouni@quicinc.com>
 Date: Thu, 25 Jul 2024 19:22:00 +0000
 Subject: [PATCH] RSNO: Remove override elements from EAPOL-Key msg 3/4

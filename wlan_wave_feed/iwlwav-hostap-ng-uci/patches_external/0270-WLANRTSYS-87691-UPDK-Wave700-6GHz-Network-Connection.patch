@@ -1,4 +1,4 @@
-From 38fe311d77ffff465c598abf79525eaadb7c5801 Mon Sep 17 00:00:00 2001
+From 4336ce17d4167cfd58bcd04b147f3b0b71e7524b Mon Sep 17 00:00:00 2001
 From: "psathiyendran@maxlinear.com" <psathiyendran@sgb017.sgsw.maxlinear.com>
 Date: Wed, 4 Jun 2025 18:18:31 +0800
 Subject: [PATCH] WLANRTSYS-87691 [UPDK] [Wave700] 6GHz Network: Connection

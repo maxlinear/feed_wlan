@@ -1,4 +1,4 @@
-From 950d724cf6930fc7d84a919c1cde23c674a6f052 Mon Sep 17 00:00:00 2001
+From ec7808b23c0241bef49953651675e010870bd971 Mon Sep 17 00:00:00 2001
 From: Dmitrijs Martinovs <dmartinovs@maxlinear.com>
 Date: Wed, 12 Jul 2023 16:40:36 +0200
 Subject: [PATCH] WLANRTSYS-56901: Send initial data to the driver via vendor

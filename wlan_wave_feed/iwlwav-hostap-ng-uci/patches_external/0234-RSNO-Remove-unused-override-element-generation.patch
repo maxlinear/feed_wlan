@@ -1,4 +1,4 @@
-From 824a6284a91aa32bdf3d1a635db5f2e2797a82e7 Mon Sep 17 00:00:00 2001
+From 657b576b199b7ba77ee9327a1a6a7979f269da3d Mon Sep 17 00:00:00 2001
 From: Jouni Malinen <quic_jouni@quicinc.com>
 Date: Tue, 30 Jul 2024 12:15:02 +0300
 Subject: [PATCH] RSNO: Remove unused override element generation

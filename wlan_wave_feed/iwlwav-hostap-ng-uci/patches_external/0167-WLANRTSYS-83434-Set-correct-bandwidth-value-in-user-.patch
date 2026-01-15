@@ -1,4 +1,4 @@
-From 19be359daaac2a930fcbc8ab2b146e02b5ec453e Mon Sep 17 00:00:00 2001
+From 489d182a71d7628c0065581b5b1e47b59121c8b1 Mon Sep 17 00:00:00 2001
 From: mmahesh <mmahesh@maxlinear.com>
 Date: Fri, 26 Jul 2024 16:24:55 +0530
 Subject: [PATCH] WLANRTSYS-83434 Set correct bandwidth value in user config
@@ -34,10 +34,10 @@ index 002427afe..e26967eaa 100644
  
  	for (j = 0; j < iface->num_bss; j++) {
 diff --git a/hostapd/mxl_ctrl_iface.c b/hostapd/mxl_ctrl_iface.c
-index acbf6b421..5eca66d4a 100644
+index 4f949e2ee..3d3890768 100644
 --- a/hostapd/mxl_ctrl_iface.c
 +++ b/hostapd/mxl_ctrl_iface.c
-@@ -3163,7 +3163,7 @@ int mxl_hostapd_ctrl_iface_set(struct hostapd_data *hapd, char *cmd, int *ret)
+@@ -3162,7 +3162,7 @@ int mxl_hostapd_ctrl_iface_set(struct hostapd_data *hapd, char *cmd, int *ret)
  		}
  	} else if ((os_strcmp(cmd, "vht_oper_chwidth") == 0) || (os_strcmp(cmd, "he_oper_chwidth") == 0)
  			   || (os_strcmp(cmd, "eht_oper_chwidth") == 0)) {

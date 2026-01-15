@@ -1,4 +1,4 @@
-From 6ad530131780744571b6d8e9d21082ac5fb92484 Mon Sep 17 00:00:00 2001
+From a7199783c69fe10d0d2e835e98323b8576a95ef0 Mon Sep 17 00:00:00 2001
 From: rmunjewar <rmunjewar@maxlinear.com>
 Date: Thu, 11 Jul 2024 11:17:41 +0530
 Subject: [PATCH] WLANRTSYS-82700 : iwlwav-hostap-ng : [AFC][ACS] BW
@@ -20,10 +20,10 @@ Signed-off-by: RUSHABH MUNJEWAR <rmunjewar@maxlinear.com>
  4 files changed, 24 insertions(+), 1 deletion(-)
 
 diff --git a/hostapd/mxl_ctrl_iface.c b/hostapd/mxl_ctrl_iface.c
-index 7f834c2d5..acbf6b421 100644
+index c32aa761c..4f949e2ee 100644
 --- a/hostapd/mxl_ctrl_iface.c
 +++ b/hostapd/mxl_ctrl_iface.c
-@@ -3161,6 +3161,9 @@ int mxl_hostapd_ctrl_iface_set(struct hostapd_data *hapd, char *cmd, int *ret)
+@@ -3160,6 +3160,9 @@ int mxl_hostapd_ctrl_iface_set(struct hostapd_data *hapd, char *cmd, int *ret)
  		else {
  			*ret = -1;
  		}

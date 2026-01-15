@@ -1,4 +1,4 @@
-From 48e9c59ab04cf88af0f0fbd072bc2238a508c261 Mon Sep 17 00:00:00 2001
+From 42fe566c8e86e94bb68e6eef884188e66d10742a Mon Sep 17 00:00:00 2001
 From: Karthik D A <karthikda@maxlinear.com>
 Date: Mon, 1 Sep 2025 02:02:07 +0800
 Subject: [PATCH] WLANRTSYS-93718 iwlwav-hostapd-ng MSCS validation

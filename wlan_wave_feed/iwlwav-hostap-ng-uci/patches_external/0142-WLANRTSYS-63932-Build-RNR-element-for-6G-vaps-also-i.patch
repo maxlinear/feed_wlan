@@ -1,4 +1,4 @@
-From bce27eb5686082953749f635d8891b4509565f5b Mon Sep 17 00:00:00 2001
+From db4bcaa670594699ceaa2b343934c29972640949 Mon Sep 17 00:00:00 2001
 From: Nikita Chernikov <nchernikov@maxlinear.com>
 Date: Thu, 7 Mar 2024 15:36:39 +0200
 Subject: [PATCH] WLANRTSYS-63932 Build RNR element for 6G vaps also in probe

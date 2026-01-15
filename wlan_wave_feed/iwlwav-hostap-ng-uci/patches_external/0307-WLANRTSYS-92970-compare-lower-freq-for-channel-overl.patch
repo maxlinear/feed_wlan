@@ -1,4 +1,4 @@
-From dd0b4441abb6c80797d39326381d173671ddf7ac Mon Sep 17 00:00:00 2001
+From 0130c95aa1f52dd98ea3b123a1f7118e1371c4da Mon Sep 17 00:00:00 2001
 From: mj <mj@maxlinear.com>
 Date: Thu, 4 Sep 2025 05:06:25 -0700
 Subject: [PATCH] WLANRTSYS-92970 compare lower freq for channel overlap

@@ -1,4 +1,4 @@
-From d50a792bd0bb8d0916d3678a24869972a496f857 Mon Sep 17 00:00:00 2001
+From 924b6ed23e91f95b02451201a4fe5eddc097e14f Mon Sep 17 00:00:00 2001
 From: Karthik D A <karthikda@maxlinear.com>
 Date: Tue, 1 Jul 2025 22:44:07 +0800
 Subject: [PATCH] WLANRTSYS-88975 iwlwav-hostap-ng DL SCS support
@@ -10,7 +10,7 @@ All the changes are under the CONFIG_SCS_MXL flag.
 Signed-off-by: Karthik D A <karthikda@maxlinear.com>
 ---
  hostapd/mxl_config.c             |  10 +
- hostapd/mxl_ctrl_iface.c         |  33 ++++
+ hostapd/mxl_ctrl_iface.c         |  34 ++++
  hostapd/mxl_hostapd_cli.c        |   5 +
  hostapd/mxl_hostapd_cli.h        |   4 +
  src/ap/mxl_config.h              |   3 +
@@ -19,7 +19,7 @@ Signed-off-by: Karthik D A <karthikda@maxlinear.com>
  src/ap/mxl_wmm.h                 |   2 +
  src/common/mxl_ieee802_11_defs.h |  19 ++
  src/common/vendor_cmds_copy.h    |  57 ++++++
- 10 files changed, 402 insertions(+), 55 deletions(-)
+ 10 files changed, 403 insertions(+), 55 deletions(-)
 
 diff --git a/hostapd/mxl_config.c b/hostapd/mxl_config.c
 index 5ad436640..cdd1ba64b 100644
@@ -43,10 +43,10 @@ index 5ad436640..cdd1ba64b 100644
  		return 0;
  
 diff --git a/hostapd/mxl_ctrl_iface.c b/hostapd/mxl_ctrl_iface.c
-index 28d2b4136..72c0c79b6 100644
+index 61ee2f49d..72c0c79b6 100644
 --- a/hostapd/mxl_ctrl_iface.c
 +++ b/hostapd/mxl_ctrl_iface.c
-@@ -3109,6 +3109,34 @@ int mxl_hostapd_ctrl_iface_update_mbss_beacon(struct hostapd_data *hapd)
+@@ -3109,6 +3109,35 @@ int mxl_hostapd_ctrl_iface_update_mbss_beacon(struct hostapd_data *hapd)
  	return 0;
  }
  
@@ -78,10 +78,11 @@ index 28d2b4136..72c0c79b6 100644
 +	return res;
 +}
 +#endif
- 
++
  int mxl_hostapd_ctrl_iface_receive_process(struct hostapd_data *hapd,
  					      char *buf, char *reply,
-@@ -3342,6 +3370,11 @@ int mxl_hostapd_ctrl_iface_receive_process(struct hostapd_data *hapd,
+ 					      int reply_size,
+@@ -3341,6 +3370,11 @@ int mxl_hostapd_ctrl_iface_receive_process(struct hostapd_data *hapd,
  	} else if (os_strncmp(buf, "BSS_RECONF", 10) == 0) {
  		if (mxl_hostapd_ctrl_iface_bss_reconf(hapd->iface))
  			*reply_len = -1;

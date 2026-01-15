@@ -1,4 +1,4 @@
-From bd97fcf948b1e48cf0ddd83739ee4978f190d396 Mon Sep 17 00:00:00 2001
+From c60e0f86f16510e255d21a23be4176eacd01d5f3 Mon Sep 17 00:00:00 2001
 From: Ilan Peer <ilan.peer@intel.com>
 Date: Tue, 20 Feb 2024 14:18:09 +0100
 Subject: [PATCH] WLANRTSYS-85179 Adding 320MHz support to AFC

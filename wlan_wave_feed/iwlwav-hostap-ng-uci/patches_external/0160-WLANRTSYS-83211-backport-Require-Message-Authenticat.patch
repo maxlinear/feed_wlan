@@ -1,4 +1,4 @@
-From 9020f0e103c981368e7ff6cd7b32dd027e4a0c8a Mon Sep 17 00:00:00 2001
+From 30a46adff66baa8835b9fdba2bb1ab3e98742d6d Mon Sep 17 00:00:00 2001
 From: Jouni Malinen <j@w1.fi>
 Date: Sat, 16 Mar 2024 11:31:37 +0200
 Subject: [PATCH] WLANRTSYS-83211 [backport] Require Message-Authenticator in

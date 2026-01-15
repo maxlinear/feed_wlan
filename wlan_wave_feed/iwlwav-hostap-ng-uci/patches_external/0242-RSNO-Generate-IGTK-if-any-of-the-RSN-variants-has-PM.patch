@@ -1,4 +1,4 @@
-From bf6d25ef297d7a1a8a2e10c21770e1176366fd42 Mon Sep 17 00:00:00 2001
+From de7086c28afba9e673d78cebb0c9fcd41241dab1 Mon Sep 17 00:00:00 2001
 From: Sai Pratyusha Magam <quic_smagam@quicinc.com>
 Date: Fri, 3 Jan 2025 11:23:22 +0530
 Subject: [PATCH] RSNO: Generate IGTK if any of the RSN variants has PMF

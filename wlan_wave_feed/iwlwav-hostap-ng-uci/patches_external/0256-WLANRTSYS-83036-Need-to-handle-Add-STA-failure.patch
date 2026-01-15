@@ -1,4 +1,4 @@
-From 7d7537256c56f75352d45c3ac46aedf9ead3072f Mon Sep 17 00:00:00 2001
+From a6dd1c7f2f045833d0287eefabe2bb74001bdbb8 Mon Sep 17 00:00:00 2001
 From: "vsannidhi@maxlinear.com" <vsannidhi@lvdocker7.lvsw.maxlinear.com>
 Date: Thu, 27 Mar 2025 02:07:57 -0700
 Subject: [PATCH] WLANRTSYS-83036 Need to handle Add STA failure Description:

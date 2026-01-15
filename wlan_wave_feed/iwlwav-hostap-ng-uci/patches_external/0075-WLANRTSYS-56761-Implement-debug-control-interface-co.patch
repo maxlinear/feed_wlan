@@ -1,4 +1,4 @@
-From 2a7f14b53ee2f57014ed694e5b2b308e13856241 Mon Sep 17 00:00:00 2001
+From f76277b41f414b32fc9756c81cfbc22ed054eed2 Mon Sep 17 00:00:00 2001
 From: mvulsx <mvuls@maxlinear.com>
 Date: Thu, 6 Jul 2023 08:54:20 +0000
 Subject: [PATCH] WLANRTSYS-56761: Implement debug control interface commands

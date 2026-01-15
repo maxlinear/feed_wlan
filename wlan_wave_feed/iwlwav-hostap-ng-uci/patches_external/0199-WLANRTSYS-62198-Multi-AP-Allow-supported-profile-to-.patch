@@ -1,4 +1,4 @@
-From 331af069558c95ba5c38d99a5b504dca500af9a2 Mon Sep 17 00:00:00 2001
+From 61a3d73b024b79ab2ed700e38bc5a4d765cb5c40 Mon Sep 17 00:00:00 2001
 From: Manoj Sekar <quic_sekar@quicinc.com>
 Date: Mon, 26 Feb 2024 18:18:21 +0530
 Subject: [PATCH] WLANRTSYS-62198 Multi-AP: Allow supported profile to be

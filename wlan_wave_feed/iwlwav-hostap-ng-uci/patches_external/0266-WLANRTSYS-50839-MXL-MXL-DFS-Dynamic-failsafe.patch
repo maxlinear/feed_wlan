@@ -1,4 +1,4 @@
-From 47d6de3406576de8e547bed7a0a9a51180e2393f Mon Sep 17 00:00:00 2001
+From b2fb973a0191c77b78cb9dc5bdba8fa92e35d608 Mon Sep 17 00:00:00 2001
 From: spatel <spatel@maxlinear.com>
 Date: Thu, 10 Oct 2024 20:20:23 +0530
 Subject: [PATCH] WLANRTSYS-50839 [MXL] MXL DFS Dynamic failsafe
@@ -96,10 +96,10 @@ index a16ca4b0a..8ddc68ded 100644
  }
  
 diff --git a/hostapd/mxl_ctrl_iface.c b/hostapd/mxl_ctrl_iface.c
-index 7d8a6566b..394d12827 100644
+index 066713342..b81dcd71f 100644
 --- a/hostapd/mxl_ctrl_iface.c
 +++ b/hostapd/mxl_ctrl_iface.c
-@@ -3386,6 +3386,16 @@ int mxl_hostapd_ctrl_iface_set(struct hostapd_data *hapd, char *cmd, int *ret)
+@@ -3385,6 +3385,16 @@ int mxl_hostapd_ctrl_iface_set(struct hostapd_data *hapd, char *cmd, int *ret)
  	return 1;
  }
  

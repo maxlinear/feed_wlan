@@ -1,4 +1,4 @@
-From efc15d574138c4b71d5f487ffb84980c44e9b2f7 Mon Sep 17 00:00:00 2001
+From a7ae28e535947034ea7c72fcc01edca8e143b690 Mon Sep 17 00:00:00 2001
 From: Jouni Malinen <j@w1.fi>
 Date: Fri, 22 Dec 2023 20:57:53 +0200
 Subject: [PATCH] WLANRTSYS-82700 AP: A helper function for determining whether

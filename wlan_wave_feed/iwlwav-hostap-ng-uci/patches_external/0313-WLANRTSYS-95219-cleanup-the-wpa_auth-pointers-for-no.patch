@@ -1,4 +1,4 @@
-From 9563349a5bf12b4ef02f09d7f0bcd179db3c798a Mon Sep 17 00:00:00 2001
+From efa7fc25d4f6be451ed10c2b1d14949392d100d9 Mon Sep 17 00:00:00 2001
 From: mj <mj@maxlinear.com>
 Date: Tue, 14 Oct 2025 23:35:40 -0700
 Subject: [PATCH] WLANRTSYS-95219 cleanup the wpa_auth pointers for non tx vap

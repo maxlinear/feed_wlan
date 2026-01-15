@@ -1,4 +1,4 @@
-From bf298fa68c525ff8c3fa9526be92e04322a6a228 Mon Sep 17 00:00:00 2001
+From a1cad461a6f7f94560b810ecc0918e755799c1b4 Mon Sep 17 00:00:00 2001
 From: mj <mj@maxlinear.com>
 Date: Thu, 27 Mar 2025 11:22:34 +0530
 Subject: [PATCH] WLANRTSYS-86687 BSS critical update support for Modification

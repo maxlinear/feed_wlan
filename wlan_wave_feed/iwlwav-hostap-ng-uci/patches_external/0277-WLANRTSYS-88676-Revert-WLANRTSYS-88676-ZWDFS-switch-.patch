@@ -1,4 +1,4 @@
-From 5cf4da68ea1f09ef0e01520c653cd3b47b87939e Mon Sep 17 00:00:00 2001
+From 03c1abe2e3a71812d43f8195bc82c185b3151e7e Mon Sep 17 00:00:00 2001
 From: hmgokhale <hmgokhale@maxlinear.com>
 Date: Fri, 27 Jun 2025 18:05:18 +0530
 Subject: [PATCH] WLANRTSYS-88676 Revert "WLANRTSYS-88676 ZWDFS - switch to

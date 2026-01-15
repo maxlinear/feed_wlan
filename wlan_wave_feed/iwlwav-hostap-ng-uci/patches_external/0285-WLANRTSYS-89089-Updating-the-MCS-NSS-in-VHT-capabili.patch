@@ -1,4 +1,4 @@
-From e426dc624dec2967699968b254dd516212c2e334 Mon Sep 17 00:00:00 2001
+From 50d0b579eb11da96dea319f891e1957418f39d77 Mon Sep 17 00:00:00 2001
 From: "pvaish@maxlinear.com" <pvaish@lvdocker8.lvsw.maxlinear.com>
 Date: Mon, 7 Jul 2025 04:40:25 -0700
 Subject: [PATCH] WLANRTSYS-89089 Updating the MCS NSS in VHT capabilities

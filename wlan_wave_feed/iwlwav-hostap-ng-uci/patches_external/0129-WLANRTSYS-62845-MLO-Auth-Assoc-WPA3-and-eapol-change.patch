@@ -1,4 +1,4 @@
-From c48ed9d6558bacabbacc4e7b8e9bc08d8cd31686 Mon Sep 17 00:00:00 2001
+From ed630423e6e9d4a77870b602ad2d7b69aad31234 Mon Sep 17 00:00:00 2001
 From: hmgokhale <hmgokhale@maxlinear.com>
 Date: Wed, 6 Mar 2024 16:04:05 +0530
 Subject: [PATCH] WLANRTSYS-62845 MLO Auth Assoc, WPA3 and eapol changes
@@ -7,7 +7,7 @@ Signed-off-by: hmgokhale <hmgokhale@maxlinear.com>
 ---
  hostapd/Makefile                 |   3 +
  hostapd/mxl_config.c             |  74 +++
- hostapd/mxl_ctrl_iface.c         |  14 +-
+ hostapd/mxl_ctrl_iface.c         |  10 +-
  src/ap/ap_drv_ops.c              |   4 +
  src/ap/ctrl_iface_ap.c           |  37 +-
  src/ap/drv_callbacks.c           |  22 +
@@ -52,7 +52,7 @@ Signed-off-by: hmgokhale <hmgokhale@maxlinear.com>
  src/drivers/driver.h             |   3 +
  src/drivers/driver_nl80211.c     |   9 +
  src/drivers/mxl_driver.h         |   6 +
- 47 files changed, 3245 insertions(+), 274 deletions(-)
+ 47 files changed, 3244 insertions(+), 271 deletions(-)
  create mode 100644 src/ap/mxl_drv_callbacks.c
  create mode 100644 src/ap/mxl_drv_callbacks.h
  create mode 100644 src/ap/mxl_ieee802_11_eht.h
@@ -176,7 +176,7 @@ index 70cc10e6c..1a0d4035a 100644
  }
  
 diff --git a/hostapd/mxl_ctrl_iface.c b/hostapd/mxl_ctrl_iface.c
-index 27111f0f5..a378fb987 100644
+index ae0562b5d..fe2866625 100644
 --- a/hostapd/mxl_ctrl_iface.c
 +++ b/hostapd/mxl_ctrl_iface.c
 @@ -26,9 +26,9 @@
@@ -190,15 +190,7 @@ index 27111f0f5..a378fb987 100644
  
  
  struct hostapd_data *mxl_get_bss_index(const char **cmd, struct hostapd_data *hapd, bool ctrl_iface, bool delim)
-@@ -2692,15 +2692,13 @@ exit:
- 			rep_reason_p);
- }
- 
--<<<<<<< HEAD
--=======
- #ifdef CONFIG_IEEE80211BE_MXL_MLO
- static int mxl_hostapd_ctrl_iface_send_t2lm_teardown_frame(struct hostapd_data *hapd,
- 		const char *cmd)
+@@ -2698,7 +2698,7 @@ static int mxl_hostapd_ctrl_iface_send_t2lm_teardown_frame(struct hostapd_data *
  {
  	u8 addr[ETH_ALEN];
  
@@ -207,7 +199,7 @@ index 27111f0f5..a378fb987 100644
  	if (NULL == hapd) {
  		wpa_printf(MSG_ERROR, "CTRL: SEND_T2LM_TEARDOWN_FRAME - there is no iface with the given name");
  		return -1;
-@@ -2728,6 +2726,7 @@ static int mxl_hostapd_ctrl_iface_send_t2lm_teardown_frame(struct hostapd_data *
+@@ -2726,6 +2726,7 @@ static int mxl_hostapd_ctrl_iface_send_t2lm_teardown_frame(struct hostapd_data *
  
  #endif /* CONFIG_IEEE80211BE_MXL_MLO */
  
@@ -215,16 +207,7 @@ index 27111f0f5..a378fb987 100644
  static int mxl_hostapd_ctrl_iface_set_neighbor_psd(struct hostapd_data *hapd, char *buf)
  {
  	char *tmp;
-@@ -2772,7 +2771,7 @@ int mxl_hostapd_ctrl_iface_update_mbss_beacon(struct hostapd_data *hapd)
- 	return 0;
- }
- 
-->>>>>>> 7b6c24cfb2 (WLANRTSYS-86232 6g ssid config is not getting applied)
-+
- int mxl_hostapd_ctrl_iface_receive_process(struct hostapd_data *hapd,
- 					      char *buf, char *reply,
- 					      int reply_size,
-@@ -2947,6 +2946,11 @@ int mxl_hostapd_ctrl_iface_receive_process(struct hostapd_data *hapd,
+@@ -2944,6 +2945,11 @@ int mxl_hostapd_ctrl_iface_receive_process(struct hostapd_data *hapd,
  		*reply_len = mxl_hostapd_ctrl_iface_get_power_mode(hapd->iface, reply, reply_size);
  	} else if (os_strncmp(buf, "SET_POWER_MODE", 14) == 0) {
  		*reply_len = mxl_hostapd_ctrl_iface_set_power_mode(hapd->iface, buf + 14, reply, reply_size);

@@ -1,4 +1,4 @@
-From 62cd61d79fbd1ee70ad4d8a9d843c5b84b4b4d04 Mon Sep 17 00:00:00 2001
+From 9aee8135763a2e9d32299dfc66f5bbcf067ec29b Mon Sep 17 00:00:00 2001
 From: Jouni Malinen <j@w1.fi>
 Date: Sun, 3 Mar 2024 20:41:30 +0200
 Subject: [PATCH] Use a helper function to free neighbor DB entries

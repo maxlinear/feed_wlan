@@ -1,4 +1,4 @@
-From 30ff4b63ac2b0cbf790bc217df658a19ce8fe806 Mon Sep 17 00:00:00 2001
+From dd19a6238be799197f2b5441f6620a318be8da50 Mon Sep 17 00:00:00 2001
 From: Nikita Chernikov <nchernikov@maxlinear.com>
 Date: Thu, 21 Mar 2024 17:35:45 +0200
 Subject: [PATCH] WLANRTSYS-62534 Add support to configure PSD subfield in NR
@@ -16,7 +16,7 @@ Signed-off-by: Nikita Chernikov <nchernikov@maxlinear.com>
  7 files changed, 55 insertions(+), 3 deletions(-)
 
 diff --git a/hostapd/mxl_ctrl_iface.c b/hostapd/mxl_ctrl_iface.c
-index ff2252398..5dd59e6f8 100644
+index 3d6060710..e1185c288 100644
 --- a/hostapd/mxl_ctrl_iface.c
 +++ b/hostapd/mxl_ctrl_iface.c
 @@ -29,7 +29,7 @@
@@ -36,7 +36,7 @@ index ff2252398..5dd59e6f8 100644
  static int mxl_hostapd_ctrl_iface_set_neighbor_psd(struct hostapd_data *hapd, char *buf)
  {
  	char *tmp;
-@@ -2985,6 +2984,9 @@ int mxl_hostapd_ctrl_iface_receive_process(struct hostapd_data *hapd,
+@@ -2984,6 +2983,9 @@ int mxl_hostapd_ctrl_iface_receive_process(struct hostapd_data *hapd,
  	} else if (os_strncmp(buf, "REPORT_STA_STATISTICS ", 22) == 0) {
  		if (mxl_hostapd_ctrl_iface_report_sta_statistics(hapd, buf + 22))
  			*reply_len = -1;

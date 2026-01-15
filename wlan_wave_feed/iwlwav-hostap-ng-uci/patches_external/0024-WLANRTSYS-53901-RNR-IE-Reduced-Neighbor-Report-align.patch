@@ -1,4 +1,4 @@
-From c14c0fb754d11abc954ee3b9c61f1de0bf4fda61 Mon Sep 17 00:00:00 2001
+From ade1169b1f6b756d895d731e5d326a88516e162a Mon Sep 17 00:00:00 2001
 From: Jurijs Soloveckis <jsoloveckis@maxlinear.com>
 Date: Tue, 21 Mar 2023 14:26:39 +0100
 Subject: [PATCH] WLANRTSYS-53901: RNR IE - Reduced Neighbor Report alignment

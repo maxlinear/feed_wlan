@@ -1,4 +1,4 @@
-From d98f46257e196baf5d22efb284786e745b7d1dd1 Mon Sep 17 00:00:00 2001
+From ea0751c2c66dbcc28754ca6638ab8c83f2b6d888 Mon Sep 17 00:00:00 2001
 From: "karthikgk@maxlinear.com" <karthikgk@lvdocker7.lvsw.maxlinear.com>
 Date: Tue, 15 Jul 2025 04:17:45 -0700
 Subject: [PATCH] WLANRTSYS-91787 : MLD Triband - Driver FW interface

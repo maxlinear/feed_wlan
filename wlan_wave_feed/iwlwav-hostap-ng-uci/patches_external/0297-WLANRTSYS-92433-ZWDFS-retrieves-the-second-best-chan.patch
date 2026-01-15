@@ -1,4 +1,4 @@
-From 541fb93fc27f1a53ea77f5054118ba39a41b00d9 Mon Sep 17 00:00:00 2001
+From 5265a6eaa9e57e40a4daad40a4247477bed34e9c Mon Sep 17 00:00:00 2001
 From: mj <mj@maxlinear.com>
 Date: Wed, 20 Aug 2025 00:27:22 -0700
 Subject: [PATCH] WLANRTSYS-92433 ZWDFS retrieves the second-best channel

@@ -1,4 +1,4 @@
-From f392af25dbed24c9b00094f5748a6df389cad27b Mon Sep 17 00:00:00 2001
+From 108989c4aa3b21daa00905ea605f2d80959673db Mon Sep 17 00:00:00 2001
 From: Dmitrijs Martinovs <dmartinovs@maxlinear.com>
 Date: Tue, 5 Dec 2023 10:35:00 +0200
 Subject: [PATCH] WLANRTSYS-59585: [OpenSync 4.4 FRV testing]

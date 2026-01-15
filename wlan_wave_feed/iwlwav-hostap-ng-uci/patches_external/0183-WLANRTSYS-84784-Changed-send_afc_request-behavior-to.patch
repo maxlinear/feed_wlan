@@ -1,4 +1,4 @@
-From 7e9368bd4ecf68cb55f5331c47c7c1d3169c0deb Mon Sep 17 00:00:00 2001
+From 2769a8b88eede1e0640887a1cfbf48102dfd7882 Mon Sep 17 00:00:00 2001
 From: "Ross-Ashikyan, William" <washikyan@maxlinear.com>
 Date: Mon, 30 Sep 2024 10:25:19 -0700
 Subject: [PATCH] WLANRTSYS-84784 Changed send_afc_request behavior to first
@@ -17,7 +17,7 @@ FIXUP to WLANRTSYS-83162 Ported afcd and composite mode changes from legacy host
  1 file changed, 1 insertion(+)
 
 diff --git a/hostapd/mxl_ctrl_iface.c b/hostapd/mxl_ctrl_iface.c
-index 494ad1807..899f43b35 100644
+index 348f25b4f..0507ae127 100644
 --- a/hostapd/mxl_ctrl_iface.c
 +++ b/hostapd/mxl_ctrl_iface.c
 @@ -84,6 +84,7 @@ struct hostapd_data *mxl_get_bss_index(const char **cmd, struct hostapd_data *ha

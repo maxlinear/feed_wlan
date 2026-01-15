@@ -1,4 +1,4 @@
-From d1356b386ae88d36b985237241127a3d14bdd56e Mon Sep 17 00:00:00 2001
+From ba23f5cd1c474a6e6f7a2c43f47d8a8457278c58 Mon Sep 17 00:00:00 2001
 From: "Ross-Ashikyan, William" <washikyan@maxlinear.com>
 Date: Tue, 3 Dec 2024 17:36:15 -0800
 Subject: [PATCH] WLANRTSYS-85289 Update 6 GHz TPE IE to default to AFC report

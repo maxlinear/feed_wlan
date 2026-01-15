@@ -1,4 +1,4 @@
-From 97e12c96175bcf60690d4a62c5b0d334cbb134d7 Mon Sep 17 00:00:00 2001
+From 7eb314a5c76770bdf414fef7da67b8117d1372e6 Mon Sep 17 00:00:00 2001
 From: Manoj Sekar <quic_sekar@quicinc.com>
 Date: Mon, 26 Feb 2024 18:26:38 +0530
 Subject: [PATCH] WLANRTSYS-62198 Multi-AP: Add support for VLAN related

@@ -1,4 +1,4 @@
-From 9e1d5be6bdf1402228c0bc88d4fb4e7a6092219f Mon Sep 17 00:00:00 2001
+From 485bcd45ecb52b3d1beb4c62b5f5f18d64183a36 Mon Sep 17 00:00:00 2001
 From: mvulsx <mvuls@maxlinear.com>
 Date: Tue, 4 Jul 2023 11:59:19 +0000
 Subject: [PATCH] WLANRTSYS-56697: wpa_supplicant: Beerock implementation

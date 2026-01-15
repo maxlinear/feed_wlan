@@ -1,4 +1,4 @@
-From e0fdde7f0629be598ad8485d9f0e31d0ae10ff1e Mon Sep 17 00:00:00 2001
+From 46ae15bd66b0623f42670ff7d1435ff19d2add1c Mon Sep 17 00:00:00 2001
 From: fromans <fromans@maxlinear.com>
 Date: Tue, 23 Jan 2024 12:15:17 +0200
 Subject: [PATCH] WLANRTSYS-62551 Align nl80211 to iw 6.7

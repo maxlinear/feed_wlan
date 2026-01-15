@@ -1,4 +1,4 @@
-From fdd5892e81ac78ae9a0e10602de9f4fcfe5e31df Mon Sep 17 00:00:00 2001
+From 82fd290be3314f1c6e43a9e696923a9d8d2c1b23 Mon Sep 17 00:00:00 2001
 From: fromans <fromans@maxlinear.com>
 Date: Fri, 23 Feb 2024 13:56:03 +0200
 Subject: [PATCH] WLANRTSYS-63689 Protect disassociation frames when PMF is

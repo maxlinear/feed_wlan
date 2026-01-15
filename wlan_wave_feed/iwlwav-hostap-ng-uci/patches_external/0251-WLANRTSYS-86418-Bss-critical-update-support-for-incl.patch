@@ -1,4 +1,4 @@
-From 31b7dcb95c30ab6330143d0f21ec3b45bfa65007 Mon Sep 17 00:00:00 2001
+From c4fba2828b633adca3104f9989a76831a338533e Mon Sep 17 00:00:00 2001
 From: Venkatasaiprudhvi Sannidhi <vsannidhi@maxlinear.com>
 Date: Wed, 26 Mar 2025 11:41:37 +0530
 Subject: [PATCH] WLANRTSYS-86418 Bss critical update support for inclusion of

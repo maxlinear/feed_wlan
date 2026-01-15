@@ -1,4 +1,4 @@
-From c41c11acb9fd23332d822128f65759f2df1c63ca Mon Sep 17 00:00:00 2001
+From dc18a2eb7df3e7df04475202e18c645ff4bf8ab2 Mon Sep 17 00:00:00 2001
 From: Alexander Grishchenko <agrishchenko@maxlinear.com>
 Date: Thu, 25 Apr 2024 15:30:41 +0300
 Subject: [PATCH] WLANRTSYS-62198 Multi-AP: Enhance hostapd with proprietary
@@ -200,7 +200,7 @@ index d1c37b8f3..b93abc749 100644
  	return 0;
  }
 diff --git a/hostapd/mxl_ctrl_iface.c b/hostapd/mxl_ctrl_iface.c
-index 899f43b35..da498ce93 100644
+index 0507ae127..c6f737207 100644
 --- a/hostapd/mxl_ctrl_iface.c
 +++ b/hostapd/mxl_ctrl_iface.c
 @@ -89,6 +89,143 @@ static int mxl_hostapd_ctrl_iface_send_afcd_request(struct hostapd_iface *iface,
@@ -347,7 +347,7 @@ index 899f43b35..da498ce93 100644
  #ifdef CONFIG_EPCS_MXL
  static int mxl_hostapd_ctrl_iface_send_epcs_req_frame(struct hostapd_data *hapd,
  				const char *cmd)
-@@ -3124,6 +3261,8 @@ int mxl_hostapd_ctrl_iface_receive_process(struct hostapd_data *hapd,
+@@ -3123,6 +3260,8 @@ int mxl_hostapd_ctrl_iface_receive_process(struct hostapd_data *hapd,
  			*reply_len = -1;
  	} else if (os_strncmp(buf, "GET_STA_SOFTBLOCK ", 18) == 0) {
  		*reply_len = mxl_hostapd_ctrl_iface_get_sta_softblock(hapd, buf + 18, reply, reply_size);
@@ -356,7 +356,7 @@ index 899f43b35..da498ce93 100644
  	} else if (os_strncmp(buf, "GET_POWER_MODE", 14) == 0) {
  		*reply_len = mxl_hostapd_ctrl_iface_get_power_mode(hapd->iface, reply, reply_size);
  	} else if (os_strncmp(buf, "SET_POWER_MODE", 14) == 0) {
-@@ -3152,6 +3291,27 @@ int mxl_hostapd_ctrl_iface_receive_process(struct hostapd_data *hapd,
+@@ -3151,6 +3290,27 @@ int mxl_hostapd_ctrl_iface_receive_process(struct hostapd_data *hapd,
  		if (mxl_hostapd_ctrl_iface_send_epcs_req_frame(hapd, buf + sizeof("SEND_EPCS_REQ_FRAME ") - 1))
  			*reply_len = -1;
  #endif /* CONFIG_EPCS_MXL */

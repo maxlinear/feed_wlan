@@ -1,4 +1,4 @@
-From cf6efa30a6c8232908c894fd10cac74e361fab47 Mon Sep 17 00:00:00 2001
+From 220a021ca1a0a7566a18b8c5a357f2e064d4850b Mon Sep 17 00:00:00 2001
 From: Jurijs Soloveckis <jsoloveckis@maxlinear.com>
 Date: Mon, 12 Jun 2023 08:06:15 +0200
 Subject: [PATCH] WLANRTSYS-55993: Implement support for WHM: part2

@@ -1,4 +1,4 @@
-From f6951854b18ea2b1bf11b7757a002af16b52a2f0 Mon Sep 17 00:00:00 2001
+From 7994c2faf40ff8cc3145045b9cb23cc0c4c09f00 Mon Sep 17 00:00:00 2001
 From: mj <mj@maxlinear.com>
 Date: Mon, 28 Jul 2025 16:34:40 +0530
 Subject: [PATCH] WLANRTSYS-92027 validate acs flag during channel switch after

@@ -1,4 +1,4 @@
-From 771d5f78b88d4069578c7b18d77829fd03b5d853 Mon Sep 17 00:00:00 2001
+From f7bfe3c4f3500c106b3e3936df43f880defe56f7 Mon Sep 17 00:00:00 2001
 From: fromans <fromans@maxlinear.com>
 Date: Wed, 6 Sep 2023 14:46:04 +0300
 Subject: [PATCH] WLANRTSYS-57484: Reconf: Add ubus and reload patches

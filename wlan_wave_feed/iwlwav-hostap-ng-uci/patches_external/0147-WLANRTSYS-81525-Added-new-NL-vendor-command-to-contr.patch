@@ -1,4 +1,4 @@
-From bce7f1507eefbc222737586f512c93dcc648e868 Mon Sep 17 00:00:00 2001
+From 6c040a7e02dc7cb9963d7b473ef048e82a9a797f Mon Sep 17 00:00:00 2001
 From: Alexander Grishchenko <agrishchenko@maxlinear.com>
 Date: Mon, 20 May 2024 13:15:27 +0000
 Subject: [PATCH] WLANRTSYS-81525 Added new NL vendor command to control

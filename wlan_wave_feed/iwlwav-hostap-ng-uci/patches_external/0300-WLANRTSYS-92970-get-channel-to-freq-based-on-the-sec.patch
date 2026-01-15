@@ -1,4 +1,4 @@
-From 38060a4a690f47c22c4c2e4647ac614bca814007 Mon Sep 17 00:00:00 2001
+From 6ba40cd480d5ca19142fc040480f270246dd43bc Mon Sep 17 00:00:00 2001
 From: mj <mj@maxlinear.com>
 Date: Tue, 26 Aug 2025 20:25:38 -0700
 Subject: [PATCH] WLANRTSYS-92970 get channel to freq based on the second best

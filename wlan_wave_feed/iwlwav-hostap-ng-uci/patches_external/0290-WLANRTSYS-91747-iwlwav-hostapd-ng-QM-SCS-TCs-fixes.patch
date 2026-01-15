@@ -1,4 +1,4 @@
-From 23deaa6354e97a69f287dba7f558036e47be4872 Mon Sep 17 00:00:00 2001
+From a8daf975d4caaf77238e4fb790c32e4223add549 Mon Sep 17 00:00:00 2001
 From: Karthik D A <karthikda@maxlinear.com>
 Date: Tue, 15 Jul 2025 18:37:59 +0800
 Subject: [PATCH] WLANRTSYS-91747 iwlwav-hostapd-ng: QM SCS TCs fixes

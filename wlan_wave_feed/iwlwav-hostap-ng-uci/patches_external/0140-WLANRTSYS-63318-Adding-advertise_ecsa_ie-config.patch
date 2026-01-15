@@ -1,4 +1,4 @@
-From e2765dab32b1773e7730b8079b7de625de39266f Mon Sep 17 00:00:00 2001
+From 10dd2eb11cbf548dc4d36b79b2513a78c873e262 Mon Sep 17 00:00:00 2001
 From: akgupta <akgupta@maxlinear.com>
 Date: Mon, 1 Apr 2024 11:51:31 +0530
 Subject: [PATCH] WLANRTSYS-63318 Adding advertise_ecsa_ie config.
@@ -55,7 +55,7 @@ index dd760d8c7..048b5503a 100644
  		int val = atoi(pos);
  		if (!IS_VALID_RANGE(val, MAX_CHAN_SWITCH_TIME_MIN, MAX_CHAN_SWITCH_TIME_MAX)) {
 diff --git a/hostapd/mxl_ctrl_iface.c b/hostapd/mxl_ctrl_iface.c
-index 70096788f..4880a99e4 100644
+index 0a580976c..3e1ee0d52 100644
 --- a/hostapd/mxl_ctrl_iface.c
 +++ b/hostapd/mxl_ctrl_iface.c
 @@ -2861,7 +2861,7 @@ static int mxl_hostapd_ctrl_iface_send_t2lm_teardown_frame(struct hostapd_data *

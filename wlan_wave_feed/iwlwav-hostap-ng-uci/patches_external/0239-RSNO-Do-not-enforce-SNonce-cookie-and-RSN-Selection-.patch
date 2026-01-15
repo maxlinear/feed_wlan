@@ -1,4 +1,4 @@
-From a203241c8047b41ae0b8fe346f24d10bdd4210bf Mon Sep 17 00:00:00 2001
+From 7c7f46317d1228d6c26fa27191cdbc2550d83f48 Mon Sep 17 00:00:00 2001
 From: Jouni Malinen <quic_jouni@quicinc.com>
 Date: Thu, 15 Aug 2024 20:39:03 +0300
 Subject: [PATCH] RSNO: Do not enforce SNonce cookie and RSN Selection match if

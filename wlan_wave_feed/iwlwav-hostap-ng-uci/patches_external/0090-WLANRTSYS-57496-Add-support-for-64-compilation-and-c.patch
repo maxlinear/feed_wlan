@@ -1,4 +1,4 @@
-From a9d0e37db33c6a6891c4d5c125269defd925db5f Mon Sep 17 00:00:00 2001
+From 9f34518b8ac886acb31daff0e934b111f621780d Mon Sep 17 00:00:00 2001
 From: mvulsx <mvuls@maxlinear.com>
 Date: Wed, 2 Aug 2023 08:37:26 +0200
 Subject: [PATCH] WLANRTSYS-57496: Add support for 64 compilation and

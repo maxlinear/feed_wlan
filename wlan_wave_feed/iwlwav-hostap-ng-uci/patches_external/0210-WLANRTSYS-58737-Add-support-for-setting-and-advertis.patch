@@ -1,4 +1,4 @@
-From 6d3902b7fb82938be5fc05d9c66504a409323f00 Mon Sep 17 00:00:00 2001
+From beedc3b5bdd6f63e57aae5ce699224d5a02dee5c Mon Sep 17 00:00:00 2001
 From: Nikita Chernikov <nchernikov@maxlinear.com>
 Date: Sun, 3 Nov 2024 10:25:08 +0200
 Subject: [PATCH] WLANRTSYS-58737 Add support for setting and advertising PBAC

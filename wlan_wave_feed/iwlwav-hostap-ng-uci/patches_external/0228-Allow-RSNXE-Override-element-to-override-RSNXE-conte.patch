@@ -1,4 +1,4 @@
-From e82b634c5ef2a6ca4f0af5077bb82befab2f9e0a Mon Sep 17 00:00:00 2001
+From b01eb2cbd3588b9f18d91519659461b6eb1bb779 Mon Sep 17 00:00:00 2001
 From: Jouni Malinen <quic_jouni@quicinc.com>
 Date: Wed, 1 Nov 2023 15:27:31 +0200
 Subject: [PATCH] Allow RSNXE Override element to override RSNXE contents

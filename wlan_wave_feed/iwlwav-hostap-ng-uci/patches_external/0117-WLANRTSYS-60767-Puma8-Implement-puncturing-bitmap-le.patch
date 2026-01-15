@@ -1,4 +1,4 @@
-From 458200dd86135f332165b0606781824348e18382 Mon Sep 17 00:00:00 2001
+From f9f21c9bd7fc36f1e3ee7968647151d6c3ba3563 Mon Sep 17 00:00:00 2001
 From: Jurijs Soloveckis <jsoloveckis@maxlinear.com>
 Date: Tue, 5 Dec 2023 15:19:25 +0200
 Subject: [PATCH] WLANRTSYS-60767: Puma8: Implement puncturing bitmap legacy

@@ -1,4 +1,4 @@
-From fe3a8dc06c1299c83b61baa46eba5fb13d71a655 Mon Sep 17 00:00:00 2001
+From 2fc274b7de18a98ac4ca8e406c4e59e3e3b8a9a0 Mon Sep 17 00:00:00 2001
 From: Karthik D A <karthikda@maxlinear.com>
 Date: Wed, 13 Aug 2025 14:04:52 +0800
 Subject: [PATCH] WLANRTSYS-92508 iwlwav-hostapd-ng: MSCS Support

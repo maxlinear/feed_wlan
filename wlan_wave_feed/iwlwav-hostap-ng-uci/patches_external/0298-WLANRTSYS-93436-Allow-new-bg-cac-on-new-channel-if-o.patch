@@ -1,4 +1,4 @@
-From 40301a1026e8a20ca48d3a238192f1046972f7a1 Mon Sep 17 00:00:00 2001
+From 89a18aaf344e371c761b0c4050c449d2adc39fdf Mon Sep 17 00:00:00 2001
 From: nchernikov <nchernikov@maxlinear.com>
 Date: Sun, 24 Aug 2025 12:50:55 +0300
 Subject: [PATCH] WLANRTSYS-93436 Allow new bg cac on new channel if one is

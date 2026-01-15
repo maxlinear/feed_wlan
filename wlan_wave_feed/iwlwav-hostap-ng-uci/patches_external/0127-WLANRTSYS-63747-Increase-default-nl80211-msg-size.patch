@@ -1,4 +1,4 @@
-From aefcbf9e86a8f504bf6438e0a50717f2d504698d Mon Sep 17 00:00:00 2001
+From db9179e9a406c4807a8f24a3efc06e06bc97ca8b Mon Sep 17 00:00:00 2001
 From: Jurijs Soloveckis <jsoloveckis@maxlinear.com>
 Date: Fri, 23 Feb 2024 13:53:56 +0200
 Subject: [PATCH] WLANRTSYS-63747 Increase default nl80211 msg size

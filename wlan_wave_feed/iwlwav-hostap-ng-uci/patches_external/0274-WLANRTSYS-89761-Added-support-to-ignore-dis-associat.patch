@@ -1,4 +1,4 @@
-From d4eb6e1cc2582a108edef0fb985fcfee9e58aec4 Mon Sep 17 00:00:00 2001
+From 4b75cf121876b8f12f03fc2ee359662513af0e07 Mon Sep 17 00:00:00 2001
 From: dkolhe <dkolhe@maxlinear.com>
 Date: Wed, 11 Jun 2025 14:42:22 +0800
 Subject: [PATCH] WLANRTSYS-89761 Added support to ignore dis-association timer

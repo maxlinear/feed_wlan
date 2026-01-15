@@ -1,4 +1,4 @@
-From 7a0f47db1c14bfb720b91b2360bed296474a5821 Mon Sep 17 00:00:00 2001
+From af35cc8f1252d112b28fc5578a196b0b0d55055d Mon Sep 17 00:00:00 2001
 From: Bharath Paidupati <bpaidupati@maxlinear.com>
 Date: Tue, 8 Oct 2024 13:03:43 +0530
 Subject: [PATCH] WLANRTSYS-85179 Adding 320Mhz support in afc.c file

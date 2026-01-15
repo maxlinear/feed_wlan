@@ -1,4 +1,4 @@
-From 1acf64f5c90c68c20fcb2ca3ded2c377a04c748e Mon Sep 17 00:00:00 2001
+From feff8aaaf6d332e1a20382c945a9b231b6318e11 Mon Sep 17 00:00:00 2001
 From: Jouni Malinen <quic_jouni@quicinc.com>
 Date: Thu, 10 Oct 2024 11:53:29 +0300
 Subject: [PATCH] RSNO: Omit RSNXE in (Re)Association Response frame like in

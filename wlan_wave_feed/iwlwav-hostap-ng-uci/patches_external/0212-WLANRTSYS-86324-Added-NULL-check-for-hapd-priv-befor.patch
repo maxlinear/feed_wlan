@@ -1,4 +1,4 @@
-From 004f85b50a9971e10ea66ae7189c53bd34c2b961 Mon Sep 17 00:00:00 2001
+From 88b6718e2a9b9069e4f92750ff49184c358224cc Mon Sep 17 00:00:00 2001
 From: mj <mj@maxlinear.com>
 Date: Mon, 25 Nov 2024 12:46:11 +0530
 Subject: [PATCH] WLANRTSYS-86324 Added NULL check for hapd priv before doing

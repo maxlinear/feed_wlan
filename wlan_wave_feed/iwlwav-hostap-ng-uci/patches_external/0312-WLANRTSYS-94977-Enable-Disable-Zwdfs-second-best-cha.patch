@@ -1,4 +1,4 @@
-From 0636c7dce0b9861f51a7da9824b8f34b1930c777 Mon Sep 17 00:00:00 2001
+From 5de1833a22b7a10208571ed4ca950086e439f4a0 Mon Sep 17 00:00:00 2001
 From: mj <mj@maxlinear.com>
 Date: Tue, 30 Sep 2025 23:35:00 -0700
 Subject: [PATCH] WLANRTSYS-94977 Enable/Disable Zwdfs second best channel

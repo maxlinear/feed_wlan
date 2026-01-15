@@ -1,4 +1,4 @@
-From 3511719441fe972985e455a1584ba701e9a93283 Mon Sep 17 00:00:00 2001
+From a4709f1b362db1d12408e8ea18bfc84443fea8f4 Mon Sep 17 00:00:00 2001
 From: mj <mj@maxlinear.com>
 Date: Fri, 9 May 2025 15:02:27 +0530
 Subject: [PATCH] WLANRTSYS-88253 Allow set channel during CAC period from

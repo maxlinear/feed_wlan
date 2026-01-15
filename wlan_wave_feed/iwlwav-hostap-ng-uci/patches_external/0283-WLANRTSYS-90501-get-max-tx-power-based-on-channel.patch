@@ -1,4 +1,4 @@
-From 66b80c8382fadd91c3fed6656aaed4ef6b9d38a8 Mon Sep 17 00:00:00 2001
+From 3dcea3672c4867ae1a9a00bc7c4df1b37e26baea Mon Sep 17 00:00:00 2001
 From: mj <mj@maxlinear.com>
 Date: Tue, 8 Jul 2025 13:46:27 +0530
 Subject: [PATCH] WLANRTSYS-90501 get max tx power based on channel

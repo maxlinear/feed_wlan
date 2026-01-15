@@ -1,4 +1,4 @@
-From 731ad599015e0ee9534d90cd2679d596a917c2cf Mon Sep 17 00:00:00 2001
+From 41ee79ce99ba36bf186fe71a1b1abd19a89c9493 Mon Sep 17 00:00:00 2001
 From: Venkatasaiprudhvi Raj Sannidhi <vsannidhi@maxlinear.com>
 Date: Wed, 3 Sep 2025 04:50:58 -0700
 Subject: [PATCH] WLANRTSYS-91000 [OCT][Autococ]The OMN IE channel width is set

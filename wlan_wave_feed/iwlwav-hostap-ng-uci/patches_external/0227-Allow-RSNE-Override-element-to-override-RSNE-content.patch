@@ -1,4 +1,4 @@
-From 730259b124b743250ca5e5b4010cc4a073cf792a Mon Sep 17 00:00:00 2001
+From 278d9d207f904df1566c0407aa55e36a683fdd7b Mon Sep 17 00:00:00 2001
 From: Jouni Malinen <quic_jouni@quicinc.com>
 Date: Wed, 11 Oct 2023 12:46:23 +0300
 Subject: [PATCH] Allow RSNE Override element to override RSNE contents during

@@ -1,4 +1,4 @@
-From d366f916f964bb55691169ca86f8c9b9c47fe412 Mon Sep 17 00:00:00 2001
+From 87e94ed0cdedf16502f53c5b70ad33eb2bb62c77 Mon Sep 17 00:00:00 2001
 From: Adil Saeed Musthafa <quic_adilm@quicinc.com>
 Date: Thu, 25 Jul 2024 12:51:07 -0700
 Subject: [PATCH] RSNO: Protect wpa_ie_buf3 from reuse explicitly

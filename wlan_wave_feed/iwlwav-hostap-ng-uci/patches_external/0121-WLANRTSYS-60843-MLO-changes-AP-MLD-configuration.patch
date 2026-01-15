@@ -1,4 +1,4 @@
-From 5b3b467b5169a82812f767194d16604ab287d9ce Mon Sep 17 00:00:00 2001
+From ed239afa0cf04a0cecd4cb7b7f677e18f577230c Mon Sep 17 00:00:00 2001
 From: hmgokhale <hmgokhale@maxlinear.com>
 Date: Thu, 8 Feb 2024 10:29:50 +0530
 Subject: [PATCH] WLANRTSYS-60843 MLO changes: AP MLD configuration

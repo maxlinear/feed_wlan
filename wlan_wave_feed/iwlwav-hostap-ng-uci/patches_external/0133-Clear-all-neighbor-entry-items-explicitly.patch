@@ -1,4 +1,4 @@
-From 142c82165d565f5c3059979f4120a95a1dba5d3c Mon Sep 17 00:00:00 2001
+From b13aca86dc5ba18d889a85240e246e90c7864069 Mon Sep 17 00:00:00 2001
 From: Jouni Malinen <j@w1.fi>
 Date: Sun, 3 Mar 2024 20:39:29 +0200
 Subject: [PATCH] Clear all neighbor entry items explicitly

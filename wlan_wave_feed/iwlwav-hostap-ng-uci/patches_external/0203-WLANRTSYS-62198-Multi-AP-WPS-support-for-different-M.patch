@@ -1,4 +1,4 @@
-From 35b17dfe58f4b32df89aaf5c56199ed5afa0a9fc Mon Sep 17 00:00:00 2001
+From 6e02230bf89c560f62370cbe8aca713553eb0fc9 Mon Sep 17 00:00:00 2001
 From: Manoj Sekar <quic_sekar@quicinc.com>
 Date: Mon, 26 Feb 2024 18:29:13 +0530
 Subject: [PATCH] WLANRTSYS-62198 Multi-AP: WPS support for different Multi-AP

@@ -1,4 +1,4 @@
-From 90e55c37af0cd8e88786e999809df50ebc4fcd06 Mon Sep 17 00:00:00 2001
+From b135ad9a259fd4140e7f095d62ea6a047f24f451 Mon Sep 17 00:00:00 2001
 From: Dmitrijs Martinovs <dmartinovs@maxlinear.com>
 Date: Mon, 4 Sep 2023 14:21:39 +0200
 Subject: [PATCH] WLANRTSYS-58356: Implement Multicast to Unicast conversion

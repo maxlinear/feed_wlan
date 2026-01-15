@@ -1,4 +1,4 @@
-From 7713d064568c70dc7ce5d1b301f39866d02623c4 Mon Sep 17 00:00:00 2001
+From 5ac626137e40887c09d32347d0b0c7f60eabed23 Mon Sep 17 00:00:00 2001
 From: Nikita Chernikov <ncherikov@maxlinear.com>
 Date: Thu, 1 Feb 2024 18:05:02 +0200
 Subject: [PATCH] Update own report in nr_db if SSID is changed

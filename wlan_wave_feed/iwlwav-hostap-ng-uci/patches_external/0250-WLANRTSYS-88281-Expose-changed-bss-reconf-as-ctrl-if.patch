@@ -1,4 +1,4 @@
-From c5a039656449ea14748a2b970fb059383265f8b8 Mon Sep 17 00:00:00 2001
+From 86e665ecf9d7e6118cb241bf1ee4eeae40850aa8 Mon Sep 17 00:00:00 2001
 From: nchernikov <nchernikov@maxlinear.com>
 Date: Wed, 12 Mar 2025 11:51:25 +0200
 Subject: [PATCH] WLANRTSYS-88281 Expose changed bss reconf as ctrl iface
@@ -15,7 +15,7 @@ Signed-off-by: nchernikov <nchernikov@maxlinear.com>
  6 files changed, 93 insertions(+), 1 deletion(-)
 
 diff --git a/hostapd/mxl_ctrl_iface.c b/hostapd/mxl_ctrl_iface.c
-index 6360666c5..5852f62a3 100644
+index bf5e77707..431dae318 100644
 --- a/hostapd/mxl_ctrl_iface.c
 +++ b/hostapd/mxl_ctrl_iface.c
 @@ -3071,6 +3071,21 @@ static int mxl_hostapd_ctrl_iface_set_neighbor_psd(struct hostapd_data *hapd, ch
@@ -40,7 +40,7 @@ index 6360666c5..5852f62a3 100644
  int mxl_hostapd_ctrl_iface_update_mbss_beacon(struct hostapd_data *hapd)
  {
  	struct hostapd_data *bss;
-@@ -3312,6 +3327,9 @@ int mxl_hostapd_ctrl_iface_receive_process(struct hostapd_data *hapd,
+@@ -3311,6 +3326,9 @@ int mxl_hostapd_ctrl_iface_receive_process(struct hostapd_data *hapd,
  	} else if (os_strncmp(buf, "ASSOCRESP_ELEMENTS ", sizeof("ASSOCRESP_ELEMENTS ") - 1) == 0) {
  		if (mxl_hostapd_ctrl_iface_set_elements(hapd, buf + sizeof("ASSOCRESP_ELEMENTS ") - 1, ASSOCRESP_ELEM_TYPE))
  			*reply_len = -1;

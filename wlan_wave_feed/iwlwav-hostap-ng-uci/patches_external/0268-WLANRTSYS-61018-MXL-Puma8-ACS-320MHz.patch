@@ -1,4 +1,4 @@
-From 49963dd72fe4de43b8cf356d50d29b7782cd4318 Mon Sep 17 00:00:00 2001
+From 077a66dfe95cd900ecfdf32f0d3fd84f2a960d1d Mon Sep 17 00:00:00 2001
 From: spatel <spatel@maxlinear.com>
 Date: Thu, 10 Oct 2024 23:18:26 +0530
 Subject: [PATCH] WLANRTSYS-61018 [MXL] Puma8: ACS 320MHz

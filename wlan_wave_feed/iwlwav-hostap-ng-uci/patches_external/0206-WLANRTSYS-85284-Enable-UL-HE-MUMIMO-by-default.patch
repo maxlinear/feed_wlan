@@ -1,4 +1,4 @@
-From 8872f14ba75b6b8448c11f5cada801d55437549c Mon Sep 17 00:00:00 2001
+From aec83efb9b7b227bc2a3109068c1ba7f9af4caaa Mon Sep 17 00:00:00 2001
 From: Sivasubramanian Kannappan <skannappan@maxlinear.com>
 Date: Tue, 22 Oct 2024 08:45:50 +0530
 Subject: [PATCH] WLANRTSYS-85284 - Enable UL HE MUMIMO by default

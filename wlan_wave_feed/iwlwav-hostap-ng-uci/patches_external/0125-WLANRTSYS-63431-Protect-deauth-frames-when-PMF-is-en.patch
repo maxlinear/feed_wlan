@@ -1,4 +1,4 @@
-From 8eceeb7595cca1a2428e3cebb02ca862e6c7ad76 Mon Sep 17 00:00:00 2001
+From a3cfe6af1afe37233bf240e2e49c5fabc1058efe Mon Sep 17 00:00:00 2001
 From: fromans <fromans@maxlinear.com>
 Date: Tue, 20 Feb 2024 14:24:39 +0200
 Subject: [PATCH] WLANRTSYS-63431 Protect deauth frames when PMF is enabled

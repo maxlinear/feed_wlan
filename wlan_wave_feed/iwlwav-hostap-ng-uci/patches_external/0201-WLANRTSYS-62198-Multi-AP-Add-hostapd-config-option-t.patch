@@ -1,4 +1,4 @@
-From b661b800b84c805f01406cb5168bcdf639181031 Mon Sep 17 00:00:00 2001
+From 9b3c5d67965aff7f3f2e2fef2557bf7126203b41 Mon Sep 17 00:00:00 2001
 From: Manoj Sekar <quic_sekar@quicinc.com>
 Date: Mon, 26 Feb 2024 18:21:33 +0530
 Subject: [PATCH] WLANRTSYS-62198 Multi-AP: Add hostapd config option to

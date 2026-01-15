@@ -1,4 +1,4 @@
-From f36637cc1b0a6d62802d692bb1270f0848aaa755 Mon Sep 17 00:00:00 2001
+From 26c6df6888a6b3dcf07800a4f5a7bdc2a122dd8f Mon Sep 17 00:00:00 2001
 From: Bharath Paidupati <bpaidupati@maxlinear.com>
 Date: Wed, 24 Jul 2024 16:31:31 +0530
 Subject: [PATCH] WLANRTSYS-64411 Unconnected STA Enhancement to support 320MHz

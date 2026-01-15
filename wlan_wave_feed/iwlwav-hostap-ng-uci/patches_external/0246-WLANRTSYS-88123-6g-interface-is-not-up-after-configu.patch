@@ -1,4 +1,4 @@
-From 66317d13d61944f3741adee2ee177cc364a04c72 Mon Sep 17 00:00:00 2001
+From c57518efc3f6f17c03b935f16ebaa04d310094ac Mon Sep 17 00:00:00 2001
 From: "Vaish,Prabhav Kumar" <pvaish@maxlinear.com>
 Date: Fri, 28 Feb 2025 15:47:11 +0530
 Subject: [PATCH] WLANRTSYS-88123 6g interface is not up after configuring OWE

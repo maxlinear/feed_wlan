@@ -1,4 +1,4 @@
-From 778f4a5b0471e19cd1f523652fbc342a2b165b78 Mon Sep 17 00:00:00 2001
+From 833a69fdba6305f14dbcc70f727abc94717e4b29 Mon Sep 17 00:00:00 2001
 From: hmgokhale <hmgokhale@maxlinear.com>
 Date: Sun, 26 Oct 2025 23:24:54 -0700
 Subject: [PATCH] WLANRTSYS-96231 Ignore HESSID check if it is not set in

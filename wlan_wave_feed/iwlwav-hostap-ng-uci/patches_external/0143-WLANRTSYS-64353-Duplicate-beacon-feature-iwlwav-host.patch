@@ -1,4 +1,4 @@
-From 5d93661abcbce902f33c280f077e342a08b8f08a Mon Sep 17 00:00:00 2001
+From 51e5e74b07f75e0d8a3b08311a8d38a7b39d6ac5 Mon Sep 17 00:00:00 2001
 From: rportnikh <rportnikh@maxlinear.com>
 Date: Tue, 16 Apr 2024 18:35:17 +0300
 Subject: [PATCH] WLANRTSYS-64353 Duplicate beacon feature iwlwav-hostapd-ng

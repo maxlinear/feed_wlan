@@ -1,4 +1,4 @@
-From 167dacdf3b3ec97ddaa8e0fd0a0af5b5f45aaa53 Mon Sep 17 00:00:00 2001
+From 80f6b61204791ef01692b703558997a168c27570 Mon Sep 17 00:00:00 2001
 From: mj <mj@maxlinear.com>
 Date: Sat, 10 May 2025 19:57:43 +0530
 Subject: [PATCH] WLANRTSYS-88398 Add another 2 param to get Max and current tx

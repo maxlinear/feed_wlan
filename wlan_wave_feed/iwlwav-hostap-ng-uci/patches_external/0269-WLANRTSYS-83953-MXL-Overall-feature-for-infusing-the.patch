@@ -1,4 +1,4 @@
-From 157f2710f8fc89a6d34a1642096212b32ea77902 Mon Sep 17 00:00:00 2001
+From f674e6769cfb5f2a41dbb9c2e41ef35af441ec8c Mon Sep 17 00:00:00 2001
 From: rmunjewar <rmunjewar@maxlinear.com>
 Date: Tue, 5 Nov 2024 12:16:43 +0530
 Subject: [PATCH] WLANRTSYS-83953 [MXL] Overall feature for infusing the

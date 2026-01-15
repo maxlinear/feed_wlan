@@ -1,4 +1,4 @@
-From 1f8dc293fa3ec94692a0799f257d51fed46e22f9 Mon Sep 17 00:00:00 2001
+From c1e01de47c110f802d8bf43ce00b14949316db42 Mon Sep 17 00:00:00 2001
 From: spatel <spatel@maxlinear.com>
 Date: Mon, 24 Feb 2025 17:01:53 +0530
 Subject: [PATCH] WLANRTSYS-87882 Updating long license header for all mxl
@@ -91,7 +91,7 @@ index 6cb7126ff..1fdc2df97 100644
           Copyright 2015 - 2016 Lantiq Beteiligungs-GmbH & Co. KG
           Copyright 2009 - 2014 Lantiq Deutschland GmbH
 diff --git a/hostapd/mxl_ctrl_iface.c b/hostapd/mxl_ctrl_iface.c
-index e3132a0ad..6360666c5 100644
+index 1938ba4cd..bf5e77707 100644
 --- a/hostapd/mxl_ctrl_iface.c
 +++ b/hostapd/mxl_ctrl_iface.c
 @@ -1,6 +1,6 @@

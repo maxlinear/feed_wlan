@@ -1,4 +1,4 @@
-From f8bc469ac807d15e0200f95c684c147e54c6da4c Mon Sep 17 00:00:00 2001
+From 85a5b513e7d5e1c8c5c8f4a7cc9f4cc0a703670c Mon Sep 17 00:00:00 2001
 From: Jurijs Soloveckis <jsoloveckis@maxlinear.com>
 Date: Thu, 21 Mar 2024 16:17:20 +0200
 Subject: [PATCH] WLANRTSYS-64564 Add extended capabilities to hostapd_sta_add

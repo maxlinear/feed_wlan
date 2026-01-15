@@ -1,4 +1,4 @@
-From 4e98ce505b89848cc3627b02a2bcc864e90d065d Mon Sep 17 00:00:00 2001
+From 8000597349d447b1dc571fd600508b8e4ec9f1ce Mon Sep 17 00:00:00 2001
 From: Venkatasaiprudhvi Sannidhi <vsannidhi@maxlinear.com>
 Date: Tue, 10 Jun 2025 10:58:10 +0530
 Subject: [PATCH] WLANRTSYS-88849 [Wav700] [MLD] Intel BE200 is unable to

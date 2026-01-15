@@ -1,4 +1,4 @@
-From 43681a1aaa84a41c52af03088e8c20a833a5e385 Mon Sep 17 00:00:00 2001
+From b15cf6dfd494f75de31a9bf6394df2fe4a79c0a9 Mon Sep 17 00:00:00 2001
 From: Jouni Malinen <quic_jouni@quicinc.com>
 Date: Tue, 23 Jul 2024 21:36:46 +0000
 Subject: [PATCH] RSNO: Support over two octets of RSNXOE capabilities

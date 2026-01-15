@@ -1,4 +1,4 @@
-From a65a05e1d99e1394392e09b866f547ce5d536233 Mon Sep 17 00:00:00 2001
+From fdc66558645a7dadf36989ec6ed59ba412fbcb3b Mon Sep 17 00:00:00 2001
 From: spatel <spatel@maxlinear.com>
 Date: Mon, 14 Oct 2024 16:04:20 +0530
 Subject: [PATCH] WLANRTSYS-84507 6GHz support: Add RNR IE parsing

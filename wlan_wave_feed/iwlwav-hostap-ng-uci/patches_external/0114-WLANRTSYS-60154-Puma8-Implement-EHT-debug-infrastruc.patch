@@ -1,4 +1,4 @@
-From 1cad0c4f3379d00bb2c15e07b137bdec1952579b Mon Sep 17 00:00:00 2001
+From 4dfdb32c3a2eeac60883c4bce45a4caab06f8fad Mon Sep 17 00:00:00 2001
 From: Jurijs Soloveckis <jsoloveckis@maxlinear.com>
 Date: Fri, 24 Nov 2023 10:14:07 +0200
 Subject: [PATCH] WLANRTSYS-60154: Puma8: Implement EHT debug infrastructure

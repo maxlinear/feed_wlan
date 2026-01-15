@@ -1,4 +1,4 @@
-From eb06ef0ea9788c8eb4b554d53a9dc25d0d6227bf Mon Sep 17 00:00:00 2001
+From 4b763dabc27aceaa3e2cc73a6eeb0a879759aae2 Mon Sep 17 00:00:00 2001
 From: tchalivendra <tchalivendra@maxlinear.com>
 Date: Mon, 12 Aug 2024 16:24:12 +0530
 Subject: [PATCH] WLANRTSYS-81666 After reconfiguring hidden SSID,STA unable to

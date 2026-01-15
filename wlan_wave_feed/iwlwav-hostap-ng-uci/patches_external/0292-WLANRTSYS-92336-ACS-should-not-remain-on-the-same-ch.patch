@@ -1,4 +1,4 @@
-From b217b4d611344787cb9fdcf0d2d07b56d6313651 Mon Sep 17 00:00:00 2001
+From 688f0142e21b0a048682f5742a04046d1e0f0cd0 Mon Sep 17 00:00:00 2001
 From: mj <mj@maxlinear.com>
 Date: Thu, 14 Aug 2025 14:51:20 +0530
 Subject: [PATCH] WLANRTSYS-92336 ACS should not remain on the same channel

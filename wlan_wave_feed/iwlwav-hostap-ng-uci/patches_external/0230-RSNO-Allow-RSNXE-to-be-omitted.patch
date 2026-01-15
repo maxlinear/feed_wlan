@@ -1,4 +1,4 @@
-From 4e1d716edf1d647219cdb7e5282bff00f4fc4a4a Mon Sep 17 00:00:00 2001
+From a3cafd87608531806987aa2a90b5b844d8374efa Mon Sep 17 00:00:00 2001
 From: Jouni Malinen <quic_jouni@quicinc.com>
 Date: Tue, 23 Jul 2024 21:20:45 +0000
 Subject: [PATCH] RSNO: Allow RSNXE to be omitted

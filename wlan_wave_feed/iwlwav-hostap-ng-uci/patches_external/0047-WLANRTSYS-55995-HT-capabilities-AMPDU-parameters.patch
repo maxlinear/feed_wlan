@@ -1,4 +1,4 @@
-From a6ecaeaa3aeca8d22e7aa3df3a3967120cf534a3 Mon Sep 17 00:00:00 2001
+From 1365249787fea69029c9905941718ba6c6c566e5 Mon Sep 17 00:00:00 2001
 From: Dmitrijs Martinovs <dmartinovs@maxlinear.com>
 Date: Wed, 7 Jun 2023 16:39:09 +0200
 Subject: [PATCH] WLANRTSYS-55995: HT capabilities AMPDU parameters

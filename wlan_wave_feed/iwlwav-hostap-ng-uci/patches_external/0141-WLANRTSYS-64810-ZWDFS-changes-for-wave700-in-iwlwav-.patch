@@ -1,4 +1,4 @@
-From ac1c8fba4ca52352297035c74a0044ecb991d617 Mon Sep 17 00:00:00 2001
+From 43938f05a9fdffc07f95bab34bf91bf6b7d9f0a5 Mon Sep 17 00:00:00 2001
 From: sjegadeesan <sjegadeesan@maxlinear.com>
 Date: Thu, 28 Mar 2024 14:00:46 +0530
 Subject: [PATCH] WLANRTSYS-64810 ZWDFS changes for wave700 in
@@ -110,7 +110,7 @@ index 048b5503a..a43f63628 100644
  		return 0;
  
 diff --git a/hostapd/mxl_ctrl_iface.c b/hostapd/mxl_ctrl_iface.c
-index 4880a99e4..7f834c2d5 100644
+index 3e1ee0d52..c32aa761c 100644
 --- a/hostapd/mxl_ctrl_iface.c
 +++ b/hostapd/mxl_ctrl_iface.c
 @@ -468,6 +468,11 @@ static int mxl_hostapd_ctrl_iface_get_dfs_stats(struct hostapd_iface *iface, con

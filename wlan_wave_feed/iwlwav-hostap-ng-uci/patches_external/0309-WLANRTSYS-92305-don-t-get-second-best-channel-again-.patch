@@ -1,4 +1,4 @@
-From bc07ed2516d7a7d07b6347686a7e4c3ce63a6ea7 Mon Sep 17 00:00:00 2001
+From 92777b5b89c40ead5fb2a79af58926aab979956b Mon Sep 17 00:00:00 2001
 From: mj <mj@maxlinear.com>
 Date: Sat, 6 Sep 2025 09:28:40 -0700
 Subject: [PATCH] WLANRTSYS-92305 don't get second best channel again if second

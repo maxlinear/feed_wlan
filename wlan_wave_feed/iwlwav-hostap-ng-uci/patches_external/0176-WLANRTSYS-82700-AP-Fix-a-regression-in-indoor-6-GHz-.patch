@@ -1,4 +1,4 @@
-From 7782866a3032cb6f9e4fa8af3e0491fc01f02c4f Mon Sep 17 00:00:00 2001
+From 93e13e31bfd819e261b2748004f646f2c60eb552 Mon Sep 17 00:00:00 2001
 From: Jouni Malinen <j@w1.fi>
 Date: Thu, 4 Jan 2024 11:04:20 +0200
 Subject: [PATCH] WLANRTSYS-82700 AP: Fix a regression in indoor 6 GHz AP

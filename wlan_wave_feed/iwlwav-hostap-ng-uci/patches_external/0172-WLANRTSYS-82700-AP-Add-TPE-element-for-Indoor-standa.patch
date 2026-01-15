@@ -1,4 +1,4 @@
-From 494459dc790018a3fa77b651a145ab329dad6c03 Mon Sep 17 00:00:00 2001
+From 6039b4b23fd44161351b075e62ae6f83fe211e4b Mon Sep 17 00:00:00 2001
 From: Ilan Peer <ilan.peer@intel.com>
 Date: Fri, 22 Dec 2023 11:04:21 +0200
 Subject: [PATCH] WLANRTSYS-82700 AP: Add TPE element for Indoor standard power

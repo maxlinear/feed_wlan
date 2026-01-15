@@ -1,4 +1,4 @@
-From c85b01e96dc5df5aed9a152738e859b84e86bd88 Mon Sep 17 00:00:00 2001
+From 23ddcd8b36464547088f84ef87a157cca4f84c15 Mon Sep 17 00:00:00 2001
 From: Jurijs Soloveckis <jsoloveckis@maxlinear.com>
 Date: Fri, 2 Jun 2023 08:23:41 +0200
 Subject: [PATCH] WLANRTSYS-55807: Implement new API: update_wan_metrics

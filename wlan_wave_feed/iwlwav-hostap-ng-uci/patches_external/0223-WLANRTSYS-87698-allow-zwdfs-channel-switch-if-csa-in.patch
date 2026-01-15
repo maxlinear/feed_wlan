@@ -1,4 +1,4 @@
-From 6a1218e1b48fe7cd29ce770ab3cbb38e400921cc Mon Sep 17 00:00:00 2001
+From 0fbf1cb416c954b5c98b5417663aa27c9bb0b3ed Mon Sep 17 00:00:00 2001
 From: mj <mj@maxlinear.com>
 Date: Mon, 3 Feb 2025 09:31:10 +0530
 Subject: [PATCH] WLANRTSYS-87698 allow zwdfs channel switch if csa in progress
