@@ -1,0 +1,62 @@
+From f136837202393a7e1f3182e9efdbf1aaa0c1a5c2 Mon Sep 17 00:00:00 2001
+From: Benjamin Berg <benjamin.berg@intel.com>
+Date: Thu, 28 Dec 2023 15:12:48 +0200
+Subject: [PATCH] nl80211: Pass wiphy events to all affected interfaces
+
+Previously, we would only pass the event to the first interface that
+matches. However, one wiphy can have multiple interfaces and each one
+needs to get the event delivered. Without this, it could e.g. happen
+that a radar detection event is forwarded to p2p-dev-wlan0 and not to
+the wlan0 interface which actually needs it.
+
+As such, keep iterating if we are processing a wiphy match and send the
+event to all affected BSSs.
+
+Signed-off-by: Benjamin Berg <benjamin.berg@intel.com>
+---
+ src/drivers/driver_nl80211_event.c | 17 ++++++++++++-----
+ 1 file changed, 12 insertions(+), 5 deletions(-)
+
+diff --git a/src/drivers/driver_nl80211_event.c b/src/drivers/driver_nl80211_event.c
+index 06da93617..993fb8fc9 100644
+--- a/src/drivers/driver_nl80211_event.c
++++ b/src/drivers/driver_nl80211_event.c
+@@ -4106,6 +4106,7 @@ int process_global_event(struct nl_msg *msg, void *arg)
+ 	u64 wdev_id = 0;
+ 	int wdev_id_set = 0;
+ 	int wiphy_idx_set = 0;
++	bool processed = false;
+ 
+ 	/* Event marker, all prior events have been processed */
+ 	if (gnlh->cmd == NL80211_CMD_GET_PROTOCOL_FEATURES) {
+@@ -4154,16 +4155,22 @@ int process_global_event(struct nl_msg *msg, void *arg)
+ 			    (wiphy_idx_set && wiphy_idx == wiphy_idx_rx) ||
+ 			    (wdev_id_set && bss->wdev_id_set &&
+ 			     wdev_id == bss->wdev_id)) {
++				processed = true;
+ 				do_process_drv_event(bss, gnlh->cmd, tb);
+-				return NL_SKIP;
++				if (!wiphy_idx_set)
++					return NL_SKIP;
+ 			}
+ 		}
+-		wpa_printf(MSG_DEBUG,
+-			   "nl80211: Ignored event %d (%s) for foreign interface (ifindex %d wdev 0x%llx)",
+-			   gnlh->cmd, nl80211_command_to_string(gnlh->cmd),
+-			   ifidx, (long long unsigned int) wdev_id);
+ 	}
+ 
++	if (processed)
++		return NL_SKIP;
++
++	wpa_printf(MSG_DEBUG,
++		   "nl80211: Ignored event %d (%s) for foreign interface (ifindex %d wdev 0x%llx wiphy %d)",
++		   gnlh->cmd, nl80211_command_to_string(gnlh->cmd),
++		   ifidx, (long long unsigned int) wdev_id, wiphy_idx_rx);
++
+ 	return NL_SKIP;
+ }
+ 
+-- 
+2.43.0
+

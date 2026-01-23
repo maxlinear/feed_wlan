@@ -1,0 +1,196 @@
+From 82c60dd54417e4bdbe604daebde4f2c22542f00a Mon Sep 17 00:00:00 2001
+From: Daniel Gabay <daniel.gabay@intel.com>
+Date: Tue, 7 Jan 2025 14:51:48 +0200
+Subject: [PATCH] STA: Support SPP A-MSDU negotiation
+
+Implement SPP (Signaling and Payload Protected) A-MSDU negotiation.
+Station advertise support in the RSNXE in the (Re)Association Request
+frame whenever:
+ - The driver supports SPP A-MSDU.
+ - AP advertises SPP A-MSDU support in the RSNXE.
+ - CCMP/GCMP cipher is used as the pairwise cipher in the connection.
+
+Indicate to the driver to enable SPP A-MSDU in association parameters
+when AP also advertised support in its RSNXE.
+
+Signed-off-by: Daniel Gabay <daniel.gabay@intel.com>
+---
+ src/rsn_supp/wpa.c                |  9 +++++++++
+ src/rsn_supp/wpa.h                |  7 +++++++
+ src/rsn_supp/wpa_i.h              |  1 +
+ src/rsn_supp/wpa_ie.c             |  2 ++
+ wpa_supplicant/ctrl_iface.c       |  1 +
+ wpa_supplicant/pasn_supplicant.c  |  4 ++++
+ wpa_supplicant/sme.c              |  3 +++
+ wpa_supplicant/wpa_supplicant.c   | 10 ++++++++++
+ wpa_supplicant/wpa_supplicant_i.h |  1 +
+ 9 files changed, 38 insertions(+)
+
+diff --git a/src/rsn_supp/wpa.c b/src/rsn_supp/wpa.c
+index 100c523a6..48924418b 100644
+--- a/src/rsn_supp/wpa.c
++++ b/src/rsn_supp/wpa.c
+@@ -4971,6 +4971,9 @@ int wpa_sm_set_param(struct wpa_sm *sm, enum wpa_sm_conf_params param,
+ 	case WPA_PARAM_USE_EXT_KEY_ID:
+ 		sm->use_ext_key_id = value;
+ 		break;
++	case WPA_PARAM_SPP_AMSDU:
++		sm->spp_amsdu = !!value;
++		break;
+ #ifdef CONFIG_TESTING_OPTIONS
+ 	case WPA_PARAM_FT_RSNXE_USED:
+ 		sm->ft_rsnxe_used = value;
+@@ -7202,6 +7205,12 @@ void wpa_sm_pmksa_cache_reconfig(struct wpa_sm *sm)
+ }
+ 
+ 
++bool wpa_sm_uses_spp_amsdu(struct wpa_sm *sm)
++{
++	return sm ? sm->spp_amsdu : false;
++}
++
++
+ struct rsn_pmksa_cache * wpa_sm_get_pmksa_cache(struct wpa_sm *sm)
+ {
+ 	return sm ? sm->pmksa : NULL;
+diff --git a/src/rsn_supp/wpa.h b/src/rsn_supp/wpa.h
+index 25657d605..c011162f7 100644
+--- a/src/rsn_supp/wpa.h
++++ b/src/rsn_supp/wpa.h
+@@ -140,6 +140,7 @@ enum wpa_sm_conf_params {
+ 	WPA_PARAM_RSN_OVERRIDE,
+ 	WPA_PARAM_RSN_OVERRIDE_SUPPORT,
+ 	WPA_PARAM_EAPOL_2_KEY_INFO_SET_MASK,
++	WPA_PARAM_SPP_AMSDU,
+ };
+ 
+ enum wpa_rsn_override {
+@@ -279,6 +280,7 @@ void wpa_sm_pmksa_cache_reconfig(struct wpa_sm *sm);
+ int wpa_sm_set_mlo_params(struct wpa_sm *sm, const struct wpa_sm_mlo *mlo);
+ void wpa_sm_set_driver_bss_selection(struct wpa_sm *sm,
+ 				     bool driver_bss_selection);
++bool wpa_sm_uses_spp_amsdu(struct wpa_sm *sm);
+ 
+ #else /* CONFIG_NO_WPA */
+ 
+@@ -527,6 +529,11 @@ static inline void wpa_sm_set_driver_bss_selection(struct wpa_sm *sm,
+ {
+ }
+ 
++static inline bool wpa_sm_uses_spp_amsdu(struct wpa_sm *sm)
++{
++	return false;
++}
++
+ #endif /* CONFIG_NO_WPA */
+ 
+ #ifdef CONFIG_IEEE80211R
+diff --git a/src/rsn_supp/wpa_i.h b/src/rsn_supp/wpa_i.h
+index 44c172ccb..bb1641ba2 100644
+--- a/src/rsn_supp/wpa_i.h
++++ b/src/rsn_supp/wpa_i.h
+@@ -113,6 +113,7 @@ struct wpa_sm {
+ 	unsigned int secure_rtt:1;
+ 	unsigned int prot_range_neg:1;
+ 	unsigned int ssid_protection:1;
++	unsigned int spp_amsdu:1;
+ 
+ 	u8 *assoc_wpa_ie; /* Own WPA/RSN IE from (Re)AssocReq */
+ 	size_t assoc_wpa_ie_len;
+diff --git a/src/rsn_supp/wpa_ie.c b/src/rsn_supp/wpa_ie.c
+index 515f1b027..d07f5b367 100644
+--- a/src/rsn_supp/wpa_ie.c
++++ b/src/rsn_supp/wpa_ie.c
+@@ -394,6 +394,8 @@ int wpa_gen_rsnxe(struct wpa_sm *sm, u8 *rsnxe, size_t rsnxe_len)
+ 		capab |= BIT(WLAN_RSNX_CAPAB_URNM_MFPR);
+ 	if (sm->ssid_protection)
+ 		capab |= BIT(WLAN_RSNX_CAPAB_SSID_PROTECTION);
++	if (sm->spp_amsdu)
++		capab |= BIT(WLAN_RSNX_CAPAB_SPP_A_MSDU);
+ 
+ 	if (!capab)
+ 		return 0; /* no supported extended RSN capabilities */
+diff --git a/wpa_supplicant/ctrl_iface.c b/wpa_supplicant/ctrl_iface.c
+index ce821cd03..fdf3a5d4c 100644
+--- a/wpa_supplicant/ctrl_iface.c
++++ b/wpa_supplicant/ctrl_iface.c
+@@ -10549,6 +10549,7 @@ static int wpas_ctrl_resend_assoc(struct wpa_supplicant *wpa_s)
+ 	params.key_mgmt_suite = wpa_s->key_mgmt;
+ 	params.wpa_proto = wpa_s->wpa_proto;
+ 	params.mgmt_frame_protection = wpa_s->sme.mfp;
++	params.spp_amsdu = wpa_s->sme.spp_amsdu;
+ 	params.rrm_used = wpa_s->rrm.rrm_used;
+ 	if (wpa_s->sme.prev_bssid_set)
+ 		params.prev_bssid = wpa_s->sme.prev_bssid;
+diff --git a/wpa_supplicant/pasn_supplicant.c b/wpa_supplicant/pasn_supplicant.c
+index a46fe46b1..5579fe498 100644
+--- a/wpa_supplicant/pasn_supplicant.c
++++ b/wpa_supplicant/pasn_supplicant.c
+@@ -583,6 +583,10 @@ static void wpas_pasn_auth_start_cb(struct wpa_radio_work *work, int deinit)
+ 		capab |= BIT(WLAN_RSNX_CAPAB_SECURE_RTT);
+ 	if (wpa_s->drv_flags2 & WPA_DRIVER_FLAGS2_PROT_RANGE_NEG_STA)
+ 		capab |= BIT(WLAN_RSNX_CAPAB_URNM_MFPR);
++	if ((wpa_s->drv_flags2 & WPA_DRIVER_FLAGS2_SPP_AMSDU) &&
++	    ieee802_11_rsnx_capab(rsnxe, WLAN_RSNX_CAPAB_SPP_A_MSDU))
++		capab |= BIT(WLAN_RSNX_CAPAB_SPP_A_MSDU);
++
+ 	pasn_set_rsnxe_caps(pasn, capab);
+ 	pasn_register_callbacks(pasn, wpa_s, wpas_pasn_send_mlme, NULL);
+ 	ssid = wpa_config_get_network(wpa_s->conf, awork->network_id);
+diff --git a/wpa_supplicant/sme.c b/wpa_supplicant/sme.c
+index 32474a21a..cae65a76a 100644
+--- a/wpa_supplicant/sme.c
++++ b/wpa_supplicant/sme.c
+@@ -854,6 +854,8 @@ static void sme_send_authentication(struct wpa_supplicant *wpa_s,
+ 		}
+ 	}
+ 
++	wpa_s->sme.spp_amsdu = wpa_sm_uses_spp_amsdu(wpa_s->wpa);
++
+ #ifdef CONFIG_P2P
+ 	if (wpa_s->global->p2p) {
+ 		u8 *pos;
+@@ -2685,6 +2687,7 @@ mscs_fail:
+ #endif /* CONFIG_IEEE80211R */
+ 	params.mode = mode;
+ 	params.mgmt_frame_protection = wpa_s->sme.mfp;
++	params.spp_amsdu = wpa_s->sme.spp_amsdu;
+ 	params.rrm_used = wpa_s->rrm.rrm_used;
+ 	if (wpa_s->sme.prev_bssid_set)
+ 		params.prev_bssid = wpa_s->sme.prev_bssid;
+diff --git a/wpa_supplicant/wpa_supplicant.c b/wpa_supplicant/wpa_supplicant.c
+index 132d91598..b43692d33 100644
+--- a/wpa_supplicant/wpa_supplicant.c
++++ b/wpa_supplicant/wpa_supplicant.c
+@@ -2272,6 +2272,16 @@ int wpa_supplicant_set_suites(struct wpa_supplicant *wpa_s,
+ 		wpa_sm_set_param(wpa_s->wpa, WPA_PARAM_SSID_PROTECTION, false);
+ 	}
+ 
++	wpa_sm_set_param(wpa_s->wpa, WPA_PARAM_SPP_AMSDU,
++			 (wpa_s->drv_flags2 & WPA_DRIVER_FLAGS2_SPP_AMSDU) &&
++			 ieee802_11_rsnx_capab(bss_rsnx,
++					       WLAN_RSNX_CAPAB_SPP_A_MSDU) &&
++			 wpa_s->pairwise_cipher & (WPA_CIPHER_CCMP_256 |
++						   WPA_CIPHER_GCMP_256 |
++						   WPA_CIPHER_CCMP |
++						   WPA_CIPHER_GCMP) &&
++			 (wpa_s->wpa_proto & WPA_PROTO_RSN));
++
+ 	if (!skip_default_rsne) {
+ 		if (wpa_sm_set_assoc_wpa_ie_default(wpa_s->wpa, wpa_ie,
+ 						    wpa_ie_len)) {
+diff --git a/wpa_supplicant/wpa_supplicant_i.h b/wpa_supplicant/wpa_supplicant_i.h
+index 93592a137..d5e951f06 100644
+--- a/wpa_supplicant/wpa_supplicant_i.h
++++ b/wpa_supplicant/wpa_supplicant_i.h
+@@ -1035,6 +1035,7 @@ struct wpa_supplicant {
+ 		u8 sched_obss_scan;
+ 		u16 obss_scan_int;
+ 		u16 bss_max_idle_period;
++		bool spp_amsdu;
+ #ifdef CONFIG_SAE
+ 		struct sae_data sae;
+ 		struct wpabuf *sae_token;
+-- 
+2.43.0
+

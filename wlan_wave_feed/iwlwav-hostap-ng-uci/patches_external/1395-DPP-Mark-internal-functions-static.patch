@@ -1,0 +1,43 @@
+From be7beba15503c4c5de55a2feb0910df0cc471056 Mon Sep 17 00:00:00 2001
+From: Jouni Malinen <j@w1.fi>
+Date: Sat, 22 Feb 2025 10:49:49 +0200
+Subject: [PATCH] DPP: Mark internal functions static
+
+These are not used outside the files in which they are defined.
+
+Signed-off-by: Jouni Malinen <j@w1.fi>
+---
+ src/common/dpp.c          | 3 ++-
+ src/common/dpp_reconfig.c | 2 +-
+ 2 files changed, 3 insertions(+), 2 deletions(-)
+
+diff --git a/src/common/dpp.c b/src/common/dpp.c
+index 094c14bbe..1c3e453a1 100644
+--- a/src/common/dpp.c
++++ b/src/common/dpp.c
+@@ -299,7 +299,8 @@ int dpp_parse_uri_info(struct dpp_bootstrap_info *bi, const char *info)
+ }
+ 
+ 
+-int dpp_parse_uri_version(struct dpp_bootstrap_info *bi, const char *version)
++static int dpp_parse_uri_version(struct dpp_bootstrap_info *bi,
++				 const char *version)
+ {
+ #ifdef CONFIG_DPP2
+ 	if (!version || DPP_VERSION < 2)
+diff --git a/src/common/dpp_reconfig.c b/src/common/dpp_reconfig.c
+index 452c50247..e55789c87 100644
+--- a/src/common/dpp_reconfig.c
++++ b/src/common/dpp_reconfig.c
+@@ -569,7 +569,7 @@ fail:
+ }
+ 
+ 
+-struct wpabuf *
++static struct wpabuf *
+ dpp_reconfig_build_conf(struct dpp_authentication *auth)
+ {
+ 	struct wpabuf *msg = NULL, *clear;
+-- 
+2.43.0
+

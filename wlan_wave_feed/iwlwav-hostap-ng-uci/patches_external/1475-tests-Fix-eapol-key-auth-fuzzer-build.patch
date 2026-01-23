@@ -1,0 +1,29 @@
+From 581848d119dabbd84e4cf8a10219c3c48d38e5df Mon Sep 17 00:00:00 2001
+From: Jouni Malinen <j@w1.fi>
+Date: Sun, 2 Mar 2025 17:47:42 +0200
+Subject: [PATCH] tests: Fix eapol-key-auth fuzzer build
+
+Fixes: c439291fcc5e ("AP MLD: Store PMKSA generated from SAE authentication into ml_pmksa")
+Signed-off-by: Jouni Malinen <j@w1.fi>
+---
+ tests/fuzzing/eapol-key-auth/eapol-key-auth.c | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/tests/fuzzing/eapol-key-auth/eapol-key-auth.c b/tests/fuzzing/eapol-key-auth/eapol-key-auth.c
+index 17f69fd76..ba31799f4 100644
+--- a/tests/fuzzing/eapol-key-auth/eapol-key-auth.c
++++ b/tests/fuzzing/eapol-key-auth/eapol-key-auth.c
+@@ -262,8 +262,8 @@ static int auth_init(struct wpa *wpa)
+ 	}
+ 
+ 	if (wpa_validate_wpa_ie(wpa->auth_group, wpa->auth, 2412, supp_ie,
+-				supp_ie_len, NULL, 0, NULL, 0, NULL, 0, NULL) !=
+-	    WPA_IE_OK) {
++				supp_ie_len, NULL, 0, NULL, 0, NULL, 0, NULL,
++				false) != WPA_IE_OK) {
+ 		wpa_printf(MSG_DEBUG, "AUTH: wpa_validate_wpa_ie() failed");
+ 		return -1;
+ 	}
+-- 
+2.43.0
+

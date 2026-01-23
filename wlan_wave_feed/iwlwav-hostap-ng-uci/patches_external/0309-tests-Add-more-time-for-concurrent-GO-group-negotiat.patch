@@ -1,0 +1,59 @@
+From 2e7b51719b112d5556ec48394baaa0172251eec2 Mon Sep 17 00:00:00 2001
+From: Jouni Malinen <quic_jouni@quicinc.com>
+Date: Fri, 26 Jan 2024 11:18:24 +0200
+Subject: [PATCH] tests: Add more time for concurrent GO group negotiation
+ cases
+
+It is possible for the parallel connection attempt with an AP and P2P
+device discovery with P2P search on social channels to take close to the
+15 second timeout and these test cases could fail because of that
+instead of a real issue. Increase the timeout to make this less likely
+to cause test failures. In addition, add a debug entry to the log on the
+r_dev timeout to avoid confusing print from the i_dev thread reporting a
+timeout even when the first timeout was on the rdev_
+
+Signed-off-by: Jouni Malinen <quic_jouni@quicinc.com>
+---
+ tests/hwsim/p2p_utils.py            | 1 +
+ tests/hwsim/test_p2p_concurrency.py | 6 ++++--
+ 2 files changed, 5 insertions(+), 2 deletions(-)
+
+diff --git a/tests/hwsim/p2p_utils.py b/tests/hwsim/p2p_utils.py
+index fe115e0ab..c0db35a86 100644
+--- a/tests/hwsim/p2p_utils.py
++++ b/tests/hwsim/p2p_utils.py
+@@ -351,6 +351,7 @@ def go_neg_pbc(i_dev, r_dev, i_intent=None, r_intent=None, i_freq=None,
+     logger.debug("Wait for GO Negotiation Request on r_dev")
+     ev = r_dev.wait_global_event(["P2P-GO-NEG-REQUEST"], timeout=timeout - 5)
+     if ev is None:
++        logger.debug("Wait for P2P-GO-NEG-REQUEST timed out on r_dev - wait for i_dev thread to complete")
+         t.join()
+         raise Exception("GO Negotiation timed out")
+     r_dev.dump_monitor()
+diff --git a/tests/hwsim/test_p2p_concurrency.py b/tests/hwsim/test_p2p_concurrency.py
+index 8fb2bb929..a7287679c 100644
+--- a/tests/hwsim/test_p2p_concurrency.py
++++ b/tests/hwsim/test_p2p_concurrency.py
+@@ -221,7 +221,8 @@ def test_concurrent_grpform_while_connecting2(dev, apdev):
+     dev[0].global_request("SET p2p_no_group_iface 0")
+ 
+     [i_res, r_res] = go_neg_pbc(i_dev=dev[0], i_intent=15, i_freq=2412,
+-                                r_dev=dev[1], r_intent=0, r_freq=2412)
++                                r_dev=dev[1], r_intent=0, r_freq=2412,
++                                timeout=30)
+     check_grpform_results(i_res, r_res)
+     remove_group(dev[0], dev[1])
+ 
+@@ -240,7 +241,8 @@ def test_concurrent_grpform_while_connecting3(dev, apdev):
+     dev[0].global_request("SET p2p_no_group_iface 0")
+ 
+     [i_res, r_res] = go_neg_pbc(i_dev=dev[1], i_intent=15, i_freq=2412,
+-                                r_dev=dev[0], r_intent=0, r_freq=2412)
++                                r_dev=dev[0], r_intent=0, r_freq=2412,
++                                timeout=30)
+     check_grpform_results(i_res, r_res)
+     remove_group(dev[0], dev[1])
+ 
+-- 
+2.43.0
+

@@ -1,0 +1,32 @@
+From ee9cd7d74cf2d8f9634a490a8c3eb0a9506f2a56 Mon Sep 17 00:00:00 2001
+From: Vinayak Yadawad <vinayak.yadawad@broadcom.com>
+Date: Fri, 13 Dec 2024 14:15:27 +0530
+Subject: [PATCH] OWE: Fix SSID comparison in transition mode case
+
+ret_ssid is a pointer to a pointer to the SSID and as such, it needs to
+be referenced once here for the comparison just like ret_ssid_len. This
+was broken recently as a part of duplicated code removal.
+
+Fixes: ddfed3f08473 ("OWE: Reduce code duplication in OWE element parsing")
+Signed-off-by: Vinayak Yadawad <vinayak.yadawad@broadcom.com>
+---
+ wpa_supplicant/events.c | 3 ++-
+ 1 file changed, 2 insertions(+), 1 deletion(-)
+
+diff --git a/wpa_supplicant/events.c b/wpa_supplicant/events.c
+index 00109a0cd..279838afa 100644
+--- a/wpa_supplicant/events.c
++++ b/wpa_supplicant/events.c
+@@ -1162,7 +1162,8 @@ static void owe_trans_ssid(struct wpa_supplicant *wpa_s, struct wpa_bss *bss,
+ 			if (wpas_network_disabled(wpa_s, ssid))
+ 				continue;
+ 			if (ssid->ssid_len == *ret_ssid_len &&
+-			    os_memcmp(ssid->ssid, ret_ssid, *ret_ssid_len) == 0) {
++			    os_memcmp(ssid->ssid, *ret_ssid, *ret_ssid_len) ==
++			    0) {
+ 				/* OWE BSS in transition mode for a currently
+ 				 * enabled OWE network. */
+ 				wpa_dbg(wpa_s, MSG_DEBUG,
+-- 
+2.43.0
+

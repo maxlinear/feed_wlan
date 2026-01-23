@@ -1,0 +1,89 @@
+From 7d4166f98fa2b21b7c2fff66787698227fcb9962 Mon Sep 17 00:00:00 2001
+From: Jouni Malinen <j@w1.fi>
+Date: Sat, 25 Jan 2025 11:32:11 +0200
+Subject: [PATCH] tests: RADIUS and discarding invalid RADIUS messages
+
+Signed-off-by: Jouni Malinen <j@w1.fi>
+---
+ tests/hwsim/test_eap_proto.py |  6 ++++--
+ tests/hwsim/test_radius.py    | 26 +++++++++++++++++++++++++-
+ 2 files changed, 29 insertions(+), 3 deletions(-)
+
+diff --git a/tests/hwsim/test_eap_proto.py b/tests/hwsim/test_eap_proto.py
+index 651a631f5..ac0a15640 100644
+--- a/tests/hwsim/test_eap_proto.py
++++ b/tests/hwsim/test_eap_proto.py
+@@ -82,8 +82,10 @@ def add_message_authenticator_attr(reply, digest):
+         digest = b"0x" + binascii.hexlify(digest)
+     reply.AddAttribute("Message-Authenticator", digest)
+ 
+-def build_message_auth(pkt, reply):
+-    hmac_obj = hmac.new(reply.secret, digestmod=hashlib.md5)
++def build_message_auth(pkt, reply, secret=None):
++    if secret is None:
++        secret = reply.secret
++    hmac_obj = hmac.new(secret, digestmod=hashlib.md5)
+     hmac_obj.update(struct.pack("B", reply.code))
+     hmac_obj.update(struct.pack("B", reply.id))
+ 
+diff --git a/tests/hwsim/test_radius.py b/tests/hwsim/test_radius.py
+index cfa8378c2..d4fa9fdb2 100644
+--- a/tests/hwsim/test_radius.py
++++ b/tests/hwsim/test_radius.py
+@@ -1206,7 +1206,8 @@ def build_tunnel_password(secret, authenticator, psk):
+     return data
+ 
+ def start_radius_psk_server(psk, invalid_code=False, acct_interim_interval=0,
+-                            session_timeout=0, reject=False):
++                            session_timeout=0, reject=False,
++                            inject_invalid=False):
+     try:
+         import pyrad.server
+         import pyrad.packet
+@@ -1218,6 +1219,13 @@ def start_radius_psk_server(psk, invalid_code=False, acct_interim_interval=0,
+         def _HandleAuthPacket(self, pkt):
+             pyrad.server.Server._HandleAuthPacket(self, pkt)
+             logger.info("Received authentication request")
++
++            if self.t_events['inject_invalid']:
++                reply = self.CreateReplyPacket(pkt)
++                reply.code = pyrad.packet.AccessAccept
++                build_message_auth(pkt, reply, secret=b'\x00')
++                self.SendReplyPacket(pkt.fd, reply)
++
+             reply = self.CreateReplyPacket(pkt)
+             reply.code = pyrad.packet.AccessAccept
+             if self.t_events['invalid_code']:
+@@ -1272,6 +1280,7 @@ def start_radius_psk_server(psk, invalid_code=False, acct_interim_interval=0,
+     t_events['acct_interim_interval'] = acct_interim_interval
+     t_events['session_timeout'] = session_timeout
+     t_events['reject'] = reject
++    t_events['inject_invalid'] = inject_invalid
+     t = threading.Thread(target=run_pyrad_server, args=(srv, t_events))
+     t.start()
+     return t, t_events
+@@ -1433,6 +1442,21 @@ def test_radius_psk_oom(dev, apdev):
+         t_events['stop'].set()
+         t.join()
+ 
++def test_radius_psk_discard(dev, apdev):
++    """WPA2 with PSK from RADIUS and discarding invalid RADIUS messages"""
++    t, t_events = start_radius_psk_server("12345678", inject_invalid=True)
++
++    try:
++        params = hostapd_radius_psk_test_params()
++        hapd = hostapd.add_ap(apdev[0], params)
++        dev[0].connect("test-wpa2-psk", psk="12345678", scan_freq="2412")
++        t_events['psk'] = "0123456789abcdef"
++        dev[1].connect("test-wpa2-psk", psk="0123456789abcdef",
++                       scan_freq="2412")
++    finally:
++        t_events['stop'].set()
++        t.join()
++
+ def test_radius_sae_password(dev, apdev):
+     """WPA3 with SAE password from RADIUS"""
+     check_sae_capab(dev[0])
+-- 
+2.43.0
+

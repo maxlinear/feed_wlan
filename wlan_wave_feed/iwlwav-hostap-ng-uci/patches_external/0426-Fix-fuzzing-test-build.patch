@@ -1,0 +1,30 @@
+From 40d5fecac270a82f521e19439a7c226b65bd0398 Mon Sep 17 00:00:00 2001
+From: Jouni Malinen <quic_jouni@quicinc.com>
+Date: Tue, 5 Mar 2024 17:09:25 +0200
+Subject: [PATCH] Fix fuzzing test build
+
+The commit that renamed the WNM BTM deallocation function forgot to
+update the fuzz tester tool.
+
+Fixes: e508c070c40e ("WNM: Keep BTM information until connection completes")
+Signed-off-by: Jouni Malinen <quic_jouni@quicinc.com>
+---
+ tests/fuzzing/wnm/wnm.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/tests/fuzzing/wnm/wnm.c b/tests/fuzzing/wnm/wnm.c
+index 7afc648e4..1ae018994 100644
+--- a/tests/fuzzing/wnm/wnm.c
++++ b/tests/fuzzing/wnm/wnm.c
+@@ -60,7 +60,7 @@ static int init_wpa(struct arg_ctx *ctx)
+ 
+ static void deinit_wpa(struct arg_ctx *ctx)
+ {
+-	wnm_deallocate_memory(&ctx->wpa_s);
++	wnm_btm_reset(&ctx->wpa_s);
+ }
+ 
+ 
+-- 
+2.43.0
+

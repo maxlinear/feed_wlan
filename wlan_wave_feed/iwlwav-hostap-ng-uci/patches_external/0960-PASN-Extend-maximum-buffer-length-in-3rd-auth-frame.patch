@@ -1,0 +1,29 @@
+From 8cef9b1b16d00c48afc75b93b6f109746a5da3f6 Mon Sep 17 00:00:00 2001
+From: Shivani Baranwal <quic_shivbara@quicinc.com>
+Date: Mon, 5 Aug 2024 02:43:59 +0530
+Subject: [PATCH] PASN: Extend maximum buffer length in 3rd auth frame
+
+This can be longer than 255 octets, so u8 is not sufficient.
+
+Signed-off-by: Shivani Baranwal <quic_shivbara@quicinc.com>
+---
+ src/pasn/pasn_initiator.c | 3 ++-
+ 1 file changed, 2 insertions(+), 1 deletion(-)
+
+diff --git a/src/pasn/pasn_initiator.c b/src/pasn/pasn_initiator.c
+index c8e5b3d99..432e0c840 100644
+--- a/src/pasn/pasn_initiator.c
++++ b/src/pasn/pasn_initiator.c
+@@ -682,7 +682,8 @@ static struct wpabuf * wpas_pasn_build_auth_3(struct pasn_data *pasn)
+ {
+ 	struct wpabuf *buf, *wrapped_data_buf = NULL;
+ 	u8 mic[WPA_PASN_MAX_MIC_LEN];
+-	u8 mic_len, data_len;
++	u8 mic_len;
++	size_t data_len;
+ 	const u8 *data;
+ 	u8 *ptr;
+ 	u8 wrapped_data;
+-- 
+2.43.0
+

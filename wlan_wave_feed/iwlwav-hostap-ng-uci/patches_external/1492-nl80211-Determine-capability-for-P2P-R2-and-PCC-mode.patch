@@ -1,0 +1,49 @@
+From f02e1d777471a5ceb5acaa759daa562c6cb96e3c Mon Sep 17 00:00:00 2001
+From: Vinay Gannevaram <quic_vganneva@quicinc.com>
+Date: Sun, 19 Jan 2025 13:31:58 +0530
+Subject: [PATCH] nl80211: Determine capability for P2P-R2 and PCC mode
+
+Set the capability flag based on the nl80211 vendor feature
+advertisement for P2P-R2 and PCC modes. By default, enable this for all
+other drivers (i.e., any driver not supporting the QCA feature
+capability indication) until a specific capability is defined to enable
+or disable it.
+
+Signed-off-by: Vinay Gannevaram <quic_vganneva@quicinc.com>
+---
+ src/drivers/driver_nl80211_capa.c | 12 ++++++++++++
+ 1 file changed, 12 insertions(+)
+
+diff --git a/src/drivers/driver_nl80211_capa.c b/src/drivers/driver_nl80211_capa.c
+index dc3a99c9e..d367eed3f 100644
+--- a/src/drivers/driver_nl80211_capa.c
++++ b/src/drivers/driver_nl80211_capa.c
+@@ -1463,6 +1463,12 @@ static void qca_nl80211_get_features(struct wpa_driver_nl80211_data *drv)
+ 	if (check_feature(QCA_WLAN_VENDOR_FEATURE_NAN_USD_OFFLOAD, &info))
+ 		drv->capa.flags2 |= WPA_DRIVER_FLAGS2_NAN_OFFLOAD;
+ 
++	if (!check_feature(QCA_WLAN_VENDOR_FEATURE_P2P_V2, &info))
++		drv->capa.flags2 &= ~WPA_DRIVER_FLAGS2_P2P_FEATURE_V2;
++
++	if (!check_feature(QCA_WLAN_VENDOR_FEATURE_PCC_MODE, &info))
++		drv->capa.flags2 &= ~WPA_DRIVER_FLAGS2_P2P_FEATURE_PCC_MODE;
++
+ 	os_free(info.flags);
+ }
+ 
+@@ -1583,6 +1589,12 @@ int wpa_driver_nl80211_capa(struct wpa_driver_nl80211_data *drv)
+ 	if (!info.data_tx_status)
+ 		drv->capa.flags &= ~WPA_DRIVER_FLAGS_EAPOL_TX_STATUS;
+ 
++	/* Enable P2P2 and PCC mode capabilities by default for the drivers
++	 * which can't explicitly indicate whether these capabilities are
++	 * supported. */
++	drv->capa.flags2 |= WPA_DRIVER_FLAGS2_P2P_FEATURE_V2;
++	drv->capa.flags2 |= WPA_DRIVER_FLAGS2_P2P_FEATURE_PCC_MODE;
++
+ #ifdef CONFIG_DRIVER_NL80211_QCA
+ 	if (!(info.capa->flags & WPA_DRIVER_FLAGS_DFS_OFFLOAD))
+ 		qca_nl80211_check_dfs_capa(drv);
+-- 
+2.43.0
+

@@ -1,0 +1,31 @@
+From 85851d1dcdb149f8341a52037beeb9c14d7f6cc8 Mon Sep 17 00:00:00 2001
+From: Jouni Malinen <j@w1.fi>
+Date: Sun, 2 Feb 2025 17:25:01 +0200
+Subject: [PATCH] tests: Enable TLS 1.3 tests with OpenSSL 3.4
+
+Replace the explicit list of OpenSSL 3.x versions with a wildcard 3.*
+entry since TLS 1.3 support is very unlikely to be removed in the future
+versions.
+
+Signed-off-by: Jouni Malinen <j@w1.fi>
+---
+ tests/hwsim/test_ap_eap.py | 3 +--
+ 1 file changed, 1 insertion(+), 2 deletions(-)
+
+diff --git a/tests/hwsim/test_ap_eap.py b/tests/hwsim/test_ap_eap.py
+index fe97080d9..6cf427eb1 100644
+--- a/tests/hwsim/test_ap_eap.py
++++ b/tests/hwsim/test_ap_eap.py
+@@ -99,8 +99,7 @@ def check_pkcs5_v15_support(dev):
+ 
+ def check_tls13_support(dev):
+     tls = dev.request("GET tls_library")
+-    ok = ['run=OpenSSL 1.1.1', 'run=OpenSSL 3.0', 'run=OpenSSL 3.1',
+-          'run=OpenSSL 3.2', 'run=OpenSSL 3.3', 'wolfSSL']
++    ok = ['run=OpenSSL 1.1.1', 'run=OpenSSL 3.', 'wolfSSL']
+     for s in ok:
+         if s in tls:
+             return
+-- 
+2.43.0
+

@@ -1,0 +1,67 @@
+From 56038999765906710d58baad536323e976e1a2d2 Mon Sep 17 00:00:00 2001
+From: Chenming Huang <quic_chenhuan@quicinc.com>
+Date: Thu, 23 Nov 2023 15:19:22 +0530
+Subject: [PATCH] AP MLD: Handle EAPOL only on the association link
+
+For some implementation, there is no link id in EAPOL event, e.g., use
+drv_event_eapol_rx for receiving. Current design for such case is switch
+to a link that stores the peer. However, this is error-prone because for
+non-AP MLD case, sta_info is stored in all valid links but EAPOL sm is
+only initialized in the association link. If EAPOL RX event is handled
+in a non-association link, it will be discarded and this leads to EAPOL
+timeout.
+
+So find the association link to handle received EAPOL frame in such
+case. This replaces the previously used workaround for RSN/wpa_sm for
+the no link id specified case.
+
+Signed-off-by: Chenming Huang <quic_chenhuan@quicinc.com>
+---
+ src/ap/drv_callbacks.c | 16 ++++++++--------
+ 1 file changed, 8 insertions(+), 8 deletions(-)
+
+diff --git a/src/ap/drv_callbacks.c b/src/ap/drv_callbacks.c
+index 92e679b86..26c2c591a 100644
+--- a/src/ap/drv_callbacks.c
++++ b/src/ap/drv_callbacks.c
+@@ -1849,8 +1849,7 @@ static struct hostapd_data * hostapd_find_by_sta(struct hostapd_iface *iface,
+ 
+ 
+ #ifdef CONFIG_IEEE80211BE
+-static bool search_mld_sta(struct hostapd_data **p_hapd, const u8 *src,
+-			   bool rsn)
++static bool search_mld_sta(struct hostapd_data **p_hapd, const u8 *src)
+ {
+ 	struct hostapd_data *hapd = *p_hapd;
+ 	unsigned int i;
+@@ -1866,8 +1865,13 @@ static bool search_mld_sta(struct hostapd_data **p_hapd, const u8 *src,
+ 		    hconf->mld_id != hapd->conf->mld_id)
+ 			continue;
+ 
+-		h_hapd = hostapd_find_by_sta(h, src, true);
++		h_hapd = hostapd_find_by_sta(h, src, false);
+ 		if (h_hapd) {
++			struct sta_info *sta = ap_get_sta(h_hapd, src);
++
++			if (sta && sta->mld_info.mld_sta &&
++			    sta->mld_assoc_link_id != h_hapd->mld_link_id)
++				continue;
+ 			*p_hapd = h_hapd;
+ 			return true;
+ 		}
+@@ -1902,11 +1906,7 @@ static void hostapd_event_eapol_rx(struct hostapd_data *hapd, const u8 *src,
+ 		if (h_hapd)
+ 			hapd = h_hapd;
+ 	} else if (hapd->conf->mld_ap) {
+-		bool found;
+-
+-		found = search_mld_sta(&hapd, src, true);
+-		if (!found)
+-			search_mld_sta(&hapd, src, false);
++		search_mld_sta(&hapd, src);
+ 	} else {
+ 		hapd = hostapd_find_by_sta(hapd->iface, src, false);
+ 	}
+-- 
+2.43.0
+

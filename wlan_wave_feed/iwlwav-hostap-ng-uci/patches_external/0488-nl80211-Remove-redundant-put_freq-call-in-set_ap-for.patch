@@ -1,0 +1,37 @@
+From b810426eaa23a8b63c997ba2f4ece8d2ffbe7571 Mon Sep 17 00:00:00 2001
+From: Aditya Kumar Singh <quic_adisi@quicinc.com>
+Date: Wed, 6 Mar 2024 12:08:40 +0530
+Subject: [PATCH] nl80211: Remove redundant put_freq call in set_ap() for AP
+ MLD
+
+wpa_driver_nl80211_set_ap() called nl80211_put_freq_params() twice if AP
+is an AP MLD. It called once while putting the MLO link ID and the other
+time in the normal flow if frequency info is present. Doing this twice
+is not required.
+
+Call put_freq once during the normal flow only and separately of that,
+add the link ID for AP MLD.
+
+Signed-off-by: Aditya Kumar Singh <quic_adisi@quicinc.com>
+---
+ src/drivers/driver_nl80211.c | 4 +---
+ 1 file changed, 1 insertion(+), 3 deletions(-)
+
+diff --git a/src/drivers/driver_nl80211.c b/src/drivers/driver_nl80211.c
+index 830b0fe33..5dec24d51 100644
+--- a/src/drivers/driver_nl80211.c
++++ b/src/drivers/driver_nl80211.c
+@@ -5104,9 +5104,7 @@ static int wpa_driver_nl80211_set_ap(void *priv,
+ 			   params->mld_link_id);
+ 
+ 		if (nla_put_u8(msg, NL80211_ATTR_MLO_LINK_ID,
+-			       params->mld_link_id) ||
+-		    (params->freq &&
+-		     nl80211_put_freq_params(msg, params->freq) < 0))
++			       params->mld_link_id))
+ 			goto fail;
+ 
+ 		if (params->freq)
+-- 
+2.43.0
+

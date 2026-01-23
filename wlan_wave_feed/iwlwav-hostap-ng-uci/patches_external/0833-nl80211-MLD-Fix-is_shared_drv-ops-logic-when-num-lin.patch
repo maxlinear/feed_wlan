@@ -1,0 +1,118 @@
+From c3beaf6b86f96dd5a927fadb9d6a9039244b8fc6 Mon Sep 17 00:00:00 2001
+From: Ganesh Kariganuru Mahabalesh <quic_gkarigan@quicinc.com>
+Date: Thu, 25 Apr 2024 15:45:25 +0530
+Subject: [PATCH] nl80211: MLD: Fix is_shared_drv ops logic when num links is
+ one
+
+Whenever there is only one BSS left and if the number of links is one,
+is_shared_drv() returns false assuming no one else is sharing the driver
+interface. However, when the number of links is one, this does not
+guarantee that the caller's link ID is the only active link ID. If this
+is not the case and false is returned, the caller calls hapd_deinit()
+which will free the driver interface. However, when the actual active
+link_id reaches deinit path, this leads to dereferencing a NULL pointer
+ultimately leading to segmentation fault.
+
+To prevent this, pass the link ID into the is_drv_shared() ops and match
+it with only with active link IDs. Only return false if they are same.
+
+Signed-off-by: Ganesh Kariganuru Mahabalesh <quic_gkarigan@quicinc.com>
+Signed-off-by: Aditya Kumar Singh <quic_adisi@quicinc.com>
+---
+ src/ap/hostapd.c             |  3 ++-
+ src/drivers/driver.h         |  9 +++++++--
+ src/drivers/driver_nl80211.c | 26 +++++++++++++++++++-------
+ 3 files changed, 28 insertions(+), 10 deletions(-)
+
+diff --git a/src/ap/hostapd.c b/src/ap/hostapd.c
+index d46358bba..57ae12d4a 100644
+--- a/src/ap/hostapd.c
++++ b/src/ap/hostapd.c
+@@ -3400,7 +3400,8 @@ static void hostapd_cleanup_driver(const struct wpa_driver_ops *driver,
+ 		driver->hapd_deinit(drv_priv);
+ 	} else if (hostapd_mld_is_first_bss(iface->bss[0]) &&
+ 		   driver->is_drv_shared &&
+-		   !driver->is_drv_shared(drv_priv)) {
++		   !driver->is_drv_shared(drv_priv,
++					  iface->bss[0]->mld_link_id)) {
+ 		driver->hapd_deinit(drv_priv);
+ 		hostapd_mld_interface_freed(iface->bss[0]);
+ 	} else if (hostapd_if_link_remove(iface->bss[0],
+diff --git a/src/drivers/driver.h b/src/drivers/driver.h
+index f7beed8c0..c4cf46c30 100644
+--- a/src/drivers/driver.h
++++ b/src/drivers/driver.h
+@@ -5196,14 +5196,19 @@ struct wpa_driver_ops {
+ 	/**
+ 	 * is_drv_shared - Check whether the driver interface is shared
+ 	 * @priv: Private driver interface data from init()
++	 * @link_id: Link ID to match
++	 * Returns: true if it is being used or else false.
+ 	 *
+ 	 * Checks whether the driver interface is being used by other partner
+ 	 * BSS(s) or not. This is used to decide whether the driver interface
+ 	 * needs to be deinitilized when one interface is getting deinitialized.
+ 	 *
+-	 * Returns: true if it is being used or else false.
++	 * NOTE: @link_id will be used only when there is only one BSS
++	 * present and if that single link is active. In that case, the
++	 * link ID is matched with the active link_id to decide whether the
++	 * driver interface is being used by other partner BSS(s).
+ 	 */
+-	bool (*is_drv_shared)(void *priv);
++	bool (*is_drv_shared)(void *priv, int link_id);
+ 
+ 	/**
+ 	 * link_sta_remove - Remove a link STA from an MLD STA
+diff --git a/src/drivers/driver_nl80211.c b/src/drivers/driver_nl80211.c
+index 592e66fd6..b729b3e5b 100644
+--- a/src/drivers/driver_nl80211.c
++++ b/src/drivers/driver_nl80211.c
+@@ -10797,11 +10797,13 @@ static int driver_nl80211_link_remove(void *priv, enum wpa_driver_if_type type,
+ }
+ 
+ 
+-static bool nl80211_is_drv_shared(void *priv)
++static bool nl80211_is_drv_shared(void *priv, int link_id)
+ {
+ 	struct i802_bss *bss = priv;
+ 	struct wpa_driver_nl80211_data *drv = bss->drv;
+-	unsigned int num_bss = 0;
++	unsigned int num_bss = 0, num_links = 0;
++	bool self = false;
++	u8 i;
+ 
+ 	/* If any other BSS exist, someone else is using this since at this
+ 	 * time, we would have removed all BSSs created by this driver and only
+@@ -10816,13 +10818,23 @@ static bool nl80211_is_drv_shared(void *priv)
+ 	/* This is the only BSS present */
+ 	bss = priv;
+ 
+-	/* If only one/no link is there no one is sharing */
+-	if (bss->valid_links <= 1)
++	for_each_link(bss->valid_links, i) {
++		num_links++;
++		if (i == link_id)
++			self = true;
++	}
++
++	/* More than one links means some one is still sharing */
++	if (num_links > 1)
++		return true;
++
++	/* Even if only one link is there, it should match the given
++	 * link ID to assert that no one else is sharing. */
++	if (num_links == 1 && self)
+ 		return false;
+ 
+-	/* More than one link means someone is still using. To check if
+-	 * only 1 bit is set, power of 2 condition can be checked. */
+-	if (!(bss->valid_links & (bss->valid_links - 1)))
++	/* No links are active means no one is sharing */
++	if (num_links == 0)
+ 		return false;
+ 
+ 	return true;
+-- 
+2.43.0
+

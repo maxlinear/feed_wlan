@@ -1,0 +1,31 @@
+From 3386e1327e57d0f3878bd39a32916b133d16bcca Mon Sep 17 00:00:00 2001
+From: Jouni Malinen <j@w1.fi>
+Date: Sat, 24 Feb 2024 18:29:57 +0200
+Subject: [PATCH] l2_packet_freebsd: Fix macOS build
+
+ETHER_VLAN_ENCAP_LEN does not seem to be defined in macOS
+net/ethernet.h, so define that, if needed, to avoid build issues.
+
+Fixes: 5b21f4861c2e ("l2_packet_freebsd: Enable receiving priority tagged (VID=0) frames")
+Signed-off-by: Jouni Malinen <j@w1.fi>
+---
+ src/l2_packet/l2_packet_freebsd.c | 3 +++
+ 1 file changed, 3 insertions(+)
+
+diff --git a/src/l2_packet/l2_packet_freebsd.c b/src/l2_packet/l2_packet_freebsd.c
+index 3f0b29924..481c8ca4d 100644
+--- a/src/l2_packet/l2_packet_freebsd.c
++++ b/src/l2_packet/l2_packet_freebsd.c
+@@ -30,6 +30,9 @@
+ #include "eloop.h"
+ #include "l2_packet.h"
+ 
++#ifndef ETHER_VLAN_ENCAP_LEN
++#define ETHER_VLAN_ENCAP_LEN 4
++#endif
+ 
+ static const u8 pae_group_addr[ETH_ALEN] =
+ { 0x01, 0x80, 0xc2, 0x00, 0x00, 0x03 };
+-- 
+2.43.0
+

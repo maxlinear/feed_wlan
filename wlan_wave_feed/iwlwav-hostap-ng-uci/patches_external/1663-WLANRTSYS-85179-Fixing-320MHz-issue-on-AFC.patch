@@ -1,0 +1,29 @@
+From 038ab2e293155b94153032e91de09bd0fe8ec2ee Mon Sep 17 00:00:00 2001
+From: Ainy Kumari <quic_ainykuma@quicinc.com>
+Date: Thu, 22 Feb 2024 09:32:04 +0530
+Subject: [PATCH] WLANRTSYS-85179 Fixing 320MHz issue on AFC
+
+nl80211 Process 6 GHz regulatory rules to accurate channel flags
+
+This is needed to be able to indicate all supported operating classes.
+
+Signed-off-by: Ainy Kumari <quic_ainykuma@quicinc.com>
+---
+ src/ap/afc.c | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/src/ap/afc.c b/src/ap/afc.c
+index cb27e94bc..6b91ef2cf 100644
+--- a/src/ap/afc.c
++++ b/src/ap/afc.c
+@@ -235,6 +235,7 @@ static struct json_object * hostapd_afc_get_opclass_chan_list(u8 op_class)
+ 	case 134: /* 160MHz */
+ 		chan_offset = 14;
+ 		break;
++	// ToDo: This proprietary code should be removed once AFC v7 patches merged in opensource
+ #ifdef CONFIG_VENDOR_MXL
+ 	case 137: /* 320MHz */
+ 		chan_offset = 30;
+-- 
+2.43.0
+

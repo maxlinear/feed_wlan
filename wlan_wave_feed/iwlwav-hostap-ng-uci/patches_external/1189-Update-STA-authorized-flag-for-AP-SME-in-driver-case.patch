@@ -1,0 +1,73 @@
+From f55b9c405bfd05ebf0e72af0bf562a2342b0b65c Mon Sep 17 00:00:00 2001
+From: Jouni Malinen <j@w1.fi>
+Date: Sun, 22 Dec 2024 23:04:51 +0200
+Subject: [PATCH] Update STA authorized flag for AP SME in driver cases for
+ open network
+
+With AP SME in hostapd/wpa_supplicant, TX status handler for
+(Re)Association Response frame takes care of this, but with AP SME in
+driver cases, ap_sta_set_authorized(1) is not sufficient to update the
+driver flags for the STA, so cover that case as well.
+
+Signed-off-by: Jouni Malinen <j@w1.fi>
+---
+ src/ap/hostapd.c  | 8 +++++++-
+ src/ap/sta_info.c | 5 +++--
+ src/ap/sta_info.h | 2 +-
+ 3 files changed, 11 insertions(+), 4 deletions(-)
+
+diff --git a/src/ap/hostapd.c b/src/ap/hostapd.c
+index 58f93e28b..5d8df7800 100644
+--- a/src/ap/hostapd.c
++++ b/src/ap/hostapd.c
+@@ -4108,7 +4108,13 @@ void hostapd_new_assoc_sta(struct hostapd_data *hapd, struct sta_info *sta,
+ 	 * IEEE 802.1X/WPA code will start accounting after the station has
+ 	 * been authorized. */
+ 	if (!hapd->conf->ieee802_1x && !hapd->conf->wpa && !hapd->conf->osen) {
+-		ap_sta_set_authorized(hapd, sta, 1);
++		if (ap_sta_set_authorized(hapd, sta, 1)) {
++			/* Update driver authorized flag for the STA to cover
++			 * the case where AP SME is in the driver and there is
++			 * no separate event for handling TX status event for
++			 * the (Re)Association Response frame. */
++			hostapd_set_sta_flags(hapd, sta);
++		}
+ 		os_get_reltime(&sta->connected_time);
+ 		accounting_sta_start(hapd, sta);
+ 	}
+diff --git a/src/ap/sta_info.c b/src/ap/sta_info.c
+index 9c39b1cc6..5a7677905 100644
+--- a/src/ap/sta_info.c
++++ b/src/ap/sta_info.c
+@@ -1658,12 +1658,13 @@ void ap_sta_set_authorized_event(struct hostapd_data *hapd,
+ }
+ 
+ 
+-void ap_sta_set_authorized(struct hostapd_data *hapd, struct sta_info *sta,
++bool ap_sta_set_authorized(struct hostapd_data *hapd, struct sta_info *sta,
+ 			   int authorized)
+ {
+ 	if (!ap_sta_set_authorized_flag(hapd, sta, authorized))
+-		return;
++		return false;
+ 	ap_sta_set_authorized_event(hapd, sta, authorized);
++	return true;
+ }
+ 
+ 
+diff --git a/src/ap/sta_info.h b/src/ap/sta_info.h
+index 2cd456bbb..d22e86d45 100644
+--- a/src/ap/sta_info.h
++++ b/src/ap/sta_info.h
+@@ -386,7 +386,7 @@ bool ap_sta_set_authorized_flag(struct hostapd_data *hapd, struct sta_info *sta,
+ 				int authorized);
+ void ap_sta_set_authorized_event(struct hostapd_data *hapd,
+ 				 struct sta_info *sta, int authorized);
+-void ap_sta_set_authorized(struct hostapd_data *hapd,
++bool ap_sta_set_authorized(struct hostapd_data *hapd,
+ 			   struct sta_info *sta, int authorized);
+ static inline int ap_sta_is_authorized(struct sta_info *sta)
+ {
+-- 
+2.43.0
+

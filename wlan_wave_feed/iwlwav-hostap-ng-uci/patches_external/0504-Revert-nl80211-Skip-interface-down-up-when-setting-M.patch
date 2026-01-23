@@ -1,0 +1,65 @@
+From 9ac0e785c382a2dabdea81b25019ae3c3727b656 Mon Sep 17 00:00:00 2001
+From: Hu Wang <quic_huw@quicinc.com>
+Date: Tue, 26 Mar 2024 22:53:34 -0700
+Subject: [PATCH] Revert "nl80211: Skip interface down/up when setting MAC
+ address"
+
+This reverts commit bffd2b39944330b0ffbaba62036a73d2c5e23bfb.
+
+Revert this commit to fix a regression when setting up P2P Group Owner
+on some old device.
+
+Signed-off-by: Jouni Malinen <quic_jouni@quicinc.com>
+---
+ src/drivers/driver_nl80211.c | 22 ++++++----------------
+ 1 file changed, 6 insertions(+), 16 deletions(-)
+
+diff --git a/src/drivers/driver_nl80211.c b/src/drivers/driver_nl80211.c
+index 6666313de..4949de577 100644
+--- a/src/drivers/driver_nl80211.c
++++ b/src/drivers/driver_nl80211.c
+@@ -11871,15 +11871,6 @@ static int nl80211_set_mac_addr(void *priv, const u8 *addr)
+ 	if (!addr)
+ 		addr = drv->perm_addr;
+ 
+-	/*
+-	 * Try to change the address first without setting the interface
+-	 * down and then fall back to DOWN/set addr/UP if the first
+-	 * attempt failed. This can reduce the interface setup time
+-	 * significantly with some drivers.
+-	 */
+-	if (!linux_set_ifhwaddr(drv->global->ioctl_sock, bss->ifname, addr))
+-		goto done;
+-
+ 	if (linux_set_iface_flags(drv->global->ioctl_sock, bss->ifname, 0) < 0)
+ 		return -1;
+ 
+@@ -11896,19 +11887,18 @@ static int nl80211_set_mac_addr(void *priv, const u8 *addr)
+ 		return -1;
+ 	}
+ 
+-	if (linux_set_iface_flags(drv->global->ioctl_sock, bss->ifname, 1) < 0)
+-	{
+-		wpa_printf(MSG_DEBUG,
+-			   "nl80211: Could not restore interface UP after set_mac_addr");
+-	}
+-
+-done:
+ 	wpa_printf(MSG_DEBUG, "nl80211: set_mac_addr for %s to " MACSTR,
+ 		   bss->ifname, MAC2STR(addr));
+ 	drv->addr_changed = new_addr;
+ 	os_memcpy(bss->prev_addr, bss->addr, ETH_ALEN);
+ 	os_memcpy(bss->addr, addr, ETH_ALEN);
+ 
++	if (linux_set_iface_flags(drv->global->ioctl_sock, bss->ifname, 1) < 0)
++	{
++		wpa_printf(MSG_DEBUG,
++			   "nl80211: Could not restore interface UP after set_mac_addr");
++	}
++
+ 	return 0;
+ }
+ 
+-- 
+2.43.0
+

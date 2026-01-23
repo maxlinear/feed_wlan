@@ -1,0 +1,31 @@
+From 9b1e0ab4e89c04c8bd537a664a67ba28c6e31f5c Mon Sep 17 00:00:00 2001
+From: Andrei Otcheretianski <andrei.otcheretianski@intel.com>
+Date: Wed, 17 Apr 2024 15:28:12 +0300
+Subject: [PATCH] dbus: Use correct values for persistent group
+
+D-Bus expects "persistent" to be a bool (0/1) and crashes otherwise.
+Since persistent may also be 2 convert it to boolean.
+
+Signed-off-by: Andrei Otcheretianski <andrei.otcheretianski@intel.com>
+Signed-off-by: Benjamin Berg <benjamin.berg@intel.com>
+---
+ wpa_supplicant/dbus/dbus_new.c | 3 ++-
+ 1 file changed, 2 insertions(+), 1 deletion(-)
+
+diff --git a/wpa_supplicant/dbus/dbus_new.c b/wpa_supplicant/dbus/dbus_new.c
+index 8bd6a9a43..ef7076934 100644
+--- a/wpa_supplicant/dbus/dbus_new.c
++++ b/wpa_supplicant/dbus/dbus_new.c
+@@ -1663,7 +1663,8 @@ void wpas_dbus_signal_p2p_group_started(struct wpa_supplicant *wpa_s,
+ 					      wpa_s->dbus_new_path) ||
+ 	    !wpa_dbus_dict_append_string(&dict_iter, "role",
+ 					 client ? "client" : "GO") ||
+-	    !wpa_dbus_dict_append_bool(&dict_iter, "persistent", persistent) ||
++	    !wpa_dbus_dict_append_bool(&dict_iter, "persistent",
++				       !!persistent) ||
+ 	    !wpa_dbus_dict_append_object_path(&dict_iter, "group_object",
+ 					      wpa_s->dbus_groupobj_path) ||
+ 	    (ip &&
+-- 
+2.43.0
+

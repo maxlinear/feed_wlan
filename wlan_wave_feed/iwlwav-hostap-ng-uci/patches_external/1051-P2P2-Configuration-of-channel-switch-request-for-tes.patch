@@ -1,0 +1,92 @@
+From 41d09f84490c46c925485c2ba39e9edbff955a1b Mon Sep 17 00:00:00 2001
+From: Shivani Baranwal <quic_shivbara@quicinc.com>
+Date: Thu, 18 Jul 2024 20:25:24 +0530
+Subject: [PATCH] P2P2: Configuration of channel switch request for testing
+ purposes
+
+P2P2 advertises support for channel switch request in the PCEA
+attribute. Add support to configure it through control interface for
+testing purposes.
+
+Signed-off-by: Shivani Baranwal <quic_shivbara@quicinc.com>
+---
+ src/p2p/p2p.c               | 6 ++++++
+ src/p2p/p2p.h               | 6 ++++++
+ src/p2p/p2p_build.c         | 3 +++
+ wpa_supplicant/ctrl_iface.c | 5 +++++
+ 4 files changed, 20 insertions(+)
+
+diff --git a/src/p2p/p2p.c b/src/p2p/p2p.c
+index bb970f802..b2c7e5418 100644
+--- a/src/p2p/p2p.c
++++ b/src/p2p/p2p.c
+@@ -5032,6 +5032,12 @@ void p2p_set_twt_power_mgmt(struct p2p_data *p2p, int val)
+ 		p2p->cfg->twt_power_mgmt = false;
+ }
+ 
++
++void p2p_set_chan_switch_req_enable(struct p2p_data *p2p, bool val)
++{
++	p2p->cfg->chan_switch_req_enable = val;
++}
++
+ #endif /* CONFIG_TESTING_OPTIONS */
+ 
+ 
+diff --git a/src/p2p/p2p.h b/src/p2p/p2p.h
+index c7a803bc3..2c99daf83 100644
+--- a/src/p2p/p2p.h
++++ b/src/p2p/p2p.h
+@@ -721,6 +721,11 @@ struct p2p_config {
+ 	 */
+ 	u16 comeback_after;
+ 
++	/**
++	 * chan_switch_req_enable - Enable P2P client channel switch request
++	 */
++	bool chan_switch_req_enable;
++
+ 	/**
+ 	 * cb_ctx - Context to use with callback functions
+ 	 */
+@@ -2706,6 +2711,7 @@ void p2p_set_comeback_after(struct p2p_data *p2p, int comeback_after);
+ void p2p_set_reg_info(struct p2p_data *p2p, u8 val);
+ void p2p_set_twt_power_mgmt(struct p2p_data *p2p, int val);
+ void p2p_set_dev_addr(struct p2p_data *p2p, const u8 *addr);
++void p2p_set_chan_switch_req_enable(struct p2p_data *p2p, bool val);
+ 
+ int p2p_get_listen_freq(struct p2p_data *p2p, const u8 *peer_addr);
+ int p2p_initiate_pasn_auth(struct p2p_data *p2p, const u8 *addr, int freq);
+diff --git a/src/p2p/p2p_build.c b/src/p2p/p2p_build.c
+index ddadd34bc..015eed22c 100644
+--- a/src/p2p/p2p_build.c
++++ b/src/p2p/p2p_build.c
+@@ -741,6 +741,9 @@ void p2p_buf_add_pcea(struct wpabuf *buf, struct p2p_data *p2p)
+ 	if (p2p->cfg->dfs_owner)
+ 		capability_info |= P2P_PCEA_DFS_OWNER;
+ 
++	if (p2p->cfg->chan_switch_req_enable)
++		capability_info |= P2P_PCEA_CLI_REQ_CS;
++
+ 	if (p2p->cfg->pairing_config.pairing_capable)
+ 		capability_info |= P2P_PCEA_PAIRING_CAPABLE;
+ 
+diff --git a/wpa_supplicant/ctrl_iface.c b/wpa_supplicant/ctrl_iface.c
+index 15ff0f2b7..90fa6ed2b 100644
+--- a/wpa_supplicant/ctrl_iface.c
++++ b/wpa_supplicant/ctrl_iface.c
+@@ -7745,6 +7745,11 @@ static int p2p_ctrl_set(struct wpa_supplicant *wpa_s, char *cmd)
+ 		p2p_set_twt_power_mgmt(wpa_s->global->p2p, atoi(param));
+ 		return 0;
+ 	}
++
++	if (os_strcmp(cmd, "chan_switch_req_enable") == 0) {
++		p2p_set_chan_switch_req_enable(wpa_s->global->p2p, atoi(param));
++		return 0;
++	}
+ #endif /* CONFIG_TESTING_OPTIONS */
+ 
+ 	wpa_printf(MSG_DEBUG, "CTRL_IFACE: Unknown P2P_SET field value '%s'",
+-- 
+2.43.0
+

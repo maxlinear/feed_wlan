@@ -1,0 +1,31 @@
+From 2605fbc815c7741aa43d4db7c30bcc2a6ce5e000 Mon Sep 17 00:00:00 2001
+From: Aditya Kumar Singh <quic_adisi@quicinc.com>
+Date: Tue, 11 Feb 2025 16:36:01 +0530
+Subject: [PATCH] MBSSID: Fix Non-Inheritance element length calculation
+
+Commit 4bfc007b61e6 ("MBSSID: Fix Non-Inheritance element encoding")
+added one octet while filling the data. However, this one octet is
+missing during length calculation. Add it now.
+
+Fixes: 4bfc007b61e6 ("MBSSID: Fix Non-Inheritance element encoding")
+Signed-off-by: Aditya Kumar Singh <quic_adisi@quicinc.com>
+---
+ src/ap/ieee802_11.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/src/ap/ieee802_11.c b/src/ap/ieee802_11.c
+index ec1437c1e..61dbfe43f 100644
+--- a/src/ap/ieee802_11.c
++++ b/src/ap/ieee802_11.c
+@@ -8322,7 +8322,7 @@ static size_t hostapd_eid_mbssid_elem_len(struct hostapd_data *hapd,
+ 		else if (hapd->conf->xrates_supported)
+ 			ie_count++;
+ 		if (ie_count)
+-			nontx_profile_len += 4 + ie_count;
++			nontx_profile_len += 4 + ie_count + 1;
+ 
+ 		if (len + nontx_profile_len > 255)
+ 			break;
+-- 
+2.43.0
+

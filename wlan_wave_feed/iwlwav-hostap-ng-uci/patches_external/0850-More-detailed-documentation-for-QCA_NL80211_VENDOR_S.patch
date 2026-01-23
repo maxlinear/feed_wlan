@@ -1,0 +1,44 @@
+From 5fd3d05a404ed7167c1cb33f27ed621e73469116 Mon Sep 17 00:00:00 2001
+From: Jouni Malinen <quic_jouni@quicinc.com>
+Date: Wed, 14 Aug 2024 00:40:50 +0300
+Subject: [PATCH] More detailed documentation for
+ QCA_NL80211_VENDOR_SUBCMD_GET_FEATURES
+
+Be more specific on how the QCA_WLAN_VENDOR_ATTR_FEATURE_FLAGS attribute
+is used in the response.
+
+Signed-off-by: Jouni Malinen <quic_jouni@quicinc.com>
+---
+ src/common/qca-vendor.h | 9 +++++++--
+ 1 file changed, 7 insertions(+), 2 deletions(-)
+
+diff --git a/src/common/qca-vendor.h b/src/common/qca-vendor.h
+index b39650ee8..5e7b67b5b 100644
+--- a/src/common/qca-vendor.h
++++ b/src/common/qca-vendor.h
+@@ -230,7 +230,8 @@ enum qca_radiotap_vendor_ids {
+  *
+  * @QCA_NL80211_VENDOR_SUBCMD_GET_FEATURES: Command to get the features
+  *	supported by the driver. enum qca_wlan_vendor_features defines
+- *	the possible features.
++ *	the possible features that are encoded in
++ *	QCA_WLAN_VENDOR_ATTR_FEATURE_FLAGS.
+  *
+  * @QCA_NL80211_VENDOR_SUBCMD_DFS_OFFLOAD_CAC_STARTED: Event used by driver,
+  *	which supports DFS offloading, to indicate a channel availability check
+@@ -1543,7 +1544,11 @@ enum qca_wlan_vendor_attr {
+ 	 */
+ 	QCA_WLAN_VENDOR_ATTR_ROAMING_POLICY = 5,
+ 	QCA_WLAN_VENDOR_ATTR_MAC_ADDR = 6,
+-	/* used by QCA_NL80211_VENDOR_SUBCMD_GET_FEATURES */
++	/* Feature flags contained in a byte array. The feature flags are
++	 * identified by their bit index (see &enum qca_wlan_vendor_features)
++	 * with the first byte being the least significant one and the last one
++	 * being the most significant one. Used by
++	 * QCA_NL80211_VENDOR_SUBCMD_GET_FEATURES. */
+ 	QCA_WLAN_VENDOR_ATTR_FEATURE_FLAGS = 7,
+ 	QCA_WLAN_VENDOR_ATTR_TEST = 8,
+ 	/* used by QCA_NL80211_VENDOR_SUBCMD_GET_FEATURES */
+-- 
+2.43.0
+

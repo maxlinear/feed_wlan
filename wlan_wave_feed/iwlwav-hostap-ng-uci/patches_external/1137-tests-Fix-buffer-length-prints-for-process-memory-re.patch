@@ -1,0 +1,49 @@
+From fe9cca7ea886d7d7f8b9e6cf673f0cbb57c27c22 Mon Sep 17 00:00:00 2001
+From: Jouni Malinen <j@w1.fi>
+Date: Sat, 14 Dec 2024 13:01:24 +0200
+Subject: [PATCH] tests: Fix buffer length prints for process memory reading
+
+len(buf) does not really work anymore after the previous optimizations.
+
+Fixes: dc766bb57ebe ("tests: Optimize process memory reading using join")
+Signed-off-by: Jouni Malinen <j@w1.fi>
+---
+ tests/hwsim/test_ap_psk.py | 6 ++++--
+ 1 file changed, 4 insertions(+), 2 deletions(-)
+
+diff --git a/tests/hwsim/test_ap_psk.py b/tests/hwsim/test_ap_psk.py
+index 8ddf7d831..45eca0304 100644
+--- a/tests/hwsim/test_ap_psk.py
++++ b/tests/hwsim/test_ap_psk.py
+@@ -2639,6 +2639,7 @@ def find_wpas_process(dev):
+ 
+ def read_process_memory(pid, key=None):
+     buf = []
++    buflen = 0
+     logger.info("Reading process memory (pid=%d)" % pid)
+     with open('/proc/%d/maps' % pid, 'r') as maps, \
+          open('/proc/%d/mem' % pid, 'rb') as mem:
+@@ -2657,7 +2658,7 @@ def read_process_memory(pid, key=None):
+                 continue
+             for name in ["[heap]", "[stack]"]:
+                 if name in l:
+-                    logger.info("%s 0x%x-0x%x is at %d-%d" % (name, start, end, len(buf), len(buf) + (end - start)))
++                    logger.info("%s 0x%x-0x%x is at %d-%d" % (name, start, end, buflen, buflen + (end - start)))
+ 
+             if end - start >= 256 * 1024 * 1024:
+                 logger.info("Large memory block of >= 256MiB, assuming ASAN shadow memory")
+@@ -2670,9 +2671,10 @@ def read_process_memory(pid, key=None):
+                 logger.info("Could not read mem: start=%d end=%d: %s" % (start, end, str(e)))
+                 continue
+             buf.append(data)
++            buflen += len(data)
+             if key and key in data:
+                 logger.info("Key found in " + l)
+-    logger.info("Total process memory read: %d bytes" % len(buf))
++    logger.info("Total process memory read: %d bytes" % buflen)
+     return b''.join(buf)
+ 
+ def verify_not_present(buf, key, fname, keyname):
+-- 
+2.43.0
+

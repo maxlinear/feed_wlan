@@ -1,0 +1,43 @@
+From 41e65efa3a4470ba78f4ddeef800589fe44b43eb Mon Sep 17 00:00:00 2001
+From: Johannes Berg <johannes.berg@intel.com>
+Date: Fri, 22 Dec 2023 12:06:09 +0200
+Subject: [PATCH] ctrl_iface: Fix newline in print_ml()
+
+We only print the newline if the AP MLD ID is present
+(BASIC_MULTI_LINK_CTRL_PRES_AP_MLD_ID), fix that.
+
+Fixes: e3e68668c1f6 ("ctrl_iface: Report RNR and ML in BSS command")
+Signed-off-by: Johannes Berg <johannes.berg@intel.com>
+Signed-off-by: Andrei Otcheretianski <andrei.otcheretianski@intel.com>
+---
+ wpa_supplicant/ctrl_iface.c | 7 ++++++-
+ 1 file changed, 6 insertions(+), 1 deletion(-)
+
+diff --git a/wpa_supplicant/ctrl_iface.c b/wpa_supplicant/ctrl_iface.c
+index 531f0c2ac..9c6050134 100644
+--- a/wpa_supplicant/ctrl_iface.c
++++ b/wpa_supplicant/ctrl_iface.c
+@@ -5252,7 +5252,7 @@ static int print_ml(struct wpa_bss *bss, char *pos, char *end)
+ 		if (common_info_length < 1)
+ 			return 0;
+ 
+-		ret = os_snprintf(pos, end - pos, ", MLD ID=0x%x\n", *ie);
++		ret = os_snprintf(pos, end - pos, ", MLD ID=0x%x", *ie);
+ 		if (os_snprintf_error(end - pos, ret))
+ 			return 0;
+ 		pos += ret;
+@@ -5260,6 +5260,11 @@ static int print_ml(struct wpa_bss *bss, char *pos, char *end)
+ 		common_info_length--;
+ 	}
+ 
++	ret = os_snprintf(pos, end - pos, "\n");
++	if (os_snprintf_error(end - pos, ret))
++		return 0;
++	pos += ret;
++
+ 	return pos - start;
+ }
+ 
+-- 
+2.43.0
+

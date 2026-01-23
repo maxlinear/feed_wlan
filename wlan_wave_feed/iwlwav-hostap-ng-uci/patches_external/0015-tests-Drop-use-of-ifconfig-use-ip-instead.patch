@@ -1,0 +1,40 @@
+From e8121c52f4db11a8c9bb4dcc3d7641231fc7f342 Mon Sep 17 00:00:00 2001
+From: Jaap Keuter <jaap.keuter@xs4all.nl>
+Date: Mon, 4 Dec 2023 22:34:39 +0100
+Subject: [PATCH] tests: Drop use of ifconfig, use ip instead
+
+Signed-off-by: Jaap Keuter <jaap.keuter@xs4all.nl>
+---
+ tests/hwsim/start.sh | 2 +-
+ tests/hwsim/stop.sh  | 2 +-
+ 2 files changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/tests/hwsim/start.sh b/tests/hwsim/start.sh
+index ac43d10af..79fc05f9b 100755
+--- a/tests/hwsim/start.sh
++++ b/tests/hwsim/start.sh
+@@ -112,7 +112,7 @@ fi
+ 
+ test -d /sys/module/mac80211_hwsim || sudo modprobe mac80211_hwsim radios=7 channels=$NUM_CH support_p2p_device=0 dyndbg=+p
+ 
+-sudo ifconfig hwsim0 up
++sudo ip link set hwsim0 up
+ sudo $WLANTEST -i hwsim0 -n $LOGDIR/hwsim0.pcapng -c -dtN -L $LOGDIR/hwsim0 &
+ for i in 0 1 2; do
+     DBUSARG=""
+diff --git a/tests/hwsim/stop.sh b/tests/hwsim/stop.sh
+index 5d23b5bd6..22e24cd39 100755
+--- a/tests/hwsim/stop.sh
++++ b/tests/hwsim/stop.sh
+@@ -15,7 +15,7 @@ for i in `pidof valgrind.bin`; do
+ done
+ sudo killall -q wlantest
+ if grep -q hwsim0 /proc/net/dev; then
+-    sudo ifconfig hwsim0 down
++    sudo ip link set hwsim0 down
+ fi
+ 
+ sudo killall -q hlr_auc_gw
+-- 
+2.43.0
+

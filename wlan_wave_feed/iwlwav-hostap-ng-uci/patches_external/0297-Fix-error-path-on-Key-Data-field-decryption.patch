@@ -1,0 +1,29 @@
+From 5d54bf6fb645607bdf85f593b31506ae96908504 Mon Sep 17 00:00:00 2001
+From: Jouni Malinen <quic_jouni@quicinc.com>
+Date: Mon, 22 Jan 2024 21:54:34 +0200
+Subject: [PATCH] Fix error path on Key Data field decryption
+
+key_data_buf is already freed on the common exit path, so do not try to
+free it here on error.
+
+Fixes: 4abc37e67b9a ("Support Key Data field decryption for EAPOL-Key msg 2/4 and 4/4")
+Signed-off-by: Jouni Malinen <quic_jouni@quicinc.com>
+---
+ src/ap/wpa_auth.c | 1 -
+ 1 file changed, 1 deletion(-)
+
+diff --git a/src/ap/wpa_auth.c b/src/ap/wpa_auth.c
+index f3fc85af1..e0c9f30c1 100644
+--- a/src/ap/wpa_auth.c
++++ b/src/ap/wpa_auth.c
+@@ -1199,7 +1199,6 @@ void wpa_receive(struct wpa_authenticator *wpa_auth,
+ 		key_data_buf_len = key_data_length;
+ 		if (aes_unwrap(sm->PTK.kek, sm->PTK.kek_len,
+ 			       key_data_length / 8, key_data, key_data_buf)) {
+-			bin_clear_free(key_data_buf, key_data_buf_len);
+ 			wpa_printf(MSG_INFO,
+ 				   "RSN: AES unwrap failed - could not decrypt EAPOL-Key key data");
+ 			goto out;
+-- 
+2.43.0
+

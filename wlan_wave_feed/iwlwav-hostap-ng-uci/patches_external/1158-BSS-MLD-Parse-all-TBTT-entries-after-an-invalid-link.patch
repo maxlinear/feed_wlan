@@ -1,0 +1,51 @@
+From 4f05eead372e4eff38a6d0e012ad110fe371a5d1 Mon Sep 17 00:00:00 2001
+From: Benjamin Berg <benjamin.berg@intel.com>
+Date: Sun, 1 Sep 2024 19:31:34 +0300
+Subject: [PATCH] BSS: MLD: Parse all TBTT entries after an invalid link
+
+We would incorrectly exit the loop that iterates all TBTT entries if an
+entry is found with an invalid link ID. This commonly happens if the AP
+reports a link for another AP (or just another AP in the same MBSSID
+set). Change it to continue with the next TBTT entry so that all entries
+are parsed and all links can be found.
+
+Fixes: de5e01010cb2 ("wpa_supplicant: Support ML probe request")
+Signed-off-by: Benjamin Berg <benjamin.berg@intel.com>
+---
+ wpa_supplicant/bss.c | 6 ++----
+ 1 file changed, 2 insertions(+), 4 deletions(-)
+
+diff --git a/wpa_supplicant/bss.c b/wpa_supplicant/bss.c
+index aac5f0362..014752257 100644
+--- a/wpa_supplicant/bss.c
++++ b/wpa_supplicant/bss.c
+@@ -1589,7 +1589,7 @@ wpa_bss_parse_ml_rnr_ap_info(struct wpa_supplicant *wpa_s,
+ 	end = pos + len;
+ 	pos += sizeof(*ap_info);
+ 
+-	for (i = 0; i < count; i++) {
++	for (i = 0; i < count; i++, pos += ap_info->tbtt_info_len) {
+ 		u8 bss_params;
+ 
+ 		if (end - pos < ap_info->tbtt_info_len)
+@@ -1600,7 +1600,7 @@ wpa_bss_parse_ml_rnr_ap_info(struct wpa_supplicant *wpa_s,
+ 
+ 		link_id = *(mld_params + 1) & EHT_ML_LINK_ID_MSK;
+ 		if (link_id >= MAX_NUM_MLD_LINKS)
+-			return;
++			continue;
+ 
+ 		if (*mld_params != mbssid_idx) {
+ 			wpa_printf(MSG_DEBUG,
+@@ -1638,8 +1638,6 @@ wpa_bss_parse_ml_rnr_ap_info(struct wpa_supplicant *wpa_s,
+ 					RNR_TBTT_INFO_MLD_PARAM2_LINK_DISABLED;
+ 			}
+ 		}
+-
+-		pos += ap_info->tbtt_info_len;
+ 	}
+ }
+ 
+-- 
+2.43.0
+

@@ -1,0 +1,116 @@
+From 636530bc261d14c2582d2159911e8d3a058a04a8 Mon Sep 17 00:00:00 2001
+From: Sriram R <quic_srirrama@quicinc.com>
+Date: Thu, 28 Mar 2024 23:46:42 +0530
+Subject: [PATCH] hostapd: Make hostapd_eapol_tx_status() function static
+
+hostapd_eapol_tx_status() function is used only in drv_callbacks.c.
+However, it is defined in ieee802_11.c which is not really the correct
+place for it.
+
+Hence, move the function into drv_callbacks.c and make it static.
+
+No functionality changes.
+
+Signed-off-by: Sriram R <quic_srirrama@quicinc.com>
+Signed-off-by: Aditya Kumar Singh <quic_adisi@quicinc.com>
+---
+ src/ap/drv_callbacks.c | 30 ++++++++++++++++++++++++++++++
+ src/ap/ieee802_11.c    | 27 ---------------------------
+ src/ap/ieee802_11.h    |  2 --
+ 3 files changed, 30 insertions(+), 29 deletions(-)
+
+diff --git a/src/ap/drv_callbacks.c b/src/ap/drv_callbacks.c
+index b55168534..19b3fdf3d 100644
+--- a/src/ap/drv_callbacks.c
++++ b/src/ap/drv_callbacks.c
+@@ -2384,6 +2384,36 @@ err:
+ #endif /* CONFIG_OWE */
+ 
+ 
++#ifdef NEED_AP_MLME
++static void hostapd_eapol_tx_status(struct hostapd_data *hapd, const u8 *dst,
++				    const u8 *data, size_t len, int ack)
++{
++	struct sta_info *sta;
++	struct hostapd_iface *iface = hapd->iface;
++
++	sta = ap_get_sta(hapd, dst);
++	if (!sta && iface->num_bss > 1) {
++		size_t j;
++
++		for (j = 0; j < iface->num_bss; j++) {
++			hapd = iface->bss[j];
++			sta = ap_get_sta(hapd, dst);
++			if (sta)
++				break;
++		}
++	}
++	if (!sta || !(sta->flags & WLAN_STA_ASSOC)) {
++		wpa_printf(MSG_DEBUG, "Ignore TX status for Data frame to STA "
++			   MACSTR " that is not currently associated",
++			   MAC2STR(dst));
++		return;
++	}
++
++	ieee802_1x_eapol_tx_status(hapd, sta, data, len, ack);
++}
++#endif /* NEED_AP_MLME */
++
++
+ void wpa_supplicant_event(void *ctx, enum wpa_event_type event,
+ 			  union wpa_event_data *data)
+ {
+diff --git a/src/ap/ieee802_11.c b/src/ap/ieee802_11.c
+index c53c0f2fb..f603af36d 100644
+--- a/src/ap/ieee802_11.c
++++ b/src/ap/ieee802_11.c
+@@ -6860,33 +6860,6 @@ void hostapd_tx_status(struct hostapd_data *hapd, const u8 *addr,
+ }
+ 
+ 
+-void hostapd_eapol_tx_status(struct hostapd_data *hapd, const u8 *dst,
+-			     const u8 *data, size_t len, int ack)
+-{
+-	struct sta_info *sta;
+-	struct hostapd_iface *iface = hapd->iface;
+-
+-	sta = ap_get_sta(hapd, dst);
+-	if (sta == NULL && iface->num_bss > 1) {
+-		size_t j;
+-		for (j = 0; j < iface->num_bss; j++) {
+-			hapd = iface->bss[j];
+-			sta = ap_get_sta(hapd, dst);
+-			if (sta)
+-				break;
+-		}
+-	}
+-	if (sta == NULL || !(sta->flags & WLAN_STA_ASSOC)) {
+-		wpa_printf(MSG_DEBUG, "Ignore TX status for Data frame to STA "
+-			   MACSTR " that is not currently associated",
+-			   MAC2STR(dst));
+-		return;
+-	}
+-
+-	ieee802_1x_eapol_tx_status(hapd, sta, data, len, ack);
+-}
+-
+-
+ void hostapd_client_poll_ok(struct hostapd_data *hapd, const u8 *addr)
+ {
+ 	struct sta_info *sta;
+diff --git a/src/ap/ieee802_11.h b/src/ap/ieee802_11.h
+index f76e9bcde..cdb6fb454 100644
+--- a/src/ap/ieee802_11.h
++++ b/src/ap/ieee802_11.h
+@@ -133,8 +133,6 @@ bool hostapd_get_ht_vht_twt_responder(struct hostapd_data *hapd);
+ u8 * hostapd_eid_cca(struct hostapd_data *hapd, u8 *eid);
+ void hostapd_tx_status(struct hostapd_data *hapd, const u8 *addr,
+ 		       const u8 *buf, size_t len, int ack);
+-void hostapd_eapol_tx_status(struct hostapd_data *hapd, const u8 *dst,
+-			     const u8 *data, size_t len, int ack);
+ void ieee802_11_rx_from_unknown(struct hostapd_data *hapd, const u8 *src,
+ 				int wds);
+ u8 * hostapd_eid_assoc_comeback_time(struct hostapd_data *hapd,
+-- 
+2.43.0
+

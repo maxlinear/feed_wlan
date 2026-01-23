@@ -1,0 +1,44 @@
+From 19e50f8627370166b1cd18cae56b9a8e65fa2318 Mon Sep 17 00:00:00 2001
+From: Aditya Kumar Singh <quic_adisi@quicinc.com>
+Date: Wed, 6 Mar 2024 12:11:03 +0530
+Subject: [PATCH] Export hostapd_sta_is_link_sta()
+
+This functionality can be shared with other files as well.
+
+Signed-off-by: Aditya Kumar Singh <quic_adisi@quicinc.com>
+---
+ src/ap/ap_drv_ops.c | 4 ++--
+ src/ap/ap_drv_ops.h | 2 ++
+ 2 files changed, 4 insertions(+), 2 deletions(-)
+
+diff --git a/src/ap/ap_drv_ops.c b/src/ap/ap_drv_ops.c
+index d7becb25b..0d493b837 100644
+--- a/src/ap/ap_drv_ops.c
++++ b/src/ap/ap_drv_ops.c
+@@ -265,8 +265,8 @@ int hostapd_set_ap_wps_ie(struct hostapd_data *hapd)
+ }
+ 
+ 
+-static bool hostapd_sta_is_link_sta(struct hostapd_data *hapd,
+-				    struct sta_info *sta)
++bool hostapd_sta_is_link_sta(struct hostapd_data *hapd,
++			     struct sta_info *sta)
+ {
+ #ifdef CONFIG_IEEE80211BE
+ 	if (ap_sta_is_mld(hapd, sta) &&
+diff --git a/src/ap/ap_drv_ops.h b/src/ap/ap_drv_ops.h
+index be1ea439f..e9da64d73 100644
+--- a/src/ap/ap_drv_ops.h
++++ b/src/ap/ap_drv_ops.h
+@@ -26,6 +26,8 @@ void hostapd_free_ap_extra_ies(struct hostapd_data *hapd, struct wpabuf *beacon,
+ 			       struct wpabuf *assocresp);
+ int hostapd_reset_ap_wps_ie(struct hostapd_data *hapd);
+ int hostapd_set_ap_wps_ie(struct hostapd_data *hapd);
++bool hostapd_sta_is_link_sta(struct hostapd_data *hapd,
++			     struct sta_info *sta);
+ int hostapd_set_authorized(struct hostapd_data *hapd,
+ 			   struct sta_info *sta, int authorized);
+ int hostapd_set_sta_flags(struct hostapd_data *hapd, struct sta_info *sta);
+-- 
+2.43.0
+

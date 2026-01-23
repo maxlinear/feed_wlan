@@ -1,0 +1,72 @@
+From 99de77c5785ab20dec8a6d90754f4ebbde9e9d0d Mon Sep 17 00:00:00 2001
+From: Vinay Gannevaram <quic_vganneva@quicinc.com>
+Date: Sun, 19 Jan 2025 22:23:11 +0530
+Subject: [PATCH] P2P2: Save the latest nonce and tag from a P2P USD discovery
+ frame
+
+During the P2P USD discovery, validate DIRA and store the valid nonce
+and tag in the peer info structure. Upper layer components can identify
+paired peer information with a new MAC address when valid nonce and tag
+pair information is posted with device found event.
+
+Signed-off-by: Vinay Gannevaram <quic_vganneva@quicinc.com>
+---
+ src/p2p/p2p.c | 13 ++++++++++++-
+ src/p2p/p2p.h | 15 +++++++++++++++
+ 2 files changed, 27 insertions(+), 1 deletion(-)
+
+diff --git a/src/p2p/p2p.c b/src/p2p/p2p.c
+index 8ff26dc65..cd3563bf5 100644
+--- a/src/p2p/p2p.c
++++ b/src/p2p/p2p.c
+@@ -6181,9 +6181,20 @@ void p2p_process_usd_elems(struct p2p_data *p2p, const u8 *ies, u16 ies_len,
+ 	if (!ether_addr_equal(peer_addr, p2p_dev_addr))
+ 		os_memcpy(dev->interface_addr, peer_addr, ETH_ALEN);
+ 
+-	if (msg.dira && msg.dira_len)
++	if (msg.dira && msg.dira_len) {
++		dev->info.nonce_tag_valid = false;
+ 		dev->info.dik_id = p2p_validate_dira(p2p, dev, msg.dira,
+ 						     msg.dira_len);
++		if (dev->info.dik_id) {
++			os_memcpy(dev->info.nonce, &msg.dira[1],
++				  DEVICE_IDENTITY_NONCE_LEN);
++			os_memcpy(dev->info.tag,
++				  &msg.dira[1 + DEVICE_IDENTITY_NONCE_LEN],
++				  DEVICE_IDENTITY_TAG_LEN);
++			dev->info.pairing_config.dik_cipher = msg.dira[0];
++			dev->info.nonce_tag_valid = true;
++		}
++	}
+ 
+ 	p2p_dbg(p2p, "Updated device entry based on USD frame: " MACSTR
+ 		" dev_capab=0x%x group_capab=0x%x listen_freq=%d",
+diff --git a/src/p2p/p2p.h b/src/p2p/p2p.h
+index 0089d784a..51eed59d2 100644
+--- a/src/p2p/p2p.h
++++ b/src/p2p/p2p.h
+@@ -516,6 +516,21 @@ struct p2p_peer_info {
+ 	 * dik_id - For paired peers Identity block ID with PMK
+ 	 */
+ 	int dik_id;
++
++	/**
++	 * nonce_tag_valid - Whether nonce and tag are valid
++	 */
++	bool nonce_tag_valid;
++
++	/**
++	 * nonce - Valid nonce received in a recent discovery frame
++	 */
++	u8 nonce[DEVICE_IDENTITY_NONCE_LEN];
++
++	/**
++	 * tag - Valid tag received in a recent discovery frame
++	 */
++	u8 tag[DEVICE_IDENTITY_TAG_LEN];
+ };
+ 
+ enum p2p_prov_disc_status {
+-- 
+2.43.0
+

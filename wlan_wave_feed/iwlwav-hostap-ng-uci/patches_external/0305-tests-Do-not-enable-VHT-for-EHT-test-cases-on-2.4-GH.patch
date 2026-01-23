@@ -1,0 +1,29 @@
+From 8356a38f48c6576b0493173f45e267cb21d6a4b6 Mon Sep 17 00:00:00 2001
+From: Jouni Malinen <quic_jouni@quicinc.com>
+Date: Thu, 25 Jan 2024 19:41:33 +0200
+Subject: [PATCH] tests: Do not enable VHT for EHT test cases on 2.4 GHz
+
+Signed-off-by: Jouni Malinen <quic_jouni@quicinc.com>
+---
+ tests/hwsim/hostapd.py | 5 ++++-
+ 1 file changed, 4 insertions(+), 1 deletion(-)
+
+diff --git a/tests/hwsim/hostapd.py b/tests/hwsim/hostapd.py
+index c0b76b490..754faf623 100644
+--- a/tests/hwsim/hostapd.py
++++ b/tests/hwsim/hostapd.py
+@@ -1026,7 +1026,10 @@ def cfg_mld_link_file(ifname, params):
+     f.write("ctrl_interface=%s\n" % ctrl_iface)
+     f.write("driver=nl80211\n")
+     f.write("ieee80211n=1\n")
+-    f.write("ieee80211ac=1\n")
++    if 'hw_mode' in params and params['hw_mode'] == 'a' and \
++       ('op_class' not in params or \
++        int(params['op_class']) not in [131, 132, 133, 134, 135, 136, 137]):
++        f.write("ieee80211ac=1\n")
+     f.write("ieee80211ax=1\n")
+     f.write("ieee80211be=1\n")
+     f.write("interface=%s\n" % ifname)
+-- 
+2.43.0
+

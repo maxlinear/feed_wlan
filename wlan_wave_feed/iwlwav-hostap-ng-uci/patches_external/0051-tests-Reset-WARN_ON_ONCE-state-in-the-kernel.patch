@@ -1,0 +1,34 @@
+From 31792fa8d980e12033fa839a87b0e5d7c18e5de2 Mon Sep 17 00:00:00 2001
+From: Johannes Berg <johannes.berg@intel.com>
+Date: Tue, 12 Dec 2023 09:07:15 +0100
+Subject: [PATCH] tests: Reset WARN_ON_ONCE() state in the kernel
+
+If a tests hits a WARN_ON_ONCE then the retriggering will make it appear
+to pass, since the warning will not happen again. Make this more
+reliable by resetting the states at the beginning of each test.
+
+Signed-off-by: Johannes Berg <johannes.berg@intel.com>
+---
+ tests/hwsim/run-tests.py | 6 ++++++
+ 1 file changed, 6 insertions(+)
+
+diff --git a/tests/hwsim/run-tests.py b/tests/hwsim/run-tests.py
+index 0d69f303c..30368a97a 100755
+--- a/tests/hwsim/run-tests.py
++++ b/tests/hwsim/run-tests.py
+@@ -487,6 +487,12 @@ def main():
+             log_handler.setFormatter(log_formatter)
+             logger.addHandler(log_handler)
+ 
++        try:
++            with open('/sys/kernel/debug/clear_warn_once', 'w') as f:
++                f.write('1\n')
++        except FileNotFoundError:
++            pass
++
+         reset_ok = True
+         with DataCollector(args.logdir, name, args):
+             count = count + 1
+-- 
+2.43.0
+

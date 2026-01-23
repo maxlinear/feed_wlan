@@ -1,0 +1,29 @@
+From f2bf0a6389e5501959d8655ae0608a3fd182ab72 Mon Sep 17 00:00:00 2001
+From: Meng Yuan <quic_menyua@quicinc.com>
+Date: Wed, 8 Jan 2025 16:10:10 +0800
+Subject: [PATCH] nl80211: Avoid uninitialized err_info on test failure path
+
+Initialize err_info.link_id before use to cover the TEST_FAIL testing
+case for a failure where err_info.link_id might not be set.
+
+Signed-off-by: Jouni Malinen <quic_jouni@quicinc.com>
+---
+ src/drivers/driver_nl80211.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/src/drivers/driver_nl80211.c b/src/drivers/driver_nl80211.c
+index c72727564..966bbe39f 100644
+--- a/src/drivers/driver_nl80211.c
++++ b/src/drivers/driver_nl80211.c
+@@ -7483,7 +7483,7 @@ static int wpa_driver_nl80211_associate(
+ {
+ 	struct i802_bss *bss = priv;
+ 	struct wpa_driver_nl80211_data *drv = bss->drv;
+-	struct nl80211_err_info err_info;
++	struct nl80211_err_info err_info = { -1 };
+ 	int ret = -1;
+ 	struct nl_msg *msg;
+ 
+-- 
+2.43.0
+

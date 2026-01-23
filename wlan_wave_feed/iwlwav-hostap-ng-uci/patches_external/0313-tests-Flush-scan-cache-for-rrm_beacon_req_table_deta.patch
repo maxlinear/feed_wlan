@@ -1,0 +1,31 @@
+From 30d6231e02ba5d8187d002180008064ebc15ca08 Mon Sep 17 00:00:00 2001
+From: Jouni Malinen <quic_jouni@quicinc.com>
+Date: Fri, 26 Jan 2024 12:10:41 +0200
+Subject: [PATCH] tests: Flush scan cache for rrm_beacon_req_table_detail
+
+Explicitly flush the scan cache in wpa_supplicant and cfg80211 to avoid
+test failures here. An additional BSS table entry from a scan based on a
+previous test case could result in causing this test case to report
+failure since each beacon response could include multiple entries and
+the check for the details would fail due to the unexpected data.
+
+Signed-off-by: Jouni Malinen <quic_jouni@quicinc.com>
+---
+ tests/hwsim/test_rrm.py | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/tests/hwsim/test_rrm.py b/tests/hwsim/test_rrm.py
+index 77f47d0cd..2ab8fd134 100644
+--- a/tests/hwsim/test_rrm.py
++++ b/tests/hwsim/test_rrm.py
+@@ -1019,6 +1019,7 @@ def test_rrm_beacon_req_table_detail(dev, apdev):
+     params = {"ssid": "rrm", "rrm_beacon_report": "1"}
+     hapd = hostapd.add_ap(apdev[0], params)
+ 
++    dev[0].flush_scan_cache()
+     dev[0].connect("rrm", key_mgmt="NONE", scan_freq="2412")
+     addr = dev[0].own_addr()
+     hapd.wait_sta()
+-- 
+2.43.0
+

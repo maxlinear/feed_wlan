@@ -1,0 +1,31 @@
+From d8cae2d02449e35e5fb976fd1385071c2122152e Mon Sep 17 00:00:00 2001
+From: Ilan Peer <ilan.peer@intel.com>
+Date: Wed, 29 Nov 2023 10:43:58 +0200
+Subject: [PATCH] nl80211: Do not allow off channel when frequency is not
+ specified
+
+Do not allow offchannel operation for action frame transmission if
+no frequency is specified, as this doesn't make sense.
+
+Signed-off-by: Ilan Peer <ilan.peer@intel.com>
+---
+ src/drivers/driver_nl80211.c | 3 +++
+ 1 file changed, 3 insertions(+)
+
+diff --git a/src/drivers/driver_nl80211.c b/src/drivers/driver_nl80211.c
+index 03d54222b..56c00736d 100644
+--- a/src/drivers/driver_nl80211.c
++++ b/src/drivers/driver_nl80211.c
+@@ -9151,6 +9151,9 @@ static int wpa_driver_nl80211_send_action(struct i802_bss *bss,
+ 	    bss->flink->beacon_set)
+ 		offchanok = 0;
+ 
++	if (!freq && is_sta_interface(drv->nlmode))
++		offchanok = 0;
++
+ 	wpa_printf(MSG_DEBUG, "nl80211: Send Action frame (ifindex=%d, "
+ 		   "freq=%u MHz wait=%d ms no_cck=%d offchanok=%d)",
+ 		   drv->ifindex, freq, wait_time, no_cck, offchanok);
+-- 
+2.43.0
+

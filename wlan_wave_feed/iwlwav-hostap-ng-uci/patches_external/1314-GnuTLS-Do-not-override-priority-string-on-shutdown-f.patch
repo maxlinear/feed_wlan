@@ -1,0 +1,62 @@
+From 5545ca8f983b08a90b1129c9efc182ec01f2cce4 Mon Sep 17 00:00:00 2001
+From: Jouni Malinen <j@w1.fi>
+Date: Sat, 1 Feb 2025 19:13:53 +0200
+Subject: [PATCH] GnuTLS: Do not override priority string on shutdown for
+ reauth
+
+Use the previously configured priority string instead of the default
+value whenever shutting down a TLS connection in preparation for
+reauthentication. This fixes an issue with GnuTLS ending up using TLS
+1.3 for reauthentication even when 1.3 was explicitly disabled in the
+configuration. That attempt to use TLS 1.3 failed in such case due to
+different key derivation between TLS 1.3 and older versions.
+
+Signed-off-by: Jouni Malinen <j@w1.fi>
+---
+ src/crypto/tls_gnutls.c | 9 ++++++++-
+ 1 file changed, 8 insertions(+), 1 deletion(-)
+
+diff --git a/src/crypto/tls_gnutls.c b/src/crypto/tls_gnutls.c
+index 7d73b4f06..8ce939032 100644
+--- a/src/crypto/tls_gnutls.c
++++ b/src/crypto/tls_gnutls.c
+@@ -62,6 +62,8 @@ struct tls_connection {
+ 	char *suffix_match;
+ 	char *domain_match;
+ 	unsigned int flags;
++
++	char *prio_str;
+ };
+ 
+ 
+@@ -213,7 +215,9 @@ static int tls_gnutls_init_session(struct tls_global *global,
+ 	if (ret < 0)
+ 		goto fail;
+ 
+-	ret = gnutls_priority_set_direct(conn->session, "NORMAL:-VERS-SSL3.0",
++	ret = gnutls_priority_set_direct(conn->session,
++					 conn->prio_str ? conn->prio_str :
++					 "NORMAL:-VERS-SSL3.0",
+ 					 &err);
+ 	if (ret < 0) {
+ 		wpa_printf(MSG_ERROR, "GnuTLS: Priority string failure at "
+@@ -285,6 +289,7 @@ void tls_connection_deinit(void *ssl_ctx, struct tls_connection *conn)
+ 	wpabuf_free(conn->pull_buf);
+ 	os_free(conn->suffix_match);
+ 	os_free(conn->domain_match);
++	os_free(conn->prio_str);
+ 	os_free(conn);
+ }
+ 
+@@ -462,6 +467,8 @@ int tls_connection_set_params(void *tls_ctx, struct tls_connection *conn,
+ 				   err);
+ 			return -1;
+ 		}
++		os_free(conn->prio_str);
++		conn->prio_str = os_strdup(prio);
+ 	}
+ 
+ 	if (params->openssl_ecdh_curves) {
+-- 
+2.43.0
+

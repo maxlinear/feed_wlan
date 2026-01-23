@@ -1,0 +1,218 @@
+From 42c83c7b56ce76ae3241de36ad9798a72abc3ed0 Mon Sep 17 00:00:00 2001
+From: "karthikgk@maxlinear.com" <karthikgk@lvdocker7.lvsw.maxlinear.com>
+Date: Wed, 7 Jan 2026 23:32:21 -0800
+Subject: [PATCH] WLANRTSYS-99511 : Hostap-ng compilation issue
+
+Issue: Hostap compilation is failing with the latest commit in RDKB
+
+Root cause: Compilation is failing because the MXL_MLO flag is disabled in RDKB.
+
+Fix: Added the required flags
+
+Signed-off-by: karthikgk <karthikgk@maxlinear.com>
+---
+ hostapd/mxl_config.c            |  4 ++--
+ src/ap/ieee802_11.c             |  5 +----
+ src/ap/mxl_wpa_auth.c           |  2 +-
+ src/ap/wpa_auth.c               | 14 ++------------
+ src/ap/wpa_auth.h               |  6 ------
+ wpa_supplicant/mxl_supplicant.h |  1 +
+ wpa_supplicant/p2p_supplicant.c | 14 --------------
+ 7 files changed, 7 insertions(+), 39 deletions(-)
+
+diff --git a/hostapd/mxl_config.c b/hostapd/mxl_config.c
+index 102525dbc..2e9559173 100644
+--- a/hostapd/mxl_config.c
++++ b/hostapd/mxl_config.c
+@@ -2236,14 +2236,14 @@ int mxl_hostapd_config_check_bss(struct hostapd_bss_config *bss, struct hostapd_
+ 			wpa_printf(MSG_WARNING,
+ 				"GCMP-256 cipher suite is force-enabled due to 802.11be is enabled");
+ 		}
+-
++#ifdef CONFIG_IEEE80211BE_MXL_MLO
+ 		/* If MLO is enabled and override pw 2 indicates GCMP-256, should be removed from rsn pw, clear it */
+ 		if ((bss->mxl_bss_conf.mlo_enable && (bss->rsn_override_pairwise_2 & WPA_CIPHER_GCMP_256)) &&
+ 			(bss->rsn_pairwise & WPA_CIPHER_GCMP_256)) {
+ 				bss->rsn_pairwise &= ~WPA_CIPHER_GCMP_256;
+ 				wpa_printf(MSG_INFO, "GCMP-256 cleared from rsn_pairwise");
+ 		}
+-
++#endif /* CONFIG_IEEE80211BE_MXL_MLO */
+ 	}
+ #endif /* CONFIG_IEEE80211BE */
+ 
+diff --git a/src/ap/ieee802_11.c b/src/ap/ieee802_11.c
+index 0660f89ce..6c39dc4c7 100644
+--- a/src/ap/ieee802_11.c
++++ b/src/ap/ieee802_11.c
+@@ -1154,7 +1154,7 @@ void sae_accept_sta(struct hostapd_data *hapd, struct sta_info *sta)
+ 		spa_addr = sta->mxl_sta_info.non_ap_mld_mac;
+ 	wpa_auth_pmksa_add_sae(hapd->wpa_auth, spa_addr,
+ 			       sta->sae->pmk, sta->sae->pmk_len,
+-			       sta->sae->pmkid, sta->sae->akmp);
++			       sta->sae->pmkid, sta->sae->akmp, false);
+ #else /* CONFIG_IEEE80211BE_MXL_MLO */
+ 	wpa_auth_pmksa_add_sae(hapd->wpa_auth, sta->addr,
+ 			       sta->sae->pmk, sta->sae->pmk_len,
+@@ -4455,7 +4455,6 @@ end:
+ #endif /* CONFIG_OWE */
+ 
+ 
+-#ifndef CONFIG_VENDOR_MXL
+ static bool hapd_is_known_sta(struct hostapd_data *hapd, struct sta_info *sta,
+ 			      const u8 *ies, size_t ies_len)
+ {
+@@ -4504,7 +4503,6 @@ static bool hapd_is_known_sta(struct hostapd_data *hapd, struct sta_info *sta,
+ 
+ 	return true;
+ }
+-#endif /* CONFIG_VENDOR_MXL */
+ 
+ 
+ static bool check_sa_query(struct hostapd_data *hapd, struct sta_info *sta,
+@@ -4526,7 +4524,6 @@ static bool check_sa_query(struct hostapd_data *hapd, struct sta_info *sta,
+ 	    (!reassoc || sta->auth_alg != WLAN_AUTH_FT)) {
+ 		if (hapd_is_known_sta(hapd, sta, ies, ies_len))
+ 			return false;
+-
+ 		/*
+ 		 * STA has already been associated with MFP and SA Query timeout
+ 		 * has not been reached. Reject the association attempt
+diff --git a/src/ap/mxl_wpa_auth.c b/src/ap/mxl_wpa_auth.c
+index ced84b3f4..74860c871 100644
+--- a/src/ap/mxl_wpa_auth.c
++++ b/src/ap/mxl_wpa_auth.c
+@@ -882,7 +882,7 @@ void mxl_wpa_auth_pmksa_add_sae_sibling(struct wpa_authenticator *wpa_auth, cons
+ 			   const u8 *pmk, size_t pmk_len, const u8 *pmkid,
+ 			   int akmp)
+ {
+-	wpa_auth_pmksa_add_sae(wpa_auth, addr, pmk, pmk_len, pmkid, akmp);
++	wpa_auth_pmksa_add_sae(wpa_auth, addr, pmk, pmk_len, pmkid, akmp, false);
+ }
+ 
+ static void mxl_wpa_rekey_all_groups(struct wpa_authenticator *wpa_auth)
+diff --git a/src/ap/wpa_auth.c b/src/ap/wpa_auth.c
+index 2d95f4b5e..be5e3c35b 100644
+--- a/src/ap/wpa_auth.c
++++ b/src/ap/wpa_auth.c
+@@ -1175,25 +1175,21 @@ void wpa_auth_sta_deinit(struct wpa_state_machine *sm)
+ 
+ 	wpa_auth = sm->wpa_auth;
+ 	if (wpa_auth->conf.wpa_strict_rekey && sm->has_GTK) {
+-#ifndef CONFIG_VENDOR_MXL
+ 		struct wpa_authenticator *primary_auth = wpa_auth;
+-#endif /* CONFIG_VENDOR_MXL */
+ 
+ 		wpa_auth_logger(wpa_auth, wpa_auth_get_spa(sm), LOGGER_DEBUG,
+ 				"strict rekeying - force GTK rekey since STA is leaving");
+ 
+ #ifdef CONFIG_IEEE80211BE
+-#ifndef CONFIG_VENDOR_MXL
+ 		if (wpa_auth->is_ml && !wpa_auth->primary_auth)
+ 			primary_auth = wpa_get_primary_auth(wpa_auth);
+-#endif /* CONFIG_VENDOR_MXL */
+ #endif /* CONFIG_IEEE80211BE */
+ 
+ #ifdef CONFIG_IEEE80211BE_MXL_MLO
+ 		if (eloop_deplete_timeout(0, 500000, mxl_wpa_rekey_gtk,
+-					  wpa_auth, NULL) == -1)
++					  primary_auth, NULL) == -1)
+ 			eloop_register_timeout(0, 500000, mxl_wpa_rekey_gtk,
+-						   wpa_auth, NULL);
++						   primary_auth, NULL);
+ #else /* CONFIG_IEEE80211BE_MXL_MLO */
+ 		if (eloop_deplete_timeout(0, 500000, wpa_rekey_gtk,
+ 					  primary_auth, NULL) == -1)
+@@ -6680,15 +6676,9 @@ int wpa_auth_pmksa_add_preauth(struct wpa_authenticator *wpa_auth,
+ }
+ 
+ 
+-#ifndef CONFIG_VENDOR_MXL
+ int wpa_auth_pmksa_add_sae(struct wpa_authenticator *wpa_auth, const u8 *addr,
+ 			   const u8 *pmk, size_t pmk_len, const u8 *pmkid,
+ 			   int akmp, bool is_ml)
+-#else /* CONFIG_VENDOR_MXL */
+-int wpa_auth_pmksa_add_sae(struct wpa_authenticator *wpa_auth, const u8 *addr,
+-			   const u8 *pmk, size_t pmk_len, const u8 *pmkid,
+-			   int akmp)
+-#endif /* CONFIG_VENDOR_MXL */
+ {
+ 	struct rsn_pmksa_cache *pmksa = wpa_auth->pmksa;
+ 	const u8 *aa = wpa_auth->addr;
+diff --git a/src/ap/wpa_auth.h b/src/ap/wpa_auth.h
+index 558e86789..6665bb933 100644
+--- a/src/ap/wpa_auth.h
++++ b/src/ap/wpa_auth.h
+@@ -534,15 +534,9 @@ int wpa_auth_pmksa_add_preauth(struct wpa_authenticator *wpa_auth,
+ 			       const u8 *pmk, size_t len, const u8 *sta_addr,
+ 			       int session_timeout,
+ 			       struct eapol_state_machine *eapol);
+-#ifndef CONFIG_VENDOR_MXL
+ int wpa_auth_pmksa_add_sae(struct wpa_authenticator *wpa_auth, const u8 *addr,
+ 			   const u8 *pmk, size_t pmk_len, const u8 *pmkid,
+ 			   int akmp, bool is_ml);
+-#else /* CONFIG_VENDOR_MXL */
+-int wpa_auth_pmksa_add_sae(struct wpa_authenticator *wpa_auth, const u8 *addr,
+-			   const u8 *pmk, size_t pmk_len, const u8 *pmkid,
+-			   int akmp);
+-#endif /* CONFIG_VENDOR_MXL */
+ void wpa_auth_add_sae_pmkid(struct wpa_state_machine *sm, const u8 *pmkid);
+ int wpa_auth_pmksa_add2(struct wpa_authenticator *wpa_auth, const u8 *addr,
+ 			const u8 *pmk, size_t pmk_len, const u8 *pmkid,
+diff --git a/wpa_supplicant/mxl_supplicant.h b/wpa_supplicant/mxl_supplicant.h
+index a39b8c15a..edea6c294 100644
+--- a/wpa_supplicant/mxl_supplicant.h
++++ b/wpa_supplicant/mxl_supplicant.h
+@@ -16,6 +16,7 @@
+ 
+ #include "utils/includes.h"
+ #include "common/ieee802_11_common.h"
++#include "bss.h"
+ 
+ struct mxl_rnr_scan_ap_information {
+ #ifdef CONFIG_VENDOR_MXL_PROPRIETARY
+diff --git a/wpa_supplicant/p2p_supplicant.c b/wpa_supplicant/p2p_supplicant.c
+index d1d42bd99..6d2551b89 100644
+--- a/wpa_supplicant/p2p_supplicant.c
++++ b/wpa_supplicant/p2p_supplicant.c
+@@ -2255,18 +2255,11 @@ static void p2p_go_configured(void *ctx, void *data)
+ 	    params->akmp == WPA_KEY_MGMT_SAE) {
+ 		struct hostapd_data *hapd = wpa_s->ap_iface->bss[0];
+ 
+-#ifndef CONFIG_VENDOR_MXL
+ 		wpa_auth_pmksa_add_sae(hapd->wpa_auth,
+ 				       params->peer_device_addr,
+ 				       params->pmk, params->pmk_len,
+ 				       params->pmkid, WPA_KEY_MGMT_SAE,
+ 				       false);
+-#else /* CONFIG_VENDOR_MXL */
+-		wpa_auth_pmksa_add_sae(hapd->wpa_auth,
+-				       params->peer_device_addr,
+-				       params->pmk, params->pmk_len,
+-				       params->pmkid, WPA_KEY_MGMT_SAE);
+-#endif /* CONFIG_VENDOR_MXL */
+ 		hostapd_add_pmkid(hapd, params->peer_device_addr,
+ 				  params->pmk, params->pmk_len,
+ 				  params->pmkid, WPA_KEY_MGMT_SAE);
+@@ -2918,18 +2911,11 @@ static void wpas_set_go_security_config(void *ctx,
+ 	if (params->akmp == WPA_KEY_MGMT_SAE) {
+ 		wpa_printf(MSG_DEBUG, "P2P: Adding PMK for peer: " MACSTR,
+ 			   MAC2STR(params->peer_device_addr));
+-#ifndef CONFIG_VENDOR_MXL
+ 		wpa_auth_pmksa_add_sae(hapd->wpa_auth,
+ 				       params->peer_device_addr,
+ 				       params->pmk, params->pmk_len,
+ 				       params->pmkid, WPA_KEY_MGMT_SAE,
+ 				       false);
+-#else /* CONFIG_VENDOR_MXL */
+-		wpa_auth_pmksa_add_sae(hapd->wpa_auth,
+-				       params->peer_device_addr,
+-				       params->pmk, params->pmk_len,
+-				       params->pmkid, WPA_KEY_MGMT_SAE);
+-#endif /* CONFIG_VENDOR_MXL */
+ 		hostapd_add_pmkid(hapd, params->peer_device_addr,
+ 				  params->pmk, params->pmk_len,
+ 				  params->pmkid, WPA_KEY_MGMT_SAE);
+-- 
+2.43.0
+

@@ -1,0 +1,143 @@
+From 9c937c88916f115f844e145f8675c7a363eb3598 Mon Sep 17 00:00:00 2001
+From: Ilan Peer <ilan.peer@intel.com>
+Date: Mon, 25 Dec 2023 19:43:00 +0200
+Subject: [PATCH] AP: Move hostapd_ml_get_assoc_sta() to shared
+
+So it could be used from different contexts.
+
+Signed-off-by: Ilan Peer <ilan.peer@intel.com>
+---
+ src/ap/ieee802_11.c        | 46 --------------------------------------
+ src/ap/ieee802_11.h        |  3 +++
+ src/ap/ieee802_11_shared.c | 41 +++++++++++++++++++++++++++++++++
+ 3 files changed, 44 insertions(+), 46 deletions(-)
+
+diff --git a/src/ap/ieee802_11.c b/src/ap/ieee802_11.c
+index e114c83c4..30a6394c5 100644
+--- a/src/ap/ieee802_11.c
++++ b/src/ap/ieee802_11.c
+@@ -85,11 +85,6 @@ static void handle_auth(struct hostapd_data *hapd,
+ 			int rssi, int from_queue);
+ static int add_associated_sta(struct hostapd_data *hapd,
+ 			      struct sta_info *sta, int reassoc);
+-#ifdef CONFIG_IEEE80211BE
+-static struct sta_info *
+-hostapd_ml_get_assoc_sta(struct hostapd_data *hapd, struct sta_info *sta,
+-			 struct hostapd_data **assoc_hapd);
+-#endif /* CONFIG_IEEE80211BE */
+ 
+ 
+ u8 * hostapd_eid_multi_ap(struct hostapd_data *hapd, u8 *eid)
+@@ -5731,47 +5726,6 @@ static void hostapd_disassoc_sta(struct hostapd_data *hapd,
+ }
+ 
+ 
+-#ifdef CONFIG_IEEE80211BE
+-static struct sta_info *
+-hostapd_ml_get_assoc_sta(struct hostapd_data *hapd, struct sta_info *sta,
+-			 struct hostapd_data **assoc_hapd)
+-{
+-	struct hostapd_data *other_hapd = NULL;
+-	struct sta_info *tmp_sta;
+-
+-	if (!sta->mld_info.mld_sta)
+-		return NULL;
+-
+-	*assoc_hapd = hapd;
+-
+-	/* The station is the one on which the association was performed */
+-	if (sta->mld_assoc_link_id == hapd->mld_link_id)
+-		return sta;
+-
+-	other_hapd = hostapd_mld_get_link_bss(hapd, sta->mld_assoc_link_id);
+-	if (!other_hapd) {
+-		wpa_printf(MSG_DEBUG, "MLD: No link match for link_id=%u",
+-			   sta->mld_assoc_link_id);
+-		return sta;
+-	}
+-
+-	/*
+-	 * Iterate over the stations and find the one with the matching link ID
+-	 * and association ID.
+-	 */
+-	for (tmp_sta = other_hapd->sta_list; tmp_sta; tmp_sta = tmp_sta->next) {
+-		if (tmp_sta->mld_assoc_link_id == sta->mld_assoc_link_id &&
+-		    tmp_sta->aid == sta->aid) {
+-			*assoc_hapd = other_hapd;
+-			return tmp_sta;
+-		}
+-	}
+-
+-	return sta;
+-}
+-#endif /* CONFIG_IEEE80211BE */
+-
+-
+ static bool hostapd_ml_handle_disconnect(struct hostapd_data *hapd,
+ 					 struct sta_info *sta,
+ 					 const struct ieee80211_mgmt *mgmt,
+diff --git a/src/ap/ieee802_11.h b/src/ap/ieee802_11.h
+index 3f89874e2..ba973b06b 100644
+--- a/src/ap/ieee802_11.h
++++ b/src/ap/ieee802_11.h
+@@ -255,5 +255,8 @@ const char * sae_get_password(struct hostapd_data *hapd,
+ 			      struct sta_info *sta, const char *rx_id,
+ 			      struct sae_password_entry **pw_entry,
+ 			      struct sae_pt **s_pt, const struct sae_pk **s_pk);
++struct sta_info * hostapd_ml_get_assoc_sta(struct hostapd_data *hapd,
++					   struct sta_info *sta,
++					   struct hostapd_data **assoc_hapd);
+ 
+ #endif /* IEEE802_11_H */
+diff --git a/src/ap/ieee802_11_shared.c b/src/ap/ieee802_11_shared.c
+index eaeeba43e..c2d38e715 100644
+--- a/src/ap/ieee802_11_shared.c
++++ b/src/ap/ieee802_11_shared.c
+@@ -1148,3 +1148,44 @@ u16 check_ext_capab(struct hostapd_data *hapd, struct sta_info *sta,
+ 
+ 	return WLAN_STATUS_SUCCESS;
+ }
++
++
++struct sta_info * hostapd_ml_get_assoc_sta(struct hostapd_data *hapd,
++					   struct sta_info *sta,
++					   struct hostapd_data **assoc_hapd)
++{
++#ifdef CONFIG_IEEE80211BE
++	struct hostapd_data *other_hapd = NULL;
++	struct sta_info *tmp_sta;
++
++	if (!sta->mld_info.mld_sta)
++		return NULL;
++
++	*assoc_hapd = hapd;
++
++	/* The station is the one on which the association was performed */
++	if (sta->mld_assoc_link_id == hapd->mld_link_id)
++		return sta;
++
++	other_hapd = hostapd_mld_get_link_bss(hapd, sta->mld_assoc_link_id);
++	if (!other_hapd) {
++		wpa_printf(MSG_DEBUG, "MLD: No link match for link_id=%u",
++			   sta->mld_assoc_link_id);
++		return sta;
++	}
++
++	/*
++	 * Iterate over the stations and find the one with the matching link ID
++	 * and association ID.
++	 */
++	for (tmp_sta = other_hapd->sta_list; tmp_sta; tmp_sta = tmp_sta->next) {
++		if (tmp_sta->mld_assoc_link_id == sta->mld_assoc_link_id &&
++		    tmp_sta->aid == sta->aid) {
++			*assoc_hapd = other_hapd;
++			return tmp_sta;
++		}
++	}
++#endif /* CONFIG_IEEE80211BE */
++
++	return sta;
++}
+-- 
+2.43.0
+

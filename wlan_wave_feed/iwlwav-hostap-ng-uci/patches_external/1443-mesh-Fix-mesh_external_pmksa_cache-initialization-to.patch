@@ -1,0 +1,49 @@
+From e0baab3b66750a116d400660b58b31327ad6b761 Mon Sep 17 00:00:00 2001
+From: Jouni Malinen <quic_jouni@quicinc.com>
+Date: Tue, 25 Feb 2025 22:36:54 +0200
+Subject: [PATCH] mesh: Fix mesh_external_pmksa_cache initialization to cover
+ error cases
+
+The dl_list needs to be initialized before wpa_supplicant_cleanup() can
+be called, e.g., due to an early termination caused by failure to
+initialize the interface.
+
+Fixes: 4d77d80edd35 ("mesh: Add MESH_PMKSA_GET/ADD commands")
+Signed-off-by: Jouni Malinen <quic_jouni@quicinc.com>
+---
+ wpa_supplicant/wpa_supplicant.c | 12 ++++++------
+ 1 file changed, 6 insertions(+), 6 deletions(-)
+
+diff --git a/wpa_supplicant/wpa_supplicant.c b/wpa_supplicant/wpa_supplicant.c
+index e54ad8bea..933c971ce 100644
+--- a/wpa_supplicant/wpa_supplicant.c
++++ b/wpa_supplicant/wpa_supplicant.c
+@@ -6312,6 +6312,12 @@ wpa_supplicant_alloc(struct wpa_supplicant *parent)
+ #endif /* CONFIG_NO_ROBUST_AV */
+ 	wpa_s->ml_probe_mld_id = -1;
+ 
++#ifdef CONFIG_PMKSA_CACHE_EXTERNAL
++#ifdef CONFIG_MESH
++	dl_list_init(&wpa_s->mesh_external_pmksa_cache);
++#endif /* CONFIG_MESH */
++#endif /* CONFIG_PMKSA_CACHE_EXTERNAL */
++
+ 	return wpa_s;
+ }
+ 
+@@ -7823,12 +7829,6 @@ static int wpa_supplicant_init_iface(struct wpa_supplicant *wpa_s,
+ 	if (wpa_bss_init(wpa_s) < 0)
+ 		return -1;
+ 
+-#ifdef CONFIG_PMKSA_CACHE_EXTERNAL
+-#ifdef CONFIG_MESH
+-	dl_list_init(&wpa_s->mesh_external_pmksa_cache);
+-#endif /* CONFIG_MESH */
+-#endif /* CONFIG_PMKSA_CACHE_EXTERNAL */
+-
+ 	/*
+ 	 * Set Wake-on-WLAN triggers, if configured.
+ 	 * Note: We don't restore/remove the triggers on shutdown (it doesn't
+-- 
+2.43.0
+

@@ -1,0 +1,227 @@
+From 59c608bd8d55089ef8d4aa2f2b7dd46ddd2e4f31 Mon Sep 17 00:00:00 2001
+From: Jouni Malinen <quic_jouni@quicinc.com>
+Date: Wed, 20 Nov 2024 12:30:05 +0200
+Subject: [PATCH] wlantest: Use AP's RSNXOE for capabilities when RSNO is used
+
+If an association uses RSN overriding and the AP advertises an RSNXOE,
+use the RSNXOE instead of the RSNXE when determining AP's RSN
+capabilities. In particular, this is needed to determine the correct KDK
+length for PTK derivation in a case where the RSNXOE advertises support
+for secure ranging while the RSNXE does not.
+
+Signed-off-by: Jouni Malinen <quic_jouni@quicinc.com>
+---
+ src/common/ieee802_11_common.c |  4 +++
+ src/common/ieee802_11_common.h |  2 ++
+ wlantest/rx_eapol.c            | 13 +++++++-
+ wlantest/rx_mgmt.c             | 57 ++++++++++++++++++++++++++++++++--
+ wlantest/wlantest.h            |  4 +++
+ 5 files changed, 77 insertions(+), 3 deletions(-)
+
+diff --git a/src/common/ieee802_11_common.c b/src/common/ieee802_11_common.c
+index e859fbe21..f8e852961 100644
+--- a/src/common/ieee802_11_common.c
++++ b/src/common/ieee802_11_common.c
+@@ -152,6 +152,10 @@ static int ieee802_11_parse_vendor_specific(const u8 *pos, size_t elen,
+ 			elems->rsne_override_2 = pos;
+ 			elems->rsne_override_2_len = elen;
+ 			break;
++		case WFA_RSNXE_OVERRIDE_OUI_TYPE:
++			elems->rsnxe_override = pos;
++			elems->rsnxe_override_len = elen;
++			break;
+ 		case WFA_RSN_SELECTION_OUI_TYPE:
+ 			if (elen < 4 + 1) {
+ 				wpa_printf(MSG_DEBUG,
+diff --git a/src/common/ieee802_11_common.h b/src/common/ieee802_11_common.h
+index 689a8f889..e22138c7d 100644
+--- a/src/common/ieee802_11_common.h
++++ b/src/common/ieee802_11_common.h
+@@ -120,6 +120,7 @@ struct ieee802_11_elems {
+ 	const u8 *mbssid;
+ 	const u8 *rsne_override;
+ 	const u8 *rsne_override_2;
++	const u8 *rsnxe_override;
+ 	const u8 *rsn_selection;
+ 	const u8 *wfa_capab;
+ 
+@@ -189,6 +190,7 @@ struct ieee802_11_elems {
+ 	u8 mbssid_len;
+ 	size_t rsne_override_len;
+ 	size_t rsne_override_2_len;
++	size_t rsnxe_override_len;
+ 	size_t rsn_selection_len;
+ 	u8 wfa_capab_len;
+ 
+diff --git a/wlantest/rx_eapol.c b/wlantest/rx_eapol.c
+index 51b7c42fa..b24272794 100644
+--- a/wlantest/rx_eapol.c
++++ b/wlantest/rx_eapol.c
+@@ -183,13 +183,24 @@ static int try_pmk(struct wlantest *wt, struct wlantest_bss *bss,
+ 	const u8 *sa, *aa;
+ 	bool mlo;
+ 	size_t kdk_len;
++	const u8 *rsnxe;
++	size_t rsnxe_len;
+ 
+ 	mlo = !is_zero_ether_addr(sta->mld_mac_addr) &&
+ 		!is_zero_ether_addr(bss->mld_mac_addr);
+ 	sa = mlo ? sta->mld_mac_addr : sta->addr;
+ 	aa = mlo ? bss->mld_mac_addr : bss->bssid;
+ 
+-	if (ieee802_11_rsnx_capab_len(bss->rsnxe, bss->rsnxe_len,
++	if ((sta->rsn_selection == RSN_SELECTION_RSNE_OVERRIDE ||
++	     sta->rsn_selection == RSN_SELECTION_RSNE_OVERRIDE_2) &&
++	    bss->rsnxoe_len) {
++		rsnxe = bss->rsnxoe;
++		rsnxe_len = bss->rsnxoe_len;
++	} else {
++		rsnxe = bss->rsnxe;
++		rsnxe_len = bss->rsnxe_len;
++	}
++	if (ieee802_11_rsnx_capab_len(rsnxe, rsnxe_len,
+ 				      WLAN_RSNX_CAPAB_SECURE_LTF) &&
+ 	    ieee802_11_rsnx_capab_len(sta->rsnxe, sta->rsnxe_len,
+ 				      WLAN_RSNX_CAPAB_SECURE_LTF))
+diff --git a/wlantest/rx_mgmt.c b/wlantest/rx_mgmt.c
+index ecb56e2c9..0f00a8834 100644
+--- a/wlantest/rx_mgmt.c
++++ b/wlantest/rx_mgmt.c
+@@ -437,6 +437,14 @@ static void rx_mgmt_beacon(struct wlantest *wt, const u8 *data, size_t len)
+ 		bss->rsnxe_len = 0;
+ 	}
+ 
++	if (elems.rsnxe_override) {
++		os_memcpy(bss->rsnxoe, elems.rsnxe_override + 4,
++			  elems.rsnxe_override_len - 4);
++		bss->rsnxoe_len = elems.rsnxe_override_len;
++	} else {
++		bss->rsnxoe_len = 0;
++	}
++
+ 	if (!bss->proberesp_seen)
+ 		bss_update(wt, bss, &elems, 1);
+ 
+@@ -535,6 +543,11 @@ static void rx_mgmt_beacon(struct wlantest *wt, const u8 *data, size_t len)
+ 				merged.rsnxe = m_elems.rsnxe;
+ 				merged.rsnxe_len = m_elems.rsnxe_len;
+ 			}
++			if (m_elems.rsnxe_override) {
++				merged.rsnxe_override = m_elems.rsnxe_override;
++				merged.rsnxe_override_len =
++					m_elems.rsnxe_override_len;
++			}
+ 
+ 			if (merged.rsnxe) {
+ 				os_memcpy(m_bss->rsnxe, merged.rsnxe,
+@@ -544,6 +557,16 @@ static void rx_mgmt_beacon(struct wlantest *wt, const u8 *data, size_t len)
+ 				m_bss->rsnxe_len = 0;
+ 			}
+ 
++			if (merged.rsnxe_override) {
++				os_memcpy(m_bss->rsnxoe,
++					  merged.rsnxe_override + 4,
++					  merged.rsnxe_override_len - 4);
++				m_bss->rsnxoe_len =
++					merged.rsnxe_override_len - 4;
++			} else {
++				m_bss->rsnxoe_len = 0;
++			}
++
+ 			if (!m_bss->proberesp_seen)
+ 				bss_update(wt, m_bss, &merged, 1);
+ 		}
+@@ -706,6 +729,8 @@ static void process_ft_auth(struct wlantest *wt, struct wlantest_bss *bss,
+ 	struct ieee802_11_elems elems;
+ 	const u8 *ie;
+ 	size_t ie_len, kdk_len;
++	const u8 *rsnxe;
++	size_t rsnxe_len;
+ 
+ 	if (sta->auth_alg != WLAN_AUTH_FT ||
+ 	    len < IEEE80211_HDRLEN + sizeof(mgmt->u.auth))
+@@ -785,7 +810,16 @@ static void process_ft_auth(struct wlantest *wt, struct wlantest_bss *bss,
+ 		goto out;
+ 	sta->pmk_r1_len = sta->pmk_r0_len;
+ 
+-	if (ieee802_11_rsnx_capab_len(bss->rsnxe, bss->rsnxe_len,
++	if ((sta->rsn_selection == RSN_SELECTION_RSNE_OVERRIDE ||
++	     sta->rsn_selection == RSN_SELECTION_RSNE_OVERRIDE_2) &&
++	    bss->rsnxoe_len) {
++		rsnxe = bss->rsnxoe;
++		rsnxe_len = bss->rsnxoe_len;
++	} else {
++		rsnxe = bss->rsnxe;
++		rsnxe_len = bss->rsnxe_len;
++	}
++	if (ieee802_11_rsnx_capab_len(rsnxe, rsnxe_len,
+ 				      WLAN_RSNX_CAPAB_SECURE_LTF) &&
+ 	    ieee802_11_rsnx_capab_len(sta->rsnxe, sta->rsnxe_len,
+ 				      WLAN_RSNX_CAPAB_SECURE_LTF))
+@@ -1195,6 +1229,14 @@ static void rx_mgmt_assoc_req(struct wlantest *wt, const u8 *data, size_t len)
+ 		return;
+ 	}
+ 
++	if (elems.rsn_selection) {
++		sta->rsn_selection = elems.rsn_selection[0];
++		wpa_printf(MSG_DEBUG, "RSNO: RSN Selection %u",
++			   sta->rsn_selection);
++	} else {
++		sta->rsn_selection = RSN_SELECTION_RSNE;
++	}
++
+ 	if (elems.rsnxe) {
+ 		os_memcpy(sta->rsnxe, elems.rsnxe, elems.rsnxe_len);
+ 		sta->rsnxe_len = elems.rsnxe_len;
+@@ -2636,6 +2678,8 @@ static void rx_mgmt_action_ft_response(struct wlantest *wt,
+ 	struct wpa_ft_ies parse;
+ 	struct wpa_ptk ptk;
+ 	u8 ptk_name[WPA_PMK_NAME_LEN];
++	const u8 *rsnxe;
++	size_t rsnxe_len;
+ 
+ 	if (len < 24 + 2 + 2 * ETH_ALEN + 2) {
+ 		add_note(wt, MSG_INFO, "Too short FT Response frame from "
+@@ -2696,7 +2740,16 @@ static void rx_mgmt_action_ft_response(struct wlantest *wt,
+ 	os_memcpy(new_sta->pmk_r1_name, sta->pmk_r1_name,
+ 		  sizeof(sta->pmk_r1_name));
+ 
+-	if (ieee802_11_rsnx_capab_len(bss->rsnxe, bss->rsnxe_len,
++	if ((sta->rsn_selection == RSN_SELECTION_RSNE_OVERRIDE ||
++	     sta->rsn_selection == RSN_SELECTION_RSNE_OVERRIDE_2) &&
++	    bss->rsnxoe_len) {
++		rsnxe = bss->rsnxoe;
++		rsnxe_len = bss->rsnxoe_len;
++	} else {
++		rsnxe = bss->rsnxe;
++		rsnxe_len = bss->rsnxe_len;
++	}
++	if (ieee802_11_rsnx_capab_len(rsnxe, rsnxe_len,
+ 				      WLAN_RSNX_CAPAB_SECURE_LTF) &&
+ 	    ieee802_11_rsnx_capab_len(sta->rsnxe, sta->rsnxe_len,
+ 				      WLAN_RSNX_CAPAB_SECURE_LTF))
+diff --git a/wlantest/wlantest.h b/wlantest/wlantest.h
+index 30dc123dc..516e341df 100644
+--- a/wlantest/wlantest.h
++++ b/wlantest/wlantest.h
+@@ -121,6 +121,8 @@ struct wlantest_sta {
+ 
+ 	u16 sae_group;
+ 	u16 owe_group;
++
++	enum rsn_selection_variant rsn_selection;
+ };
+ 
+ struct wlantest_tdls {
+@@ -158,6 +160,8 @@ struct wlantest_bss {
+ 	u8 rsnie[257];
+ 	u8 rsnxe[254]; /* RSNXE data */
+ 	size_t rsnxe_len;
++	u8 rsnxoe[251]; /* RSNXOE data */
++	size_t rsnxoe_len;
+ 	u8 osenie[257];
+ 	int proto;
+ 	int pairwise_cipher;
+-- 
+2.43.0
+

@@ -1,0 +1,30 @@
+From fd1a149d91da628add6c8b6d9335b5195ffcd24d Mon Sep 17 00:00:00 2001
+From: Jouni Malinen <quic_jouni@quicinc.com>
+Date: Sat, 14 Sep 2024 14:11:40 +0300
+Subject: [PATCH] NAN: Fix UpdatePublish offload to driver
+
+This was supposed to call wpa_drv_nan_update_publish() instead of
+wpa_drv_nan_cancel_publish().
+
+Fixes: 633e969311ed ("NAN: Option to offload NAN DE for USD into the driver")
+Signed-off-by: Jouni Malinen <quic_jouni@quicinc.com>
+---
+ wpa_supplicant/nan_usd.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/wpa_supplicant/nan_usd.c b/wpa_supplicant/nan_usd.c
+index ae152356d..98c44c039 100644
+--- a/wpa_supplicant/nan_usd.c
++++ b/wpa_supplicant/nan_usd.c
+@@ -410,7 +410,7 @@ int wpas_nan_usd_update_publish(struct wpa_supplicant *wpa_s, int publish_id,
+ 		return -1;
+ 	ret = nan_de_update_publish(wpa_s->nan_de, publish_id, ssi);
+ 	if (ret == 0 && (wpa_s->drv_flags2 & WPA_DRIVER_FLAGS2_NAN_OFFLOAD) &&
+-	    wpas_drv_nan_cancel_publish(wpa_s, publish_id) < 0)
++	    wpas_drv_nan_update_publish(wpa_s, publish_id, ssi) < 0)
+ 		return -1;
+ 	return ret;
+ }
+-- 
+2.43.0
+

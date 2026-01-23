@@ -1,0 +1,240 @@
+From 61f505078b0564b37c0d6150580ccb8a761561d8 Mon Sep 17 00:00:00 2001
+From: Daniel Gabay <daniel.gabay@intel.com>
+Date: Tue, 7 Jan 2025 14:51:46 +0200
+Subject: [PATCH] AP: Support SPP A-MSDU negotiation
+
+Implement SPP (Signaling and Payload Protected) A-MSDU negotiation.
+AP advertises support in the RSNXE whenever:
+ - The spp_amsdu configuration parameter is enabled.
+ - The driver supports SPP A-MSDU.
+ - CCMP or GCMP cipher is enabled as a pairwise cipher.
+
+Indicate to the driver to enable SPP A-MSDU when an associating station
+advertised SPP A-MSDU support in the RSNXE in (Re)Association Request
+frame.
+
+Signed-off-by: Daniel Gabay <daniel.gabay@intel.com>
+---
+ src/ap/ap_drv_ops.c        |  2 ++
+ src/ap/drv_callbacks.c     |  5 +++++
+ src/ap/ieee802_11.c        |  5 +++++
+ src/ap/ieee802_11_shared.c |  3 +++
+ src/ap/sta_info.c          |  3 ++-
+ src/ap/sta_info.h          |  1 +
+ src/ap/wpa_auth.h          |  3 +++
+ src/ap/wpa_auth_glue.c     | 11 ++++++++---
+ src/ap/wpa_auth_i.h        |  1 +
+ src/ap/wpa_auth_ie.c       | 15 +++++++++++++++
+ 10 files changed, 45 insertions(+), 4 deletions(-)
+
+diff --git a/src/ap/ap_drv_ops.c b/src/ap/ap_drv_ops.c
+index 65e83f468..8e9c41e41 100644
+--- a/src/ap/ap_drv_ops.c
++++ b/src/ap/ap_drv_ops.c
+@@ -39,6 +39,8 @@ u32 hostapd_sta_flags_to_drv(u32 flags)
+ 		res |= WPA_STA_AUTHENTICATED;
+ 	if (flags & WLAN_STA_ASSOC)
+ 		res |= WPA_STA_ASSOCIATED;
++	if (flags & WLAN_STA_SPP_AMSDU)
++		res |= WPA_STA_SPP_AMSDU;
+ 	return res;
+ }
+ 
+diff --git a/src/ap/drv_callbacks.c b/src/ap/drv_callbacks.c
+index d660beefc..7234a3b47 100644
+--- a/src/ap/drv_callbacks.c
++++ b/src/ap/drv_callbacks.c
+@@ -649,6 +649,11 @@ int hostapd_notif_assoc(struct hostapd_data *hapd, const u8 *addr,
+ 		else
+ 			sta->flags &= ~WLAN_STA_MFP;
+ 
++		if (wpa_auth_uses_spp_amsdu(sta->wpa_sm))
++			sta->flags |= WLAN_STA_SPP_AMSDU;
++		else
++			sta->flags &= ~WLAN_STA_SPP_AMSDU;
++
+ #ifdef CONFIG_IEEE80211R_AP
+ 		if (sta->auth_alg == WLAN_AUTH_FT) {
+ 			status = wpa_ft_validate_reassoc(sta->wpa_sm, req_ies,
+diff --git a/src/ap/ieee802_11.c b/src/ap/ieee802_11.c
+index dc920fa15..bcc355671 100644
+--- a/src/ap/ieee802_11.c
++++ b/src/ap/ieee802_11.c
+@@ -4275,6 +4275,11 @@ static int __check_assoc_ies(struct hostapd_data *hapd, struct sta_info *sta,
+ 		else
+ 			sta->flags &= ~WLAN_STA_MFP;
+ 
++		if (wpa_auth_uses_spp_amsdu(sta->wpa_sm))
++			sta->flags |= WLAN_STA_SPP_AMSDU;
++		else
++			sta->flags &= ~WLAN_STA_SPP_AMSDU;
++
+ #ifdef CONFIG_IEEE80211R_AP
+ 		if (sta->auth_alg == WLAN_AUTH_FT) {
+ 			if (!reassoc) {
+diff --git a/src/ap/ieee802_11_shared.c b/src/ap/ieee802_11_shared.c
+index 9a64a523a..28c2ccb1c 100644
+--- a/src/ap/ieee802_11_shared.c
++++ b/src/ap/ieee802_11_shared.c
+@@ -1139,6 +1139,9 @@ u8 * hostapd_eid_rsnxe(struct hostapd_data *hapd, u8 *eid, size_t len)
+ 		capab |= BIT(WLAN_RSNX_CAPAB_URNM_MFPR);
+ 	if (hapd->conf->ssid_protection)
+ 		capab |= BIT(WLAN_RSNX_CAPAB_SSID_PROTECTION);
++	if ((hapd->iface->drv_flags2 & WPA_DRIVER_FLAGS2_SPP_AMSDU) &&
++	    hapd->conf->spp_amsdu)
++		capab |= BIT(WLAN_RSNX_CAPAB_SPP_A_MSDU);
+ 
+ 	if (!capab)
+ 		return eid; /* no supported extended RSN capabilities */
+diff --git a/src/ap/sta_info.c b/src/ap/sta_info.c
+index 5a7677905..7aeb55f70 100644
+--- a/src/ap/sta_info.c
++++ b/src/ap/sta_info.c
+@@ -1766,7 +1766,7 @@ int ap_sta_flags_txt(u32 flags, char *buf, size_t buflen)
+ 
+ 	buf[0] = '\0';
+ 	res = os_snprintf(buf, buflen,
+-			  "%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s",
++			  "%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s",
+ 			  (flags & WLAN_STA_AUTH ? "[AUTH]" : ""),
+ 			  (flags & WLAN_STA_ASSOC ? "[ASSOC]" : ""),
+ 			  (flags & WLAN_STA_AUTHORIZED ? "[AUTHORIZED]" : ""),
+@@ -1789,6 +1789,7 @@ int ap_sta_flags_txt(u32 flags, char *buf, size_t buflen)
+ 			  (flags & WLAN_STA_EHT ? "[EHT]" : ""),
+ 			  (flags & WLAN_STA_6GHZ ? "[6GHZ]" : ""),
+ 			  (flags & WLAN_STA_VENDOR_VHT ? "[VENDOR_VHT]" : ""),
++			  (flags & WLAN_STA_SPP_AMSDU ? "[SPP-A-MSDU]" : ""),
+ 			  (flags & WLAN_STA_WNM_SLEEP_MODE ?
+ 			   "[WNM_SLEEP_MODE]" : ""));
+ 	if (os_snprintf_error(buflen, res))
+diff --git a/src/ap/sta_info.h b/src/ap/sta_info.h
+index 86aa6e942..827b21e45 100644
+--- a/src/ap/sta_info.h
++++ b/src/ap/sta_info.h
+@@ -22,6 +22,7 @@
+ /* STA flags */
+ #define WLAN_STA_AUTH BIT(0)
+ #define WLAN_STA_ASSOC BIT(1)
++#define WLAN_STA_SPP_AMSDU BIT(2)
+ #define WLAN_STA_AUTHORIZED BIT(5)
+ #define WLAN_STA_PENDING_POLL BIT(6) /* pending activity poll not ACKed */
+ #define WLAN_STA_SHORT_PREAMBLE BIT(7)
+diff --git a/src/ap/wpa_auth.h b/src/ap/wpa_auth.h
+index 977aa1265..6a41755ef 100644
+--- a/src/ap/wpa_auth.h
++++ b/src/ap/wpa_auth.h
+@@ -319,6 +319,8 @@ struct wpa_auth_config {
+ 	bool ssid_protection;
+ 
+ 	int rsn_override_omit_rsnxe;
++
++	bool spp_amsdu;
+ };
+ 
+ typedef enum {
+@@ -459,6 +461,7 @@ int wpa_validate_osen(struct wpa_authenticator *wpa_auth,
+ 		      struct wpa_state_machine *sm,
+ 		      const u8 *osen_ie, size_t osen_ie_len);
+ int wpa_auth_uses_mfp(struct wpa_state_machine *sm);
++int wpa_auth_uses_spp_amsdu(struct wpa_state_machine *sm);
+ void wpa_auth_set_ocv(struct wpa_state_machine *sm, int ocv);
+ int wpa_auth_uses_ocv(struct wpa_state_machine *sm);
+ struct wpa_state_machine *
+diff --git a/src/ap/wpa_auth_glue.c b/src/ap/wpa_auth_glue.c
+index 9fa9f19b7..1c26734e7 100644
+--- a/src/ap/wpa_auth_glue.c
++++ b/src/ap/wpa_auth_glue.c
+@@ -35,7 +35,8 @@
+ #include "wpa_auth_glue.h"
+ 
+ 
+-static void hostapd_wpa_auth_conf(struct hostapd_bss_config *conf,
++static void hostapd_wpa_auth_conf(struct hostapd_iface *iface,
++				  struct hostapd_bss_config *conf,
+ 				  struct hostapd_config *iconf,
+ 				  struct wpa_auth_config *wconf)
+ {
+@@ -277,6 +278,8 @@ static void hostapd_wpa_auth_conf(struct hostapd_bss_config *conf,
+ 		conf->no_disconnect_on_group_keyerror;
+ 
+ 	wconf->rsn_override_omit_rsnxe = conf->rsn_override_omit_rsnxe;
++	wconf->spp_amsdu = conf->spp_amsdu &&
++		(iface->drv_flags2 & WPA_DRIVER_FLAGS2_SPP_AMSDU);
+ }
+ 
+ 
+@@ -1714,7 +1717,7 @@ int hostapd_setup_wpa(struct hostapd_data *hapd)
+ 	size_t wpa_ie_len;
+ 	struct hostapd_data *tx_bss;
+ 
+-	hostapd_wpa_auth_conf(hapd->conf, hapd->iconf, &_conf);
++	hostapd_wpa_auth_conf(hapd->iface, hapd->conf, hapd->iconf, &_conf);
+ 	_conf.msg_ctx = hapd->msg_ctx;
+ 	tx_bss = hostapd_mbssid_get_tx_bss(hapd);
+ 	if (tx_bss != hapd)
+@@ -1840,7 +1843,9 @@ int hostapd_setup_wpa(struct hostapd_data *hapd)
+ void hostapd_reconfig_wpa(struct hostapd_data *hapd)
+ {
+ 	struct wpa_auth_config wpa_auth_conf;
+-	hostapd_wpa_auth_conf(hapd->conf, hapd->iconf, &wpa_auth_conf);
++
++	hostapd_wpa_auth_conf(hapd->iface, hapd->conf, hapd->iconf,
++			      &wpa_auth_conf);
+ 	wpa_reconfig(hapd->wpa_auth, &wpa_auth_conf);
+ }
+ 
+diff --git a/src/ap/wpa_auth_i.h b/src/ap/wpa_auth_i.h
+index cb902e42b..188f51eb8 100644
+--- a/src/ap/wpa_auth_i.h
++++ b/src/ap/wpa_auth_i.h
+@@ -97,6 +97,7 @@ struct wpa_state_machine {
+ #endif /* CONFIG_IEEE80211R_AP */
+ 	unsigned int is_wnmsleep:1;
+ 	unsigned int pmkid_set:1;
++	unsigned int spp_amsdu:1;
+ 
+ 	unsigned int ptkstart_without_success;
+ 
+diff --git a/src/ap/wpa_auth_ie.c b/src/ap/wpa_auth_ie.c
+index 06ef2fb98..93847fe7a 100644
+--- a/src/ap/wpa_auth_ie.c
++++ b/src/ap/wpa_auth_ie.c
+@@ -507,6 +507,8 @@ static u32 rsnxe_capab(struct wpa_auth_config *conf, int key_mgmt)
+ 		capab |= BIT(WLAN_RSNX_CAPAB_URNM_MFPR);
+ 	if (conf->ssid_protection)
+ 		capab |= BIT(WLAN_RSNX_CAPAB_SSID_PROTECTION);
++	if (conf->spp_amsdu)
++		capab |= BIT(WLAN_RSNX_CAPAB_SPP_A_MSDU);
+ 
+ 	return capab;
+ }
+@@ -1169,6 +1171,14 @@ wpa_validate_wpa_ie(struct wpa_authenticator *wpa_auth,
+ 		    return WPA_MGMT_FRAME_PROTECTION_VIOLATION;
+ 	}
+ 
++	if (wpa_auth->conf.spp_amsdu &&
++	    ieee802_11_rsnx_capab(rsnxe, WLAN_RSNX_CAPAB_SPP_A_MSDU) &&
++	    (ciphers & (WPA_CIPHER_CCMP_256 | WPA_CIPHER_CCMP |
++			WPA_CIPHER_GCMP_256 | WPA_CIPHER_GCMP)))
++		sm->spp_amsdu = 1;
++	else
++		sm->spp_amsdu = 0;
++
+ #ifdef CONFIG_IEEE80211R_AP
+ 	if (wpa_key_mgmt_ft(sm->wpa_key_mgmt)) {
+ 		if (mdie == NULL || mdie_len < MOBILITY_DOMAIN_ID_LEN + 1) {
+@@ -1412,6 +1422,11 @@ int wpa_auth_uses_mfp(struct wpa_state_machine *sm)
+ }
+ 
+ 
++int wpa_auth_uses_spp_amsdu(struct wpa_state_machine *sm)
++{
++	return sm ? sm->spp_amsdu : 0;
++}
++
+ #ifdef CONFIG_OCV
+ 
+ void wpa_auth_set_ocv(struct wpa_state_machine *sm, int ocv)
+-- 
+2.43.0
+

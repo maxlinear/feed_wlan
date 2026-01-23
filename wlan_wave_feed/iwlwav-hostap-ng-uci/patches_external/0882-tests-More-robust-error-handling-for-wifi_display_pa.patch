@@ -1,0 +1,29 @@
+From 3935d78e7b40a02a3665ac75c62e9b73ecb72469 Mon Sep 17 00:00:00 2001
+From: Jouni Malinen <quic_jouni@quicinc.com>
+Date: Thu, 29 Aug 2024 16:00:10 +0300
+Subject: [PATCH] tests: More robust error handling for wifi_display_parsing
+
+Check explicitly that wfd_subelems is present in the dict instead of
+failing on a key error when trying to fetch it.
+
+Signed-off-by: Jouni Malinen <quic_jouni@quicinc.com>
+---
+ tests/hwsim/test_p2p_wifi_display.py | 2 ++
+ 1 file changed, 2 insertions(+)
+
+diff --git a/tests/hwsim/test_p2p_wifi_display.py b/tests/hwsim/test_p2p_wifi_display.py
+index 29110bca7..c235181a6 100644
+--- a/tests/hwsim/test_p2p_wifi_display.py
++++ b/tests/hwsim/test_p2p_wifi_display.py
+@@ -430,6 +430,8 @@ def _test_wifi_display_parsing(dev):
+     bssid = dev[0].get_group_status_field('bssid')
+     dev[2].scan_for_bss(bssid, freq=2412, force_scan=True)
+     bss = dev[2].get_bss(bssid)
++    if 'wfd_subelems' not in bss:
++        raise Exception("Missing WFD elements in scan results")
+     if bss['wfd_subelems'] != "000006" + wfd_devinfo:
+         raise Exception("Unexpected WFD elements in scan results: " + bss['wfd_subelems'])
+ 
+-- 
+2.43.0
+

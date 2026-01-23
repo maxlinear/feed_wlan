@@ -1,0 +1,62 @@
+From 4037c0ac1e31040818814f538b7c66e28ff0af2f Mon Sep 17 00:00:00 2001
+From: Jouni Malinen <quic_jouni@quicinc.com>
+Date: Mon, 22 Jan 2024 14:39:54 +0200
+Subject: [PATCH] nl80211: Fix wiphy event handling when the driver is
+ deinitialized
+
+Radar detection event could have resulted in the driver interface
+instance getting deinitialized and the related memory freed in the
+middle of the loop. This was not an issue when the event was passed only
+into a single interface, but it became an issue when the loop tried to
+send it to all interfaces. If the driver were removed, that loop check
+would have used freed memory. Avoid this by explicitly checking that the
+driver interface instance is still valid.
+
+Fixes: f13683720239 ("nl80211: Pass wiphy events to all affected interfaces")
+Signed-off-by: Jouni Malinen <quic_jouni@quicinc.com>
+---
+ src/drivers/driver_nl80211_event.c | 21 +++++++++++++++++++++
+ 1 file changed, 21 insertions(+)
+
+diff --git a/src/drivers/driver_nl80211_event.c b/src/drivers/driver_nl80211_event.c
+index 993fb8fc9..9b58310ff 100644
+--- a/src/drivers/driver_nl80211_event.c
++++ b/src/drivers/driver_nl80211_event.c
+@@ -4095,6 +4095,21 @@ static void do_process_drv_event(struct i802_bss *bss, int cmd,
+ }
+ 
+ 
++static bool nl80211_drv_in_list(struct nl80211_global *global,
++				struct wpa_driver_nl80211_data *drv)
++{
++	struct wpa_driver_nl80211_data *tmp;
++
++	dl_list_for_each(tmp, &global->interfaces,
++			 struct wpa_driver_nl80211_data, list) {
++		if (drv == tmp)
++			return true;
++	}
++
++	return false;
++}
++
++
+ int process_global_event(struct nl_msg *msg, void *arg)
+ {
+ 	struct nl80211_global *global = arg;
+@@ -4159,6 +4174,12 @@ int process_global_event(struct nl_msg *msg, void *arg)
+ 				do_process_drv_event(bss, gnlh->cmd, tb);
+ 				if (!wiphy_idx_set)
+ 					return NL_SKIP;
++				/* The driver instance could have been removed,
++				 * e.g., due to NL80211_CMD_RADAR_DETECT event,
++				 * so need to stop the loop if that has
++				 * happened. */
++				if (!nl80211_drv_in_list(global, drv))
++					break;
+ 			}
+ 		}
+ 	}
+-- 
+2.43.0
+

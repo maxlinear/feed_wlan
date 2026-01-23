@@ -1,0 +1,90 @@
+From 39b6e6efecec4e9f04521bddaefa31f70647de0c Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?=E6=9C=B1=E6=B5=B7?= <zhuhai.mail@163.com>
+Date: Wed, 31 Jan 2024 20:58:47 +0800
+Subject: [PATCH] P2P: Clear pending_listen_freq if listen failed
+
+p2p_listen() use p2p->pending_listen_freq to check if there is a a
+pending p2p_listen request. However, this value is not cleared when
+failing to start listen operation, making extended listen not work
+anymore.
+
+P2P: Failed to request the driver to remain on channel (2412 MHz) for Listen state
+p2p-dev-wlan0: Radio work 'p2p-listen'@0xa800d510 done in 0.005055 seconds
+p2p-dev-wlan0: radio_work_free('p2p-listen'@0xa800d510: num_active_works --> 0
+P2P: Previous Extended Listen operation had not been completed - try again
+P2P: State LISTEN_ONLY -> IDLE
+P2P: Extended Listen timeout
+P2P: Going to listen(only) state
+P2P: p2p_listen command pending already
+
+Clear p2p->pending_listen_freq if the radio work to start the listen
+operation fails.
+
+Signed-off-by: zhuhai <zhuhai.mail@163.com>
+---
+ src/p2p/p2p.c                   | 14 ++++++++++++++
+ src/p2p/p2p.h                   |  2 ++
+ wpa_supplicant/p2p_supplicant.c |  2 ++
+ 3 files changed, 18 insertions(+)
+
+diff --git a/src/p2p/p2p.c b/src/p2p/p2p.c
+index cbc602dd8..b598a7856 100644
+--- a/src/p2p/p2p.c
++++ b/src/p2p/p2p.c
+@@ -4124,6 +4124,20 @@ int p2p_listen_end(struct p2p_data *p2p, unsigned int freq)
+ }
+ 
+ 
++void p2p_listen_failed(struct p2p_data *p2p, unsigned int freq)
++{
++	if (freq != p2p->pending_listen_freq) {
++		p2p_dbg(p2p,
++			"Unexpected listen failed callback for freq=%u (pending_listen_freq=%u)",
++			freq, p2p->pending_listen_freq);
++		return;
++	}
++
++	p2p_dbg(p2p, "Listen failed on freq=%u", freq);
++	p2p->pending_listen_freq = 0;
++}
++
++
+ static void p2p_timeout_connect(struct p2p_data *p2p)
+ {
+ 	p2p->cfg->send_action_done(p2p->cfg->cb_ctx);
+diff --git a/src/p2p/p2p.h b/src/p2p/p2p.h
+index 38d667565..e7658311e 100644
+--- a/src/p2p/p2p.h
++++ b/src/p2p/p2p.h
+@@ -1998,6 +1998,8 @@ void p2p_listen_cb(struct p2p_data *p2p, unsigned int freq,
+  */
+ int p2p_listen_end(struct p2p_data *p2p, unsigned int freq);
+ 
++void p2p_listen_failed(struct p2p_data *p2p, unsigned int freq);
++
+ void p2p_deauth_notif(struct p2p_data *p2p, const u8 *bssid, u16 reason_code,
+ 		      const u8 *ie, size_t ie_len);
+ 
+diff --git a/wpa_supplicant/p2p_supplicant.c b/wpa_supplicant/p2p_supplicant.c
+index 1f5c8602f..4c64c1802 100644
+--- a/wpa_supplicant/p2p_supplicant.c
++++ b/wpa_supplicant/p2p_supplicant.c
+@@ -3205,6 +3205,7 @@ static void wpas_start_listen_cb(struct wpa_radio_work *work, int deinit)
+ 	if (wpa_drv_probe_req_report(wpa_s, 1) < 0) {
+ 		wpa_printf(MSG_DEBUG, "P2P: Failed to request the driver to "
+ 			   "report received Probe Request frames");
++		p2p_listen_failed(wpa_s->global->p2p, lwork->freq);
+ 		wpas_p2p_listen_work_done(wpa_s);
+ 		return;
+ 	}
+@@ -3225,6 +3226,7 @@ static void wpas_start_listen_cb(struct wpa_radio_work *work, int deinit)
+ 		wpa_printf(MSG_DEBUG, "P2P: Failed to request the driver "
+ 			   "to remain on channel (%u MHz) for Listen "
+ 			   "state", lwork->freq);
++		p2p_listen_failed(wpa_s->global->p2p, lwork->freq);
+ 		wpas_p2p_listen_work_done(wpa_s);
+ 		wpa_s->pending_listen_freq = 0;
+ 		return;
+-- 
+2.43.0
+

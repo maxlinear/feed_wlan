@@ -1,0 +1,30 @@
+From 050bd6e2b1cdc57d9a95263c91de3adcebe6e606 Mon Sep 17 00:00:00 2001
+From: Benjamin Berg <benjamin.berg@intel.com>
+Date: Fri, 14 Jun 2024 10:13:45 +0200
+Subject: [PATCH] tests: Specify correct function name for failure
+
+The test expects rsn_pmkid_suite_b_192() to fail but specified only
+rsn_pmkid_suite_b without the _192 postfix. Add the postfix so that the
+function matching can be fixed later.
+
+Signed-off-by: Benjamin Berg <benjamin.berg@intel.com>
+---
+ tests/hwsim/test_suite_b.py | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/tests/hwsim/test_suite_b.py b/tests/hwsim/test_suite_b.py
+index d03a39dee..ddd1c2ee7 100644
+--- a/tests/hwsim/test_suite_b.py
++++ b/tests/hwsim/test_suite_b.py
+@@ -333,7 +333,7 @@ def test_suite_b_192_pmkid_failure(dev, apdev):
+     params = suite_b_192_ap_params()
+     hapd = hostapd.add_ap(apdev[0], params)
+ 
+-    with fail_test(dev[0], 1, "rsn_pmkid_suite_b"):
++    with fail_test(dev[0], 1, "rsn_pmkid_suite_b_192"):
+         dev[0].connect("test-suite-b", key_mgmt="WPA-EAP-SUITE-B-192",
+                        ieee80211w="2",
+                        openssl_ciphers="SUITEB192",
+-- 
+2.43.0
+

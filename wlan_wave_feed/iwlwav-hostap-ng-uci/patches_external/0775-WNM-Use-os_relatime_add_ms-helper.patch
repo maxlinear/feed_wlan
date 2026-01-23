@@ -1,0 +1,33 @@
+From b791d1f342b796f12ddfa06b508c4a8374c47aab Mon Sep 17 00:00:00 2001
+From: Benjamin Berg <benjamin.berg@intel.com>
+Date: Mon, 29 Apr 2024 13:51:44 +0200
+Subject: [PATCH] WNM: Use os_relatime_add_ms() helper
+
+Just simplify the code a little bit by using the helper instead of doing
+the math inline.
+
+Signed-off-by: Benjamin Berg <benjamin.berg@intel.com>
+---
+ wpa_supplicant/wnm_sta.c | 6 +-----
+ 1 file changed, 1 insertion(+), 5 deletions(-)
+
+diff --git a/wpa_supplicant/wnm_sta.c b/wpa_supplicant/wnm_sta.c
+index 51ac2d6b3..9b7047218 100644
+--- a/wpa_supplicant/wnm_sta.c
++++ b/wpa_supplicant/wnm_sta.c
+@@ -1599,11 +1599,7 @@ static void ieee802_11_rx_bss_trans_mgmt_req(struct wpa_supplicant *wpa_s,
+ 		wpa_printf(MSG_DEBUG, "WNM: Candidate list valid for %u ms",
+ 			   valid_ms);
+ 		os_get_reltime(&wpa_s->wnm_cand_valid_until);
+-		wpa_s->wnm_cand_valid_until.sec += valid_ms / 1000;
+-		wpa_s->wnm_cand_valid_until.usec += (valid_ms % 1000) * 1000;
+-		wpa_s->wnm_cand_valid_until.sec +=
+-			wpa_s->wnm_cand_valid_until.usec / 1000000;
+-		wpa_s->wnm_cand_valid_until.usec %= 1000000;
++		os_reltime_add_ms(&wpa_s->wnm_cand_valid_until, valid_ms);
+ 
+ 		/*
+ 		* Try fetching the latest scan results from the kernel.
+-- 
+2.43.0
+

@@ -1,0 +1,432 @@
+From 259b43a31a124507a0568f0470d8acb597cf9d19 Mon Sep 17 00:00:00 2001
+From: Sriram R <quic_srirrama@quicinc.com>
+Date: Wed, 6 Mar 2024 12:06:33 +0530
+Subject: [PATCH] hostapd: MLO: Avoid use of mld_id as user configuration
+
+mld_id was provided as a user configuration to identify partner BSS
+belonging to the same AP MLD. The same id is used at the protocol level
+also to indicate the AP MLD ID of the MLD.
+
+But, in general mld_id is a relative reference of the MLD where 0 is
+used as the mld_id to represent the self MLD and in case of MLO MBSSID
+mld_id of a non transmitted BSS affiliated to an AP MLD is based on the
+relative BSS index of the non transmitted BSS from the transmitted BSS.
+Hence mld_id need not be fetched from users, rather it can be identified
+wherever required.
+
+To verify if the partners belong to the same AP MLD the interface name
+can be checked, since all link BSS partners of the same AP MLD belong to
+the same interface.
+
+Hence, remove use of mld_id user config and instead introduce two
+functions hostapd_is_ml_partner() and hostapd_get_mld_id(). The former
+is used to verify whether partners belong to the same AP MLD and the
+latter is used to get the MLD ID of the BSS.
+
+Signed-off-by: Sriram R <quic_srirrama@quicinc.com>
+Signed-off-by: Aditya Kumar Singh <quic_adisi@quicinc.com>
+---
+ hostapd/config_file.c   |  2 --
+ hostapd/ctrl_iface.c    | 12 +++---------
+ hostapd/hostapd.conf    |  3 ---
+ hostapd/main.c          | 10 ++++++++--
+ src/ap/beacon.c         |  5 ++---
+ src/ap/ctrl_iface_ap.c  |  2 +-
+ src/ap/drv_callbacks.c  |  4 +---
+ src/ap/hostapd.c        | 33 +++++++++++++++++++++++++++------
+ src/ap/hostapd.h        |  5 ++++-
+ src/ap/ieee802_11.c     | 20 +++++++-------------
+ src/ap/ieee802_11_eht.c |  7 +++----
+ src/ap/ieee802_1x.c     |  3 +--
+ src/ap/sta_info.c       |  5 ++---
+ src/ap/wpa_auth_glue.c  |  6 ++----
+ 14 files changed, 61 insertions(+), 56 deletions(-)
+
+diff --git a/hostapd/config_file.c b/hostapd/config_file.c
+index e9f0c5ca2..56b2df3ae 100644
+--- a/hostapd/config_file.c
++++ b/hostapd/config_file.c
+@@ -5044,8 +5044,6 @@ static int hostapd_config_fill(struct hostapd_config *conf,
+ 		conf->punct_acs_threshold = val;
+ 	} else if (os_strcmp(buf, "mld_ap") == 0) {
+ 		bss->mld_ap = !!atoi(pos);
+-	} else if (os_strcmp(buf, "mld_id") == 0) {
+-		bss->mld_id = atoi(pos);
+ 	} else if (os_strcmp(buf, "mld_addr") == 0) {
+ 		if (hwaddr_aton(pos, bss->mld_addr)) {
+ 			wpa_printf(MSG_ERROR, "Line %d: Invalid mld_addr",
+diff --git a/hostapd/ctrl_iface.c b/hostapd/ctrl_iface.c
+index 8a12fee88..e1541dd97 100644
+--- a/hostapd/ctrl_iface.c
++++ b/hostapd/ctrl_iface.c
+@@ -3476,10 +3476,8 @@ static int hostapd_ctrl_iface_enable_mld(struct hostapd_iface *iface)
+ 	for (i = 0; i < iface->interfaces->count; ++i) {
+ 		struct hostapd_iface *h_iface = iface->interfaces->iface[i];
+ 		struct hostapd_data *h_hapd = h_iface->bss[0];
+-		struct hostapd_bss_config *h_conf = h_hapd->conf;
+ 
+-		if (!h_conf->mld_ap ||
+-		    h_conf->mld_id != iface->bss[0]->conf->mld_id)
++		if (!hostapd_is_ml_partner(h_hapd, iface->bss[0]))
+ 			continue;
+ 
+ 		if (hostapd_enable_iface(h_iface)) {
+@@ -3517,10 +3515,8 @@ static int hostapd_ctrl_iface_disable_mld(struct hostapd_iface *iface)
+ 	for (i = 0; i < iface->interfaces->count; ++i) {
+ 		struct hostapd_iface *h_iface = iface->interfaces->iface[i];
+ 		struct hostapd_data *h_hapd = h_iface->bss[0];
+-		struct hostapd_bss_config *h_conf = h_hapd->conf;
+ 
+-		if (!h_conf->mld_ap ||
+-		    h_conf->mld_id != iface->bss[0]->conf->mld_id)
++		if (!hostapd_is_ml_partner(h_hapd, iface->bss[0]))
+ 			continue;
+ 
+ 		if (!h_hapd->mld_first_bss) {
+@@ -3538,10 +3534,8 @@ static int hostapd_ctrl_iface_disable_mld(struct hostapd_iface *iface)
+ 	for (i = 0; i < iface->interfaces->count; ++i) {
+ 		struct hostapd_iface *h_iface = iface->interfaces->iface[i];
+ 		struct hostapd_data *h_hapd = h_iface->bss[0];
+-		struct hostapd_bss_config *h_conf = h_hapd->conf;
+ 
+-		if (!h_conf->mld_ap ||
+-		    h_conf->mld_id != iface->bss[0]->conf->mld_id ||
++		if (!hostapd_is_ml_partner(h_hapd, iface->bss[0]) ||
+ 		    !h_hapd->mld_first_bss)
+ 			continue;
+ 
+diff --git a/hostapd/hostapd.conf b/hostapd/hostapd.conf
+index 727a87770..d80abcac0 100644
+--- a/hostapd/hostapd.conf
++++ b/hostapd/hostapd.conf
+@@ -1071,9 +1071,6 @@ wmm_ac_vo_acm=0
+ # 1 = yes (MLO)
+ #mld_ap=0
+ 
+-# MLD ID - Affiliated MLD ID
+-#mld_id=1
+-
+ # AP MLD MAC address
+ # The configured address will be set as the interface hardware address and used
+ # as the AP MLD MAC address. If not set, the current interface hardware address
+diff --git a/hostapd/main.c b/hostapd/main.c
+index c95cf8a71..ec3d112fc 100644
+--- a/hostapd/main.c
++++ b/hostapd/main.c
+@@ -175,9 +175,15 @@ static int hostapd_driver_init(struct hostapd_iface *iface)
+ 			continue;
+ 		}
+ 
+-		if (!hconf->mld_ap || hconf->mld_id != conf->mld_id) {
++		if (!hconf->mld_ap) {
+ 			wpa_printf(MSG_DEBUG,
+-				   "MLD: Skip non matching mld_id");
++				   "MLD: Skip non-MLD");
++			continue;
++		}
++
++		if (!hostapd_is_ml_partner(hapd, h_hapd)) {
++			wpa_printf(MSG_DEBUG,
++				   "MLD: Skip non matching MLD vif name");
+ 			continue;
+ 		}
+ 
+diff --git a/src/ap/beacon.c b/src/ap/beacon.c
+index e339c2002..32865f667 100644
+--- a/src/ap/beacon.c
++++ b/src/ap/beacon.c
+@@ -960,7 +960,7 @@ static void hostapd_fill_probe_resp_ml_params(struct hostapd_data *hapd,
+ 	 * We want to include the AP MLD ID in the response if it was
+ 	 * included in the request.
+ 	 */
+-	probed_mld_id = mld_id != -1 ? mld_id : hapd->conf->mld_id;
++	probed_mld_id = mld_id != -1 ? mld_id : hostapd_get_mld_id(hapd);
+ 
+ 	for_each_mld_link(link, i, j, hapd->iface->interfaces,
+ 			  probed_mld_id) {
+@@ -2676,8 +2676,7 @@ int ieee802_11_set_beacon(struct hostapd_data *hapd)
+ 			continue;
+ 
+ #ifdef CONFIG_IEEE80211BE
+-		if (hapd->conf->mld_ap && other->bss[0]->conf->mld_ap &&
+-		    hapd->conf->mld_id == other->bss[0]->conf->mld_id)
++		if (hostapd_is_ml_partner(hapd, other->bss[0]))
+ 			mld_ap = true;
+ #endif /* CONFIG_IEEE80211BE */
+ 
+diff --git a/src/ap/ctrl_iface_ap.c b/src/ap/ctrl_iface_ap.c
+index e65c3c4b2..cdd777287 100644
+--- a/src/ap/ctrl_iface_ap.c
++++ b/src/ap/ctrl_iface_ap.c
+@@ -1013,7 +1013,7 @@ int hostapd_ctrl_iface_status(struct hostapd_data *hapd, char *buf,
+ 					  "mld_id[%d]=%d\n"
+ 					  "mld_link_id[%d]=%d\n",
+ 					  (int) i, MAC2STR(bss->mld_addr),
+-					  (int) i, bss->conf->mld_id,
++					  (int) i, hostapd_get_mld_id(bss),
+ 					  (int) i, bss->mld_link_id);
+ 			if (os_snprintf_error(buflen - len, ret))
+ 				return len;
+diff --git a/src/ap/drv_callbacks.c b/src/ap/drv_callbacks.c
+index 814901977..8c9d2081a 100644
+--- a/src/ap/drv_callbacks.c
++++ b/src/ap/drv_callbacks.c
+@@ -1962,10 +1962,8 @@ static bool search_mld_sta(struct hostapd_data **p_hapd, const u8 *src)
+ 		struct hostapd_iface *h =
+ 			hapd->iface->interfaces->iface[i];
+ 		struct hostapd_data *h_hapd = h->bss[0];
+-		struct hostapd_bss_config *hconf = h_hapd->conf;
+ 
+-		if (!hconf->mld_ap ||
+-		    hconf->mld_id != hapd->conf->mld_id)
++		if (!hostapd_is_ml_partner(h_hapd, hapd))
+ 			continue;
+ 
+ 		h_hapd = hostapd_find_by_sta(h, src, false);
+diff --git a/src/ap/hostapd.c b/src/ap/hostapd.c
+index 577e6eaad..aaabd4644 100644
+--- a/src/ap/hostapd.c
++++ b/src/ap/hostapd.c
+@@ -3217,11 +3217,9 @@ int hostapd_disable_iface(struct hostapd_iface *hapd_iface)
+ 			struct hostapd_iface *h_iface =
+ 				hapd_iface->interfaces->iface[j];
+ 			struct hostapd_data *h_hapd = h_iface->bss[0];
+-			struct hostapd_bss_config *h_conf = h_hapd->conf;
+ 
+-			if (!h_conf->mld_ap ||
+-			    h_conf->mld_id !=
+-			    hapd_iface->bss[0]->conf->mld_id ||
++			if (!hostapd_is_ml_partner(h_hapd,
++						   hapd_iface->bss[0]) ||
+ 			    h_iface == hapd_iface)
+ 				continue;
+ 
+@@ -4406,6 +4404,7 @@ void hostapd_ocv_check_csa_sa_query(void *eloop_ctx, void *timeout_ctx)
+ 
+ 
+ #ifdef CONFIG_IEEE80211BE
++
+ struct hostapd_data * hostapd_mld_get_link_bss(struct hostapd_data *hapd,
+ 					       u8 link_id)
+ {
+@@ -4414,9 +4413,8 @@ struct hostapd_data * hostapd_mld_get_link_bss(struct hostapd_data *hapd,
+ 	for (i = 0; i < hapd->iface->interfaces->count; i++) {
+ 		struct hostapd_iface *h = hapd->iface->interfaces->iface[i];
+ 		struct hostapd_data *h_hapd = h->bss[0];
+-		struct hostapd_bss_config *hconf = h_hapd->conf;
+ 
+-		if (!hconf->mld_ap || hconf->mld_id != hapd->conf->mld_id)
++		if (!hostapd_is_ml_partner(hapd, h_hapd))
+ 			continue;
+ 
+ 		if (h_hapd->mld_link_id == link_id)
+@@ -4425,6 +4423,29 @@ struct hostapd_data * hostapd_mld_get_link_bss(struct hostapd_data *hapd,
+ 
+ 	return NULL;
+ }
++
++
++bool hostapd_is_ml_partner(struct hostapd_data *hapd1,
++			   struct hostapd_data *hapd2)
++{
++	if (!hapd1->conf->mld_ap || !hapd2->conf->mld_ap)
++		return false;
++
++	return !os_strcmp(hapd1->conf->iface, hapd2->conf->iface);
++}
++
++
++u8 hostapd_get_mld_id(struct hostapd_data *hapd)
++{
++	if (!hapd->conf->mld_ap)
++		return 255;
++
++	/* MLD ID 0 represents self */
++	return 0;
++
++	/* TODO: MLD ID for Multiple BSS cases */
++}
++
+ #endif /* CONFIG_IEEE80211BE */
+ 
+ 
+diff --git a/src/ap/hostapd.h b/src/ap/hostapd.h
+index 9be762c24..b3249a0b0 100644
+--- a/src/ap/hostapd.h
++++ b/src/ap/hostapd.h
+@@ -781,6 +781,9 @@ int hostapd_mbssid_get_bss_index(struct hostapd_data *hapd);
+ struct hostapd_data * hostapd_mld_get_link_bss(struct hostapd_data *hapd,
+ 					       u8 link_id);
+ int hostapd_link_remove(struct hostapd_data *hapd, u32 count);
++bool hostapd_is_ml_partner(struct hostapd_data *hapd1,
++			   struct hostapd_data *hapd2);
++u8 hostapd_get_mld_id(struct hostapd_data *hapd);
+ 
+ #ifdef CONFIG_IEEE80211BE
+ #define for_each_mld_link(_link, _bss_idx, _iface_idx, _ifaces, _mld_id) \
+@@ -794,7 +797,7 @@ int hostapd_link_remove(struct hostapd_data *hapd, u32 count);
+ 			for (_link =					\
+ 			     (_ifaces)->iface[_iface_idx]->bss[_bss_idx]; \
+ 			    _link && _link->conf->mld_ap &&		\
+-				_link->conf->mld_id == _mld_id;		\
++				hostapd_get_mld_id(_link) == _mld_id;	\
+ 			    _link = NULL)
+ #else /* CONFIG_IEEE80211BE */
+ #define for_each_mld_link(_link, _bss_idx, _iface_idx, _ifaces, _mld_id) \
+diff --git a/src/ap/ieee802_11.c b/src/ap/ieee802_11.c
+index 17f98f59d..bf1d49b71 100644
+--- a/src/ap/ieee802_11.c
++++ b/src/ap/ieee802_11.c
+@@ -4598,8 +4598,7 @@ int hostapd_process_assoc_ml_info(struct hostapd_data *hapd,
+ 			if (hapd->iface == iface)
+ 				continue;
+ 
+-			if (iface->bss[0]->conf->mld_ap &&
+-			    hapd->conf->mld_id == iface->bss[0]->conf->mld_id &&
++			if (hostapd_is_ml_partner(hapd, iface->bss[0]) &&
+ 			    i == iface->bss[0]->mld_link_id)
+ 				break;
+ 		}
+@@ -5814,8 +5813,7 @@ static bool hostapd_ml_handle_disconnect(struct hostapd_data *hapd,
+ 			tmp_hapd =
+ 				assoc_hapd->iface->interfaces->iface[i]->bss[0];
+ 
+-			if (!tmp_hapd->conf->mld_ap ||
+-			    assoc_hapd->conf->mld_id != tmp_hapd->conf->mld_id)
++			if (!hostapd_is_ml_partner(assoc_hapd, tmp_hapd))
+ 				continue;
+ 
+ 			for (tmp_sta = tmp_hapd->sta_list; tmp_sta;
+@@ -6482,8 +6480,7 @@ static void hostapd_ml_handle_assoc_cb(struct hostapd_data *hapd,
+ 			struct hostapd_data *tmp_hapd =
+ 				hapd->iface->interfaces->iface[i]->bss[0];
+ 
+-			if (!tmp_hapd->conf->mld_ap ||
+-			    hapd->conf->mld_id != tmp_hapd->conf->mld_id)
++			if (!hostapd_is_ml_partner(tmp_hapd, hapd))
+ 				continue;
+ 
+ 			for (tmp_sta = tmp_hapd->sta_list; tmp_sta;
+@@ -7446,8 +7443,7 @@ static size_t hostapd_eid_rnr_multi_iface_len(struct hostapd_data *hapd,
+ 		bool ap_mld = false;
+ 
+ #ifdef CONFIG_IEEE80211BE
+-		if (hapd->conf->mld_ap && iface->bss[0]->conf->mld_ap &&
+-		    hapd->conf->mld_id == iface->bss[0]->conf->mld_id)
++		if (hostapd_is_ml_partner(hapd, iface->bss[0]))
+ 			ap_mld = true;
+ #endif /* CONFIG_IEEE80211BE */
+ 
+@@ -7619,11 +7615,10 @@ static bool hostapd_eid_rnr_bss(struct hostapd_data *hapd,
+ #ifdef CONFIG_IEEE80211BE
+ 		u8 param_ch = hapd->eht_mld_bss_param_change;
+ 
+-		if (reporting_hapd->conf->mld_ap &&
+-		    bss->conf->mld_id == reporting_hapd->conf->mld_id)
++		if (hostapd_is_ml_partner(bss, reporting_hapd))
+ 			*eid++ = 0;
+ 		else
+-			*eid++ = hapd->conf->mld_id;
++			*eid++ = hostapd_get_mld_id(hapd);
+ 
+ 		*eid++ = hapd->mld_link_id | ((param_ch & 0xF) << 4);
+ 		*eid = (param_ch >> 4) & 0xF;
+@@ -7721,8 +7716,7 @@ static u8 * hostapd_eid_rnr_multi_iface(struct hostapd_data *hapd, u8 *eid,
+ 		bool ap_mld = false;
+ 
+ #ifdef CONFIG_IEEE80211BE
+-		if (hapd->conf->mld_ap && iface->bss[0]->conf->mld_ap &&
+-		    hapd->conf->mld_id == iface->bss[0]->conf->mld_id)
++		if (hostapd_is_ml_partner(hapd, iface->bss[0]))
+ 			ap_mld = true;
+ #endif /* CONFIG_IEEE80211BE */
+ 
+diff --git a/src/ap/ieee802_11_eht.c b/src/ap/ieee802_11_eht.c
+index e4590b9ff..7a4699c8c 100644
+--- a/src/ap/ieee802_11_eht.c
++++ b/src/ap/ieee802_11_eht.c
+@@ -505,8 +505,8 @@ static u8 * hostapd_eid_eht_basic_ml_common(struct hostapd_data *hapd,
+ 
+ 	if (include_mld_id) {
+ 		wpa_printf(MSG_DEBUG, "MLD: AP MLD ID=0x%x",
+-			   hapd->conf->mld_id);
+-		wpabuf_put_u8(buf, hapd->conf->mld_id);
++			   hostapd_get_mld_id(hapd));
++		wpabuf_put_u8(buf, hostapd_get_mld_id(hapd));
+ 	}
+ 
+ 	if (!mld_info)
+@@ -1039,8 +1039,7 @@ static int hostapd_mld_validate_assoc_info(struct hostapd_data *hapd,
+ 			if (hapd == other_hapd)
+ 				continue;
+ 
+-			if (other_hapd->conf->mld_ap &&
+-			    other_hapd->conf->mld_id == hapd->conf->mld_id &&
++			if (hostapd_is_ml_partner(hapd, other_hapd) &&
+ 			    link_id == other_hapd->mld_link_id)
+ 				break;
+ 		}
+diff --git a/src/ap/ieee802_1x.c b/src/ap/ieee802_1x.c
+index f13c60a9e..9bce42d58 100644
+--- a/src/ap/ieee802_1x.c
++++ b/src/ap/ieee802_1x.c
+@@ -172,8 +172,7 @@ static void ieee802_1x_ml_set_sta_authorized(struct hostapd_data *hapd,
+ 			struct hostapd_data *tmp_hapd =
+ 				hapd->iface->interfaces->iface[i]->bss[0];
+ 
+-			if (!tmp_hapd->conf->mld_ap ||
+-			    hapd->conf->mld_id != tmp_hapd->conf->mld_id)
++			if (!hostapd_is_ml_partner(hapd, tmp_hapd))
+ 				continue;
+ 
+ 			for (tmp_sta = tmp_hapd->sta_list; tmp_sta;
+diff --git a/src/ap/sta_info.c b/src/ap/sta_info.c
+index dc5e3b419..23ed530fe 100644
+--- a/src/ap/sta_info.c
++++ b/src/ap/sta_info.c
+@@ -978,8 +978,7 @@ static bool ap_sta_ml_disconnect(struct hostapd_data *hapd,
+ 
+ 			tmp_hapd = interfaces->iface[i]->bss[0];
+ 
+-			if (!tmp_hapd->conf->mld_ap ||
+-			    assoc_hapd->conf->mld_id != tmp_hapd->conf->mld_id)
++			if (!hostapd_is_ml_partner(tmp_hapd, assoc_hapd))
+ 				continue;
+ 
+ 			for (tmp_sta = tmp_hapd->sta_list; tmp_sta;
+@@ -1731,7 +1730,7 @@ static void ap_sta_remove_link_sta(struct hostapd_data *hapd,
+ 	unsigned int i, j;
+ 
+ 	for_each_mld_link(tmp_hapd, i, j, hapd->iface->interfaces,
+-			  hapd->conf->mld_id) {
++			  hostapd_get_mld_id(hapd)) {
+ 		struct sta_info *tmp_sta;
+ 
+ 		if (hapd == tmp_hapd)
+diff --git a/src/ap/wpa_auth_glue.c b/src/ap/wpa_auth_glue.c
+index 9ce58f246..012f2b803 100644
+--- a/src/ap/wpa_auth_glue.c
++++ b/src/ap/wpa_auth_glue.c
+@@ -1556,8 +1556,7 @@ static int hostapd_wpa_auth_get_ml_rsn_info(void *ctx,
+ 			struct hostapd_iface *iface =
+ 				hapd->iface->interfaces->iface[j];
+ 
+-			if (!iface->bss[0]->conf->mld_ap ||
+-			    hapd->conf->mld_id != iface->bss[0]->conf->mld_id ||
++			if (!hostapd_is_ml_partner(hapd, iface->bss[0]) ||
+ 			    link_id != iface->bss[0]->mld_link_id ||
+ 			    !iface->bss[0]->wpa_auth)
+ 				continue;
+@@ -1599,8 +1598,7 @@ static int hostapd_wpa_auth_get_ml_key_info(void *ctx,
+ 			struct hostapd_iface *iface =
+ 				hapd->iface->interfaces->iface[j];
+ 
+-			if (!iface->bss[0]->conf->mld_ap ||
+-			    hapd->conf->mld_id != iface->bss[0]->conf->mld_id ||
++			if (!hostapd_is_ml_partner(hapd, iface->bss[0]) ||
+ 			    link_id != iface->bss[0]->mld_link_id ||
+ 			    !iface->bss[0]->wpa_auth)
+ 				continue;
+-- 
+2.43.0
+

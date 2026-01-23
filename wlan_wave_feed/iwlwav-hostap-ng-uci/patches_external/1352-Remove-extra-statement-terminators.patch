@@ -1,0 +1,67 @@
+From 5546f0ac05a8ae3e4d46204c901a8966a09a59c4 Mon Sep 17 00:00:00 2001
+From: Sunil Ravi <sunilravi@google.com>
+Date: Tue, 4 Feb 2025 18:35:46 +0000
+Subject: [PATCH] Remove extra statement terminators
+
+Signed-off-by: Sunil Ravi <sunilravi@google.com>
+---
+ src/ap/ap_drv_ops.h         | 2 +-
+ src/ap/wpa_auth_kay.c       | 2 +-
+ src/crypto/crypto_wolfssl.c | 2 +-
+ src/p2p/p2p.c               | 2 +-
+ 4 files changed, 4 insertions(+), 4 deletions(-)
+
+diff --git a/src/ap/ap_drv_ops.h b/src/ap/ap_drv_ops.h
+index cbb8044c3..b52763628 100644
+--- a/src/ap/ap_drv_ops.h
++++ b/src/ap/ap_drv_ops.h
+@@ -491,6 +491,6 @@ hostapd_get_multi_hw_info(struct hostapd_data *hapd,
+ int hostapd_drv_add_pmkid(struct hostapd_data *hapd,
+ 			  struct wpa_pmkid_params *params);
+ int hostapd_add_pmkid(struct hostapd_data *hapd, const u8 *bssid, const u8 *pmk,
+-		      size_t pmk_len, const u8 *pmkid, int akmp);;
++		      size_t pmk_len, const u8 *pmkid, int akmp);
+ 
+ #endif /* AP_DRV_OPS */
+diff --git a/src/ap/wpa_auth_kay.c b/src/ap/wpa_auth_kay.c
+index 625f40512..9902384b0 100644
+--- a/src/ap/wpa_auth_kay.c
++++ b/src/ap/wpa_auth_kay.c
+@@ -477,7 +477,7 @@ void * ieee802_1x_create_preshared_mka_hapd(struct hostapd_data *hapd,
+ 	cak->len = hapd->conf->mka_cak_len;
+ 	os_memcpy(cak->key, hapd->conf->mka_cak, cak->len);
+ 
+-	ckn->len = hapd->conf->mka_ckn_len;;
++	ckn->len = hapd->conf->mka_ckn_len;
+ 	os_memcpy(ckn->name, hapd->conf->mka_ckn, ckn->len);
+ 
+ 	res = ieee802_1x_kay_create_mka(hapd->kay, ckn, cak, 0, PSK, true);
+diff --git a/src/crypto/crypto_wolfssl.c b/src/crypto/crypto_wolfssl.c
+index e1e915548..737f017d7 100644
+--- a/src/crypto/crypto_wolfssl.c
++++ b/src/crypto/crypto_wolfssl.c
+@@ -3415,7 +3415,7 @@ const u8 * crypto_csr_get_attribute(struct crypto_csr *csr,
+ {
+ 	if (!csr || !len || !type) {
+ 		LOG_INVALID_PARAMETERS();
+-		return NULL;;
++		return NULL;
+ 	}
+ 
+ 	switch (attr) {
+diff --git a/src/p2p/p2p.c b/src/p2p/p2p.c
+index a579cfe2a..84fd24ee1 100644
+--- a/src/p2p/p2p.c
++++ b/src/p2p/p2p.c
+@@ -6058,7 +6058,7 @@ static int p2p_validate_dira(struct p2p_data *p2p, struct p2p_device *dev,
+ 	}
+ 
+ 	if (p2p->cfg->validate_dira) {
+-		const u8 *nonce = &dira[1];;
++		const u8 *nonce = &dira[1];
+ 		const u8 *tag = &dira[1 + DEVICE_IDENTITY_NONCE_LEN];
+ 
+ 		return p2p->cfg->validate_dira(p2p->cfg->cb_ctx,
+-- 
+2.43.0
+

@@ -1,0 +1,49 @@
+From 49d0c323a1d5492ea818a2dbd4d4a8a68e24f790 Mon Sep 17 00:00:00 2001
+From: Juliusz Sosinowicz <juliusz@wolfssl.com>
+Date: Thu, 4 Apr 2024 20:16:14 +0200
+Subject: [PATCH] wolfssl: Set additional sigalgs when using anonymous cipher
+
+When setting an anonymous cipher, wolfSSL would only set the anonymous
+signature algorithm. This sets some better defaults.
+
+Signed-off-by: Juliusz Sosinowicz <juliusz@wolfssl.com>
+---
+ src/crypto/tls_wolfssl.c | 8 ++++++++
+ 1 file changed, 8 insertions(+)
+
+diff --git a/src/crypto/tls_wolfssl.c b/src/crypto/tls_wolfssl.c
+index 4db969f9b..e6c101e73 100644
+--- a/src/crypto/tls_wolfssl.c
++++ b/src/crypto/tls_wolfssl.c
+@@ -2032,6 +2032,7 @@ int tls_connection_set_cipher_list(void *tls_ctx, struct tls_connection *conn,
+ 	char buf[128], *pos, *end;
+ 	u8 *c;
+ 	int ret;
++	bool set_sig_algs = false;
+ 
+ 	if (!conn || !conn->ssl || !ciphers)
+ 		return -1;
+@@ -2056,6 +2057,7 @@ int tls_connection_set_cipher_list(void *tls_ctx, struct tls_connection *conn,
+ 			break;
+ 		case TLS_CIPHER_ANON_DH_AES128_SHA:
+ 			suite = "ADH-AES128-SHA";
++			set_sig_algs = true;
+ 			break;
+ 		case TLS_CIPHER_RSA_DHE_AES256_SHA:
+ 			suite = "DHE-RSA-AES256-SHA";
+@@ -2083,6 +2085,12 @@ int tls_connection_set_cipher_list(void *tls_ctx, struct tls_connection *conn,
+ 		return -1;
+ 	}
+ 
++	if (set_sig_algs &&
++	    wolfSSL_set1_sigalgs_list(conn->ssl, SUITEB_TLS_128_SIGALGS) != 1) {
++		wpa_printf(MSG_DEBUG, "wolfssl: Sigalg configuration failed");
++		return -1;
++	}
++
+ 	return 0;
+ }
+ 
+-- 
+2.43.0
+

@@ -1,0 +1,30 @@
+From a2b018cdee08958237e1e72c3cb7a18bec2b41f3 Mon Sep 17 00:00:00 2001
+From: Jouni Malinen <quic_jouni@quicinc.com>
+Date: Fri, 20 Dec 2024 01:17:47 +0200
+Subject: [PATCH] tests: Add more test cases to long_tests due to UML delays
+
+These seem to be able to hang UML for some unknown reason, so try to run
+them at the beginning of the sequence as a workaround.
+
+Signed-off-by: Jouni Malinen <quic_jouni@quicinc.com>
+---
+ tests/hwsim/vm/parallel-vm.py | 3 +++
+ 1 file changed, 3 insertions(+)
+
+diff --git a/tests/hwsim/vm/parallel-vm.py b/tests/hwsim/vm/parallel-vm.py
+index 33120f7f9..135b829be 100755
+--- a/tests/hwsim/vm/parallel-vm.py
++++ b/tests/hwsim/vm/parallel-vm.py
+@@ -25,6 +25,9 @@ logger = logging.getLogger()
+ long_tests = ["ap_roam_open",
+               "gas_anqp_address3_ap_forced",
+               "gas_anqp_address3_ap_non_compliant",
++              "gas_anqp_address3_not_assoc",
++              "gas_anqp_address3_assoc",
++              "ieee8021x_reauth_wep",
+               "hostapd_oom_wpa2_eap_connect",
+               "ap_wpa2_eap_eke_many",
+               "p2p_channel_random_social_with_op_class_change",
+-- 
+2.43.0
+

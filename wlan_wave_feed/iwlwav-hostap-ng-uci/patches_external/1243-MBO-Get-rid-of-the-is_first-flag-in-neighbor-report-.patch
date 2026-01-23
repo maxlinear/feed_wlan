@@ -1,0 +1,62 @@
+From b9e798339e2fcb67fd6c8addb27498056ce9995f Mon Sep 17 00:00:00 2001
+From: Jouni Malinen <j@w1.fi>
+Date: Sun, 29 Dec 2024 12:11:25 +0200
+Subject: [PATCH] MBO: Get rid of the is_first flag in neighbor report array
+
+This was set to 1 for the entry at position 0 if
+wnm_mbo_trans_reason_present is set. The flag was used only under that
+condition and the array position is known, so it is simpler to just use
+that without an explicit flag indicating which entry is first.
+
+Signed-off-by: Jouni Malinen <j@w1.fi>
+---
+ wpa_supplicant/wnm_sta.c | 13 ++-----------
+ wpa_supplicant/wnm_sta.h |  1 -
+ 2 files changed, 2 insertions(+), 12 deletions(-)
+
+diff --git a/wpa_supplicant/wnm_sta.c b/wpa_supplicant/wnm_sta.c
+index 610dfd372..946f8c96b 100644
+--- a/wpa_supplicant/wnm_sta.c
++++ b/wpa_supplicant/wnm_sta.c
+@@ -669,8 +669,8 @@ fetch_drv_mbo_candidate_info(struct wpa_supplicant *wpa_s,
+ 
+ 			nei->drv_mbo_reject = !info->candidates[i].is_accept;
+ 
+-			/* Use the reject reason from "first" candidate */
+-			if (nei->is_first && nei->drv_mbo_reject)
++			/* Use the reject reason from the first candidate */
++			if (i == 0 && nei->drv_mbo_reject)
+ 				*reason = info->candidates[i].reject_reason;
+ 
+ 			break;
+@@ -1312,15 +1312,6 @@ static int wnm_parse_candidate_list(struct wpa_supplicant *wpa_s,
+ 				*num_valid_candidates += 1;
+ 
+ 			wpa_s->wnm_num_neighbor_report++;
+-#ifdef CONFIG_MBO
+-			if (wpa_s->wnm_mbo_trans_reason_present &&
+-			    wpa_s->wnm_num_neighbor_report == 1) {
+-				rep->is_first = 1;
+-				wpa_printf(MSG_DEBUG,
+-					   "WNM: First transition candidate is "
+-					   MACSTR, MAC2STR(rep->bssid));
+-			}
+-#endif /* CONFIG_MBO */
+ 		}
+ 
+ 		pos += len;
+diff --git a/wpa_supplicant/wnm_sta.h b/wpa_supplicant/wnm_sta.h
+index 5994027a4..80928f755 100644
+--- a/wpa_supplicant/wnm_sta.h
++++ b/wpa_supplicant/wnm_sta.h
+@@ -45,7 +45,6 @@ struct neighbor_report {
+ 	unsigned int bearing_present:1;
+ 	unsigned int bss_term_present:1;
+ #ifdef CONFIG_MBO
+-	unsigned int is_first:1;
+ 	unsigned int drv_mbo_reject:1;
+ #endif /* CONFIG_MBO */
+ 	struct measurement_pilot *meas_pilot;
+-- 
+2.43.0
+

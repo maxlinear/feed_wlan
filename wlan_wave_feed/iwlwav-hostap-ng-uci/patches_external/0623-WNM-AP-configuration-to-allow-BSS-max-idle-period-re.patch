@@ -1,0 +1,258 @@
+From 58ac46baf7b0e2aa650866cdaaf36e9cc0be3449 Mon Sep 17 00:00:00 2001
+From: Jouni Malinen <quic_jouni@quicinc.com>
+Date: Wed, 29 May 2024 19:41:59 +0300
+Subject: [PATCH] WNM: AP configuration to allow BSS max idle period requests
+
+Add a new hostapd configuration parameter max_acceptable_idle_period to
+allow the AP to accept per-STA requested BSS max idle periods.
+
+Signed-off-by: Jouni Malinen <quic_jouni@quicinc.com>
+---
+ hostapd/config_file.c      |  2 ++
+ hostapd/hostapd.conf       |  5 +++++
+ src/ap/ap_config.h         |  1 +
+ src/ap/ctrl_iface_ap.c     |  8 ++++++++
+ src/ap/ieee802_11.c        | 15 ++++++++++++++-
+ src/ap/ieee802_11.h        |  3 ++-
+ src/ap/ieee802_11_shared.c |  5 ++++-
+ src/ap/sta_info.c          | 23 +++++++++++++++--------
+ src/ap/sta_info.h          |  3 +++
+ 9 files changed, 54 insertions(+), 11 deletions(-)
+
+diff --git a/hostapd/config_file.c b/hostapd/config_file.c
+index 5c091fcd2..d728be888 100644
+--- a/hostapd/config_file.c
++++ b/hostapd/config_file.c
+@@ -2558,6 +2558,8 @@ static int hostapd_config_fill(struct hostapd_config *conf,
+ 			return 1;
+ 		}
+ 		bss->bss_max_idle = val;
++	} else if (os_strcmp(buf, "max_acceptable_idle_period") == 0) {
++		bss->max_acceptable_idle_period = atoi(pos);
+ 	} else if (os_strcmp(buf, "no_disconnect_on_group_keyerror") == 0) {
+ 		int val = atoi(pos);
+ 
+diff --git a/hostapd/hostapd.conf b/hostapd/hostapd.conf
+index be92db7a3..bc9099bc8 100644
+--- a/hostapd/hostapd.conf
++++ b/hostapd/hostapd.conf
+@@ -530,6 +530,11 @@ wmm_ac_vo_acm=0
+ #     period and require STAs to use protected keep-alive frames)
+ #bss_max_idle=1
+ #
++# Maximum acceptable BSS maximum idle period
++# If this is set to a nonzero value, the AP allows STAs to request different
++# maximum idle period values. This is in the units to 1000 TUs (1.024 s)
++#max_acceptable_idle_period=600
++#
+ # Allow STA to skip group key handshake without getting disconnection when
+ # BSS max idle period management is enabled.
+ # 0 = disconnect STA if it does not reply to group key handshake (default)
+diff --git a/src/ap/ap_config.h b/src/ap/ap_config.h
+index 8daea416d..000858322 100644
+--- a/src/ap/ap_config.h
++++ b/src/ap/ap_config.h
+@@ -466,6 +466,7 @@ struct hostapd_bss_config {
+ 
+ 	int ap_max_inactivity;
+ 	int bss_max_idle;
++	int max_acceptable_idle_period;
+ 	bool no_disconnect_on_group_keyerror;
+ 	int ignore_broadcast_ssid;
+ 	int no_probe_resp_if_max_sta;
+diff --git a/src/ap/ctrl_iface_ap.c b/src/ap/ctrl_iface_ap.c
+index 1acb97f9b..d4d73de19 100644
+--- a/src/ap/ctrl_iface_ap.c
++++ b/src/ap/ctrl_iface_ap.c
+@@ -277,6 +277,14 @@ static int hostapd_ctrl_iface_sta_mib(struct hostapd_data *hapd,
+ 		return len;
+ 	len += ret;
+ 
++	if (sta->max_idle_period) {
++		ret = os_snprintf(buf + len, buflen - len,
++				  "max_idle_period=%d\n", sta->max_idle_period);
++		if (os_snprintf_error(buflen - len, ret))
++			return len;
++		len += ret;
++	}
++
+ 	res = ieee802_11_get_mib_sta(hapd, sta, buf + len, buflen - len);
+ 	if (res >= 0)
+ 		len += res;
+diff --git a/src/ap/ieee802_11.c b/src/ap/ieee802_11.c
+index 54cff1038..80e54b267 100644
+--- a/src/ap/ieee802_11.c
++++ b/src/ap/ieee802_11.c
+@@ -4328,6 +4328,19 @@ static int __check_assoc_ies(struct hostapd_data *hapd, struct sta_info *sta,
+ 		sta->power_capab = 0;
+ 	}
+ 
++	if (elems->bss_max_idle_period &&
++	    hapd->conf->max_acceptable_idle_period) {
++		u16 req;
++
++		req = WPA_GET_LE16(elems->bss_max_idle_period);
++		if (req <= hapd->conf->max_acceptable_idle_period)
++			sta->max_idle_period = req;
++		else if (hapd->conf->max_acceptable_idle_period >
++			 hapd->conf->ap_max_inactivity)
++			sta->max_idle_period =
++				hapd->conf->max_acceptable_idle_period;
++	}
++
+ 	return WLAN_STATUS_SUCCESS;
+ }
+ 
+@@ -4902,7 +4915,7 @@ static u16 send_assoc_resp(struct hostapd_data *hapd, struct sta_info *sta,
+ #endif /* CONFIG_IEEE80211AX */
+ 
+ 	p = hostapd_eid_ext_capab(hapd, p, false);
+-	p = hostapd_eid_bss_max_idle_period(hapd, p);
++	p = hostapd_eid_bss_max_idle_period(hapd, p, sta->max_idle_period);
+ 	if (sta && sta->qos_map_enabled)
+ 		p = hostapd_eid_qos_map_set(hapd, p);
+ 
+diff --git a/src/ap/ieee802_11.h b/src/ap/ieee802_11.h
+index a389a2ce0..dd4995f3f 100644
+--- a/src/ap/ieee802_11.h
++++ b/src/ap/ieee802_11.h
+@@ -147,7 +147,8 @@ u8 * hostapd_eid_time_adv(struct hostapd_data *hapd, u8 *eid);
+ u8 * hostapd_eid_time_zone(struct hostapd_data *hapd, u8 *eid);
+ int hostapd_update_time_adv(struct hostapd_data *hapd);
+ void hostapd_client_poll_ok(struct hostapd_data *hapd, const u8 *addr);
+-u8 * hostapd_eid_bss_max_idle_period(struct hostapd_data *hapd, u8 *eid);
++u8 * hostapd_eid_bss_max_idle_period(struct hostapd_data *hapd, u8 *eid,
++				     u16 value);
+ 
+ int auth_sae_init_committed(struct hostapd_data *hapd, struct sta_info *sta);
+ #ifdef CONFIG_SAE
+diff --git a/src/ap/ieee802_11_shared.c b/src/ap/ieee802_11_shared.c
+index b98b3ecc7..fd8ec6004 100644
+--- a/src/ap/ieee802_11_shared.c
++++ b/src/ap/ieee802_11_shared.c
+@@ -737,7 +737,8 @@ int hostapd_update_time_adv(struct hostapd_data *hapd)
+ }
+ 
+ 
+-u8 * hostapd_eid_bss_max_idle_period(struct hostapd_data *hapd, u8 *eid)
++u8 * hostapd_eid_bss_max_idle_period(struct hostapd_data *hapd, u8 *eid,
++				     u16 value)
+ {
+ 	u8 *pos = eid;
+ 
+@@ -756,6 +757,8 @@ u8 * hostapd_eid_bss_max_idle_period(struct hostapd_data *hapd, u8 *eid)
+ 			val = 1;
+ 		if (val > 65535)
+ 			val = 65535;
++		if (value)
++			val = value;
+ 		WPA_PUT_LE16(pos, val);
+ 		pos += 2;
+ 		/* Set the Protected Keep-Alive Required bit based on
+diff --git a/src/ap/sta_info.c b/src/ap/sta_info.c
+index 87d63e188..24ba86b11 100644
+--- a/src/ap/sta_info.c
++++ b/src/ap/sta_info.c
+@@ -532,6 +532,7 @@ void ap_handle_timer(void *eloop_ctx, void *timeout_ctx)
+ 	struct sta_info *sta = timeout_ctx;
+ 	unsigned long next_time = 0;
+ 	int reason;
++	int max_inactivity = hapd->conf->ap_max_inactivity;
+ 
+ 	wpa_printf(MSG_DEBUG, "%s: %s: " MACSTR " flags=0x%x timeout_next=%d",
+ 		   hapd->conf->iface, __func__, MAC2STR(sta->addr), sta->flags,
+@@ -544,6 +545,9 @@ void ap_handle_timer(void *eloop_ctx, void *timeout_ctx)
+ 		return;
+ 	}
+ 
++	if (sta->max_idle_period)
++		max_inactivity = (sta->max_idle_period * 1024 + 999) / 1000;
++
+ 	if ((sta->flags & WLAN_STA_ASSOC) &&
+ 	    (sta->timeout_next == STA_NULLFUNC ||
+ 	     sta->timeout_next == STA_DISASSOC)) {
+@@ -565,7 +569,7 @@ void ap_handle_timer(void *eloop_ctx, void *timeout_ctx)
+ 			 * Anyway, try again after the next inactivity timeout,
+ 			 * but do not disconnect the station now.
+ 			 */
+-			next_time = hapd->conf->ap_max_inactivity + fuzz;
++			next_time = max_inactivity + fuzz;
+ 		} else if (inactive_sec == -ENOENT) {
+ 			wpa_msg(hapd->msg_ctx, MSG_DEBUG,
+ 				"Station " MACSTR " has lost its driver entry",
+@@ -574,20 +578,19 @@ void ap_handle_timer(void *eloop_ctx, void *timeout_ctx)
+ 			/* Avoid sending client probe on removed client */
+ 			sta->timeout_next = STA_DISASSOC;
+ 			goto skip_poll;
+-		} else if (inactive_sec < hapd->conf->ap_max_inactivity) {
++		} else if (inactive_sec < max_inactivity) {
+ 			/* station activity detected; reset timeout state */
+ 			wpa_msg(hapd->msg_ctx, MSG_DEBUG,
+ 				"Station " MACSTR " has been active %is ago",
+ 				MAC2STR(sta->addr), inactive_sec);
+ 			sta->timeout_next = STA_NULLFUNC;
+-			next_time = hapd->conf->ap_max_inactivity + fuzz -
+-				inactive_sec;
++			next_time = max_inactivity + fuzz - inactive_sec;
+ 		} else {
+ 			wpa_msg(hapd->msg_ctx, MSG_DEBUG,
+ 				"Station " MACSTR " has been "
+ 				"inactive too long: %d sec, max allowed: %d",
+ 				MAC2STR(sta->addr), inactive_sec,
+-				hapd->conf->ap_max_inactivity);
++				max_inactivity);
+ 
+ 			if (hapd->conf->skip_inactivity_poll)
+ 				sta->timeout_next = STA_DISASSOC;
+@@ -603,7 +606,7 @@ void ap_handle_timer(void *eloop_ctx, void *timeout_ctx)
+ 		/* data nullfunc frame poll did not produce TX errors; assume
+ 		 * station ACKed it */
+ 		sta->timeout_next = STA_NULLFUNC;
+-		next_time = hapd->conf->ap_max_inactivity;
++		next_time = max_inactivity;
+ 	}
+ 
+ skip_poll:
+@@ -791,6 +794,7 @@ struct sta_info * ap_sta_add(struct hostapd_data *hapd, const u8 *addr)
+ {
+ 	struct sta_info *sta;
+ 	int i;
++	int max_inactivity = hapd->conf->ap_max_inactivity;
+ 
+ 	sta = ap_get_sta(hapd, addr);
+ 	if (sta)
+@@ -824,12 +828,15 @@ struct sta_info * ap_sta_add(struct hostapd_data *hapd, const u8 *addr)
+ 	}
+ 	sta->supported_rates_len = i;
+ 
++	if (sta->max_idle_period)
++		max_inactivity = (sta->max_idle_period * 1024 + 999) / 1000;
++
+ 	if (!(hapd->iface->drv_flags & WPA_DRIVER_FLAGS_INACTIVITY_TIMER)) {
+ 		wpa_printf(MSG_DEBUG, "%s: register ap_handle_timer timeout "
+ 			   "for " MACSTR " (%d seconds - ap_max_inactivity)",
+ 			   __func__, MAC2STR(addr),
+-			   hapd->conf->ap_max_inactivity);
+-		eloop_register_timeout(hapd->conf->ap_max_inactivity, 0,
++			   max_inactivity);
++		eloop_register_timeout(max_inactivity, 0,
+ 				       ap_handle_timer, hapd, sta);
+ 	}
+ 
+diff --git a/src/ap/sta_info.h b/src/ap/sta_info.h
+index 14bf84b4e..84629358c 100644
+--- a/src/ap/sta_info.h
++++ b/src/ap/sta_info.h
+@@ -332,6 +332,9 @@ struct sta_info {
+ 	struct mld_info mld_info;
+ 	u8 mld_assoc_link_id;
+ #endif /* CONFIG_IEEE80211BE */
++
++	u16 max_idle_period; /* if nonzero, the granted BSS max idle period in
++			      * units of 1000 TUs */
+ };
+ 
+ 
+-- 
+2.43.0
+

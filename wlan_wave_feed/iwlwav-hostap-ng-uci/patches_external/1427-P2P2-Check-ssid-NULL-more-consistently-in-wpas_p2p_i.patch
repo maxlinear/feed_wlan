@@ -1,0 +1,32 @@
+From bf936cdd1ba9aa937de45d6e3cc22f5f38199bdd Mon Sep 17 00:00:00 2001
+From: Jouni Malinen <j@w1.fi>
+Date: Sun, 23 Feb 2025 12:44:50 +0200
+Subject: [PATCH] P2P2: Check ssid != NULL more consistently in
+ wpas_p2p_invite()
+
+The recently added !ssid check here could make static analyzers complain
+about dereferencing ssid in the function, so instead of covering just
+the special P2P2 case, check explicitly for ssid == NULL for all cases.
+
+Signed-off-by: Jouni Malinen <j@w1.fi>
+---
+ wpa_supplicant/p2p_supplicant.c | 3 +++
+ 1 file changed, 3 insertions(+)
+
+diff --git a/wpa_supplicant/p2p_supplicant.c b/wpa_supplicant/p2p_supplicant.c
+index 107e21695..b8add917a 100644
+--- a/wpa_supplicant/p2p_supplicant.c
++++ b/wpa_supplicant/p2p_supplicant.c
+@@ -8815,6 +8815,9 @@ int wpas_p2p_invite(struct wpa_supplicant *wpa_s, const u8 *peer_addr,
+ 		}
+ 	}
+ 
++	if (!ssid)
++		return -1;
++
+ 	wpa_s->p2p_persistent_go_freq = freq;
+ 	wpa_s->p2p_go_ht40 = !!ht40;
+ 	wpa_s->p2p_go_vht = !!vht;
+-- 
+2.43.0
+

@@ -1,0 +1,63 @@
+From 86dc3e36938fc9756d7b9036be3cca1bfe196d84 Mon Sep 17 00:00:00 2001
+From: Jouni Malinen <j@w1.fi>
+Date: Sun, 23 Feb 2025 12:41:16 +0200
+Subject: [PATCH] mka: Simplify dl_list entry freeing
+
+There is no need to call both dl_list_empty() and dl_list_entry()
+separately in this manner since dl_list_first() is for that exact
+purpose. Simplify this and also make it easier for static analyzers.
+
+Signed-off-by: Jouni Malinen <j@w1.fi>
+---
+ src/pae/ieee802_1x_kay.c | 21 ++++++++-------------
+ 1 file changed, 8 insertions(+), 13 deletions(-)
+
+diff --git a/src/pae/ieee802_1x_kay.c b/src/pae/ieee802_1x_kay.c
+index 230c69d19..81f721af8 100644
+--- a/src/pae/ieee802_1x_kay.c
++++ b/src/pae/ieee802_1x_kay.c
+@@ -3858,33 +3858,28 @@ ieee802_1x_kay_delete_mka(struct ieee802_1x_kay *kay, struct mka_key_name *ckn)
+ 	dl_list_del(&participant->list);
+ 
+ 	/* remove live peer */
+-	while (!dl_list_empty(&participant->live_peers)) {
+-		peer = dl_list_entry(participant->live_peers.next,
+-				     struct ieee802_1x_kay_peer, list);
++	while ((peer = dl_list_first(&participant->live_peers,
++				     struct ieee802_1x_kay_peer, list))) {
+ 		dl_list_del(&peer->list);
+ 		os_free(peer);
+ 	}
+ 
+ 	/* remove potential peer */
+-	while (!dl_list_empty(&participant->potential_peers)) {
+-		peer = dl_list_entry(participant->potential_peers.next,
+-				     struct ieee802_1x_kay_peer, list);
++	while ((peer = dl_list_first(&participant->potential_peers,
++				     struct ieee802_1x_kay_peer, list))) {
+ 		dl_list_del(&peer->list);
+ 		os_free(peer);
+ 	}
+ 
+ 	/* remove sak */
+-	while (!dl_list_empty(&participant->sak_list)) {
+-		sak = dl_list_entry(participant->sak_list.next,
+-				    struct data_key, list);
++	while ((sak = dl_list_first(&participant->sak_list,
++				    struct data_key, list))) {
+ 		dl_list_del(&sak->list);
+ 		ieee802_1x_kay_deinit_data_key(sak);
+ 	}
+-	while (!dl_list_empty(&participant->rxsc_list)) {
+-		rxsc = dl_list_entry(participant->rxsc_list.next,
+-				     struct receive_sc, list);
++	while ((rxsc = dl_list_first(&participant->rxsc_list,
++				     struct receive_sc, list)))
+ 		ieee802_1x_kay_deinit_receive_sc(participant, rxsc);
+-	}
+ 	ieee802_1x_kay_deinit_transmit_sc(participant, participant->txsc);
+ 
+ 	os_memset(&participant->cak, 0, sizeof(participant->cak));
+-- 
+2.43.0
+

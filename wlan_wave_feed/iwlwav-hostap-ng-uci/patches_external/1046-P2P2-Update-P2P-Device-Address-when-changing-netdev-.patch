@@ -1,0 +1,112 @@
+From 72e154dbd540fa68ef627a830762a5079bdeef6a Mon Sep 17 00:00:00 2001
+From: Shivani Baranwal <quic_shivbara@quicinc.com>
+Date: Sun, 18 Aug 2024 16:24:23 +0530
+Subject: [PATCH] P2P2: Update P2P Device Address when changing netdev address
+
+P2P2 adds support for privacy and needs ability to update the P2P Device
+Address. Update that whenever changing the interface address in
+wpa_supplicant for other (non-P2P) MAC address randomization purposes.
+
+Signed-off-by: Shivani Baranwal <quic_shivbara@quicinc.com>
+---
+ src/p2p/p2p.c                   | 7 +++++++
+ src/p2p/p2p.h                   | 1 +
+ wpa_supplicant/p2p_supplicant.c | 7 +++++++
+ wpa_supplicant/p2p_supplicant.h | 5 +++++
+ wpa_supplicant/wpa_supplicant.c | 5 +++++
+ 5 files changed, 25 insertions(+)
+
+diff --git a/src/p2p/p2p.c b/src/p2p/p2p.c
+index 462a81de5..6312f5834 100644
+--- a/src/p2p/p2p.c
++++ b/src/p2p/p2p.c
+@@ -3067,6 +3067,13 @@ bool is_p2p_6ghz_disabled(struct p2p_data *p2p)
+ }
+ 
+ 
++void p2p_set_dev_addr(struct p2p_data *p2p, const u8 *addr)
++{
++	if (p2p && addr)
++		os_memcpy(p2p->cfg->dev_addr, addr, ETH_ALEN);
++}
++
++
+ static void p2p_pairing_info_deinit(struct p2p_data *p2p)
+ {
+ #ifdef CONFIG_PASN
+diff --git a/src/p2p/p2p.h b/src/p2p/p2p.h
+index f1d8890c5..cd214d484 100644
+--- a/src/p2p/p2p.h
++++ b/src/p2p/p2p.h
+@@ -2689,6 +2689,7 @@ void p2p_set_pasn_type(struct p2p_data *p2p, u8 pasn_type);
+ void p2p_set_comeback_after(struct p2p_data *p2p, int comeback_after);
+ void p2p_set_reg_info(struct p2p_data *p2p, u8 val);
+ void p2p_set_twt_power_mgmt(struct p2p_data *p2p, int val);
++void p2p_set_dev_addr(struct p2p_data *p2p, const u8 *addr);
+ 
+ int p2p_get_listen_freq(struct p2p_data *p2p, const u8 *peer_addr);
+ int p2p_initiate_pasn_auth(struct p2p_data *p2p, const u8 *addr, int freq);
+diff --git a/wpa_supplicant/p2p_supplicant.c b/wpa_supplicant/p2p_supplicant.c
+index 608836cc6..1cbe6f1aa 100644
+--- a/wpa_supplicant/p2p_supplicant.c
++++ b/wpa_supplicant/p2p_supplicant.c
+@@ -11000,3 +11000,10 @@ int wpas_p2p_pasn_auth_tx_status(struct wpa_supplicant *wpa_s, const u8 *data,
+ }
+ 
+ #endif /* CONFIG_PASN */
++
++
++void wpas_p2p_update_dev_addr(struct wpa_supplicant *wpa_s)
++{
++	os_memcpy(wpa_s->global->p2p_dev_addr, wpa_s->own_addr, ETH_ALEN);
++	p2p_set_dev_addr(wpa_s->global->p2p, wpa_s->own_addr);
++}
+diff --git a/wpa_supplicant/p2p_supplicant.h b/wpa_supplicant/p2p_supplicant.h
+index 0c7081821..24e742b5e 100644
+--- a/wpa_supplicant/p2p_supplicant.h
++++ b/wpa_supplicant/p2p_supplicant.h
+@@ -236,6 +236,7 @@ int wpas_p2p_lo_start(struct wpa_supplicant *wpa_s, unsigned int freq,
+ int wpas_p2p_lo_stop(struct wpa_supplicant *wpa_s);
+ int wpas_p2p_mac_setup(struct wpa_supplicant *wpa_s);
+ struct wpabuf * wpas_p2p_usd_elems(struct wpa_supplicant *wpa_s);
++void wpas_p2p_update_dev_addr(struct wpa_supplicant *wpa_s);
+ int wpas_p2p_pasn_auth_rx(struct wpa_supplicant *wpa_s,
+ 			  const struct ieee80211_mgmt *mgmt, size_t len,
+ 			  int freq);
+@@ -370,6 +371,10 @@ static inline struct wpabuf * wpas_p2p_usd_elems(struct wpa_supplicant *wpa_s)
+ 	return NULL;
+ }
+ 
++static inline void wpas_p2p_update_dev_addr(struct wpa_supplicant *wpa_s)
++{
++}
++
+ #endif /* CONFIG_P2P */
+ 
+ #endif /* P2P_SUPPLICANT_H */
+diff --git a/wpa_supplicant/wpa_supplicant.c b/wpa_supplicant/wpa_supplicant.c
+index 60b0db00e..c5cf9c70d 100644
+--- a/wpa_supplicant/wpa_supplicant.c
++++ b/wpa_supplicant/wpa_supplicant.c
+@@ -2516,6 +2516,8 @@ int wpas_update_random_addr(struct wpa_supplicant *wpa_s,
+ 		return -1;
+ 	}
+ 
++	wpas_p2p_update_dev_addr(wpa_s);
++
+ 	wpa_msg(wpa_s, MSG_DEBUG, "Using random MAC address " MACSTR,
+ 		MAC2STR(addr));
+ 
+@@ -2610,6 +2612,9 @@ int wpas_restore_permanent_mac_addr(struct wpa_supplicant *wpa_s)
+ 			"Could not update MAC address information");
+ 		return -1;
+ 	}
++
++	wpas_p2p_update_dev_addr(wpa_s);
++
+ 	wpa_msg(wpa_s, MSG_DEBUG, "Using permanent MAC address");
+ 	return 0;
+ }
+-- 
+2.43.0
+

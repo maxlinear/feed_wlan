@@ -1,0 +1,41 @@
+From 3137a4124716f06e16814d26685e5ffd8470195b Mon Sep 17 00:00:00 2001
+From: Jouni Malinen <quic_jouni@quicinc.com>
+Date: Fri, 12 Jul 2024 13:15:57 +0300
+Subject: [PATCH] tests: Make SSID verification through beacon protection more
+ robust
+
+Clear scan results at the beginning of the test case to avoid incorrect
+behavior if there are multiple entries for the same BSS. In addition,
+use a bit longer wait for receiving an updated Beacon frame in scan
+results.
+
+Signed-off-by: Jouni Malinen <quic_jouni@quicinc.com>
+---
+ tests/hwsim/test_ap_pmf.py | 4 +++-
+ 1 file changed, 3 insertions(+), 1 deletion(-)
+
+diff --git a/tests/hwsim/test_ap_pmf.py b/tests/hwsim/test_ap_pmf.py
+index f82ac1915..331ac393b 100644
+--- a/tests/hwsim/test_ap_pmf.py
++++ b/tests/hwsim/test_ap_pmf.py
+@@ -1423,6 +1423,8 @@ def run_ap_pmf_beacon_protection(dev, apdev, cipher):
+     wt.flush()
+     wt.add_passphrase("12345678")
+ 
++    dev[0].flush_scan_cache()
++
+     # STA with Beacon protection enabled
+     dev[0].connect(ssid, psk="12345678", ieee80211w="2", beacon_prot="1",
+                    key_mgmt="WPA-PSK-SHA256", proto="WPA2", scan_freq="2412")
+@@ -1445,7 +1447,7 @@ def run_ap_pmf_beacon_protection(dev, apdev, cipher):
+     if valid_bip < 0 or invalid_bip > 0 or missing_bip > 0:
+         raise Exception("Unexpected wlantest BIP counters: valid=%d invalid=%d missing=%d" % (valid_bip, invalid_bip, missing_bip))
+ 
+-    ev = dev[0].wait_event(["CTRL-EVENT-BEACON-LOSS"], timeout=5)
++    ev = dev[0].wait_event(["CTRL-EVENT-BEACON-LOSS"], timeout=10)
+     if ev is not None:
+         raise Exception("Beacon loss detected")
+ 
+-- 
+2.43.0
+

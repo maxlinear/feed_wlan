@@ -1,0 +1,35 @@
+From be2ac92918c50d37ebf69a98fe6f813c8492e0d8 Mon Sep 17 00:00:00 2001
+From: Hari Naraayana Desikan Kannan <quic_hnaraaya@quicinc.com>
+Date: Tue, 30 Apr 2024 15:22:31 +0530
+Subject: [PATCH] ACS: Fix ACS behavior for channel selection
+
+The current ACS algorithm incorrectly returns success even when there is
+no survey list, leading to improper interference factor calculation.
+This leads to treating 0 as a valid interference factor, which affects
+channel selection judgment.
+
+Fix the issue by ensuring success is only returned when the survey list
+is not empty, thereby ignoring non-zero values in the interference
+factor calculation.
+
+Signed-off-by: Hari Naraayana Desikan Kannan <quic_hnaraaya@quicinc.com>
+---
+ src/ap/acs.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/src/ap/acs.c b/src/ap/acs.c
+index c38d3632b..7e1b56700 100644
+--- a/src/ap/acs.c
++++ b/src/ap/acs.c
+@@ -511,7 +511,7 @@ static int acs_survey_list_is_sufficient(struct hostapd_channel_data *chan)
+ 	}
+ 
+ 	if (ret == -1)
+-		ret = 1; /* no survey list entries */
++		ret = 0; /* no survey list entries */
+ 
+ 	if (!ret) {
+ 		wpa_printf(MSG_INFO,
+-- 
+2.43.0
+

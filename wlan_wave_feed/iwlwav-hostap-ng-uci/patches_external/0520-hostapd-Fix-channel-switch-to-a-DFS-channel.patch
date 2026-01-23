@@ -1,0 +1,79 @@
+From 36bd75dfd25ea651c64d6884f612fafe75899a35 Mon Sep 17 00:00:00 2001
+From: Rajat Soni <quic_rajson@quicinc.com>
+Date: Thu, 4 Apr 2024 14:50:50 +0530
+Subject: [PATCH] hostapd: Fix channel switch to a DFS channel
+
+When we are configuring automatic channel selection, we are not able to
+switch to a given DFS channel because when we are trying to move to a
+DFS channel, the interface is disabled and enabled again. When the
+interface is disabled and enabled we are setting iface's freq and
+channel to 0 in setup_interface2() in case ACS is enabled, and now we
+don't know to which channel we were trying to move. Now ACS will run and
+the interface will be up in the channel that is suitable.
+
+To fix this issue add a flag named is_ch_switch_dfs to check if the
+channel switch request is for a DFS channel and we can use this in
+setup_interface2() to decide whther we have to set iface's freq and
+channel to 0 or not. This way iface's freq and channel will retain the
+values while channel switching to a DFS channel when ACS is enabled.
+
+Signed-off-by: Rajat Soni <quic_rajson@quicinc.com>
+---
+ hostapd/ctrl_iface.c | 1 +
+ src/ap/hostapd.c     | 4 +++-
+ src/ap/hostapd.h     | 2 ++
+ 3 files changed, 6 insertions(+), 1 deletion(-)
+
+diff --git a/hostapd/ctrl_iface.c b/hostapd/ctrl_iface.c
+index 10cb186f1..23cc52a28 100644
+--- a/hostapd/ctrl_iface.c
++++ b/hostapd/ctrl_iface.c
+@@ -2715,6 +2715,7 @@ static int hostapd_ctrl_iface_chan_switch(struct hostapd_iface *iface,
+ 			   settings.freq_params.center_freq1);
+ 
+ 		/* Perform CAC and switch channel */
++		iface->is_ch_switch_dfs = true;
+ 		hostapd_switch_channel_fallback(iface, &settings.freq_params);
+ 		return 0;
+ 	}
+diff --git a/src/ap/hostapd.c b/src/ap/hostapd.c
+index f8cb6432d..07bbf29de 100644
+--- a/src/ap/hostapd.c
++++ b/src/ap/hostapd.c
+@@ -2074,10 +2074,11 @@ static int setup_interface2(struct hostapd_iface *iface)
+ 	} else {
+ 		int ret;
+ 
+-		if (iface->conf->acs) {
++		if (iface->conf->acs && !iface->is_ch_switch_dfs) {
+ 			iface->freq = 0;
+ 			iface->conf->channel = 0;
+ 		}
++		iface->is_ch_switch_dfs = false;
+ 
+ 		ret = configured_fixed_chan_to_freq(iface);
+ 		if (ret < 0)
+@@ -3140,6 +3141,7 @@ struct hostapd_iface * hostapd_init(struct hapd_interfaces *interfaces,
+ 		hostapd_bss_setup_multi_link(hapd, interfaces);
+ 	}
+ 
++	hapd_iface->is_ch_switch_dfs = false;
+ 	return hapd_iface;
+ 
+ fail:
+diff --git a/src/ap/hostapd.h b/src/ap/hostapd.h
+index 0c38bb53d..85f8975fa 100644
+--- a/src/ap/hostapd.h
++++ b/src/ap/hostapd.h
+@@ -705,6 +705,8 @@ struct hostapd_iface {
+ 
+ 	/* Configured freq of interface is NO_IR */
+ 	bool is_no_ir;
++
++	bool is_ch_switch_dfs; /* Channel switch from ACS to DFS */
+ };
+ 
+ /* hostapd.c */
+-- 
+2.43.0
+

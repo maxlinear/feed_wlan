@@ -1,0 +1,99 @@
+From e9984e3db29f0761957a55969a23e09d98b113c2 Mon Sep 17 00:00:00 2001
+From: Aditya Kumar Singh <quic_adisi@quicinc.com>
+Date: Thu, 25 Apr 2024 15:45:19 +0530
+Subject: [PATCH] hostapd: Refactor interface enable/disable into separate
+ helper functions
+
+Driver events for interface enable/disable are currently handled on
+interface level with one hostapd_data instance under consideration. In
+order to extend it for MLO, this needs to be done for each of the
+affiliated links. Hence, refactor the code into a helper function which
+can be used later.
+
+No functionality change. Support for MLO will be added in a subsequent
+change.
+
+Signed-off-by: Aditya Kumar Singh <quic_adisi@quicinc.com>
+---
+ src/ap/drv_callbacks.c | 56 +++++++++++++++++++++++++-----------------
+ 1 file changed, 34 insertions(+), 22 deletions(-)
+
+diff --git a/src/ap/drv_callbacks.c b/src/ap/drv_callbacks.c
+index fa6e0d761..1583be47e 100644
+--- a/src/ap/drv_callbacks.c
++++ b/src/ap/drv_callbacks.c
+@@ -2432,6 +2432,38 @@ static void hostapd_event_color_change(struct hostapd_data *hapd, bool success)
+ #endif  /* CONFIG_IEEE80211AX */
+ 
+ 
++static void hostapd_iface_enable(struct hostapd_data *hapd)
++{
++	wpa_msg(hapd->msg_ctx, MSG_INFO, INTERFACE_ENABLED);
++	if (hapd->disabled && hapd->started) {
++		hapd->disabled = 0;
++		/*
++		 * Try to re-enable interface if the driver stopped it
++		 * when the interface got disabled.
++		 */
++		if (hapd->wpa_auth)
++			wpa_auth_reconfig_group_keys(hapd->wpa_auth);
++		else
++			hostapd_reconfig_encryption(hapd);
++		hapd->reenable_beacon = 1;
++		ieee802_11_set_beacon(hapd);
++#ifdef NEED_AP_MLME
++	} else if (hapd->disabled && hapd->iface->cac_started) {
++		wpa_printf(MSG_DEBUG, "DFS: restarting pending CAC");
++		hostapd_handle_dfs(hapd->iface);
++#endif /* NEED_AP_MLME */
++	}
++}
++
++
++static void hostapd_iface_disable(struct hostapd_data *hapd)
++{
++	hostapd_free_stas(hapd);
++	wpa_msg(hapd->msg_ctx, MSG_INFO, INTERFACE_DISABLED);
++	hapd->disabled = 1;
++}
++
++
+ void wpa_supplicant_event(void *ctx, enum wpa_event_type event,
+ 			  union wpa_event_data *data)
+ {
+@@ -2709,30 +2741,10 @@ void wpa_supplicant_event(void *ctx, enum wpa_event_type event,
+ 		break;
+ #endif /* NEED_AP_MLME */
+ 	case EVENT_INTERFACE_ENABLED:
+-		wpa_msg(hapd->msg_ctx, MSG_INFO, INTERFACE_ENABLED);
+-		if (hapd->disabled && hapd->started) {
+-			hapd->disabled = 0;
+-			/*
+-			 * Try to re-enable interface if the driver stopped it
+-			 * when the interface got disabled.
+-			 */
+-			if (hapd->wpa_auth)
+-				wpa_auth_reconfig_group_keys(hapd->wpa_auth);
+-			else
+-				hostapd_reconfig_encryption(hapd);
+-			hapd->reenable_beacon = 1;
+-			ieee802_11_set_beacon(hapd);
+-#ifdef NEED_AP_MLME
+-		} else if (hapd->disabled && hapd->iface->cac_started) {
+-			wpa_printf(MSG_DEBUG, "DFS: restarting pending CAC");
+-			hostapd_handle_dfs(hapd->iface);
+-#endif /* NEED_AP_MLME */
+-		}
++		hostapd_iface_enable(hapd);
+ 		break;
+ 	case EVENT_INTERFACE_DISABLED:
+-		hostapd_free_stas(hapd);
+-		wpa_msg(hapd->msg_ctx, MSG_INFO, INTERFACE_DISABLED);
+-		hapd->disabled = 1;
++		hostapd_iface_disable(hapd);
+ 		break;
+ #ifdef CONFIG_ACS
+ 	case EVENT_ACS_CHANNEL_SELECTED:
+-- 
+2.43.0
+

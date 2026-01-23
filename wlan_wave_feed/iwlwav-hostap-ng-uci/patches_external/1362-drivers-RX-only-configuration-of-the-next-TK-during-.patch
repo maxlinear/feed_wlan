@@ -1,0 +1,431 @@
+From 13a30f10ce523ed341d907796d8dabcf382dd78f Mon Sep 17 00:00:00 2001
+From: Jouni Malinen <quic_jouni@quicinc.com>
+Date: Sat, 8 Feb 2025 20:11:30 +0200
+Subject: [PATCH] drivers: RX-only configuration of the next TK during 4-way
+ handshake
+
+Introduce option for drivers to avoid race conditions with TK
+configuration during 4-way handshake. The next pairwise TK is made
+available to the driver interface before sending message 3 of the 4-way
+handshake on the AP and after having received message 3 (but before
+transmitting message 4) on the station. This allows the driver to
+configure the next TK as an alternative RX-only key during the race
+window and take the new TK fully into use once the 4-way handshake has
+been fully completed. The alternative RX-only key must not be used for
+TX and if a TK has already been configured, both that previously
+configured TK and the next RX-only TK need to be allowed to decrypt
+received frames (i.e., both needs to be tried before discarding a frame
+as invalid). When taking the new TK fully into use, RX counters for it
+must not be cleared. Unencrypted EAPOL frames must be allowed to be
+received when only an RX-only TK is configured in the beginning of an
+association.
+
+This commit is only introducing the hostapd and wpa_supplicant internal
+pieces for this functionality and this does not result in any changes to
+the actual driver operations. This enables future commits to extend
+driver wrappers (src/drivers/driver_*.c) to take this functionality into
+use.
+
+Signed-off-by: Jouni Malinen <quic_jouni@quicinc.com>
+---
+ src/ap/wpa_auth.c            | 14 +++++++++
+ src/ap/wpa_auth_glue.c       |  5 ++--
+ src/common/defs.h            |  5 +++-
+ src/common/wpa_common.h      |  2 ++
+ src/drivers/driver.h         | 58 ++++++++++++++++++++++++++++++++++--
+ src/drivers/driver_atheros.c |  3 ++
+ src/drivers/driver_bsd.c     |  3 ++
+ src/drivers/driver_hostap.c  |  3 ++
+ src/drivers/driver_ndis.c    |  3 ++
+ src/drivers/driver_nl80211.c |  8 +++++
+ src/drivers/driver_openbsd.c |  3 ++
+ src/drivers/driver_privsep.c |  3 ++
+ src/drivers/driver_wext.c    |  3 ++
+ src/rsn_supp/wpa.c           | 33 +++++++++++++++-----
+ wpa_supplicant/ibss_rsn.c    | 12 ++++++++
+ 15 files changed, 146 insertions(+), 12 deletions(-)
+
+diff --git a/src/ap/wpa_auth.c b/src/ap/wpa_auth.c
+index 5ccce3a12..1a8bec8e6 100644
+--- a/src/ap/wpa_auth.c
++++ b/src/ap/wpa_auth.c
+@@ -4799,6 +4799,20 @@ SM_STATE(WPA_PTK, PTKINITNEGOTIATING)
+ 			return;
+ 		}
+ 
++		if (!sm->use_ext_key_id && sm->TimeoutCtr == 1 &&
++		    wpa_auth_set_key(sm->wpa_auth, 0,
++				     wpa_cipher_to_alg(sm->pairwise),
++				     sm->addr, 0, sm->PTK.tk,
++				     wpa_cipher_key_len(sm->pairwise),
++				     KEY_FLAG_PAIRWISE_NEXT)) {
++			/* Continue anyway since the many drivers do not support
++			 * configuration of the TK for RX-only purposes for
++			 * cases where multiple keys might be in use in parallel
++			 * and this being an optional optimization to avoid race
++			 * condition during TK changes that could result in some
++			 * protected frames getting discarded. */
++		}
++
+ #ifdef CONFIG_PASN
+ 		if (sm->wpa_auth->conf.secure_ltf &&
+ 		    ieee802_11_rsnx_capab(sm->rsnxe,
+diff --git a/src/ap/wpa_auth_glue.c b/src/ap/wpa_auth_glue.c
+index 1c26734e7..afd849b7e 100644
+--- a/src/ap/wpa_auth_glue.c
++++ b/src/ap/wpa_auth_glue.c
+@@ -512,6 +512,7 @@ static int hostapd_wpa_auth_set_key(void *ctx, int vlan_id, enum wpa_alg alg,
+ {
+ 	struct hostapd_data *hapd = ctx;
+ 	const char *ifname = hapd->conf->iface;
++	int set_tx = !(key_flag & KEY_FLAG_NEXT);
+ 
+ 	if (vlan_id > 0) {
+ 		ifname = hostapd_get_vlan_id_ifname(hapd->conf->vlan, vlan_id);
+@@ -564,8 +565,8 @@ static int hostapd_wpa_auth_set_key(void *ctx, int vlan_id, enum wpa_alg alg,
+ 		hapd->last_gtk_len = key_len;
+ 	}
+ #endif /* CONFIG_TESTING_OPTIONS */
+-	return hostapd_drv_set_key(ifname, hapd, alg, addr, idx, vlan_id, 1,
+-				   NULL, 0, key, key_len, key_flag);
++	return hostapd_drv_set_key(ifname, hapd, alg, addr, idx, vlan_id,
++				   set_tx, NULL, 0, key, key_len, key_flag);
+ }
+ 
+ 
+diff --git a/src/common/defs.h b/src/common/defs.h
+index 650e66d1c..85e0f02d1 100644
+--- a/src/common/defs.h
++++ b/src/common/defs.h
+@@ -490,6 +490,7 @@ enum key_flag {
+ 	KEY_FLAG_GROUP			= BIT(4),
+ 	KEY_FLAG_PAIRWISE		= BIT(5),
+ 	KEY_FLAG_PMK			= BIT(6),
++	KEY_FLAG_NEXT			= BIT(7),
+ 	/* Used flag combinations */
+ 	KEY_FLAG_RX_TX			= KEY_FLAG_RX | KEY_FLAG_TX,
+ 	KEY_FLAG_GROUP_RX_TX		= KEY_FLAG_GROUP | KEY_FLAG_RX_TX,
+@@ -502,8 +503,10 @@ enum key_flag {
+ 	KEY_FLAG_PAIRWISE_RX		= KEY_FLAG_PAIRWISE | KEY_FLAG_RX,
+ 	KEY_FLAG_PAIRWISE_RX_TX_MODIFY	= KEY_FLAG_PAIRWISE_RX_TX |
+ 					  KEY_FLAG_MODIFY,
++	KEY_FLAG_PAIRWISE_NEXT		= KEY_FLAG_PAIRWISE_RX | KEY_FLAG_NEXT,
+ 	/* Max allowed flags for each key type */
+-	KEY_FLAG_PAIRWISE_MASK		= KEY_FLAG_PAIRWISE_RX_TX_MODIFY,
++	KEY_FLAG_PAIRWISE_MASK		= KEY_FLAG_PAIRWISE_RX_TX_MODIFY |
++					  KEY_FLAG_NEXT,
+ 	KEY_FLAG_GROUP_MASK		= KEY_FLAG_GROUP_RX_TX_DEFAULT,
+ 	KEY_FLAG_PMK_MASK		= KEY_FLAG_PMK,
+ };
+diff --git a/src/common/wpa_common.h b/src/common/wpa_common.h
+index 9f1a539bf..e8abe2308 100644
+--- a/src/common/wpa_common.h
++++ b/src/common/wpa_common.h
+@@ -271,6 +271,8 @@ struct wpa_ptk {
+ 	size_t ptk_len;
+ 	size_t ltf_keyseed_len;
+ 	int installed; /* 1 if key has already been installed to driver */
++	bool installed_rx; /* whether TK has been installed as the next TK
++			    * for temporary RX-only use in the driver */
+ };
+ 
+ struct wpa_gtk {
+diff --git a/src/drivers/driver.h b/src/drivers/driver.h
+index f04050003..b9d3d0013 100644
+--- a/src/drivers/driver.h
++++ b/src/drivers/driver.h
+@@ -2031,10 +2031,17 @@ struct wpa_driver_set_key_params {
+ 	 * %KEY_FLAG_GROUP_TX_DEFAULT
+ 	 *  GTK key valid for TX only, immediately taking over TX.
+ 	 * %KEY_FLAG_PAIRWISE_RX_TX
+-	 *  Pairwise key immediately becoming the active pairwise key.
++	 *  Pairwise key immediately becoming the active pairwise key. If this
++	 *  key was previously set as an alternative RX-only key with
++	 *  %KEY_FLAG_PAIRWISE_RX | %KEY_FLAG_NEXT, the alternative RX-only key
++	 *  is taken into use for both TX and RX without changing the RX counter
++	 *  values.
+ 	 * %KEY_FLAG_PAIRWISE_RX
+ 	 *  Pairwise key not yet valid for TX. (Only usable when Extended
+-	 *  Key ID is supported by the driver.)
++	 *  Key ID is supported by the driver or when configuring the next TK
++	 *  for RX-only with %KEY_FLAG_NEXT in which case the new TK can be used
++	 *  as an alternative key for decrypting received frames without
++	 *  replacing the possibly already configured old TK.)
+ 	 * %KEY_FLAG_PAIRWISE_RX_TX_MODIFY
+ 	 *  Enable TX for a pairwise key installed with
+ 	 *  KEY_FLAG_PAIRWISE_RX.
+@@ -3154,6 +3161,53 @@ struct wpa_driver_ops {
+ 	 * broadcast keys, so key index 0 is available for this kind of
+ 	 * configuration.
+ 	 *
++	 * For pairwise keys, there are potential race conditions between
++	 * enabling a new TK on each end of the connection and sending the first
++	 * protected frame. Drivers have multiple options on which style of key
++	 * configuration to support with the simplest option not providing any
++	 * protection for the race condition while the more complex options do
++	 * provide partial or full protection.
++	 *
++	 * Option 1: Do not support extended key IDs (i.e., use only Key ID 0
++	 * for pairwise keys) and do not support configuration of the next TK
++	 * as an alternative RX key. This provides no protection, but is simple
++	 * to support. The driver needs to ignore set_key() calls with
++	 * KEY_FLAG_NEXT.
++	 *
++	 * Option 2: Do not support extended key IDs (i.e., use only Key ID 0
++	 * for pairwise keys), but support configuration of the next TK as an
++	 * alternative RX key for the initial 4-way handshake. This provides
++	 * protection for the initial key setup at the beginning of an
++	 * association. The driver needs to configure the initial TK for RX-only
++	 * when receiving a set_key() call with KEY_FLAG_NEXT. This RX-only key
++	 * is ready for receiving protected Data frames from the peer before the
++	 * local device has enabled the key for TX. Unprotected EAPOL frames
++	 * need to be allowed even when this next TK is configured as RX-only
++	 * key. The same key is then set with KEY_FLAG_PAIRWISE_RX_TX to enable
++	 * its use for both TX and RX. The driver ignores set_key() calls with
++	 * KEY_FLAG_NEXT when a TK has been configured. When fully enabling the
++	 * TK for TX and RX, the RX counters associated with the TK must not be
++	 * cleared.
++	 *
++	 * Option 3: Same as option 2, but the driver supports multiple RX keys
++	 * in parallel during PTK rekeying. The driver processed set_key() calls
++	 * with KEY_FLAG_NEXT also when a TK has been configured. At that point
++	 * in the rekeying sequence the driver uses the previously configured TK
++	 * for TX and decrypts received frames with either the previously
++	 * configured TK or the next TK (RX-only).
++	 *
++	 * Option 4: The driver supports extended Key IDs and they are used for
++	 * an association but does not support KEY_FLAG_NEXT (options 2 and 3).
++	 * The next TK is configured as RX-only with KEY_FLAG_PAIRWISE_RX and
++	 * it is enabled for TX and RX with KEY_FLAG_PAIRWISE_RX_TX_MODIFY. When
++	 * extended key ID is not used for an association, the driver behaves
++	 * like in option 1.
++	 *
++	 * Option 5 and 6: Like option 4 but with support for KEY_FLAG_NEXT as
++	 * described above for options 2 and 3, respectively. Option 4 is used
++	 * for cases where extended key IDs are used for an association. Option
++	 * 2 or 3 is used for cases where extended key IDs are not used.
++	 *
+ 	 * Please note that TKIP keys include separate TX and RX MIC keys and
+ 	 * some drivers may expect them in different order than wpa_supplicant
+ 	 * is using. If the TX/RX keys are swapped, all TKIP encrypted packets
+diff --git a/src/drivers/driver_atheros.c b/src/drivers/driver_atheros.c
+index 71863306a..47da8669e 100644
+--- a/src/drivers/driver_atheros.c
++++ b/src/drivers/driver_atheros.c
+@@ -504,6 +504,9 @@ atheros_set_key(void *priv, struct wpa_driver_set_key_params *params)
+ 	const u8 *key = params->key;
+ 	size_t key_len = params->key_len;
+ 
++	if (params->key_flag & KEY_FLAG_NEXT)
++		return -1;
++
+ 	if (alg == WPA_ALG_NONE)
+ 		return atheros_del_key(drv, addr, key_idx);
+ 
+diff --git a/src/drivers/driver_bsd.c b/src/drivers/driver_bsd.c
+index 0979fc5dd..66155b41c 100644
+--- a/src/drivers/driver_bsd.c
++++ b/src/drivers/driver_bsd.c
+@@ -325,6 +325,9 @@ bsd_set_key(void *priv, struct wpa_driver_set_key_params *params)
+ 	const u8 *key = params->key;
+ 	size_t key_len = params->key_len;
+ 
++	if (params->key_flag & KEY_FLAG_NEXT)
++		return -1;
++
+ 	wpa_printf(MSG_DEBUG, "%s: alg=%d addr=%p key_idx=%d set_tx=%d "
+ 		   "seq_len=%zu key_len=%zu", __func__, alg, addr, key_idx,
+ 		   set_tx, seq_len, key_len);
+diff --git a/src/drivers/driver_hostap.c b/src/drivers/driver_hostap.c
+index 3aa5860bc..74c7767ba 100644
+--- a/src/drivers/driver_hostap.c
++++ b/src/drivers/driver_hostap.c
+@@ -411,6 +411,9 @@ static int wpa_driver_hostap_set_key(void *priv,
+ 	const u8 *key = params->key;
+ 	size_t key_len = params->key_len;
+ 
++	if (params->key_flag & KEY_FLAG_NEXT)
++		return -1;
++
+ 	blen = sizeof(*param) + key_len;
+ 	buf = os_zalloc(blen);
+ 	if (buf == NULL)
+diff --git a/src/drivers/driver_ndis.c b/src/drivers/driver_ndis.c
+index 035170522..b030b0bcf 100644
+--- a/src/drivers/driver_ndis.c
++++ b/src/drivers/driver_ndis.c
+@@ -1037,6 +1037,9 @@ static int
+ wpa_driver_ndis_set_key_wrapper(void *priv,
+ 				struct wpa_driver_set_key_params *params)
+ {
++	if (params->key_flag & KEY_FLAG_NEXT)
++		return -1;
++
+ 	return wpa_driver_ndis_set_key(params->ifname, priv,
+ 				       params->alg, params->addr,
+ 				       params->key_idx, params->set_tx,
+diff --git a/src/drivers/driver_nl80211.c b/src/drivers/driver_nl80211.c
+index 85b00af91..c72727564 100644
+--- a/src/drivers/driver_nl80211.c
++++ b/src/drivers/driver_nl80211.c
+@@ -3572,6 +3572,14 @@ static int wpa_driver_nl80211_set_key(struct i802_bss *bss,
+ 		return 0;
+ 	}
+ 
++	if (key_flag & KEY_FLAG_NEXT) {
++		/* For now, ignore these since this needs support from the
++		 * driver to handle the special cases of two active RX keys. */
++		wpa_printf(MSG_DEBUG,
++			   "nl80211: set_key for the next TK for RX-only - ignored");
++		return -EOPNOTSUPP;
++	}
++
+ 	ret = -ENOBUFS;
+ 	key_msg = nlmsg_alloc();
+ 	if (!key_msg)
+diff --git a/src/drivers/driver_openbsd.c b/src/drivers/driver_openbsd.c
+index bfc231178..dac312a0c 100644
+--- a/src/drivers/driver_openbsd.c
++++ b/src/drivers/driver_openbsd.c
+@@ -77,6 +77,9 @@ wpa_driver_openbsd_set_key(void *priv, struct wpa_driver_set_key_params *params)
+ 	const u8 *key = params->key;
+ 	size_t key_len = params->key_len;
+ 
++	if (params->key_flag & KEY_FLAG_NEXT)
++		return -1;
++
+ 	if (key_len > IEEE80211_PMK_LEN ||
+ 	    (key_flag & KEY_FLAG_PMK_MASK) != KEY_FLAG_PMK) {
+ 		return -1;
+diff --git a/src/drivers/driver_privsep.c b/src/drivers/driver_privsep.c
+index d6735b49c..d7c6b01a3 100644
+--- a/src/drivers/driver_privsep.c
++++ b/src/drivers/driver_privsep.c
+@@ -219,6 +219,9 @@ static int wpa_driver_privsep_set_key(void *priv,
+ 	const u8 *key = params->key;
+ 	size_t key_len = params->key_len;
+ 
++	if (params->key_flag & KEY_FLAG_NEXT)
++		return -1;
++
+ 	wpa_printf(MSG_DEBUG, "%s: priv=%p alg=%d key_idx=%d set_tx=%d",
+ 		   __func__, priv, alg, key_idx, set_tx);
+ 
+diff --git a/src/drivers/driver_wext.c b/src/drivers/driver_wext.c
+index 2c656fb6f..c34c13b80 100644
+--- a/src/drivers/driver_wext.c
++++ b/src/drivers/driver_wext.c
+@@ -1833,6 +1833,9 @@ static int wpa_driver_wext_set_key(void *priv,
+ 	const u8 *key = params->key;
+ 	size_t key_len = params->key_len;
+ 
++	if (params->key_flag & KEY_FLAG_NEXT)
++		return -1;
++
+ 	wpa_printf(MSG_DEBUG, "%s: alg=%d key_idx=%d set_tx=%d seq_len=%lu "
+ 		   "key_len=%lu",
+ 		   __FUNCTION__, alg, key_idx, set_tx,
+diff --git a/src/rsn_supp/wpa.c b/src/rsn_supp/wpa.c
+index 48924418b..0d8473841 100644
+--- a/src/rsn_supp/wpa.c
++++ b/src/rsn_supp/wpa.c
+@@ -1227,14 +1227,16 @@ static int wpa_supplicant_install_ptk(struct wpa_sm *sm,
+ 	enum wpa_alg alg;
+ 	const u8 *key_rsc;
+ 
+-	if (sm->ptk.installed) {
++	if (sm->ptk.installed ||
++	    (sm->ptk.installed_rx && (key_flag & KEY_FLAG_NEXT))) {
+ 		wpa_dbg(sm->ctx->msg_ctx, MSG_DEBUG,
+ 			"WPA: Do not re-install same PTK to the driver");
+ 		return 0;
+ 	}
+ 
+ 	wpa_dbg(sm->ctx->msg_ctx, MSG_DEBUG,
+-		"WPA: Installing PTK to the driver");
++		"WPA: Installing %sTK to the driver",
++		(key_flag & KEY_FLAG_NEXT) ? "next " : "");
+ 
+ 	if (sm->pairwise_cipher == WPA_CIPHER_NONE) {
+ 		wpa_dbg(sm->ctx->msg_ctx, MSG_DEBUG, "WPA: Pairwise Cipher "
+@@ -1268,6 +1270,9 @@ static int wpa_supplicant_install_ptk(struct wpa_sm *sm,
+ 	if (wpa_sm_set_key(sm, -1, alg, wpa_sm_get_auth_addr(sm),
+ 			   sm->keyidx_active, 1, key_rsc, rsclen, sm->ptk.tk,
+ 			   keylen, KEY_FLAG_PAIRWISE | key_flag) < 0) {
++		if (key_flag & KEY_FLAG_NEXT)
++			return 0; /* Not all drivers support this, so do not
++				   * report failures on the RX-only set_key */
+ 		wpa_msg(sm->ctx->msg_ctx, MSG_WARNING,
+ 			"WPA: Failed to set PTK to the driver (alg=%d keylen=%d auth_addr="
+ 			MACSTR " idx=%d key_flag=0x%x)",
+@@ -1293,11 +1298,15 @@ static int wpa_supplicant_install_ptk(struct wpa_sm *sm,
+ 	wpa_sm_store_ptk(sm, sm->bssid, sm->pairwise_cipher,
+ 			 sm->dot11RSNAConfigPMKLifetime, &sm->ptk);
+ 
+-	/* TK is not needed anymore in supplicant */
+-	os_memset(sm->ptk.tk, 0, WPA_TK_MAX_LEN);
+-	sm->ptk.tk_len = 0;
+-	sm->ptk.installed = 1;
+-	sm->tk_set = true;
++	if (key_flag & KEY_FLAG_NEXT) {
++		sm->ptk.installed_rx = true;
++	} else {
++		/* TK is not needed anymore in supplicant */
++		os_memset(sm->ptk.tk, 0, WPA_TK_MAX_LEN);
++		sm->ptk.tk_len = 0;
++		sm->ptk.installed = 1;
++		sm->tk_set = true;
++	}
+ 
+ 	if (sm->wpa_ptk_rekey) {
+ 		eloop_cancel_timeout(wpa_sm_rekey_ptk, sm, NULL);
+@@ -2899,6 +2908,16 @@ static void wpa_supplicant_process_3_of_4(struct wpa_sm *sm,
+ 	    wpa_supplicant_install_ptk(sm, key, KEY_FLAG_RX))
+ 		goto failed;
+ 
++	if (!sm->use_ext_key_id &&
++	    wpa_supplicant_install_ptk(sm, key, KEY_FLAG_RX | KEY_FLAG_NEXT)) {
++		/* Continue anyway since the many drivers do not support
++		 * configuration of the TK for RX-only purposes for cases where
++		 * multiple keys might be in use in parallel and this being an
++		 * optional optimization to avoid race condition during TK
++		 * changes that could result in some protected frames getting
++		 * discarded. */
++	}
++
+ 	if (wpa_supplicant_send_4_of_4(sm, wpa_sm_get_auth_addr(sm), key, ver,
+ 				       key_info, &sm->ptk) < 0)
+ 		goto failed;
+diff --git a/wpa_supplicant/ibss_rsn.c b/wpa_supplicant/ibss_rsn.c
+index 25039a0f9..37eb58726 100644
+--- a/wpa_supplicant/ibss_rsn.c
++++ b/wpa_supplicant/ibss_rsn.c
+@@ -150,6 +150,12 @@ static int supp_set_key(void *ctx, int link_id, enum wpa_alg alg,
+ {
+ 	struct ibss_rsn_peer *peer = ctx;
+ 
++	if (key_flag & KEY_FLAG_NEXT) {
++		wpa_printf(MSG_DEBUG,
++			   "SUPP: Ignore set_key with KEY_FLAG_NEXT");
++		return 0;
++	}
++
+ 	wpa_printf(MSG_DEBUG, "SUPP: %s(alg=%d addr=" MACSTR " key_idx=%d "
+ 		   "set_tx=%d)",
+ 		   __func__, alg, MAC2STR(addr), key_idx, set_tx);
+@@ -320,6 +326,12 @@ static int auth_set_key(void *ctx, int vlan_id, enum wpa_alg alg,
+ 	struct ibss_rsn *ibss_rsn = ctx;
+ 	u8 seq[6];
+ 
++	if (key_flag & KEY_FLAG_NEXT) {
++		wpa_printf(MSG_DEBUG,
++			   "AUTH: Ignore set_key with KEY_FLAG_NEXT");
++		return 0;
++	}
++
+ 	os_memset(seq, 0, sizeof(seq));
+ 
+ 	if (addr) {
+-- 
+2.43.0
+

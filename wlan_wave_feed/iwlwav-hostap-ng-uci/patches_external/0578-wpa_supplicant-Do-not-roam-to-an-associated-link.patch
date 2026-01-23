@@ -1,0 +1,33 @@
+From 6f3e7c5d3ec04e48506b7cd364ccb7262b3dbccf Mon Sep 17 00:00:00 2001
+From: Ilan Peer <ilan.peer@intel.com>
+Date: Mon, 8 Apr 2024 16:06:56 +0300
+Subject: [PATCH] wpa_supplicant: Do not roam to an associated link
+
+When considering to roam to a different BSS and the connection
+is an MLD connection, do not roam to a BSS which is already
+included in the MLD connection.
+
+Signed-off-by: Ilan Peer <ilan.peer@intel.com>
+---
+ wpa_supplicant/events.c | 5 +++++
+ 1 file changed, 5 insertions(+)
+
+diff --git a/wpa_supplicant/events.c b/wpa_supplicant/events.c
+index e58fc12e9..823556e3a 100644
+--- a/wpa_supplicant/events.c
++++ b/wpa_supplicant/events.c
+@@ -2167,6 +2167,11 @@ int wpa_supplicant_need_to_roam_within_ess(struct wpa_supplicant *wpa_s,
+ 		MAC2STR(selected->bssid), selected->freq, selected->level,
+ 		selected->snr, selected->est_throughput);
+ 
++	if (wpas_ap_link_address(wpa_s, selected->bssid)) {
++		wpa_dbg(wpa_s, MSG_DEBUG, "MLD: associated to selected BSS");
++		return 0;
++	}
++
+ 	if (wpa_s->current_ssid->bssid_set &&
+ 	    ether_addr_equal(selected->bssid, wpa_s->current_ssid->bssid)) {
+ 		wpa_dbg(wpa_s, MSG_DEBUG, "Allow reassociation - selected BSS "
+-- 
+2.43.0
+

@@ -1,0 +1,38 @@
+From 5308029f8684b789b433c05e79c0a7ec37971ef8 Mon Sep 17 00:00:00 2001
+From: Chenming Huang <quic_chenhuan@quicinc.com>
+Date: Wed, 17 Apr 2024 09:02:27 +0530
+Subject: [PATCH] nl80211: Update link bandwidth when receiving channel switch
+ event
+
+There is a chance that the driver has switched the channel width so we
+should update the bandwidth, too, when receiving a channel switch event.
+Otherwise, this may cause out of sync for bandwidth between i802_link
+and hostapd_config.
+
+Signed-off-by: Chenming Huang <quic_chenhuan@quicinc.com>
+---
+ src/drivers/driver_nl80211_event.c | 6 ++++++
+ 1 file changed, 6 insertions(+)
+
+diff --git a/src/drivers/driver_nl80211_event.c b/src/drivers/driver_nl80211_event.c
+index 6e7574879..e8ddb6337 100644
+--- a/src/drivers/driver_nl80211_event.c
++++ b/src/drivers/driver_nl80211_event.c
+@@ -1272,8 +1272,14 @@ static void mlme_event_ch_switch(struct wpa_driver_nl80211_data *drv,
+ 			mld_link = nl80211_get_link(bss,
+ 						    data.ch_switch.link_id);
+ 			mld_link->freq = data.ch_switch.freq;
++			if (bw)
++				mld_link->bandwidth = channel_width_to_int(
++					data.ch_switch.ch_width);
+ 		} else {
+ 			bss->flink->freq = data.ch_switch.freq;
++			if (bw)
++				bss->flink->bandwidth = channel_width_to_int(
++					data.ch_switch.ch_width);
+ 		}
+ 	}
+ 
+-- 
+2.43.0
+

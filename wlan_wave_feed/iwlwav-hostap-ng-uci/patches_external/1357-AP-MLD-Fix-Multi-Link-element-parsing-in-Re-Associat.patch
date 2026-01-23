@@ -1,0 +1,74 @@
+From 038cb0fc50107344368a6cb13a02024d40252e5e Mon Sep 17 00:00:00 2001
+From: Jouni Malinen <quic_jouni@quicinc.com>
+Date: Sat, 8 Feb 2025 11:53:49 +0200
+Subject: [PATCH] AP MLD: Fix Multi-Link element parsing in (Re)Association
+ Request frame
+
+The Common Info field in the Basic Multi-Link element is supposed to be
+extensible with its Length field indicating the total length of the
+field. Instead of only accepting that exact length, any larger value
+needs to be accepted as well to support extensibility.
+
+Fixes: 5f5db9366cde ("AP: MLO: Process Multi-Link element from (Re)Association Request frame")
+Fixes: e996704201e7 ("AP: Handle re-association from a non-AP MLD")
+Signed-off-by: Jouni Malinen <quic_jouni@quicinc.com>
+---
+ src/ap/ieee802_11_eht.c | 14 ++++++++------
+ 1 file changed, 8 insertions(+), 6 deletions(-)
+
+diff --git a/src/ap/ieee802_11_eht.c b/src/ap/ieee802_11_eht.c
+index 1355170e6..72b72a722 100644
+--- a/src/ap/ieee802_11_eht.c
++++ b/src/ap/ieee802_11_eht.c
+@@ -1159,7 +1159,7 @@ int hostapd_process_ml_assoc_req_addr(struct hostapd_data *hapd,
+ 	common_info = (struct eht_ml_basic_common_info *) ml->variable;
+ 
+ 	/* Common information length includes the length octet */
+-	if (common_info->len != common_info_len) {
++	if (common_info->len < common_info_len) {
+ 		wpa_printf(MSG_DEBUG,
+ 			   "MLD: Invalid common info len=%u", common_info->len);
+ 		goto out;
+@@ -1185,7 +1185,7 @@ u16 hostapd_process_ml_assoc_req(struct hostapd_data *hapd,
+ 	size_t ml_len, common_info_len;
+ 	struct mld_link_info *link_info;
+ 	struct mld_info *info = &sta->mld_info;
+-	const u8 *pos;
++	const u8 *pos, *end;
+ 	int ret = -1;
+ 	u16 ml_control;
+ 
+@@ -1253,7 +1253,7 @@ u16 hostapd_process_ml_assoc_req(struct hostapd_data *hapd,
+ 	common_info = (const struct eht_ml_basic_common_info *) ml->variable;
+ 
+ 	/* Common information length includes the length octet */
+-	if (common_info->len != common_info_len) {
++	if (common_info->len < common_info_len) {
+ 		wpa_printf(MSG_DEBUG,
+ 			   "MLD: Invalid common info len=%u (expected %zu)",
+ 			   common_info->len, common_info_len);
+@@ -1261,6 +1261,7 @@ u16 hostapd_process_ml_assoc_req(struct hostapd_data *hapd,
+ 	}
+ 
+ 	pos = common_info->variable;
++	end = ((const u8 *) common_info) + common_info->len;
+ 
+ 	if (ml_control & BASIC_MULTI_LINK_CTRL_PRES_EML_CAPA) {
+ 		info->common_info.eml_capa = WPA_GET_LE16(pos);
+@@ -1293,9 +1294,10 @@ u16 hostapd_process_ml_assoc_req(struct hostapd_data *hapd,
+ 
+ 	info->links[hapd->mld_link_id].valid = 1;
+ 
+-	/* Parse the link info field */
+-	ml_len -= sizeof(*ml) + common_info_len;
+-
++	/* Parse the Link Info field that starts after the end of the variable
++	 * length Common Info field. */
++	pos = end;
++	ml_len -= sizeof(*ml) + common_info->len;
+ 	while (ml_len > 2) {
+ 		size_t sub_elem_len = *(pos + 1);
+ 		size_t sta_info_len;
+-- 
+2.43.0
+

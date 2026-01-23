@@ -1,0 +1,122 @@
+From 7fa840309a893d52d4f6264e8fdc8dbf4b6df50a Mon Sep 17 00:00:00 2001
+From: Andrei Otcheretianski <andrei.otcheretianski@intel.com>
+Date: Wed, 13 Dec 2023 16:04:12 +0200
+Subject: [PATCH] WNM: Skip current connection BSS when disassociate imminent
+ is set
+
+During scan results matching for connection skip BSS entries for the
+current connection if disassociation imminent is set.
+
+Signed-off-by: Ilan Peer <ilan.peer@intel.com>
+Signed-off-by: Andrei Otcheretianski <andrei.otcheretianski@intel.com>
+---
+ wpa_supplicant/events.c         | 11 ++++++++++
+ wpa_supplicant/wnm_sta.c        | 38 +++++++++++++++++++++++++++++++++
+ wpa_supplicant/wnm_sta.h        |  1 +
+ wpa_supplicant/wpa_supplicant.c |  3 +++
+ 4 files changed, 53 insertions(+)
+
+diff --git a/wpa_supplicant/events.c b/wpa_supplicant/events.c
+index dd988e7b3..7bea64986 100644
+--- a/wpa_supplicant/events.c
++++ b/wpa_supplicant/events.c
+@@ -386,6 +386,9 @@ void wpa_supplicant_mark_disassoc(struct wpa_supplicant *wpa_s)
+ 	wpas_rrm_reset(wpa_s);
+ #endif /* CONFIG_NO_RRM */
+ 	wpa_s->wnmsleep_used = 0;
++#ifdef CONFIG_WNM
++	wpa_s->wnm_mode = 0;
++#endif /* CONFIG_WNM */
+ 	wnm_clear_coloc_intf_reporting(wpa_s);
+ 	wpa_s->disable_mbo_oce = 0;
+ 
+@@ -1689,6 +1692,14 @@ struct wpa_ssid * wpa_scan_res_match(struct wpa_supplicant *wpa_s,
+ 		return NULL;
+ 	}
+ 
++#ifdef CONFIG_WNM
++	if (wnm_is_bss_excluded(wpa_s, bss)) {
++		if (debug_print)
++			wpa_dbg(wpa_s, MSG_DEBUG, "   skip - BSSID excluded");
++		return NULL;
++	}
++#endif /* CONFIG_WNM */
++
+ 	for (ssid = group; ssid; ssid = only_first_ssid ? NULL : ssid->pnext) {
+ 		if (wpa_scan_res_ok(wpa_s, ssid, match_ssid, match_ssid_len,
+ 				    bss, bssid_ignore_count, debug_print))
+diff --git a/wpa_supplicant/wnm_sta.c b/wpa_supplicant/wnm_sta.c
+index fa9ab0e3e..d121c1bb9 100644
+--- a/wpa_supplicant/wnm_sta.c
++++ b/wpa_supplicant/wnm_sta.c
+@@ -2068,3 +2068,41 @@ void wnm_clear_coloc_intf_reporting(struct wpa_supplicant *wpa_s)
+ 	wpa_s->coloc_intf_dialog_token = 0;
+ 	wpa_s->coloc_intf_auto_report = 0;
+ }
++
++
++bool wnm_is_bss_excluded(struct wpa_supplicant *wpa_s, struct wpa_bss *bss)
++{
++	unsigned int i;
++
++	if (!(wpa_s->wnm_mode & WNM_BSS_TM_REQ_DISASSOC_IMMINENT))
++		return false;
++
++	/*
++	 * In case disassociation imminent is set, do no try to use a BSS to
++	 * which we are connected.
++	 */
++
++	if (wpa_s->current_bss &&
++	    os_memcmp(wpa_s->current_bss->bssid, bss->bssid, ETH_ALEN) == 0) {
++		wpa_dbg(wpa_s, MSG_DEBUG,
++			"WNM: Disassociation imminent: current BSS");
++		return true;
++	}
++
++	if (!wpa_s->valid_links)
++		return false;
++
++	for (i = 0; i < MAX_NUM_MLD_LINKS; i++) {
++		if (!(wpa_s->valid_links & BIT(i)))
++			continue;
++
++		if (os_memcmp(wpa_s->links[i].bssid, bss->bssid,
++			      ETH_ALEN) == 0) {
++			wpa_dbg(wpa_s, MSG_DEBUG,
++				"WNM: MLD: Disassociation imminent: current link");
++			return true;
++		}
++	}
++
++	return false;
++}
+diff --git a/wpa_supplicant/wnm_sta.h b/wpa_supplicant/wnm_sta.h
+index e4957e48a..2a473db4e 100644
+--- a/wpa_supplicant/wnm_sta.h
++++ b/wpa_supplicant/wnm_sta.h
+@@ -70,6 +70,7 @@ int wnm_send_coloc_intf_report(struct wpa_supplicant *wpa_s, u8 dialog_token,
+ 			       const struct wpabuf *elems);
+ void wnm_set_coloc_intf_elems(struct wpa_supplicant *wpa_s,
+ 			      struct wpabuf *elems);
++bool wnm_is_bss_excluded(struct wpa_supplicant *wpa_s, struct wpa_bss *bss);
+ 
+ 
+ #ifdef CONFIG_WNM
+diff --git a/wpa_supplicant/wpa_supplicant.c b/wpa_supplicant/wpa_supplicant.c
+index 732a2e132..134ba39c5 100644
+--- a/wpa_supplicant/wpa_supplicant.c
++++ b/wpa_supplicant/wpa_supplicant.c
+@@ -2495,6 +2495,9 @@ void wpa_supplicant_associate(struct wpa_supplicant *wpa_s,
+ #ifndef CONFIG_NO_WMM_AC
+ 	wmm_ac_clear_saved_tspecs(wpa_s);
+ #endif /* CONFIG_NO_WMM_AC */
++#ifdef CONFIG_WNM
++	wpa_s->wnm_mode = 0;
++#endif /* CONFIG_WNM */
+ 	wpa_s->reassoc_same_bss = 0;
+ 	wpa_s->reassoc_same_ess = 0;
+ #ifdef CONFIG_TESTING_OPTIONS
+-- 
+2.43.0
+

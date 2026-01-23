@@ -1,0 +1,84 @@
+From a4d599a53d879222c7b6138a439f0cf5e030dd63 Mon Sep 17 00:00:00 2001
+From: Jouni Malinen <quic_jouni@quicinc.com>
+Date: Mon, 22 Jan 2024 21:30:10 +0200
+Subject: [PATCH] FT: Fix architecture for RxKH loading from a file
+
+src/ap/ap_config.c is not really supposed to call directly into a
+function in hostapd/config_file.c. Furthermore, the wrapper through
+ap_config.c did not really have any real value since it just called a
+function that is within hostapd/*.c and that wrapper was called from
+hostapd/*.c.
+
+Instead of the wrapper, just call the function directly within the
+hostapd directory.
+
+Fixes: 392114a17960 ("FT: Add dynamic reload of RxKH definitions from file")
+Signed-off-by: Jouni Malinen <quic_jouni@quicinc.com>
+---
+ hostapd/config_file.h | 2 ++
+ hostapd/ctrl_iface.c  | 2 +-
+ src/ap/ap_config.c    | 6 ------
+ src/ap/ap_config.h    | 3 ---
+ 4 files changed, 3 insertions(+), 10 deletions(-)
+
+diff --git a/hostapd/config_file.h b/hostapd/config_file.h
+index c98bdb683..9ef6ac829 100644
+--- a/hostapd/config_file.h
++++ b/hostapd/config_file.h
+@@ -10,6 +10,8 @@
+ #define CONFIG_FILE_H
+ 
+ struct hostapd_config * hostapd_config_read(const char *fname);
++int hostapd_config_read_rxkh_file(struct hostapd_bss_config *conf,
++				  const char *fname);
+ int hostapd_set_iface(struct hostapd_config *conf,
+ 		      struct hostapd_bss_config *bss, const char *field,
+ 		      char *value);
+diff --git a/hostapd/ctrl_iface.c b/hostapd/ctrl_iface.c
+index f2f7f0dbd..2ba9856b4 100644
+--- a/hostapd/ctrl_iface.c
++++ b/hostapd/ctrl_iface.c
+@@ -1530,7 +1530,7 @@ static int hostapd_ctrl_iface_reload_rxkhs(struct hostapd_data *hapd)
+ 
+ 	hostapd_config_clear_rxkhs(conf);
+ 
+-	err = hostapd_config_setup_rxkhs(conf);
++	err = hostapd_config_read_rxkh_file(conf, conf->rxkh_file);
+ 	if (err < 0) {
+ 		wpa_printf(MSG_ERROR, "Reloading RxKHs failed: %d",
+ 			   err);
+diff --git a/src/ap/ap_config.c b/src/ap/ap_config.c
+index ebf6828d8..f760e340b 100644
+--- a/src/ap/ap_config.c
++++ b/src/ap/ap_config.c
+@@ -702,12 +702,6 @@ void hostapd_config_clear_wpa_psk(struct hostapd_wpa_psk **l)
+ 
+ #ifdef CONFIG_IEEE80211R_AP
+ 
+-int hostapd_config_setup_rxkhs(struct hostapd_bss_config *conf)
+-{
+-	return hostapd_config_read_rxkh_file(conf, conf->rxkh_file);
+-}
+-
+-
+ void hostapd_config_clear_rxkhs(struct hostapd_bss_config *conf)
+ {
+ 	struct ft_remote_r0kh *r0kh, *r0kh_prev;
+diff --git a/src/ap/ap_config.h b/src/ap/ap_config.h
+index 8c459bd59..de02ddafd 100644
+--- a/src/ap/ap_config.h
++++ b/src/ap/ap_config.h
+@@ -1350,10 +1350,7 @@ void hostapd_config_free_radius_attr(struct hostapd_radius_attr *attr);
+ void hostapd_config_free_eap_user(struct hostapd_eap_user *user);
+ void hostapd_config_free_eap_users(struct hostapd_eap_user *user);
+ void hostapd_config_clear_wpa_psk(struct hostapd_wpa_psk **p);
+-int hostapd_config_read_rxkh_file(struct hostapd_bss_config *conf,
+-				  const char *fname);
+ void hostapd_config_clear_rxkhs(struct hostapd_bss_config *conf);
+-int hostapd_config_setup_rxkhs(struct hostapd_bss_config *conf);
+ void hostapd_config_free_bss(struct hostapd_bss_config *conf);
+ void hostapd_config_free(struct hostapd_config *conf);
+ int hostapd_maclist_found(struct mac_acl_entry *list, int num_entries,
+-- 
+2.43.0
+

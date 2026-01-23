@@ -1,0 +1,32 @@
+From b7ed69206d27ee8820afbf78a820c01a9a65c40c Mon Sep 17 00:00:00 2001
+From: Johannes Berg <johannes.berg@intel.com>
+Date: Wed, 24 Jan 2024 17:12:48 +0100
+Subject: [PATCH] tests: FST: Leave time to process session request
+
+Due to scheduling in UML time-travel, the test may continue
+running and find that the failure didn't trigger when really
+the frame just didn't make it through to the other side. Add
+some time for the necessary processing.
+
+Signed-off-by: Johannes Berg <johannes.berg@intel.com>
+---
+ tests/hwsim/test_fst_module.py | 3 +++
+ 1 file changed, 3 insertions(+)
+
+diff --git a/tests/hwsim/test_fst_module.py b/tests/hwsim/test_fst_module.py
+index 4dbcfc890..589a87c54 100644
+--- a/tests/hwsim/test_fst_module.py
++++ b/tests/hwsim/test_fst_module.py
+@@ -2211,6 +2211,9 @@ def test_fst_session_oom(dev, apdev, test_params):
+             res = initiator.grequest("FST-MANAGER SESSION_INITIATE " + sid)
+             if not res.startswith("OK"):
+                 raise Exception("Unexpected SESSION_INITIATE result")
++            # Leave some time for the frame to be transmitted, received,
++            # and processed.
++            time.sleep(0.1)
+     finally:
+         fst_module_aux.disconnect_two_ap_sta_pairs(ap1, ap2, sta1, sta2)
+         fst_module_aux.stop_two_ap_sta_pairs(ap1, ap2, sta1, sta2)
+-- 
+2.43.0
+

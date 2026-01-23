@@ -1,0 +1,97 @@
+From 83f9dcbb357bcfa9480446c9b3761ed3fbb838b7 Mon Sep 17 00:00:00 2001
+From: Jouni Malinen <quic_jouni@quicinc.com>
+Date: Fri, 13 Sep 2024 21:58:51 +0300
+Subject: [PATCH] NAN: Process received NAN SDFs with NAN Network ID in A3 on
+ AP
+
+hostapd did not accept NAN SDFs that used NAN Network ID instead of
+Wildcard BSSID in A3. Extend this to process NAN Network ID just like
+Wildcard BSSID for these frames to allow the specific group address to
+be used.
+
+Signed-off-by: Jouni Malinen <quic_jouni@quicinc.com>
+---
+ src/ap/drv_callbacks.c | 6 ++++++
+ src/ap/ieee802_11.c    | 4 ++++
+ src/common/nan_de.c    | 6 ++++++
+ src/common/nan_de.h    | 1 +
+ 4 files changed, 17 insertions(+)
+
+diff --git a/src/ap/drv_callbacks.c b/src/ap/drv_callbacks.c
+index 6c98cb903..4862c4f4f 100644
+--- a/src/ap/drv_callbacks.c
++++ b/src/ap/drv_callbacks.c
+@@ -18,6 +18,7 @@
+ #include "common/dpp.h"
+ #include "common/sae.h"
+ #include "common/hw_features_common.h"
++#include "common/nan_de.h"
+ #include "crypto/random.h"
+ #include "p2p/p2p.h"
+ #include "wps/wps.h"
+@@ -1855,6 +1856,11 @@ static struct hostapd_data * get_hapd_bssid(struct hostapd_iface *iface,
+ 	if (bssid[0] == 0xff && bssid[1] == 0xff && bssid[2] == 0xff &&
+ 	    bssid[3] == 0xff && bssid[4] == 0xff && bssid[5] == 0xff)
+ 		return HAPD_BROADCAST;
++#ifdef CONFIG_NAN_USD
++	if (nan_de_is_nan_network_id(bssid))
++		return HAPD_BROADCAST; /* Process NAN Network ID like broadcast
++					*/
++#endif /* CONFIG_NAN_USD */
+ 
+ 	for (i = 0; i < iface->num_bss; i++) {
+ 		struct hostapd_data *hapd;
+diff --git a/src/ap/ieee802_11.c b/src/ap/ieee802_11.c
+index d4552f2f4..281d18dc6 100644
+--- a/src/ap/ieee802_11.c
++++ b/src/ap/ieee802_11.c
+@@ -26,6 +26,7 @@
+ #include "common/wpa_common.h"
+ #include "common/wpa_ctrl.h"
+ #include "common/ptksa_cache.h"
++#include "common/nan_de.h"
+ #include "radius/radius.h"
+ #include "radius/radius_client.h"
+ #include "p2p/p2p.h"
+@@ -6295,6 +6296,9 @@ int ieee802_11_mgmt(struct hostapd_data *hapd, const u8 *buf, size_t len,
+ 	}
+ 
+ 	if (!is_broadcast_ether_addr(mgmt->bssid) &&
++#ifdef CONFIG_NAN_USD
++	    !nan_de_is_nan_network_id(mgmt->bssid) &&
++#endif /* CONFIG_NAN_USD */
+ #ifdef CONFIG_P2P
+ 	    /* Invitation responses can be sent with the peer MAC as BSSID */
+ 	    !((hapd->conf->p2p & P2P_GROUP_OWNER) &&
+diff --git a/src/common/nan_de.c b/src/common/nan_de.c
+index acde4f3b2..6051cb858 100644
+--- a/src/common/nan_de.c
++++ b/src/common/nan_de.c
+@@ -79,6 +79,12 @@ struct nan_de {
+ };
+ 
+ 
++bool nan_de_is_nan_network_id(const u8 *addr)
++{
++	return ether_addr_equal(addr, nan_network_id);
++}
++
++
+ struct nan_de * nan_de_init(const u8 *nmi, bool offload, bool ap,
+ 			    const struct nan_callbacks *cb)
+ {
+diff --git a/src/common/nan_de.h b/src/common/nan_de.h
+index f369a5721..8e5282f98 100644
+--- a/src/common/nan_de.h
++++ b/src/common/nan_de.h
+@@ -59,6 +59,7 @@ struct nan_callbacks {
+ 				      unsigned int freq);
+ };
+ 
++bool nan_de_is_nan_network_id(const u8 *addr);
+ struct nan_de * nan_de_init(const u8 *nmi, bool offload, bool ap,
+ 			    const struct nan_callbacks *cb);
+ void nan_de_flush(struct nan_de *de);
+-- 
+2.43.0
+

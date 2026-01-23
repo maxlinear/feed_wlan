@@ -1,0 +1,30 @@
+From 12cd887c4432a0c12c42cb27a86c0ab5fee0b1e9 Mon Sep 17 00:00:00 2001
+From: Jouni Malinen <j@w1.fi>
+Date: Sun, 23 Feb 2025 11:43:20 +0200
+Subject: [PATCH] P2P2: Check peer_addr being available more consistently
+
+It looks like peer_addr might be NULL here in the p2p2 case since the
+client role case is setting peer_addr explicitly only with !wpa_s->p2p2.
+
+Signed-off-by: Jouni Malinen <j@w1.fi>
+---
+ wpa_supplicant/p2p_supplicant.c | 3 ++-
+ 1 file changed, 2 insertions(+), 1 deletion(-)
+
+diff --git a/wpa_supplicant/p2p_supplicant.c b/wpa_supplicant/p2p_supplicant.c
+index 4c64c1802..f43d0fe48 100644
+--- a/wpa_supplicant/p2p_supplicant.c
++++ b/wpa_supplicant/p2p_supplicant.c
+@@ -8877,7 +8877,8 @@ int wpas_p2p_invite(struct wpa_supplicant *wpa_s, const u8 *peer_addr,
+ 
+ #ifdef CONFIG_PASN
+ 	if (p2p2) {
+-		if (wpas_p2p_initiate_pasn_verify(wpa_s, peer_addr, role, bssid,
++		if (peer_addr &&
++		    wpas_p2p_initiate_pasn_verify(wpa_s, peer_addr, role, bssid,
+ 						  ssid->ssid, ssid->ssid_len,
+ 						  force_freq, go_dev_addr,
+ 						  pref_freq) < 0) {
+-- 
+2.43.0
+

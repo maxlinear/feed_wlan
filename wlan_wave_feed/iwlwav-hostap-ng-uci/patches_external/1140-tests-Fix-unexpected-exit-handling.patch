@@ -1,0 +1,36 @@
+From 517144359032c4c52951053423f28feb738ca0b7 Mon Sep 17 00:00:00 2001
+From: Jouni Malinen <quic_jouni@quicinc.com>
+Date: Wed, 18 Dec 2024 00:14:41 +0200
+Subject: [PATCH] tests: Fix unexpected exit handling
+
+Calculation of remaining VMs seemed to have been messed up in some of
+the earlier design changes. Iterate over all VMs instead of check the
+terminated VM context data multiple times.
+
+Signed-off-by: Jouni Malinen <quic_jouni@quicinc.com>
+---
+ tests/hwsim/vm/parallel-vm.py | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/tests/hwsim/vm/parallel-vm.py b/tests/hwsim/vm/parallel-vm.py
+index 1d3871264..82718b898 100755
+--- a/tests/hwsim/vm/parallel-vm.py
++++ b/tests/hwsim/vm/parallel-vm.py
+@@ -288,12 +288,12 @@ def vm_terminated(_vm, scr, sel, test_queue):
+     if test_queue:
+         num_vm = 0
+         for i in range(num_servers):
+-            if _vm['proc']:
++            if vm[i]['proc']:
+                 num_vm += 1
+         if len(test_queue) > num_vm:
+             if _vm['idx'] + 1 < status_line:
+                 scr.addstr("unexpected exit")
+-            logger.info("VM[%d] unexpected exit" % i)
++            logger.info("VM[%d] unexpected exit" % _vm['idx'])
+             updated = True
+     return updated
+ 
+-- 
+2.43.0
+

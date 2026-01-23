@@ -1,0 +1,49 @@
+From e5c8774e46cb9934d7e3f0c86840cd356e69b694 Mon Sep 17 00:00:00 2001
+From: Shivani Baranwal <quic_shivbara@quicinc.com>
+Date: Thu, 17 Oct 2024 15:11:53 +0530
+Subject: [PATCH] P2P2: Fix pairing verification without encrypted elements
+
+During the pairing verification process, the KEK might not be derived,
+and the PASN encrypted elements are absent in the P2P2 IE. Therefore, it
+is necessary to permit other attributes such as PCEA and the Action
+Frame Wrapper attribute in the Authentication frame for the invitation
+process.
+
+Signed-off-by: Shivani Baranwal <quic_shivbara@quicinc.com>
+---
+ src/p2p/p2p.c          | 2 +-
+ src/pasn/pasn_common.c | 5 +++++
+ 2 files changed, 6 insertions(+), 1 deletion(-)
+
+diff --git a/src/p2p/p2p.c b/src/p2p/p2p.c
+index 646be7d68..462a81de5 100644
+--- a/src/p2p/p2p.c
++++ b/src/p2p/p2p.c
+@@ -6731,7 +6731,7 @@ int p2p_prepare_data_element(struct p2p_data *p2p, const u8 *peer_addr)
+ 	}
+ 
+ 	if (p2p_pasn_add_encrypted_data(p2p, dev, extra_ies) < 0)
+-		goto out;
++		p2p_dbg(p2p, "Failed to add PASN encrypted elements");
+ 
+ 	pasn->extra_ies = os_memdup(wpabuf_head_u8(extra_ies),
+ 				    wpabuf_len(extra_ies));
+diff --git a/src/pasn/pasn_common.c b/src/pasn/pasn_common.c
+index 8a42e0941..654656e58 100644
+--- a/src/pasn/pasn_common.c
++++ b/src/pasn/pasn_common.c
+@@ -254,6 +254,11 @@ int pasn_add_encrypted_data(struct pasn_data *pasn, struct wpabuf *buf,
+ 	u8 *len;
+ 	size_t pad_len = 0;
+ 
++	if (!pasn->ptk.kek_len) {
++		wpa_printf(MSG_DEBUG, "PASN: KEK not available");
++		return -2;
++	}
++
+ 	pad_len = data_len % 8;
+ 	if (pad_len) {
+ 		pad_len = 8 - pad_len;
+-- 
+2.43.0
+

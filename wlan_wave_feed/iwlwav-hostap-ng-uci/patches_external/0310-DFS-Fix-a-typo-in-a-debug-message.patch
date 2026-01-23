@@ -1,0 +1,26 @@
+From d88fe8fe5dacfb404a10ac4f73abe363e7c6bd3f Mon Sep 17 00:00:00 2001
+From: Jouni Malinen <quic_jouni@quicinc.com>
+Date: Fri, 26 Jan 2024 11:42:54 +0200
+Subject: [PATCH] DFS: Fix a typo in a debug message
+
+Signed-off-by: Jouni Malinen <quic_jouni@quicinc.com>
+---
+ src/ap/dfs.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/src/ap/dfs.c b/src/ap/dfs.c
+index dbf645d72..d5bb240ec 100644
+--- a/src/ap/dfs.c
++++ b/src/ap/dfs.c
+@@ -188,7 +188,7 @@ static int dfs_chan_range_available(struct hostapd_hw_modes *mode,
+ 	 * If it's not allowed to use the first channel as primary, decline the
+ 	 * whole channel range. */
+ 	if (!chan_pri_allowed(first_chan)) {
+-		wpa_printf(MSG_DEBUG, "DFS: primary chanenl not allowed");
++		wpa_printf(MSG_DEBUG, "DFS: primary channel not allowed");
+ 		return 0;
+ 	}
+ 
+-- 
+2.43.0
+

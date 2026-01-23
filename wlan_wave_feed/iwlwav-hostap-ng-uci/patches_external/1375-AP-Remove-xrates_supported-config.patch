@@ -1,0 +1,48 @@
+From ea626cb8cebfe8cd871e22f5caab8ae9c8cf53f2 Mon Sep 17 00:00:00 2001
+From: Aditya Kumar Singh <quic_adisi@quicinc.com>
+Date: Tue, 11 Feb 2025 22:57:09 +0530
+Subject: [PATCH] AP: Remove xrates_supported config
+
+This config is no longer needed and hence can be removed.
+
+Signed-off-by: Aditya Kumar Singh <quic_adisi@quicinc.com>
+---
+ src/ap/ap_config.h  | 1 -
+ src/ap/ieee802_11.c | 2 --
+ 2 files changed, 3 deletions(-)
+
+diff --git a/src/ap/ap_config.h b/src/ap/ap_config.h
+index d056c60e3..4ef2d8c70 100644
+--- a/src/ap/ap_config.h
++++ b/src/ap/ap_config.h
+@@ -972,7 +972,6 @@ struct hostapd_bss_config {
+ 
+ 	u8 rnr;
+ 	char *config_id;
+-	bool xrates_supported;
+ 
+ 	bool ssid_protection;
+ 	bool known_sta_identification;
+diff --git a/src/ap/ieee802_11.c b/src/ap/ieee802_11.c
+index 5db8e24e4..071b0c136 100644
+--- a/src/ap/ieee802_11.c
++++ b/src/ap/ieee802_11.c
+@@ -190,7 +190,6 @@ u8 * hostapd_eid_ext_supp_rates(struct hostapd_data *hapd, u8 *eid)
+ 	int i, num, count;
+ 	int h2e_required;
+ 
+-	hapd->conf->xrates_supported = false;
+ 	if (hapd->iface->current_rates == NULL)
+ 		return eid;
+ 
+@@ -252,7 +251,6 @@ u8 * hostapd_eid_ext_supp_rates(struct hostapd_data *hapd, u8 *eid)
+ 			*pos++ = 0x80 | BSS_MEMBERSHIP_SELECTOR_SAE_H2E_ONLY;
+ 	}
+ 
+-	hapd->conf->xrates_supported = true;
+ 	return pos;
+ }
+ 
+-- 
+2.43.0
+

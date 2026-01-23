@@ -1,0 +1,201 @@
+From b7de417c8a4705ee2bc4d2c0688a4afd0bf604ad Mon Sep 17 00:00:00 2001
+From: Shivani Baranwal <quic_shivbara@quicinc.com>
+Date: Mon, 5 Aug 2024 01:43:58 +0530
+Subject: [PATCH] PASN: Define PMKSA helper functions for initiator and
+ responder
+
+Define helper functions to init, add, get, remove, flush, and deinit
+PMKSA cache for PASN initiator and responder. P2P devices can be in
+a role of pairing initiator and responder. Hence define a cache for
+each role separately.
+
+Signed-off-by: Shivani Baranwal <quic_shivbara@quicinc.com>
+---
+ src/pasn/pasn_common.h    | 22 +++++++++++++++
+ src/pasn/pasn_initiator.c | 59 +++++++++++++++++++++++++++++++++++++++
+ src/pasn/pasn_responder.c | 59 +++++++++++++++++++++++++++++++++++++++
+ 3 files changed, 140 insertions(+)
+
+diff --git a/src/pasn/pasn_common.h b/src/pasn/pasn_common.h
+index eb0c16abf..36d129f4e 100644
+--- a/src/pasn/pasn_common.h
++++ b/src/pasn/pasn_common.h
+@@ -207,6 +207,17 @@ void pasn_set_initiator_pmksa(struct pasn_data *pasn,
+ void pasn_set_responder_pmksa(struct pasn_data *pasn,
+ 			      struct rsn_pmksa_cache *pmksa);
+ int pasn_set_pt(struct pasn_data *pasn, struct sae_pt *pt);
++struct rsn_pmksa_cache * pasn_initiator_pmksa_cache_init(void);
++void pasn_initiator_pmksa_cache_deinit(struct rsn_pmksa_cache *pmksa);
++int pasn_initiator_pmksa_cache_add(struct rsn_pmksa_cache *pmksa,
++				   const u8 *own_addr, const u8 *bssid, u8 *pmk,
++				   size_t pmk_len, u8 *pmkid);
++int pasn_initiator_pmksa_cache_get(struct rsn_pmksa_cache *pmksa,
++				   const u8 *bssid, u8 *pmkid, u8 *pmk,
++				   size_t *pmk_len);
++void pasn_initiator_pmksa_cache_remove(struct rsn_pmksa_cache *pmksa,
++				       const u8 *bssid);
++void pasn_initiator_pmksa_cache_flush(struct rsn_pmksa_cache *pmksa);
+ 
+ /* Responder */
+ void pasn_set_noauth(struct pasn_data *pasn, bool noauth);
+@@ -218,6 +229,17 @@ void pasn_set_rsnxe_ie(struct pasn_data *pasn, const u8 *rsnxe_ie);
+ void pasn_set_custom_pmkid(struct pasn_data *pasn, const u8 *pmkid);
+ int pasn_set_extra_ies(struct pasn_data *pasn, const u8 *extra_ies,
+ 		       size_t extra_ies_len);
++struct rsn_pmksa_cache * pasn_responder_pmksa_cache_init(void);
++void pasn_responder_pmksa_cache_deinit(struct rsn_pmksa_cache *pmksa);
++int pasn_responder_pmksa_cache_add(struct rsn_pmksa_cache *pmksa,
++				   const u8 *own_addr, const u8 *bssid, u8 *pmk,
++				   size_t pmk_len, u8 *pmkid);
++int pasn_responder_pmksa_cache_get(struct rsn_pmksa_cache *pmksa,
++				   const u8 *bssid, u8 *pmkid, u8 *pmk,
++				   size_t *pmk_len);
++void pasn_responder_pmksa_cache_remove(struct rsn_pmksa_cache *pmksa,
++				       const u8 *bssid);
++void pasn_responder_pmksa_cache_flush(struct rsn_pmksa_cache *pmksa);
+ 
+ int pasn_get_akmp(struct pasn_data *pasn);
+ int pasn_get_cipher(struct pasn_data *pasn);
+diff --git a/src/pasn/pasn_initiator.c b/src/pasn/pasn_initiator.c
+index c9771c70b..dbcc91a71 100644
+--- a/src/pasn/pasn_initiator.c
++++ b/src/pasn/pasn_initiator.c
+@@ -26,6 +26,65 @@
+ #include "pasn_common.h"
+ 
+ 
++struct rsn_pmksa_cache * pasn_initiator_pmksa_cache_init(void)
++{
++	return pmksa_cache_init(NULL, NULL, NULL, NULL, NULL);
++}
++
++
++void pasn_initiator_pmksa_cache_deinit(struct rsn_pmksa_cache *pmksa)
++{
++	return pmksa_cache_deinit(pmksa);
++}
++
++
++int pasn_initiator_pmksa_cache_add(struct rsn_pmksa_cache *pmksa,
++				   const u8 *own_addr, const u8 *bssid, u8 *pmk,
++				   size_t pmk_len, u8 *pmkid)
++{
++	if (pmksa_cache_add(pmksa, pmk, pmk_len, pmkid, NULL, 0, bssid,
++			    own_addr, NULL, WPA_KEY_MGMT_SAE, 0))
++		return 0;
++	return -1;
++}
++
++
++void pasn_initiator_pmksa_cache_remove(struct rsn_pmksa_cache *pmksa,
++				       const u8 *bssid)
++{
++	struct rsn_pmksa_cache_entry *entry;
++
++	entry = pmksa_cache_get(pmksa, bssid, NULL, NULL, NULL, 0);
++	if (!entry)
++		return;
++
++	pmksa_cache_remove(pmksa, entry);
++}
++
++
++int pasn_initiator_pmksa_cache_get(struct rsn_pmksa_cache *pmksa,
++				   const u8 *bssid, u8 *pmkid, u8 *pmk,
++				   size_t *pmk_len)
++{
++	struct rsn_pmksa_cache_entry *entry;
++
++	entry = pmksa_cache_get(pmksa, bssid, NULL, NULL, NULL, 0);
++	if (entry) {
++		os_memcpy(pmkid, entry->pmkid, PMKID_LEN);
++		os_memcpy(pmk, entry->pmk, entry->pmk_len);
++		*pmk_len = entry->pmk_len;
++		return 0;
++	}
++	return -1;
++}
++
++
++void pasn_initiator_pmksa_cache_flush(struct rsn_pmksa_cache *pmksa)
++{
++	return pmksa_cache_flush(pmksa, NULL, NULL, 0, false);
++}
++
++
+ void pasn_set_initiator_pmksa(struct pasn_data *pasn,
+ 			      struct rsn_pmksa_cache *pmksa)
+ {
+diff --git a/src/pasn/pasn_responder.c b/src/pasn/pasn_responder.c
+index 09e9f0d2d..1c08136cb 100644
+--- a/src/pasn/pasn_responder.c
++++ b/src/pasn/pasn_responder.c
+@@ -26,6 +26,65 @@
+ #include "pasn_common.h"
+ 
+ 
++struct rsn_pmksa_cache * pasn_responder_pmksa_cache_init(void)
++{
++	return pmksa_cache_auth_init(NULL, NULL);
++}
++
++
++void pasn_responder_pmksa_cache_deinit(struct rsn_pmksa_cache *pmksa)
++{
++	return pmksa_cache_auth_deinit(pmksa);
++}
++
++
++int pasn_responder_pmksa_cache_add(struct rsn_pmksa_cache *pmksa,
++				   const u8 *own_addr, const u8 *bssid, u8 *pmk,
++				   size_t pmk_len, u8 *pmkid)
++{
++	if (pmksa_cache_auth_add(pmksa, pmk, pmk_len, pmkid, NULL, 0, own_addr,
++				 bssid, 0, NULL, WPA_KEY_MGMT_SAE))
++		return 0;
++	return -1;
++}
++
++
++int pasn_responder_pmksa_cache_get(struct rsn_pmksa_cache *pmksa,
++				   const u8 *bssid, u8 *pmkid, u8 *pmk,
++				   size_t *pmk_len)
++{
++	struct rsn_pmksa_cache_entry *entry;
++
++	entry = pmksa_cache_auth_get(pmksa, bssid, NULL);
++	if (entry) {
++		os_memcpy(pmkid, entry->pmkid, PMKID_LEN);
++		os_memcpy(pmk, entry->pmk, entry->pmk_len);
++		*pmk_len = entry->pmk_len;
++		return 0;
++	}
++	return -1;
++}
++
++
++void pasn_responder_pmksa_cache_remove(struct rsn_pmksa_cache *pmksa,
++				       const u8 *bssid)
++{
++	struct rsn_pmksa_cache_entry *entry;
++
++	entry = pmksa_cache_auth_get(pmksa, bssid, NULL);
++	if (!entry)
++		return;
++
++	pmksa_cache_free_entry(pmksa, entry);
++}
++
++
++void pasn_responder_pmksa_cache_flush(struct rsn_pmksa_cache *pmksa)
++{
++	return pmksa_cache_auth_flush(pmksa);
++}
++
++
+ void pasn_set_responder_pmksa(struct pasn_data *pasn,
+ 			      struct rsn_pmksa_cache *pmksa)
+ {
+-- 
+2.43.0
+

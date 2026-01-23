@@ -1,0 +1,32 @@
+From 21c3a7494c755ae2780294c3caaad2d0c8980337 Mon Sep 17 00:00:00 2001
+From: Diya Sati <quic_dsati@quicinc.com>
+Date: Tue, 16 Jul 2024 19:07:00 +0530
+Subject: [PATCH] Add Link ID attribute for external ACS vendor command
+
+The Link Id attribute is required for
+qca_wlan_vendor_attr_external_acs_event to identify the link on which
+the command is received for an AP MLD.
+
+Signed-off-by: Jouni Malinen <quic_jouni@quicinc.com>
+---
+ src/common/qca-vendor.h | 4 ++++
+ 1 file changed, 4 insertions(+)
+
+diff --git a/src/common/qca-vendor.h b/src/common/qca-vendor.h
+index 41724d147..f5dc60c59 100644
+--- a/src/common/qca-vendor.h
++++ b/src/common/qca-vendor.h
+@@ -7490,6 +7490,10 @@ enum qca_wlan_vendor_attr_external_acs_event {
+ 	 * for External ACS
+ 	 */
+ 	QCA_WLAN_VENDOR_ATTR_EXTERNAL_ACS_EVENT_AFC_CAPABILITY = 15,
++	/* Link ID attibute (u8) is used to identify a specific link affiliated
++	 * to an AP MLD.
++	 */
++	QCA_WLAN_VENDOR_ATTR_EXTERNAL_ACS_EVENT_LINK_ID = 16,
+ 
+ 	/* keep last */
+ 	QCA_WLAN_VENDOR_ATTR_EXTERNAL_ACS_EVENT_LAST,
+-- 
+2.43.0
+

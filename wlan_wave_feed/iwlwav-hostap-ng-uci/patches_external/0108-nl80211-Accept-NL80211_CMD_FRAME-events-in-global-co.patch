@@ -1,0 +1,30 @@
+From 84fdc8cd8bfe19ec62d2d4ea1f2e5086487a2aa9 Mon Sep 17 00:00:00 2001
+From: Jouni Malinen <quic_jouni@quicinc.com>
+Date: Mon, 18 Dec 2023 21:08:26 +0200
+Subject: [PATCH] nl80211: Accept NL80211_CMD_FRAME events in global context
+
+This is a workaround for some race conditions where the hardcoded use of
+global->nl_cb in send_and_recv() ends up getting events delivered
+through unexpected context when they happen to arrive at the time when a
+command is being processed.
+
+Signed-off-by: Jouni Malinen <quic_jouni@quicinc.com>
+---
+ src/drivers/driver_nl80211_event.c | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/src/drivers/driver_nl80211_event.c b/src/drivers/driver_nl80211_event.c
+index c3242b45f..6c674672e 100644
+--- a/src/drivers/driver_nl80211_event.c
++++ b/src/drivers/driver_nl80211_event.c
+@@ -3926,6 +3926,7 @@ static void do_process_drv_event(struct i802_bss *bss, int cmd,
+ 	case NL80211_CMD_ASSOCIATE:
+ 	case NL80211_CMD_DEAUTHENTICATE:
+ 	case NL80211_CMD_DISASSOCIATE:
++	case NL80211_CMD_FRAME:
+ 	case NL80211_CMD_FRAME_TX_STATUS:
+ 	case NL80211_CMD_UNPROT_DEAUTHENTICATE:
+ 	case NL80211_CMD_UNPROT_DISASSOCIATE:
+-- 
+2.43.0
+

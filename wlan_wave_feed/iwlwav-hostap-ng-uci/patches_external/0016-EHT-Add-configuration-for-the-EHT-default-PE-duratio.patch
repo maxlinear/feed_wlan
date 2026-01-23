@@ -1,0 +1,83 @@
+From f0cb823512841b6edbc1d6fd4ba34ca9953b6e3f Mon Sep 17 00:00:00 2001
+From: Jurijs Soloveckis <jsoloveckis@maxlinear.com>
+Date: Wed, 6 Dec 2023 08:55:22 +0000
+Subject: [PATCH] EHT: Add configuration for the EHT default PE duration
+
+Add a new configuration parameter for the duration of PE field in EHT TB
+PPDU.
+
+Signed-off-by: Jurijs Soloveckis <jsoloveckis@maxlinear.com>
+---
+ hostapd/config_file.c   | 2 ++
+ hostapd/hostapd.conf    | 5 +++++
+ src/ap/ap_config.h      | 1 +
+ src/ap/ieee802_11_eht.c | 5 ++++-
+ 4 files changed, 12 insertions(+), 1 deletion(-)
+
+diff --git a/hostapd/config_file.c b/hostapd/config_file.c
+index 7cf0ccfbe..1a49292b1 100644
+--- a/hostapd/config_file.c
++++ b/hostapd/config_file.c
+@@ -4766,6 +4766,8 @@ static int hostapd_config_fill(struct hostapd_config *conf,
+ 		conf->eht_phy_capab.su_beamformee = atoi(pos);
+ 	} else if (os_strcmp(buf, "eht_mu_beamformer") == 0) {
+ 		conf->eht_phy_capab.mu_beamformer = atoi(pos);
++	} else if (os_strcmp(buf, "eht_default_pe_duration") == 0) {
++		conf->eht_default_pe_duration = atoi(pos);
+ 	} else if (os_strcmp(buf, "punct_bitmap") == 0) {
+ 		conf->punct_bitmap = atoi(pos);
+ 	} else if (os_strcmp(buf, "punct_acs_threshold") == 0) {
+diff --git a/hostapd/hostapd.conf b/hostapd/hostapd.conf
+index f02cd9274..4db61d636 100644
+--- a/hostapd/hostapd.conf
++++ b/hostapd/hostapd.conf
+@@ -1027,6 +1027,11 @@ wmm_ac_vo_acm=0
+ #eht_oper_chwidth (see vht_oper_chwidth)
+ #eht_oper_centr_freq_seg0_idx
+ 
++#eht_default_pe_duration: The duration of PE field in EHT TB PPDU
++# 0 = PE field duration is the same as he_default_pe_duration (default)
++# 1 = PE field duration is 20 us
++#eht_default_pe_duration=0
++
+ # Disabled subchannel bitmap (16 bits) as per IEEE P802.11be/3.0,
+ # Figure 9-1002c (EHT Operation Information field format). Each bit corresponds
+ # to a 20 MHz channel, the lowest bit corresponds to the lowest frequency. A
+diff --git a/src/ap/ap_config.h b/src/ap/ap_config.h
+index 5699a6be1..9ecb6ee81 100644
+--- a/src/ap/ap_config.h
++++ b/src/ap/ap_config.h
+@@ -1173,6 +1173,7 @@ struct hostapd_config {
+ 	struct eht_phy_capabilities_info eht_phy_capab;
+ 	u16 punct_bitmap; /* a bitmap of disabled 20 MHz channels */
+ 	u8 punct_acs_threshold;
++	u8 eht_default_pe_duration;
+ #endif /* CONFIG_IEEE80211BE */
+ 
+ 	/* EHT enable/disable config from CHAN_SWITCH */
+diff --git a/src/ap/ieee802_11_eht.c b/src/ap/ieee802_11_eht.c
+index fc02f1198..630baa4e8 100644
+--- a/src/ap/ieee802_11_eht.c
++++ b/src/ap/ieee802_11_eht.c
+@@ -226,6 +226,9 @@ u8 * hostapd_eid_eht_operation(struct hostapd_data *hapd, u8 *eid)
+ 	oper = (struct ieee80211_eht_operation *) pos;
+ 	oper->oper_params = 0;
+ 
++	if (hapd->iconf->eht_default_pe_duration)
++		oper->oper_params |= EHT_OPER_DEFAULT_PE_DURATION;
++
+ 	/* TODO: Fill in appropriate EHT-MCS max Nss information */
+ 	oper->basic_eht_mcs_nss_set[0] = 0x11;
+ 	oper->basic_eht_mcs_nss_set[1] = 0x00;
+@@ -235,7 +238,7 @@ u8 * hostapd_eid_eht_operation(struct hostapd_data *hapd, u8 *eid)
+ 	if (!eht_oper_info_present)
+ 		return pos + elen;
+ 
+-	oper->oper_params = EHT_OPER_INFO_PRESENT;
++	oper->oper_params |= EHT_OPER_INFO_PRESENT;
+ 	seg0 = hostapd_get_oper_centr_freq_seg0_idx(conf);
+ 
+ 	switch (chwidth) {
+-- 
+2.43.0
+

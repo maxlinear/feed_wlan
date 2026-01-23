@@ -1,0 +1,214 @@
+From ed423e44f2703a56e29f75b0d3f6dee6f40a00e9 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?D=C3=A1vid=20Benko?= <davidbenko@davidbenko.dev>
+Date: Sun, 23 Feb 2025 23:42:39 +0100
+Subject: [PATCH] authsrv: Log RADIUS accounting data
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Add option to log all received RADIUS accounting information. This is
+a follow-up patch for a new `acct_req_cb` in RADIUS server implementation.
+
+The callback logs all accounting status codes. Invalid requests are
+discarded as of RFC 2866. Logged data include:
+- NAS identification (NAS-Identifier, NAS-IP-Address or NAS-IPv6-Address)
+- session ID (Acct-Session-Id)
+- username
+- device identification (Calling-Station-Id)
+- session time
+- input/output packet and byte counters (including gigawords as of
+  RFC 2869)
+
+This may be a base for possible extensions of RADIUS accounting in
+hostapd. However, since there are far more robust alternatives (namely
+FreeRADIUS) and hostapd is primarily used for restricted and/or simple
+deployments, I don't consider them necessary. Other use cases can be
+covered by a custom reimplementation of binary and a different
+acct_req_cb callback.
+
+Signed-off-by: Dávid Benko <davidbenko@davidbenko.dev>
+---
+ hostapd/config_file.c |   2 +
+ hostapd/hostapd.conf  |   3 ++
+ src/ap/ap_config.h    |   1 +
+ src/ap/authsrv.c      | 111 ++++++++++++++++++++++++++++++++++++++++++
+ 4 files changed, 117 insertions(+)
+
+diff --git a/hostapd/config_file.c b/hostapd/config_file.c
+index a3cc57ac6..c52adb8f2 100644
+--- a/hostapd/config_file.c
++++ b/hostapd/config_file.c
+@@ -3149,6 +3149,8 @@ static int hostapd_config_fill(struct hostapd_config *conf,
+ 		bss->radius_server_auth_port = atoi(pos);
+ 	} else if (os_strcmp(buf, "radius_server_acct_port") == 0) {
+ 		bss->radius_server_acct_port = atoi(pos);
++	} else if (os_strcmp(buf, "radius_server_acct_log") == 0) {
++		bss->radius_server_acct_log = atoi(pos);
+ 	} else if (os_strcmp(buf, "radius_server_ipv6") == 0) {
+ 		bss->radius_server_ipv6 = atoi(pos);
+ #endif /* RADIUS_SERVER */
+diff --git a/hostapd/hostapd.conf b/hostapd/hostapd.conf
+index 2cd11f419..97a4dc38d 100644
+--- a/hostapd/hostapd.conf
++++ b/hostapd/hostapd.conf
+@@ -1798,6 +1798,9 @@ own_ip_addr=127.0.0.1
+ # accounting while still enabling RADIUS authentication.
+ #radius_server_acct_port=1813
+ 
++# Log received RADIUS accounting data
++#radius_server_acct_log=1
++
+ # Use IPv6 with RADIUS server (IPv4 will also be supported using IPv6 API)
+ #radius_server_ipv6=1
+ 
+diff --git a/src/ap/ap_config.h b/src/ap/ap_config.h
+index 4a760eede..2b6cf4acf 100644
+--- a/src/ap/ap_config.h
++++ b/src/ap/ap_config.h
+@@ -467,6 +467,7 @@ struct hostapd_bss_config {
+ 	char *radius_server_clients;
+ 	int radius_server_auth_port;
+ 	int radius_server_acct_port;
++	int radius_server_acct_log;
+ 	int radius_server_ipv6;
+ 
+ 	int use_pae_group_addr; /* Whether to send EAPOL frames to PAE group
+diff --git a/src/ap/authsrv.c b/src/ap/authsrv.c
+index 27c9f3f58..3e8031810 100644
+--- a/src/ap/authsrv.c
++++ b/src/ap/authsrv.c
+@@ -14,6 +14,7 @@
+ #include "eap_server/eap.h"
+ #include "eap_server/eap_sim_db.h"
+ #include "eapol_auth/eapol_auth_sm.h"
++#include "radius/radius.h"
+ #include "radius/radius_server.h"
+ #include "hostapd.h"
+ #include "ap_config.h"
+@@ -101,6 +102,114 @@ out:
+ }
+ 
+ 
++/**
++ * hostapd_radius_log_acct_req - Callback for logging received RADIUS
++ * accounting requests
++ * @ctx: Context (struct hostapd_data)
++ * @msg: Received RADIUS accounting request
++ * @status_type: Status type from the message (parsed Acct-Status-Type
++ * attribute)
++ * Returns: 0 on success, -1 on failure
++ */
++static int hostapd_radius_log_acct_req(void *ctx, struct radius_msg *msg,
++				       u32 status_type)
++{
++	char nas_id[RADIUS_MAX_ATTR_LEN + 1] = "";
++	char session_id[RADIUS_MAX_ATTR_LEN + 1] = "";
++	char username[RADIUS_MAX_ATTR_LEN + 1] = "";
++	char calling_station_id[3 * ETH_ALEN] = "";
++	u32 session_time = 0, terminate_cause = 0,
++		bytes_in = 0, bytes_out = 0,
++		packets_in = 0, packets_out = 0,
++		gigawords_in = 0, gigawords_out = 0;
++	unsigned long long total_bytes_in = 0, total_bytes_out = 0;
++
++	/* Parse NAS identification (required by RFC 2866, section 4.1) */
++	if (radius_msg_get_attr(msg, RADIUS_ATTR_NAS_IDENTIFIER, (u8 *) nas_id,
++				sizeof(nas_id) - 1))
++		nas_id[0] = '\0';
++
++	/* Process Accounting-On and Accounting-Off messages separately */
++	if (status_type == RADIUS_ACCT_STATUS_TYPE_ACCOUNTING_ON ||
++	    status_type == RADIUS_ACCT_STATUS_TYPE_ACCOUNTING_OFF) {
++		wpa_printf(MSG_INFO, "RADIUS ACCT: NAS='%s' status='%s'",
++			   nas_id,
++			   status_type == RADIUS_ACCT_STATUS_TYPE_ACCOUNTING_ON
++			   ? "Accounting-On" : "Accounting-Off");
++		return 0;
++	}
++
++	/* Parse session ID (required by RFC 2866, section 5.5) */
++	if (radius_msg_get_attr(msg, RADIUS_ATTR_ACCT_SESSION_ID,
++				(u8 *) session_id,
++				sizeof(session_id) - 1) == 0) {
++		wpa_printf(MSG_DEBUG,
++			   "RADIUS ACCT: request doesn't include session ID");
++		return -1;
++	}
++
++	/* Parse user name */
++	radius_msg_get_attr(msg, RADIUS_ATTR_USER_NAME, (u8 *) username,
++			    sizeof(username) - 1);
++
++	/* Parse device identifier */
++	radius_msg_get_attr(msg, RADIUS_ATTR_CALLING_STATION_ID,
++			    (u8 *) calling_station_id,
++			    sizeof(calling_station_id) - 1);
++
++	switch (status_type) {
++	case RADIUS_ACCT_STATUS_TYPE_START:
++		wpa_printf(MSG_INFO,
++			   "RADIUS ACCT: NAS='%s' session='%s' status='Accounting-Start' station='%s' username='%s'",
++			   nas_id, session_id, calling_station_id, username);
++		break;
++	case RADIUS_ACCT_STATUS_TYPE_STOP:
++	case RADIUS_ACCT_STATUS_TYPE_INTERIM_UPDATE:
++		/* Parse counters */
++		radius_msg_get_attr_int32(msg, RADIUS_ATTR_ACCT_SESSION_TIME,
++					  &session_time);
++		radius_msg_get_attr_int32(msg,
++					  RADIUS_ATTR_ACCT_TERMINATE_CAUSE,
++					  &terminate_cause);
++		radius_msg_get_attr_int32(msg, RADIUS_ATTR_ACCT_INPUT_OCTETS,
++					  &bytes_in);
++		radius_msg_get_attr_int32(msg, RADIUS_ATTR_ACCT_OUTPUT_OCTETS,
++					  &bytes_out);
++		radius_msg_get_attr_int32(msg, RADIUS_ATTR_ACCT_INPUT_PACKETS,
++					  &packets_in);
++		radius_msg_get_attr_int32(msg, RADIUS_ATTR_ACCT_OUTPUT_PACKETS,
++					  &packets_out);
++		radius_msg_get_attr_int32(msg,
++					  RADIUS_ATTR_ACCT_INPUT_GIGAWORDS,
++					  &gigawords_in);
++		radius_msg_get_attr_int32(msg,
++					  RADIUS_ATTR_ACCT_OUTPUT_GIGAWORDS,
++					  &gigawords_out);
++
++		/* RFC 2869, section 5.1 and 5.2 */
++		total_bytes_in = ((u64) gigawords_in << 32) + bytes_in;
++		total_bytes_out = ((u64) gigawords_out << 32) + bytes_out;
++
++		wpa_printf(MSG_INFO,
++			   "RADIUS ACCT: NAS='%s' session='%s' status='%s' station='%s' username='%s' session_time=%u term_cause=%u pck_in=%u pck_out=%u bytes_in=%llu bytes_out=%llu",
++			   nas_id, session_id,
++			   status_type == RADIUS_ACCT_STATUS_TYPE_STOP ?
++			   "Accounting-Stop" : "Accounting-Interim-Update",
++			   calling_station_id, username, session_time,
++			   terminate_cause, packets_in, packets_out,
++			   total_bytes_in, total_bytes_out);
++		break;
++	default:
++		wpa_printf(MSG_DEBUG,
++			   "RADIUS ACCT: Unknown request status type %u",
++			   status_type);
++		return -1;
++	}
++
++	return 0;
++}
++
++
+ static int hostapd_setup_radius_srv(struct hostapd_data *hapd)
+ {
+ 	struct radius_server_conf srv;
+@@ -128,6 +237,8 @@ static int hostapd_setup_radius_srv(struct hostapd_data *hapd)
+ 	srv.conf_ctx = hapd;
+ 	srv.ipv6 = conf->radius_server_ipv6;
+ 	srv.get_eap_user = hostapd_radius_get_eap_user;
++	if (conf->radius_server_acct_log)
++		srv.acct_req_cb = hostapd_radius_log_acct_req;
+ 	srv.eap_req_id_text = conf->eap_req_id_text;
+ 	srv.eap_req_id_text_len = conf->eap_req_id_text_len;
+ 	srv.sqlite_file = conf->eap_user_sqlite;
+-- 
+2.43.0
+

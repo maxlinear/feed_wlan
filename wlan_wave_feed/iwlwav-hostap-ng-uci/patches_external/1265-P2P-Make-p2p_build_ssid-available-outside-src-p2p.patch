@@ -1,0 +1,47 @@
+From ce193d6e1561fc10e8e99afa79e5450216abb623 Mon Sep 17 00:00:00 2001
+From: Vinay Gannevaram <quic_vganneva@quicinc.com>
+Date: Sat, 11 Jan 2025 11:38:10 +0530
+Subject: [PATCH] P2P: Make p2p_build_ssid() available outside src/p2p
+
+This is needed for SSID randomization during P2P2 group reinvocation.
+
+Signed-off-by: Vinay Gannevaram <quic_vganneva@quicinc.com>
+---
+ src/p2p/p2p.h   | 8 ++++++++
+ src/p2p/p2p_i.h | 1 -
+ 2 files changed, 8 insertions(+), 1 deletion(-)
+
+diff --git a/src/p2p/p2p.h b/src/p2p/p2p.h
+index de8008bc0..8203a68ae 100644
+--- a/src/p2p/p2p.h
++++ b/src/p2p/p2p.h
+@@ -2223,6 +2223,14 @@ void p2p_scan_ie(struct p2p_data *p2p, struct wpabuf *ies, const u8 *dev_id,
+  */
+ size_t p2p_scan_ie_buf_len(struct p2p_data *p2p);
+ 
++/**
++ * p2p_build_ssid - Generate a random P2P SSID
++ * @p2p: P2P module context from p2p_init()
++ * @ssid: Buffer for SSID
++ * @ssid_len: Pointer to hold SSID length
++ */
++void p2p_build_ssid(struct p2p_data *p2p, u8 *ssid, size_t *ssid_len);
++
+ /**
+  * p2p_go_params - Generate random P2P group parameters
+  * @p2p: P2P module context from p2p_init()
+diff --git a/src/p2p/p2p_i.h b/src/p2p/p2p_i.h
+index a8324337a..4b0be618a 100644
+--- a/src/p2p/p2p_i.h
++++ b/src/p2p/p2p_i.h
+@@ -1066,7 +1066,6 @@ int dev_type_list_match(const u8 *dev_type, const u8 *req_dev_type[],
+ struct wpabuf * p2p_build_probe_resp_ies(struct p2p_data *p2p,
+ 					 const u8 *query_hash,
+ 					 u8 query_count);
+-void p2p_build_ssid(struct p2p_data *p2p, u8 *ssid, size_t *ssid_len);
+ int p2p_send_action(struct p2p_data *p2p, unsigned int freq, const u8 *dst,
+ 		    const u8 *src, const u8 *bssid, const u8 *buf,
+ 		    size_t len, unsigned int wait_time);
+-- 
+2.43.0
+

@@ -1,0 +1,79 @@
+From 5d1e5657371d2923e896bb61288fc9bfd5bd24cd Mon Sep 17 00:00:00 2001
+From: Jouni Malinen <quic_jouni@quicinc.com>
+Date: Sat, 22 Feb 2025 20:07:56 +0200
+Subject: [PATCH] tests: EAP-TTLS anonymous realm in Phase 1 with Hotspot 2.0
+
+Signed-off-by: Jouni Malinen <quic_jouni@quicinc.com>
+---
+ tests/hwsim/auth_serv/eap_user.conf |  1 +
+ tests/hwsim/test_ap_hs20.py         | 29 ++++++++++++++++++++++++++++-
+ 2 files changed, 29 insertions(+), 1 deletion(-)
+
+diff --git a/tests/hwsim/auth_serv/eap_user.conf b/tests/hwsim/auth_serv/eap_user.conf
+index f35a64f67..738a50f70 100644
+--- a/tests/hwsim/auth_serv/eap_user.conf
++++ b/tests/hwsim/auth_serv/eap_user.conf
+@@ -134,6 +134,7 @@ radius_accept_attr=56:x:32000011
+ "DOMAIN\mschapv2 user"	TTLS-MSCHAPV2	hash:8846f7eaee8fb117ad06bdd830b7586c	[2]
+ "mschapv2 user@domain"	TTLS-MSCHAPV2	hash:8846f7eaee8fb117ad06bdd830b7586c	[2]
+ "hs20-test"	TTLS-MSCHAPV2	"password"	[2]
++"hs20-test@inner.com"	TTLS-MSCHAPV2	"password2"	[2]
+ "hs20-test-with-domain@example.com"	TTLS-MSCHAPV2	"password"	[2]
+ "utf8-user"	TTLS-MSCHAPV2	"secret-åäö-€-password"	[2]
+ "utf8-user-hash"	TTLS-MSCHAPV2	hash:bd5844fad2489992da7fe8c5a01559cf	[2]
+diff --git a/tests/hwsim/test_ap_hs20.py b/tests/hwsim/test_ap_hs20.py
+index a866f15cb..6cd2918b2 100644
+--- a/tests/hwsim/test_ap_hs20.py
++++ b/tests/hwsim/test_ap_hs20.py
+@@ -684,7 +684,7 @@ def test_ap_hs20_username(dev, apdev):
+     params = hs20_ap_params()
+     params['hessid'] = bssid
+     params['disable_dgaf'] = '1'
+-    hostapd.add_ap(apdev[0], params)
++    hapd = hostapd.add_ap(apdev[0], params)
+ 
+     dev[0].hs20_enable()
+     id = dev[0].add_cred_values({'realm': "example.com",
+@@ -701,12 +701,39 @@ def test_ap_hs20_username(dev, apdev):
+         raise Exception("Unexpected pairwise cipher")
+     if status['hs20'] != "3":
+         raise Exception("Unexpected HS 2.0 support indication")
++    hapd.wait_sta()
++    sta = hapd.get_sta(dev[0].own_addr())
++    if sta['dot1xAuthSessionUserName'] != "anonymous@example.com":
++        raise Exception("Unexpected anonymous identity: " + sta['dot1xAuthSessionUserName'])
+ 
+     dev[1].connect("test-hs20", key_mgmt="WPA-EAP", eap="TTLS",
+                    identity="hs20-test", password="password",
+                    ca_cert="auth_serv/ca.pem", phase2="auth=MSCHAPV2",
+                    scan_freq="2412")
+ 
++def test_ap_hs20_username_with_realm(dev, apdev):
++    """Hotspot 2.0 connection in username-with-realm/password credential"""
++    check_eap_capa(dev[0], "MSCHAPV2")
++    bssid = apdev[0]['bssid']
++    params = hs20_ap_params()
++    params['hessid'] = bssid
++    params['disable_dgaf'] = '1'
++    hapd = hostapd.add_ap(apdev[0], params)
++
++    dev[0].hs20_enable()
++    id = dev[0].add_cred_values({'realm': "example.com",
++                                 'username': "hs20-test@inner.com",
++                                 'password': "password2",
++                                 'ca_cert': "auth_serv/ca.pem",
++                                 'domain': "example.com"})
++    interworking_select(dev[0], bssid, "home", freq="2412")
++    interworking_connect(dev[0], bssid, "TTLS")
++    check_sp_type(dev[0], "home")
++    hapd.wait_sta()
++    sta = hapd.get_sta(dev[0].own_addr())
++    if sta['dot1xAuthSessionUserName'] != "anonymous@example.com":
++        raise Exception("Unexpected anonymous identity: " + sta['dot1xAuthSessionUserName'])
++
+ def test_ap_hs20_connect_api(dev, apdev):
+     """Hotspot 2.0 connection with connect API"""
+     check_eap_capa(dev[0], "MSCHAPV2")
+-- 
+2.43.0
+

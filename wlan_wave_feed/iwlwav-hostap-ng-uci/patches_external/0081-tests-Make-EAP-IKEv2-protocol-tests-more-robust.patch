@@ -1,0 +1,31 @@
+From 406bc79763f1270cae02e3db7bc251b5b00056d1 Mon Sep 17 00:00:00 2001
+From: Jouni Malinen <j@w1.fi>
+Date: Sat, 16 Dec 2023 22:37:36 +0200
+Subject: [PATCH] tests: Make EAP-IKEv2 protocol tests more robust
+
+Wait a bit more between removal of the network and the next attempt to
+avoid race conditions.
+
+Signed-off-by: Jouni Malinen <j@w1.fi>
+---
+ tests/hwsim/test_eap_proto.py | 4 ++++
+ 1 file changed, 4 insertions(+)
+
+diff --git a/tests/hwsim/test_eap_proto.py b/tests/hwsim/test_eap_proto.py
+index 655c3d071..a1270ac3c 100644
+--- a/tests/hwsim/test_eap_proto.py
++++ b/tests/hwsim/test_eap_proto.py
+@@ -6484,6 +6484,10 @@ def run_eap_ikev2_connect(dev):
+     dev.request("REMOVE_NETWORK all")
+     if not ev or "CTRL-EVENT-DISCONNECTED" not in ev:
+         dev.wait_disconnected()
++    ev = dev.wait_event(["CTRL-EVENT-NETWORK-REMOVED"], timeout=1)
++    if ev is None:
++        raise Exception("Network removal not reported")
++    time.sleep(0.01)
+     dev.dump_monitor()
+ 
+ def test_eap_proto_ikev2_errors_server(dev, apdev):
+-- 
+2.43.0
+

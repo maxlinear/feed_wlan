@@ -1,0 +1,32 @@
+From 84a4e0004e68a75f42e22bd7fb90d71a2f139c00 Mon Sep 17 00:00:00 2001
+From: Shivani Baranwal <quic_shivbara@quicinc.com>
+Date: Mon, 5 Aug 2024 03:42:08 +0530
+Subject: [PATCH] P2P2: Select PMKSA based on P2P Device Address and PMKID
+ match
+
+Extend GO (AP) PMKSA selection to use P2P Device Address when searching
+for a matching PMKSA.
+
+Signed-off-by: Shivani Baranwal <quic_shivbara@quicinc.com>
+---
+ src/ap/wpa_auth_ie.c | 4 ++++
+ 1 file changed, 4 insertions(+)
+
+diff --git a/src/ap/wpa_auth_ie.c b/src/ap/wpa_auth_ie.c
+index 43d9c1d32..6998f980d 100644
+--- a/src/ap/wpa_auth_ie.c
++++ b/src/ap/wpa_auth_ie.c
+@@ -1247,6 +1247,10 @@ wpa_validate_wpa_ie(struct wpa_authenticator *wpa_auth,
+ 			    &data.pmkid[i * PMKID_LEN], PMKID_LEN);
+ 		sm->pmksa = pmksa_cache_auth_get(wpa_auth->pmksa, sm->addr,
+ 						 &data.pmkid[i * PMKID_LEN]);
++		if (!sm->pmksa && !is_zero_ether_addr(sm->p2p_dev_addr))
++			sm->pmksa = pmksa_cache_auth_get(
++				wpa_auth->pmksa, sm->p2p_dev_addr,
++				&data.pmkid[i * PMKID_LEN]);
+ 		if (sm->pmksa) {
+ 			pmkid = sm->pmksa->pmkid;
+ 			break;
+-- 
+2.43.0
+

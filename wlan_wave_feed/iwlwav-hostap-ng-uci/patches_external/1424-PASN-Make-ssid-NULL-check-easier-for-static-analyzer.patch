@@ -1,0 +1,38 @@
+From 553e114e08c5522a722b8ef9657472105d266f5b Mon Sep 17 00:00:00 2001
+From: Jouni Malinen <j@w1.fi>
+Date: Sun, 23 Feb 2025 11:59:47 +0200
+Subject: [PATCH] PASN: Make ssid != NULL check easier for static analyzers
+
+wpas_pasn_sae_setup_pt() would dereference ssid so it cannot be NULL in
+the call. That was already taken care of by removing WPA_KEY_MGMT_*SAE*
+in the ssid == NULL case. Anyway, adding an explicit check for !ssid
+here gets rid of incorrect static analyzer reports.
+
+Signed-off-by: Jouni Malinen <j@w1.fi>
+---
+ wpa_supplicant/pasn_supplicant.c | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/wpa_supplicant/pasn_supplicant.c b/wpa_supplicant/pasn_supplicant.c
+index 5579fe498..b290e3013 100644
+--- a/wpa_supplicant/pasn_supplicant.c
++++ b/wpa_supplicant/pasn_supplicant.c
+@@ -251,13 +251,13 @@ static int wpas_pasn_get_params_from_bss(struct wpa_supplicant *wpa_s,
+ #endif /* CONFIG_SHA384 */
+ #endif /* CONFIG_IEEE80211R */
+ #ifdef CONFIG_SAE
+-	} else if ((sel & WPA_KEY_MGMT_SAE_EXT_KEY) &&
++	} else if ((sel & WPA_KEY_MGMT_SAE_EXT_KEY) && ssid &&
+ 		   (ieee802_11_rsnx_capab(rsnxe,
+ 					   WLAN_RSNX_CAPAB_SAE_H2E)) &&
+ 		   (wpas_pasn_sae_setup_pt(ssid, group) == 0)) {
+ 		key_mgmt = WPA_KEY_MGMT_SAE_EXT_KEY;
+ 		wpa_printf(MSG_DEBUG, "PASN: using KEY_MGMT SAE (ext key)");
+-	} else if ((sel & WPA_KEY_MGMT_SAE) &&
++	} else if ((sel & WPA_KEY_MGMT_SAE) && ssid &&
+ 		   (ieee802_11_rsnx_capab(rsnxe,
+ 					   WLAN_RSNX_CAPAB_SAE_H2E)) &&
+ 		   (wpas_pasn_sae_setup_pt(ssid, group) == 0)) {
+-- 
+2.43.0
+

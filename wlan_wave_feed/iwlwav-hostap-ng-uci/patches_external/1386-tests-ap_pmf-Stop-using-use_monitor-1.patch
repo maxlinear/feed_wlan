@@ -1,0 +1,34 @@
+From ea06126d1051f0a2a20c063d845e27539654f2f8 Mon Sep 17 00:00:00 2001
+From: Johannes Berg <johannes.berg@intel.com>
+Date: Mon, 3 Feb 2025 21:45:28 +0100
+Subject: [PATCH] tests: ap_pmf: Stop using use_monitor=1
+
+There's no need for this anymore, all the tests work without it. This
+was originally used to be able to inject unprotected Deauthentication
+and Disassociation frames in cases where PMF was in use, but commit
+9bedf90047d6 ("nl80211: Use monitor interface for sending no-encrypt
+test frames") allowed this to be done without having to for AP
+operations to use the monitor interface for EAPOL frames with
+use_monitor=1.
+
+Signed-off-by: Johannes Berg <johannes.berg@intel.com>
+---
+ tests/hwsim/test_ap_pmf.py | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/tests/hwsim/test_ap_pmf.py b/tests/hwsim/test_ap_pmf.py
+index ccbecb8e3..06ddc3d9d 100644
+--- a/tests/hwsim/test_ap_pmf.py
++++ b/tests/hwsim/test_ap_pmf.py
+@@ -520,7 +520,7 @@ def run_ap_pmf_valid(dev, apdev, disassociate, broadcast):
+ 
+ def start_wpas_ap(ssid):
+     wpas = WpaSupplicant(global_iface='/tmp/wpas-wlan5')
+-    wpas.interface_add("wlan5", drv_params="use_monitor=1")
++    wpas.interface_add("wlan5")
+     id = wpas.add_network()
+     wpas.set_network(id, "mode", "2")
+     wpas.set_network_quoted(id, "ssid", ssid)
+-- 
+2.43.0
+

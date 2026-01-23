@@ -1,0 +1,50 @@
+From b91572b3085dff6dd1d0073da194e5e0172d5d61 Mon Sep 17 00:00:00 2001
+From: Jouni Malinen <j@w1.fi>
+Date: Sun, 21 Jan 2024 21:00:57 +0200
+Subject: [PATCH] AP MLD: Fix RADIUS deinit
+
+The singleton RADIUS client design did not address the deinit path
+properly. Since hapd->radius could be shared with another links, the
+pointer on all those other links needs to be cleared before freeing the
+RADIUS client context. Without this, deinit path could have ended trying
+to use freed memory when clearing STA entries from other links and
+trying to flush any pending RADIUS client messages.
+
+Fixes: a213fee11da3 ("AP: MLO: Make IEEE 802.1X SM, authserv, and RADIUS client singletons")
+Signed-off-by: Jouni Malinen <j@w1.fi>
+---
+ src/ap/hostapd.c | 18 ++++++++++++++++++
+ 1 file changed, 18 insertions(+)
+
+diff --git a/src/ap/hostapd.c b/src/ap/hostapd.c
+index dfea07570..3201b5799 100644
+--- a/src/ap/hostapd.c
++++ b/src/ap/hostapd.c
+@@ -496,6 +496,24 @@ void hostapd_free_hapd_data(struct hostapd_data *hapd)
+ 	hostapd_acl_deinit(hapd);
+ #ifndef CONFIG_NO_RADIUS
+ 	if (!hapd->mld_first_bss) {
++		struct hapd_interfaces *ifaces = hapd->iface->interfaces;
++		size_t i;
++
++		for (i = 0; i < ifaces->count; i++) {
++			struct hostapd_iface *iface = ifaces->iface[i];
++			size_t j;
++
++			for (j = 0; iface && j < iface->num_bss; j++) {
++				struct hostapd_data *h = iface->bss[j];
++
++				if (hapd == h)
++					continue;
++				if (h->radius == hapd->radius)
++					h->radius = NULL;
++				if (h->radius_das == hapd->radius_das)
++					h->radius_das = NULL;
++			}
++		}
+ 		radius_client_deinit(hapd->radius);
+ 		radius_das_deinit(hapd->radius_das);
+ 	}
+-- 
+2.43.0
+

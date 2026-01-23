@@ -1,0 +1,59 @@
+From f9b3ecb0ad61d47ce03f64e0a2d49ccaa5696ecb Mon Sep 17 00:00:00 2001
+From: Jouni Malinen <j@w1.fi>
+Date: Sun, 14 Jan 2024 12:10:04 +0200
+Subject: [PATCH] DPP: Work arouind missing Auth Confirm ACK for testing
+
+The dpp_test DPP_TEST_STOP_AT_AUTH_CONF case is supposed to prevent the
+GAS exchange from happening. It was possible to bypass that testing
+functionality if the TX status event for the Authentication Confirm
+message was lost or delayed long enough for the GAS Request to be
+proessed first. This could happen at least with UML time travel.
+
+Work around this by checking for the special dpp_test case within GAS
+request handling.
+
+Signed-off-by: Jouni Malinen <j@w1.fi>
+---
+ src/ap/dpp_hostapd.c            | 7 +++++++
+ wpa_supplicant/dpp_supplicant.c | 7 +++++++
+ 2 files changed, 14 insertions(+)
+
+diff --git a/src/ap/dpp_hostapd.c b/src/ap/dpp_hostapd.c
+index c4baa8014..2813155b9 100644
+--- a/src/ap/dpp_hostapd.c
++++ b/src/ap/dpp_hostapd.c
+@@ -3094,6 +3094,13 @@ hostapd_dpp_gas_req_handler(struct hostapd_data *hapd, const u8 *sa,
+ 		 * exchange. */
+ 		dpp_notify_auth_success(hapd->dpp_auth, 1);
+ 		hapd->dpp_auth_ok_on_ack = 0;
++#ifdef CONFIG_TESTING_OPTIONS
++		if (dpp_test == DPP_TEST_STOP_AT_AUTH_CONF) {
++			wpa_printf(MSG_INFO,
++				   "DPP: TESTING - stop at Authentication Confirm");
++			return NULL;
++		}
++#endif /* CONFIG_TESTING_OPTIONS */
+ 	}
+ 
+ 	wpa_hexdump(MSG_DEBUG,
+diff --git a/wpa_supplicant/dpp_supplicant.c b/wpa_supplicant/dpp_supplicant.c
+index a0505aa91..21ad685f2 100644
+--- a/wpa_supplicant/dpp_supplicant.c
++++ b/wpa_supplicant/dpp_supplicant.c
+@@ -4131,6 +4131,13 @@ wpas_dpp_gas_req_handler(void *ctx, void *resp_ctx, const u8 *sa,
+ 		 * exchange. */
+ 		dpp_notify_auth_success(auth, 1);
+ 		wpa_s->dpp_auth_ok_on_ack = 0;
++#ifdef CONFIG_TESTING_OPTIONS
++		if (dpp_test == DPP_TEST_STOP_AT_AUTH_CONF) {
++			wpa_printf(MSG_INFO,
++				   "DPP: TESTING - stop at Authentication Confirm");
++			return NULL;
++		}
++#endif /* CONFIG_TESTING_OPTIONS */
+ 	}
+ 
+ 	wpa_hexdump(MSG_DEBUG,
+-- 
+2.43.0
+

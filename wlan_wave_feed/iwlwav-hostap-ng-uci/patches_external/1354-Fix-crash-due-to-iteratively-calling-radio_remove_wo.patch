@@ -1,0 +1,35 @@
+From e35a79ab049e91ce9973344db710ecbf3966354a Mon Sep 17 00:00:00 2001
+From: Shivani Baranwal <quic_shivbara@quicinc.com>
+Date: Tue, 4 Feb 2025 15:05:12 +0530
+Subject: [PATCH] Fix crash due to iteratively calling radio_remove_works()
+
+Commit 3242793cb8df ("P2P: Remove pending p2p-listen radio work on
+stopping listen") added removal of all pending p2p-listen radio works
+when P2P listen is stopped. But in case where p2p-listen radio work is
+pending with work->started=1 and radio_remove_works() is called (e.g.,
+as part of interface disabling), there is an attempt to remove radio
+work iteratively from wpas_stop_listen() causing a crash.
+
+To avoid this, add check to avoid iterative calls to wpas_stop_listen().
+
+Signed-off-by: Shivani Baranwal <quic_shivbara@quicinc.com>
+---
+ wpa_supplicant/p2p_supplicant.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/wpa_supplicant/p2p_supplicant.c b/wpa_supplicant/p2p_supplicant.c
+index b589707e6..0311a920d 100644
+--- a/wpa_supplicant/p2p_supplicant.c
++++ b/wpa_supplicant/p2p_supplicant.c
+@@ -3190,7 +3190,7 @@ static void wpas_start_listen_cb(struct wpa_radio_work *work, int deinit)
+ 	unsigned int duration;
+ 
+ 	if (deinit) {
+-		if (work->started) {
++		if (work->started && !wpa_s->p2p_removing_listen_work) {
+ 			wpa_s->p2p_listen_work = NULL;
+ 			wpas_stop_listen(wpa_s);
+ 		}
+-- 
+2.43.0
+

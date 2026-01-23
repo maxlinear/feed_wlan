@@ -1,0 +1,142 @@
+From ceb7f65dcc9439947b988933a7530d5fc3d518c8 Mon Sep 17 00:00:00 2001
+From: Ben Greear <greearb@candelatech.com>
+Date: Sun, 26 Nov 2023 10:22:29 -0800
+Subject: [PATCH] bgscan: Allow simple bgscan to do BTM queries
+
+Allow doing X BSS transition management query calls before falling back
+to scan.
+
+Example format to do 4 BTM queries before attempting a scan:
+bgscan="simple:30:-65:300:4"
+
+Signed-off-by: Ben Greear <greearb@candelatech.com>
+---
+ wpa_supplicant/bgscan_simple.c     | 55 ++++++++++++++++++++++++++++++
+ wpa_supplicant/wpa_supplicant.conf |  4 ++-
+ 2 files changed, 58 insertions(+), 1 deletion(-)
+
+diff --git a/wpa_supplicant/bgscan_simple.c b/wpa_supplicant/bgscan_simple.c
+index f398b8507..cac3049e3 100644
+--- a/wpa_supplicant/bgscan_simple.c
++++ b/wpa_supplicant/bgscan_simple.c
+@@ -15,11 +15,16 @@
+ #include "wpa_supplicant_i.h"
+ #include "driver_i.h"
+ #include "scan.h"
++#include "config.h"
++#include "wnm_sta.h"
++#include "bss.h"
+ #include "bgscan.h"
+ 
+ struct bgscan_simple_data {
+ 	struct wpa_supplicant *wpa_s;
+ 	const struct wpa_ssid *ssid;
++	unsigned int use_btm_query;
++	unsigned int scan_action_count;
+ 	int scan_interval;
+ 	int signal_threshold;
+ 	int short_scan_count; /* counter for scans using short scan interval */
+@@ -30,12 +35,54 @@ struct bgscan_simple_data {
+ };
+ 
+ 
++static void bgscan_simple_timeout(void *eloop_ctx, void *timeout_ctx);
++
++
++static bool bgscan_simple_btm_query(struct wpa_supplicant *wpa_s,
++				    struct bgscan_simple_data *data)
++{
++	unsigned int mod;
++
++	if (!data->use_btm_query || wpa_s->conf->disable_btm ||
++	    !wpa_s->current_bss ||
++	    !wpa_bss_ext_capab(wpa_s->current_bss,
++			       WLAN_EXT_CAPAB_BSS_TRANSITION))
++		return false;
++
++	/* Try BTM x times, scan on x + 1 */
++	data->scan_action_count++;
++	mod = data->scan_action_count % (data->use_btm_query + 1);
++	if (mod >= data->use_btm_query)
++		return false;
++
++	wpa_printf(MSG_DEBUG,
++		   "bgscan simple: Send BSS transition management query %d/%d",
++		   mod, data->use_btm_query);
++	if (wnm_send_bss_transition_mgmt_query(
++		    wpa_s, WNM_TRANSITION_REASON_BETTER_AP_FOUND, NULL, 0)) {
++		wpa_printf(MSG_DEBUG,
++			   "bgscan simple: Failed to send BSS transition management query");
++		/* Fall through and do regular scan */
++		return false;
++	}
++
++	/* Start a new timeout for the next one. We don't have scan callback to
++	 * otherwise trigger future progress when using BTM path. */
++	eloop_register_timeout(data->scan_interval, 0,
++			       bgscan_simple_timeout, data, NULL);
++	return true;
++}
++
++
+ static void bgscan_simple_timeout(void *eloop_ctx, void *timeout_ctx)
+ {
+ 	struct bgscan_simple_data *data = eloop_ctx;
+ 	struct wpa_supplicant *wpa_s = data->wpa_s;
+ 	struct wpa_driver_scan_params params;
+ 
++	if (bgscan_simple_btm_query(wpa_s, data))
++		goto scan_ok;
++
+ 	os_memset(&params, 0, sizeof(params));
+ 	params.num_ssids = 1;
+ 	params.ssids[0].ssid = data->ssid->ssid;
+@@ -54,6 +101,7 @@ static void bgscan_simple_timeout(void *eloop_ctx, void *timeout_ctx)
+ 		eloop_register_timeout(data->scan_interval, 0,
+ 				       bgscan_simple_timeout, data, NULL);
+ 	} else {
++	scan_ok:
+ 		if (data->scan_interval == data->short_interval) {
+ 			data->short_scan_count++;
+ 			if (data->short_scan_count >= data->max_short_scans) {
+@@ -80,6 +128,8 @@ static int bgscan_simple_get_params(struct bgscan_simple_data *data,
+ {
+ 	const char *pos;
+ 
++	data->use_btm_query = 0;
++
+ 	data->short_interval = atoi(params);
+ 
+ 	pos = os_strchr(params, ':');
+@@ -95,6 +145,11 @@ static int bgscan_simple_get_params(struct bgscan_simple_data *data,
+ 	}
+ 	pos++;
+ 	data->long_interval = atoi(pos);
++	pos = os_strchr(pos, ':');
++	if (pos) {
++		pos++;
++		data->use_btm_query = atoi(pos);
++	}
+ 
+ 	return 0;
+ }
+diff --git a/wpa_supplicant/wpa_supplicant.conf b/wpa_supplicant/wpa_supplicant.conf
+index b58c042f0..743f2a323 100644
+--- a/wpa_supplicant/wpa_supplicant.conf
++++ b/wpa_supplicant/wpa_supplicant.conf
+@@ -982,9 +982,11 @@ fast_reauth=1
+ # parameter uses following format: "<bgscan module name>:<module parameters>"
+ # Following bgscan modules are available:
+ # simple - Periodic background scans based on signal strength
++# send_btm_query > 0 means do this many BTM queries before attempting a scan.
+ # bgscan="simple:<short bgscan interval in seconds>:<signal strength threshold>:
+-# <long interval>"
++# <long interval>[:<send_btm_query>]"
+ # bgscan="simple:30:-45:300"
++# bgscan="simple:30:-45:300:3"
+ # learn - Learn channels used by the network and try to avoid bgscans on other
+ # channels (experimental)
+ # bgscan="learn:<short bgscan interval in seconds>:<signal strength threshold>:
+-- 
+2.43.0
+

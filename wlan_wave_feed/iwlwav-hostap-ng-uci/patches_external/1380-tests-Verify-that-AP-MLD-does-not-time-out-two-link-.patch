@@ -1,0 +1,46 @@
+From 9c73ca4ffce081c1db71ae1013147d59b9ba2cac Mon Sep 17 00:00:00 2001
+From: Jouni Malinen <quic_jouni@quicinc.com>
+Date: Thu, 13 Feb 2025 13:30:01 +0200
+Subject: [PATCH] tests: Verify that AP MLD does not time out two link
+ association
+
+Signed-off-by: Jouni Malinen <quic_jouni@quicinc.com>
+---
+ tests/hwsim/test_eht.py | 13 ++++++++++++-
+ 1 file changed, 12 insertions(+), 1 deletion(-)
+
+diff --git a/tests/hwsim/test_eht.py b/tests/hwsim/test_eht.py
+index ef796bce7..c1bab3f36 100644
+--- a/tests/hwsim/test_eht.py
++++ b/tests/hwsim/test_eht.py
+@@ -404,8 +404,14 @@ def test_eht_mld_owe_two_links_scan_second(dev, apdev):
+     """EHT MLD AP with MLD client OWE connection using two links; scan only second"""
+     _eht_mld_owe_two_links(dev, apdev, scan_only_second_link=True)
+ 
++@long_duration_test
++def test_eht_mld_owe_two_links_no_assoc_timeout(dev, apdev):
++    """Verify that AP MLD does not time out two link association"""
++    _eht_mld_owe_two_links(dev, apdev, wait_for_timeout=True)
++
+ def _eht_mld_owe_two_links(dev, apdev, second_link_disabled=False,
+-                           only_one_link=False, scan_only_second_link=False):
++                           only_one_link=False, scan_only_second_link=False,
++                           wait_for_timeout=False):
+     with HWSimRadio(use_mlo=True) as (hapd0_radio, hapd0_iface), \
+         HWSimRadio(use_mlo=True) as (hapd1_radio, hapd1_iface), \
+         HWSimRadio(use_mlo=True) as (wpas_radio, wpas_iface):
+@@ -456,6 +462,11 @@ def _eht_mld_owe_two_links(dev, apdev, second_link_disabled=False,
+         if only_one_link:
+             wpas.set("bssid_filter", "")
+ 
++        if wait_for_timeout:
++            ev = wpas.wait_event(["CTRL-EVENT-DISCONNECTED"], timeout=65)
++            if ev is not None:
++                raise Exception("Unexpected disconnection")
++
+ def test_eht_mld_owe_two_links_one_disabled(dev, apdev):
+     """AP MLD with MLD client OWE connection when one of the AP MLD links is disabled"""
+     _eht_mld_owe_two_links(dev, apdev, second_link_disabled=True)
+-- 
+2.43.0
+

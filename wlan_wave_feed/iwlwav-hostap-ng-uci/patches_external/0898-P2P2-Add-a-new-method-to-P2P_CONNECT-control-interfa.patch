@@ -1,0 +1,41 @@
+From 11a573f31344a5d3ff1ef96b15e95eac5d7886cc Mon Sep 17 00:00:00 2001
+From: Shivani Baranwal <quic_shivbara@quicinc.com>
+Date: Fri, 30 Aug 2024 22:11:17 +0530
+Subject: [PATCH] P2P2: Add a new method to P2P_CONNECT control interface
+ command
+
+Add a new method "pair" to indicate the connect request perform the
+Wi-Fi Direct R2 methods like bootstrapping and pairing for connection.
+This fixes control interface command parsing which expects method as
+mandatory.
+
+Signed-off-by: Shivani Baranwal <quic_shivbara@quicinc.com>
+---
+ wpa_supplicant/ctrl_iface.c | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/wpa_supplicant/ctrl_iface.c b/wpa_supplicant/ctrl_iface.c
+index b886c2226..6dba46898 100644
+--- a/wpa_supplicant/ctrl_iface.c
++++ b/wpa_supplicant/ctrl_iface.c
+@@ -6389,7 +6389,7 @@ static int p2p_ctrl_connect(struct wpa_supplicant *wpa_s, char *cmd,
+ 		wpa_s = wpa_s->global->p2p_init_wpa_s;
+ 	}
+ 
+-	/* <addr> <"pbc" | "pin" | PIN> [label|display|keypad|p2ps]
++	/* <addr> <"pbc" | "pin" | "pair" | PIN> [label|display|keypad|p2ps]
+ 	 * [persistent|persistent=<network id>]
+ 	 * [join] [auth] [go_intent=<0..15>] [freq=<in MHz>] [provdisc]
+ 	 * [ht40] [vht] [he] [edmg] [auto] [ssid=<hexdump>]
+@@ -6484,7 +6484,7 @@ static int p2p_ctrl_connect(struct wpa_supplicant *wpa_s, char *cmd,
+ 		wps_method = WPS_PBC;
+ 	} else if (os_strstr(pos, "p2ps") != NULL) {
+ 		wps_method = WPS_P2PS;
+-	} else if (p2p2) {
++	} else if (os_strncmp(pos, "pair", 4) == 0 && p2p2) {
+ 		wps_method = WPS_NOT_READY;
+ 	} else {
+ 		pin = pos;
+-- 
+2.43.0
+

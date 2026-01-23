@@ -1,0 +1,35 @@
+From 2d92cae655f88a4c622ffea60731eb2e7ae36151 Mon Sep 17 00:00:00 2001
+From: Jouni Malinen <quic_jouni@quicinc.com>
+Date: Fri, 6 Sep 2024 00:53:30 +0300
+Subject: [PATCH] nl80211: Check nla_parse_nested() result
+
+This recently added instance did not verify that parsing of nested
+attributes succeeded.
+
+Fixes: 15bf093b5b48 ("hostapd: Fetch multiple radios information from the driver")
+Signed-off-by: Jouni Malinen <quic_jouni@quicinc.com>
+---
+ src/drivers/driver_nl80211_capa.c | 7 +++----
+ 1 file changed, 3 insertions(+), 4 deletions(-)
+
+diff --git a/src/drivers/driver_nl80211_capa.c b/src/drivers/driver_nl80211_capa.c
+index 1b3f82390..c4a23d542 100644
+--- a/src/drivers/driver_nl80211_capa.c
++++ b/src/drivers/driver_nl80211_capa.c
+@@ -2754,10 +2754,9 @@ static int phy_multi_hw_info_parse(struct hostapd_multi_hw_info *hw_info,
+ 		hw_info->hw_idx = nla_get_u32(radio_attr);
+ 		return NL_OK;
+ 	case NL80211_WIPHY_RADIO_ATTR_FREQ_RANGE:
+-		nla_parse_nested(tb_freq, NL80211_WIPHY_RADIO_FREQ_ATTR_MAX,
+-				 radio_attr, NULL);
+-
+-		if (!tb_freq[NL80211_WIPHY_RADIO_FREQ_ATTR_START] ||
++		if (nla_parse_nested(tb_freq, NL80211_WIPHY_RADIO_FREQ_ATTR_MAX,
++				     radio_attr, NULL) ||
++		    !tb_freq[NL80211_WIPHY_RADIO_FREQ_ATTR_START] ||
+ 		    !tb_freq[NL80211_WIPHY_RADIO_FREQ_ATTR_END])
+ 			return NL_STOP;
+ 
+-- 
+2.43.0
+

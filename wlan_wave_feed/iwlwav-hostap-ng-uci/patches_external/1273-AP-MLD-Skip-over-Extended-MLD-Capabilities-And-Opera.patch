@@ -1,0 +1,71 @@
+From 9e95f0d38e57b23b26acf1418cebace853e2cd4f Mon Sep 17 00:00:00 2001
+From: Adil Saeed Musthafa <quic_adilm@quicinc.com>
+Date: Wed, 22 Jan 2025 00:57:08 -0800
+Subject: [PATCH] AP MLD: Skip over Extended MLD Capabilities And Operations
+ field
+
+Skip over the Extended MLD Capabilities And Operations field in the
+Common Info field of the Basic Multi-Link element so that processing of
+the information after the Common Info field can continue from the
+correct offset.
+
+Signed-off-by: Adil Saeed Musthafa <quic_adilm@quicinc.com>
+---
+ src/ap/ieee802_11_eht.c      | 10 ++++++++++
+ src/common/ieee802_11_defs.h |  5 +++--
+ 2 files changed, 13 insertions(+), 2 deletions(-)
+
+diff --git a/src/ap/ieee802_11_eht.c b/src/ap/ieee802_11_eht.c
+index 47526a836..1355170e6 100644
+--- a/src/ap/ieee802_11_eht.c
++++ b/src/ap/ieee802_11_eht.c
+@@ -1236,6 +1236,12 @@ u16 hostapd_process_ml_assoc_req(struct hostapd_data *hapd,
+ 		goto out;
+ 	}
+ 
++	if (ml_control & BASIC_MULTI_LINK_CTRL_PRES_EXT_MLD_CAP) {
++		common_info_len += 2;
++	} else {
++		wpa_printf(MSG_DEBUG, "MLD: EXT ML capabilities not present");
++	}
++
+ 	wpa_printf(MSG_DEBUG, "MLD: expected_common_info_len=%lu",
+ 		   common_info_len);
+ 
+@@ -1266,6 +1272,10 @@ u16 hostapd_process_ml_assoc_req(struct hostapd_data *hapd,
+ 	info->common_info.mld_capa = WPA_GET_LE16(pos);
+ 	pos += 2;
+ 
++	if (ml_control & BASIC_MULTI_LINK_CTRL_PRES_EXT_MLD_CAP) {
++		pos += 2;
++	}
++
+ 	wpa_printf(MSG_DEBUG, "MLD: addr=" MACSTR ", eml=0x%x, mld=0x%x",
+ 		   MAC2STR(info->common_info.mld_addr),
+ 		   info->common_info.eml_capa, info->common_info.mld_capa);
+diff --git a/src/common/ieee802_11_defs.h b/src/common/ieee802_11_defs.h
+index 4755facab..b4d21a867 100644
+--- a/src/common/ieee802_11_defs.h
++++ b/src/common/ieee802_11_defs.h
+@@ -2766,15 +2766,16 @@ struct ieee80211_eht_capabilities {
+ #define MULTI_LINK_SUB_ELEM_ID_VENDOR			221
+ #define MULTI_LINK_SUB_ELEM_ID_FRAGMENT			254
+ 
+-/* IEEE P802.11be/D2.2, 9.4.2.312.2 - Basic Multi-Link element */
++/* IEEE P802.11be/D7.0, 9.4.2.322.2 - Basic Multi-Link element */
+ 
+-/* Figure 9-1002g: Presence Bitmap subfield of the Basic Multi-Link element */
++/* Figure 9-1074o: Presence Bitmap subfield of the Basic Multi-Link element */
+ #define BASIC_MULTI_LINK_CTRL_PRES_LINK_ID		0x0010
+ #define BASIC_MULTI_LINK_CTRL_PRES_BSS_PARAM_CH_COUNT	0x0020
+ #define BASIC_MULTI_LINK_CTRL_PRES_MSD_INFO		0x0040
+ #define BASIC_MULTI_LINK_CTRL_PRES_EML_CAPA		0x0080
+ #define BASIC_MULTI_LINK_CTRL_PRES_MLD_CAPA		0x0100
+ #define BASIC_MULTI_LINK_CTRL_PRES_AP_MLD_ID		0x0200
++#define BASIC_MULTI_LINK_CTRL_PRES_EXT_MLD_CAP		0x0400
+ 
+ /*
+  * STA Control field definitions of Per-STA Profile subelement in Basic
+-- 
+2.43.0
+

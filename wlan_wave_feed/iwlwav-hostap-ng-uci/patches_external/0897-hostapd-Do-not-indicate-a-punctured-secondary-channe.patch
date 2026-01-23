@@ -1,0 +1,88 @@
+From bde17063d5e8dea453fb29c53049a09922f6d876 Mon Sep 17 00:00:00 2001
+From: Michael-CY Lee <michael-cy.lee@mediatek.com>
+Date: Mon, 19 Aug 2024 10:54:10 +0800
+Subject: [PATCH] hostapd: Do not indicate a punctured secondary channel in HT
+ operation
+
+If the secondary channel is punctured, the HT operation in the Beacon
+frames should not indicate a secondary channel offset.
+
+Co-developed-by: Money Wang <money.wang@mediatek.com>
+Signed-off-by: Michael-CY Lee <michael-cy.lee@mediatek.com>
+---
+ src/ap/ieee802_11_ht.c | 52 +++++++++++++++++++++++++++++++++++++-----
+ 1 file changed, 46 insertions(+), 6 deletions(-)
+
+diff --git a/src/ap/ieee802_11_ht.c b/src/ap/ieee802_11_ht.c
+index f90f1254e..4c39e4079 100644
+--- a/src/ap/ieee802_11_ht.c
++++ b/src/ap/ieee802_11_ht.c
+@@ -79,6 +79,51 @@ u8 * hostapd_eid_ht_capabilities(struct hostapd_data *hapd, u8 *eid)
+ }
+ 
+ 
++static void set_ht_param(struct hostapd_data *hapd,
++			 struct ieee80211_ht_operation *oper)
++{
++	int secondary_channel = hapd->iconf->secondary_channel;
++#ifdef CONFIG_IEEE80211BE
++	enum oper_chan_width chwidth = hostapd_get_oper_chwidth(hapd->iconf);
++	u16 bw = 0, punct_bitmap = hostapd_get_punct_bitmap(hapd);
++	u8 offset, chan_bit_pos;
++
++	switch (chwidth) {
++	case CONF_OPER_CHWIDTH_80MHZ:
++		bw = 80;
++		offset = 6;
++		break;
++	case CONF_OPER_CHWIDTH_160MHZ:
++		bw = 160;
++		offset = 14;
++		break;
++	case CONF_OPER_CHWIDTH_320MHZ:
++		bw = 320;
++		offset = 30;
++		break;
++	default:
++		goto no_update;
++	}
++
++	chan_bit_pos = (hapd->iconf->channel -
++			hostapd_get_oper_centr_freq_seg0_idx(hapd->iconf) +
++			offset) / 4;
++	/* Check if secondary channel is punctured */
++	if (bw >= 80 && punct_bitmap && secondary_channel &&
++	    (punct_bitmap & BIT(chan_bit_pos + secondary_channel)))
++		return; /* Do not indicate punctured secondary channel for HT */
++no_update:
++#endif /* CONFIG_IEEE80211BE */
++
++	if (secondary_channel == 1)
++		oper->ht_param |= HT_INFO_HT_PARAM_SECONDARY_CHNL_ABOVE |
++			HT_INFO_HT_PARAM_STA_CHNL_WIDTH;
++	if (secondary_channel == -1)
++		oper->ht_param |= HT_INFO_HT_PARAM_SECONDARY_CHNL_BELOW |
++			HT_INFO_HT_PARAM_STA_CHNL_WIDTH;
++}
++
++
+ u8 * hostapd_eid_ht_operation(struct hostapd_data *hapd, u8 *eid)
+ {
+ 	struct ieee80211_ht_operation *oper;
+@@ -96,12 +141,7 @@ u8 * hostapd_eid_ht_operation(struct hostapd_data *hapd, u8 *eid)
+ 
+ 	oper->primary_chan = hapd->iconf->channel;
+ 	oper->operation_mode = host_to_le16(hapd->iface->ht_op_mode);
+-	if (hapd->iconf->secondary_channel == 1)
+-		oper->ht_param |= HT_INFO_HT_PARAM_SECONDARY_CHNL_ABOVE |
+-			HT_INFO_HT_PARAM_STA_CHNL_WIDTH;
+-	if (hapd->iconf->secondary_channel == -1)
+-		oper->ht_param |= HT_INFO_HT_PARAM_SECONDARY_CHNL_BELOW |
+-			HT_INFO_HT_PARAM_STA_CHNL_WIDTH;
++	set_ht_param(hapd, oper);
+ 
+ 	pos += sizeof(*oper);
+ 
+-- 
+2.43.0
+

@@ -1,0 +1,28 @@
+From 7683ce1cff5f47556572b8c75705645043327e75 Mon Sep 17 00:00:00 2001
+From: Jouni Malinen <quic_jouni@quicinc.com>
+Date: Thu, 22 Aug 2024 12:09:20 +0300
+Subject: [PATCH] tests: Fix EHT 320 MHz tests to clear sae_groups
+
+These test cases could fail if they happened to be executed after a test
+case that set a specific SAE group.
+
+Signed-off-by: Jouni Malinen <quic_jouni@quicinc.com>
+---
+ tests/hwsim/test_eht.py | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/tests/hwsim/test_eht.py b/tests/hwsim/test_eht.py
+index 5ce825870..7990a2885 100644
+--- a/tests/hwsim/test_eht.py
++++ b/tests/hwsim/test_eht.py
+@@ -1362,6 +1362,7 @@ def _test_eht_6ghz(dev, apdev, channel, op_class, ccfs1):
+             raise Exception("STATUS did not indicate ieee80211be=1")
+ 
+         dev[0].set("sae_pwe", "1")
++        dev[0].set("sae_groups", "")
+ 
+         freq = 5950 + channel * 5
+         bw = _6ghz_op_class_to_bw(op_class)
+-- 
+2.43.0
+

@@ -1,0 +1,35 @@
+From 2552de375db536208f538b689f007f58bd07cb83 Mon Sep 17 00:00:00 2001
+From: Govindaraj Saminathan <quic_gsaminat@quicinc.com>
+Date: Mon, 9 Dec 2024 11:27:34 +0530
+Subject: [PATCH] EHT: Fix HE center frequency for EHT 320 MHz with puncturing
+
+Currently, oper_chwidth holds 320 MHz and he_oper_centr_freq_seg0_idx
+holds the center frequency of the primary 160 MHz, causing the
+calculation of the wrong seg0 from punct_update_legacy_bw() and
+leading to connectivity issues with HE STA.
+
+Start with the HE operating bandwidth instead of EHT operating bandwidth
+to calculate seg0 to update the correct center frequency in HE Operation
+element.
+
+Signed-off-by: Govindaraj Saminathan <quic_gsaminat@quicinc.com>
+---
+ src/ap/ieee802_11_he.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/src/ap/ieee802_11_he.c b/src/ap/ieee802_11_he.c
+index a2deda6c4..cd9f8bc59 100644
+--- a/src/ap/ieee802_11_he.c
++++ b/src/ap/ieee802_11_he.c
+@@ -221,7 +221,7 @@ u8 * hostapd_eid_he_operation(struct hostapd_data *hapd, u8 *eid)
+ 
+ 	if (is_6ghz_op_class(hapd->iconf->op_class)) {
+ 		enum oper_chan_width oper_chwidth =
+-			hostapd_get_oper_chwidth(hapd->iconf);
++			hapd->iconf->he_oper_chwidth;
+ 		u8 seg0 = hapd->iconf->he_oper_centr_freq_seg0_idx;
+ 		u8 seg1 = hostapd_get_oper_centr_freq_seg1_idx(hapd->iconf);
+ 		u8 control;
+-- 
+2.43.0
+

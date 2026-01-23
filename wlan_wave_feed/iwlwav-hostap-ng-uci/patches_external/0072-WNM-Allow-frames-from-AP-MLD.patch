@@ -1,0 +1,53 @@
+From 7ee12fca49e1066d55e672e9c632d3b455366a6a Mon Sep 17 00:00:00 2001
+From: Ilan Peer <ilan.peer@intel.com>
+Date: Wed, 13 Dec 2023 16:04:06 +0200
+Subject: [PATCH] WNM: Allow frames from AP MLD
+
+Allow frames where the SA is the AP MLD MAC address as the driver might
+have performed address translation.
+
+Signed-off-by: Ilan Peer <ilan.peer@intel.com>
+---
+ wpa_supplicant/wnm_sta.c | 12 +++++++++---
+ 1 file changed, 9 insertions(+), 3 deletions(-)
+
+diff --git a/wpa_supplicant/wnm_sta.c b/wpa_supplicant/wnm_sta.c
+index 58c6bb45a..2cd5edd39 100644
+--- a/wpa_supplicant/wnm_sta.c
++++ b/wpa_supplicant/wnm_sta.c
+@@ -1878,7 +1878,9 @@ static void ieee802_11_rx_wnm_notif_req(struct wpa_supplicant *wpa_s,
+ 		    pos, end - pos);
+ 
+ 	if (wpa_s->wpa_state != WPA_COMPLETED ||
+-	    os_memcmp(sa, wpa_s->bssid, ETH_ALEN) != 0) {
++	    (os_memcmp(sa, wpa_s->bssid, ETH_ALEN) != 0 &&
++	     (!wpa_s->valid_links ||
++	      os_memcmp(sa, wpa_s->ap_mld_addr, ETH_ALEN) != 0))) {
+ 		wpa_dbg(wpa_s, MSG_DEBUG, "WNM: WNM-Notification frame not "
+ 			"from our AP - ignore it");
+ 		return;
+@@ -1922,7 +1924,9 @@ static void ieee802_11_rx_wnm_coloc_intf_req(struct wpa_supplicant *wpa_s,
+ 		return; /* only nonzero values are used for request */
+ 
+ 	if (wpa_s->wpa_state != WPA_COMPLETED ||
+-	    os_memcmp(sa, wpa_s->bssid, ETH_ALEN) != 0) {
++	    (os_memcmp(sa, wpa_s->bssid, ETH_ALEN) != 0 &&
++	     (!wpa_s->valid_links ||
++	      os_memcmp(sa, wpa_s->ap_mld_addr, ETH_ALEN) != 0))) {
+ 		wpa_dbg(wpa_s, MSG_DEBUG,
+ 			"WNM: Collocated Interference Request frame not from current AP - ignore it");
+ 		return;
+@@ -1952,7 +1956,9 @@ void ieee802_11_rx_wnm_action(struct wpa_supplicant *wpa_s,
+ 	wpa_printf(MSG_DEBUG, "WNM: RX action %u from " MACSTR,
+ 		   act, MAC2STR(mgmt->sa));
+ 	if (wpa_s->wpa_state < WPA_ASSOCIATED ||
+-	    os_memcmp(mgmt->sa, wpa_s->bssid, ETH_ALEN) != 0) {
++	    (os_memcmp(mgmt->sa, wpa_s->bssid, ETH_ALEN) != 0 &&
++	     (!wpa_s->valid_links ||
++	      os_memcmp(mgmt->sa, wpa_s->ap_mld_addr, ETH_ALEN) != 0))) {
+ 		wpa_printf(MSG_DEBUG, "WNM: Ignore unexpected WNM Action "
+ 			   "frame");
+ 		return;
+-- 
+2.43.0
+

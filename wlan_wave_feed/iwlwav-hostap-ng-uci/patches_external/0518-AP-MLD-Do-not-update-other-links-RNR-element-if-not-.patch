@@ -1,0 +1,40 @@
+From aaf879ef20d825e2aeb6648c26ef86ad35b5056a Mon Sep 17 00:00:00 2001
+From: Chenming Huang <quic_chenhuan@quicinc.com>
+Date: Wed, 13 Mar 2024 15:08:17 +0530
+Subject: [PATCH] AP MLD: Do not update other links' RNR element if not enabled
+ yet
+
+When one link is still under CAC or disabled, peer links should not
+carry the information of this link in the RNR elements.
+
+With this change, the RNR element will be included only if a peer link
+is in HAPD_IFACE_ENABLED state.
+
+Signed-off-by: Chenming Huang <quic_chenhuan@quicinc.com>
+---
+ src/ap/ieee802_11.c | 2 ++
+ 1 file changed, 2 insertions(+)
+
+diff --git a/src/ap/ieee802_11.c b/src/ap/ieee802_11.c
+index fcb2d14cf..13b1536ea 100644
+--- a/src/ap/ieee802_11.c
++++ b/src/ap/ieee802_11.c
+@@ -7461,6 +7461,7 @@ static size_t hostapd_eid_rnr_multi_iface_len(struct hostapd_data *hapd,
+ #endif /* CONFIG_IEEE80211BE */
+ 
+ 		if (iface == hapd->iface ||
++		    iface->state != HAPD_IFACE_ENABLED ||
+ 		    !(is_6ghz_op_class(iface->conf->op_class) || ap_mld))
+ 			continue;
+ 
+@@ -7734,6 +7735,7 @@ static u8 * hostapd_eid_rnr_multi_iface(struct hostapd_data *hapd, u8 *eid,
+ #endif /* CONFIG_IEEE80211BE */
+ 
+ 		if (iface == hapd->iface ||
++		    iface->state != HAPD_IFACE_ENABLED ||
+ 		    !(is_6ghz_op_class(iface->conf->op_class) || ap_mld))
+ 			continue;
+ 
+-- 
+2.43.0
+

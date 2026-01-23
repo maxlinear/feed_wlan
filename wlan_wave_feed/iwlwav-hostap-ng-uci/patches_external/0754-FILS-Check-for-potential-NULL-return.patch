@@ -1,0 +1,41 @@
+From 13648dde91a3fb3a177732b6d962a2c78e171c2b Mon Sep 17 00:00:00 2001
+From: Chenming Huang <quic_chenhuan@quicinc.com>
+Date: Tue, 16 Jul 2024 15:27:19 +0800
+Subject: [PATCH] FILS: Check for potential NULL return
+
+hostapd_eid_assoc_fils_session() might return NULL if memory allocation
+fails. This NULL value then will be used for invalid calculation and
+cause unspecified behavior or be dereferenced unexpectedly. Avoid this
+with an explicit check of the returned pointer.
+
+Signed-off-by: Chenming Huang <quic_chenhuan@quicinc.com>
+---
+ src/ap/drv_callbacks.c | 5 +++++
+ 1 file changed, 5 insertions(+)
+
+diff --git a/src/ap/drv_callbacks.c b/src/ap/drv_callbacks.c
+index 13d5d8f71..364cfe4e4 100644
+--- a/src/ap/drv_callbacks.c
++++ b/src/ap/drv_callbacks.c
+@@ -73,6 +73,8 @@ void hostapd_notify_assoc_fils_finish(struct hostapd_data *hapd,
+ 	p = hostapd_eid_assoc_fils_session(sta->wpa_sm, p,
+ 					   elems.fils_session,
+ 					   sta->fils_hlp_resp);
++	if (!p)
++		return;
+ 
+ 	reply_res = hostapd_sta_assoc(hapd, sta->addr,
+ 				      sta->fils_pending_assoc_is_reassoc,
+@@ -777,6 +779,9 @@ skip_wpa_check:
+ 		p = hostapd_eid_assoc_fils_session(sta->wpa_sm, p,
+ 						   elems.fils_session,
+ 						   sta->fils_hlp_resp);
++		if (!p)
++			goto fail;
++
+ 		wpa_hexdump(MSG_DEBUG, "FILS Assoc Resp BUF (IEs)",
+ 			    buf, p - buf);
+ 	}
+-- 
+2.43.0
+

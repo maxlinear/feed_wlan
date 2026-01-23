@@ -1,0 +1,68 @@
+From ee41bacfa2d1af85be086b5548c8ae93ca2d0000 Mon Sep 17 00:00:00 2001
+From: Ben Lai <ben.lai@mediatek.com>
+Date: Fri, 27 Dec 2024 14:13:38 +0800
+Subject: [PATCH] OWE: Consider the currently associated transition mode SSID
+ known
+
+When the BSS table size limit is reached the oldest unknown BSS entry is
+removed when needing to add a new BSS. This could have resulted in use
+of freed memory before wpa_bss_remove_oldest_unknown() was extended to
+use wpa_bss_in_use() as a condition for removing a BSS entry. Even with
+that issue addressed, it is better to recognize BSS entries that match
+the current network profiles SSID in cases where that match is through
+the OWE transition mode mechanism. This avoids removing entries that
+might be used finding a better BSS.
+
+Signed-off-by: Sunil Ravi <sunilravi@google.com>
+---
+ wpa_supplicant/bss.c | 27 +++++++++++++++++++++++++++
+ 1 file changed, 27 insertions(+)
+
+diff --git a/wpa_supplicant/bss.c b/wpa_supplicant/bss.c
+index 445e6cd61..7cda7d5e1 100644
+--- a/wpa_supplicant/bss.c
++++ b/wpa_supplicant/bss.c
+@@ -423,6 +423,28 @@ static bool is_p2p_pending_bss(struct wpa_supplicant *wpa_s,
+ }
+ 
+ 
++#ifdef CONFIG_OWE
++static int wpa_bss_owe_trans_known(struct wpa_supplicant *wpa_s,
++				   struct wpa_bss *bss,
++				   const u8 *entry_ssid, size_t entry_ssid_len)
++{
++	const u8 *owe, *owe_bssid, *owe_ssid;
++	size_t owe_ssid_len;
++
++	owe = wpa_bss_get_vendor_ie(bss, OWE_IE_VENDOR_TYPE);
++	if (!owe)
++		return 0;
++
++	if (wpas_get_owe_trans_network(owe, &owe_bssid, &owe_ssid,
++				       &owe_ssid_len))
++		return 0;
++
++	return entry_ssid_len == owe_ssid_len &&
++		os_memcmp(owe_ssid, entry_ssid, owe_ssid_len) == 0;
++}
++#endif /* CONFIG_OWE */
++
++
+ static int wpa_bss_known(struct wpa_supplicant *wpa_s, struct wpa_bss *bss)
+ {
+ 	struct wpa_ssid *ssid;
+@@ -436,6 +458,11 @@ static int wpa_bss_known(struct wpa_supplicant *wpa_s, struct wpa_bss *bss)
+ 		if (ssid->ssid_len == bss->ssid_len &&
+ 		    os_memcmp(ssid->ssid, bss->ssid, ssid->ssid_len) == 0)
+ 			return 1;
++#ifdef CONFIG_OWE
++		if (wpa_bss_owe_trans_known(wpa_s, bss, ssid->ssid,
++					    ssid->ssid_len))
++			return 1;
++#endif /* CONFIG_OWE */
+ 	}
+ 
+ 	return 0;
+-- 
+2.43.0
+

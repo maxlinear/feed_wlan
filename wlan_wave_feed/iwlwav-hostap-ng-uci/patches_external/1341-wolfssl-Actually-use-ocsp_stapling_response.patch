@@ -1,0 +1,77 @@
+From c38150cfeef5362458fdb91fd0a999b644b25bba Mon Sep 17 00:00:00 2001
+From: Juliusz Sosinowicz <juliusz@wolfssl.com>
+Date: Thu, 4 Apr 2024 20:16:25 +0200
+Subject: [PATCH] wolfssl: Actually use ocsp_stapling_response
+
+Without a call to wolfSSL_CTX_EnableOCSP(tls_ctx,
+WOLFSSL_OCSP_URL_OVERRIDE); then the override URL would not be used. But
+since we don't actually want to enable OCSP in this step, disable it
+immediately after. The option will stay turned on.
+
+Fully turn on OCSP stapling and do error checking on all calls.
+
+Signed-off-by: Juliusz Sosinowicz <juliusz@wolfssl.com>
+---
+ src/crypto/tls_wolfssl.c | 46 ++++++++++++++++++++++++++++++++++++----
+ 1 file changed, 42 insertions(+), 4 deletions(-)
+
+diff --git a/src/crypto/tls_wolfssl.c b/src/crypto/tls_wolfssl.c
+index 25e88c259..e1a264c12 100644
+--- a/src/crypto/tls_wolfssl.c
++++ b/src/crypto/tls_wolfssl.c
+@@ -1917,10 +1917,48 @@ int tls_global_set_params(void *tls_ctx,
+ 
+ #ifdef HAVE_OCSP
+ 	if (params->ocsp_stapling_response) {
+-		wolfSSL_CTX_SetOCSP_OverrideURL(tls_ctx,
+-						params->ocsp_stapling_response);
+-		wolfSSL_CTX_SetOCSP_Cb(tls_ctx, ocsp_status_cb,
+-				       ocsp_resp_free_cb, NULL);
++		if (wolfSSL_CTX_EnableOCSP(tls_ctx,
++					   WOLFSSL_OCSP_URL_OVERRIDE) !=
++		    WOLFSSL_SUCCESS ||
++		    /* Workaround to force using the override URL without
++		     * enabling OCSP */
++		    wolfSSL_CTX_DisableOCSP(tls_ctx) != WOLFSSL_SUCCESS) {
++			wpa_printf(MSG_ERROR,
++				   "wolfSSL: wolfSSL_CTX_UseOCSPStapling() failed");
++			return -1;
++		}
++
++		if (wolfSSL_CTX_UseOCSPStapling(tls_ctx, WOLFSSL_CSR_OCSP,
++						WOLFSSL_CSR_OCSP_USE_NONCE) !=
++		    WOLFSSL_SUCCESS) {
++			wpa_printf(MSG_ERROR,
++				   "wolfSSL: wolfSSL_CTX_UseOCSPStapling() failed");
++			return -1;
++		}
++
++		if (wolfSSL_CTX_EnableOCSPStapling(tls_ctx) !=
++		    WOLFSSL_SUCCESS) {
++			wpa_printf(MSG_ERROR,
++				   "wolfSSL: wolfSSL_EnableOCSPStapling() failed");
++			return -1;
++		}
++
++		if (wolfSSL_CTX_SetOCSP_OverrideURL(
++			    tls_ctx,
++			    params->ocsp_stapling_response) !=
++		    WOLFSSL_SUCCESS) {
++			wpa_printf(MSG_ERROR,
++				   "wolfSSL: wolfSSL_CTX_SetOCSP_OverrideURL() failed");
++			return -1;
++		}
++
++		if (wolfSSL_CTX_SetOCSP_Cb(tls_ctx, ocsp_status_cb,
++					   ocsp_resp_free_cb, NULL) !=
++		    WOLFSSL_SUCCESS) {
++			wpa_printf(MSG_ERROR,
++				   "wolfSSL: wolfSSL_CTX_SetOCSP_Cb() failed");
++			return -1;
++		}
+ 	}
+ #endif /* HAVE_OCSP */
+ 
+-- 
+2.43.0
+

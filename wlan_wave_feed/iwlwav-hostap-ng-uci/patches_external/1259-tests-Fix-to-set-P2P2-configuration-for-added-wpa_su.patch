@@ -1,0 +1,29 @@
+From 22bdd10d995bf234f15620989ea3c168e6b9f816 Mon Sep 17 00:00:00 2001
+From: Jouni Malinen <quic_jouni@quicinc.com>
+Date: Tue, 24 Dec 2024 15:11:19 +0530
+Subject: [PATCH] tests: Fix to set P2P2 configuration for added wpa_supplicant
+ instance
+
+Set P2P2 configyration to the dynamically added wpa_supplicant instance
+to advertise support for pairing setup and pairing cache enable.
+
+Signed-off-by: Vinay Gannevaram <quic_vganneva@quicinc.com>
+---
+ tests/hwsim/test_p2p2.py | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/tests/hwsim/test_p2p2.py b/tests/hwsim/test_p2p2.py
+index 2f63a163c..f5f6af9a0 100644
+--- a/tests/hwsim/test_p2p2.py
++++ b/tests/hwsim/test_p2p2.py
+@@ -504,6 +504,7 @@ def test_p2p_pairing_verification(dev, apdev):
+ 
+     wpas.interface_remove("wlan5")
+     wpas.interface_add("wlan5", config=config)
++    set_p2p2_configs(wpas)
+ 
+     cmd = "NAN_SUBSCRIBE service_name=_test active=1 srv_proto_type=2 ssi=1122334455 ttl=10 p2p=1"
+     id0 = wpas.global_request(cmd)
+-- 
+2.43.0
+

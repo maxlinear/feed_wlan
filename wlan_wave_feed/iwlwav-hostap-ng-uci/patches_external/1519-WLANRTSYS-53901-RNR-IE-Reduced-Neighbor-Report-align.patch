@@ -1,0 +1,311 @@
+From 6872ab9697bada69efa3a482199edbcbb4dd3039 Mon Sep 17 00:00:00 2001
+From: Jurijs Soloveckis <jsoloveckis@maxlinear.com>
+Date: Tue, 21 Mar 2023 14:26:39 +0100
+Subject: [PATCH] WLANRTSYS-53901: RNR IE - Reduced Neighbor Report alignment
+
+---
+ hostapd/config_file.c        |  2 ++
+ src/ap/ap_config.c           |  3 +++
+ src/ap/ap_config.h           |  2 ++
+ src/ap/ap_drv_ops.h          |  9 +++++++++
+ src/ap/drv_callbacks.c       |  9 +++++++++
+ src/ap/hostapd.c             | 34 ++++++++++++++++++++++++++++++++
+ src/ap/hostapd.h             |  1 +
+ src/ap/ieee802_11.c          | 13 ++++++++++++
+ src/ap/ieee802_11_he.c       | 15 ++++++++++++--
+ src/drivers/driver.h         |  7 +++++++
+ src/drivers/driver_nl80211.c | 38 ++++++++++++++++++++++++++++++++++++
+ 11 files changed, 131 insertions(+), 2 deletions(-)
+
+diff --git a/hostapd/config_file.c b/hostapd/config_file.c
+index 79838c79b..9f0dae2c3 100644
+--- a/hostapd/config_file.c
++++ b/hostapd/config_file.c
+@@ -3753,6 +3753,8 @@ static int hostapd_config_fill(struct hostapd_config *conf,
+ #ifdef CONFIG_VENDOR_MXL
+ 	} else if (os_strcmp(buf, "multibss_enable") == 0) {
+ 		conf->multibss_enable = atoi(pos);
++	} else if (os_strcmp(buf, "he_oper_max_co_hosted_bssid_ind") == 0) {
++		conf->he_oper_max_co_hosted_bssid_ind = atoi(pos);
+ #endif /* CONFIG_VENDOR_MXL */
+ #endif /* CONFIG_IEEE80211AX */
+ 	} else if (os_strcmp(buf, "max_listen_interval") == 0) {
+diff --git a/src/ap/ap_config.c b/src/ap/ap_config.c
+index 9eb459486..9c8072176 100644
+--- a/src/ap/ap_config.c
++++ b/src/ap/ap_config.c
+@@ -300,10 +300,13 @@ struct hostapd_config * hostapd_config_defaults(void)
+ 	conf->he_6ghz_max_ampdu_len_exp = 7;
+ 	conf->he_6ghz_rx_ant_pat = 1;
+ 	conf->he_6ghz_tx_ant_pat = 1;
++#ifdef CONFIG_VENDOR_MXL
+ 	conf->he_6ghz_reg_pwr_type = HE_REG_INFO_6GHZ_AP_TYPE_VLP;
+ 	conf->reg_def_cli_eirp_psd = -1;
+ 	conf->reg_sub_cli_eirp_psd = -1;
+ 	conf->reg_def_cli_eirp = -1;
++	conf->he_oper_max_co_hosted_bssid_ind = 5;
++#endif /* CONFIG_VENDOR_MXL */
+ #endif /* CONFIG_IEEE80211AX */
+ 
+ 	/* The third octet of the country string uses an ASCII space character
+diff --git a/src/ap/ap_config.h b/src/ap/ap_config.h
+index 4b15d4af2..15d5c7ff9 100644
+--- a/src/ap/ap_config.h
++++ b/src/ap/ap_config.h
+@@ -1309,9 +1309,11 @@ struct hostapd_config {
+ 	u8 owl; /* Forwarding incoming probe reqests to upper layers */
+ #ifdef CONFIG_IEEE80211AX
+ 	enum bcast_twt_wake_duration_unit btwt_wake_dur_unit;
++	u8 he_oper_max_co_hosted_bssid_ind;
+ #endif
+ 	/* Extended Capabilities: Max Number of MSDUs in A-MSDU */
+ 	u8 ext_cap_max_num_msdus_in_amsdu;
++	u8 psd_20mhz;
+ 	struct mxl_hostapd_config mxl_conf;
+ #endif /* CONFIG_VENDOR_MXL */
+ };
+diff --git a/src/ap/ap_drv_ops.h b/src/ap/ap_drv_ops.h
+index de1796f7b..e640ad6be 100644
+--- a/src/ap/ap_drv_ops.h
++++ b/src/ap/ap_drv_ops.h
+@@ -510,6 +510,15 @@ static inline int hostapd_drv_set_mbssid_num_vaps_in_group(struct hostapd_data *
+ 	return hapd->driver->set_mbssid_num_vaps_in_group(hapd->drv_priv, mbssid_num_vaps_in_group);
+ }
+ 
++static inline int hostapd_drv_get_tx_power_20mhz(struct hostapd_data *hapd,
++						int *tx_power_20mhz)
++{
++	if (hapd->driver == NULL || hapd->driver->get_tx_power_20mhz == NULL)
++		return -ENOTSUP;
++
++	return hapd->driver->get_tx_power_20mhz(hapd->drv_priv, tx_power_20mhz);
++}
++
+ #ifdef ANDROID
+ static inline int hostapd_drv_driver_cmd(struct hostapd_data *hapd,
+ 					 char *cmd, char *buf, size_t buf_len)
+diff --git a/src/ap/drv_callbacks.c b/src/ap/drv_callbacks.c
+index 9fd990ad7..3d59b46d3 100644
+--- a/src/ap/drv_callbacks.c
++++ b/src/ap/drv_callbacks.c
+@@ -1385,6 +1385,15 @@ void hostapd_event_ch_switch(struct hostapd_data *hapd, int freq, int ht,
+ 	for (i = 0; i < hapd->iface->num_bss; i++)
+ 		hostapd_neighbor_set_own_report(hapd->iface->bss[i]);
+ 
++	hapd->iface->conf->psd_20mhz = 0;
++	if (hostapd_get_psd_val(hapd->iface, &hapd->iface->conf->psd_20mhz))
++		wpa_printf(MSG_ERROR, "hostapd_get_psd_val failed");
++
++	/* set_beacon needs to be called when AP csa is in progress, and also when STA role
++	 * interface initiated the ch switch following Peer AP CSA (the AP the sta is
++	 * connected to is switching channel and AP beacons need to be changed */
++	ieee802_11_set_beacon(hapd);
++
+ #ifdef CONFIG_OCV
+ 	if (hapd->conf->ocv &&
+ 	    !(hapd->iface->drv_flags2 &
+diff --git a/src/ap/hostapd.c b/src/ap/hostapd.c
+index c65dadc7c..4feb49b4b 100644
+--- a/src/ap/hostapd.c
++++ b/src/ap/hostapd.c
+@@ -2924,6 +2924,10 @@ static int hostapd_setup_interface_complete_sync(struct hostapd_iface *iface,
+ 
+ 	prev_addr = hapd->own_addr;
+ 
++	iface->conf->psd_20mhz = 0;
++	if (hostapd_get_psd_val(iface, &iface->conf->psd_20mhz))
++		wpa_printf(MSG_ERROR, "hostapd_get_psd_val failed");
++
+ 	for (j = 0; j < iface->num_bss; j++) {
+ 		hapd = iface->bss[j];
+ 		if (j)
+@@ -5452,3 +5456,33 @@ void mxl_hostapd_clear_old(struct hostapd_iface *iface, s32 flush)
+ 	}
+ }
+ #endif /* CONFIG_VENDOR_MXL */
++
++int hostapd_get_psd_val(struct hostapd_iface *iface, u8 *val)
++{
++	int psd = 0;
++	int tx_power_20mhz = 0;
++	struct hostapd_data *hapd = NULL;
++
++	if (!val || !iface || !iface->bss[0])
++		return -1;
++
++	hapd = iface->bss[0];
++	if (hostapd_drv_get_tx_power_20mhz(hapd, &tx_power_20mhz)) {
++		wpa_printf(MSG_ERROR, "failed to get tx_power_20mhz : %d", tx_power_20mhz);
++		return -1;
++	}
++
++	psd = (tx_power_20mhz - HOSTAP_6GHZ_10LOG_20MHZ ) * HOSTAP_6GHZ_CONVERT_HALF_DB_UNIT;
++
++	if (( psd < HOSTAP_6GHZ_PSD_20MHZ_MIN) ||
++		(psd > HOSTAP_6GHZ_PSD_20MHZ_MAX) ) {
++		wpa_printf(MSG_ERROR, "Bad %d psd 20MHz", psd);
++		return -1;
++	}
++
++	if ( psd < 0 )
++		psd = psd + HOSTAPD_BYTE_2S_COMPLEMENT;
++
++	*val = (u8) psd;
++	return 0;
++}
+diff --git a/src/ap/hostapd.h b/src/ap/hostapd.h
+index 291dd4995..0428a5e46 100644
+--- a/src/ap/hostapd.h
++++ b/src/ap/hostapd.h
+@@ -819,6 +819,7 @@ void hostapd_periodic_iface(struct hostapd_iface *iface);
+ int hostapd_owe_trans_get_info(struct hostapd_data *hapd);
+ void hostapd_ocv_check_csa_sa_query(void *eloop_ctx, void *timeout_ctx);
+ bool hostapd_can_send_btwt_config(struct hostapd_data *hapd);
++int hostapd_get_psd_val(struct hostapd_iface *iface, u8 *val);
+ 
+ void hostapd_switch_color(struct hostapd_data *hapd, u64 bitmap);
+ void hostapd_cleanup_cca_params(struct hostapd_data *hapd);
+diff --git a/src/ap/ieee802_11.c b/src/ap/ieee802_11.c
+index f1a0977da..c38119ee0 100644
+--- a/src/ap/ieee802_11.c
++++ b/src/ap/ieee802_11.c
+@@ -8258,8 +8258,21 @@ static bool hostapd_eid_rnr_bss(struct hostapd_data *hapd,
+ 
+ 	bss_param |= RNR_BSS_PARAM_CO_LOCATED;
+ 
++#ifdef CONFIG_VENDOR_MXL
++	if (hapd->iconf->multibss_enable) {
++		bss_param |= RNR_BSS_PARAM_MULTIPLE_BSSID;
++		if(bss->conf->bss_idx == MULTIBSS_REFERENCE_BSS_IDX)
++			bss_param |= RNR_BSS_PARAM_TRANSMITTED_BSSID;
++	}
++
++	if (iface->conf->psd_20mhz)
++		*eid++ = iface->conf->psd_20mhz;
++	else
++		*eid++ = RNR_20_MHZ_PSD_MAX_TXPOWER - 1;
++#else /* CONFIG_VENDOR_MXL */
+ 	*eid++ = bss_param;
+ 	*eid++ = RNR_20_MHZ_PSD_MAX_TXPOWER;
++#endif /* CONFIG_VENDOR_MXL */
+ 
+ #ifdef CONFIG_IEEE80211BE
+ 	if (ap_mld) {
+diff --git a/src/ap/ieee802_11_he.c b/src/ap/ieee802_11_he.c
+index b01cf87c2..db95708f5 100644
+--- a/src/ap/ieee802_11_he.c
++++ b/src/ap/ieee802_11_he.c
+@@ -177,12 +177,19 @@ u8 * hostapd_eid_he_operation(struct hostapd_data *hapd, u8 *eid)
+ 	u8 *pos = eid;
+ 	int oper_size = 6;
+ 	u32 params = 0;
++	bool co_hosted_bss_ind = false;
+ 
+ 	if (!hapd->iface->current_mode)
+ 		return eid;
+ 
+ 	if (is_6ghz_op_class(hapd->iconf->op_class))
+ 		oper_size += 5;
++	else
++		co_hosted_bss_ind = (bool)(hapd->iconf->num_bss > MIN_NUM_BSS_IN_NON_MBSSID_SET &&
++		    !hapd->iconf->multibss_enable);
++
++	if (co_hosted_bss_ind)
++		oper_size += 1;
+ 
+ 	*pos++ = WLAN_EID_EXTENSION;
+ 	*pos++ = 1 + oper_size;
+@@ -217,10 +224,14 @@ u8 * hostapd_eid_he_operation(struct hostapd_data *hapd, u8 *eid)
+ 	oper->he_mcs_nss_set =
+ 		host_to_le16(hapd->iface->conf->he_op.he_basic_mcs_nss_set);
+ 
+-	/* TODO: conditional MaxBSSID Indicator subfield */
+-
+ 	pos += 6; /* skip the fixed part */
+ 
++	/* Conditional MaxBSSID Indicator subfield */
++	if (co_hosted_bss_ind) {
++		params |= HE_OPERATION_COHOSTED_BSS;
++		*pos++ = hapd->iface->conf->he_oper_max_co_hosted_bssid_ind;
++	}
++
+ 	if (is_6ghz_op_class(hapd->iconf->op_class)) {
+ 		enum oper_chan_width oper_chwidth =
+ 			hapd->iconf->he_oper_chwidth;
+diff --git a/src/drivers/driver.h b/src/drivers/driver.h
+index fe9591551..b4501b638 100644
+--- a/src/drivers/driver.h
++++ b/src/drivers/driver.h
+@@ -5527,6 +5527,13 @@ struct wpa_driver_ops {
+ 	 */
+ 	int(*set_mbssid_num_vaps_in_group)(void *priv, const u8 mbssid_num_vaps_in_group);
+ 
++	/**
++	 * get_tx_power_20mhz - get tx power for 20mhz bandwidth
++	 * @priv: Private driver interface data
++	 * Returns: 0 on success, -1 on failure
++	 */
++	int (*get_tx_power_20mhz)(void *priv, int *tx_power_20mhz);
++
+ #ifdef CONFIG_TESTING_OPTIONS
+ 	int (*register_frame)(void *priv, u16 type,
+ 			      const u8 *match, size_t match_len,
+diff --git a/src/drivers/driver_nl80211.c b/src/drivers/driver_nl80211.c
+index 8b3bd035d..3f757b204 100644
+--- a/src/drivers/driver_nl80211.c
++++ b/src/drivers/driver_nl80211.c
+@@ -14954,6 +14954,43 @@ int nl80211_set_mbssid_num_vaps_in_group(void *priv, const u8 mbssid_num_vaps_in
+ 	return ret;
+ }
+ 
++int nl80211_get_tx_power_20mhz(void *priv, int *tx_power_20mhz)
++{
++	int ret;
++	errno_t err;
++	struct wpabuf *rsp;
++
++	rsp = wpabuf_alloc(sizeof(*tx_power_20mhz));
++	if (!rsp)
++		return -ENOBUFS;
++
++	ret = nl80211_vendor_cmd(priv, OUI_LTQ, LTQ_NL80211_VENDOR_SUBCMD_GET_20MHZ_TX_POWER,
++				     NULL, 0, NESTED_ATTR_NOT_USED, rsp);
++	if (ret < 0) {
++		wpa_printf(MSG_ERROR, "nl80211: sending GET_TX_POWER_20MHZ failed: %i (%s)",
++			   ret, strerror(-ret));
++		goto out;
++	}
++
++	if (rsp->used != sizeof(*tx_power_20mhz)) {
++		wpa_printf(MSG_ERROR, "nl80211: driver returned %zu bytes instead of %zu",
++			   rsp->used, sizeof(*tx_power_20mhz));
++		ret = -EMSGSIZE;
++		goto out;
++	}
++
++	err = memcpy_s(tx_power_20mhz, sizeof(*tx_power_20mhz), rsp->buf, sizeof(*tx_power_20mhz));
++	if (EOK != err) {
++		wpa_printf(MSG_ERROR, "%s: memcpy_s error %d", __func__, err);
++		ret = -ENOBUFS;
++		goto out;
++	}
++
++out:
++	wpabuf_free(rsp);
++	return ret;
++}
++
+ const struct wpa_driver_ops wpa_driver_nl80211_ops = {
+ 	.name = "nl80211",
+ 	.desc = "Linux nl80211/cfg80211",
+@@ -15119,6 +15156,7 @@ const struct wpa_driver_ops wpa_driver_nl80211_ops = {
+ 	.unconnected_sta = nl80211_unconnected_sta,
+ 	.set_mbssid_vap_mode = nl80211_set_mbssid_vap,
+ 	.set_mbssid_num_vaps_in_group = nl80211_set_mbssid_num_vaps_in_group,
++	.get_tx_power_20mhz = nl80211_get_tx_power_20mhz,
+ #ifdef CONFIG_DPP
+ 	.dpp_listen = nl80211_dpp_listen,
+ #endif /* CONFIG_DPP */
+-- 
+2.43.0
+

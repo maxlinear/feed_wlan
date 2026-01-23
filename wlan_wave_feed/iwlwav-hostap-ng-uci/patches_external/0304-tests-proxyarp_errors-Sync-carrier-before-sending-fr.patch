@@ -1,0 +1,64 @@
+From bf26920792574e08943461a2942c9fe0a0cd9254 Mon Sep 17 00:00:00 2001
+From: Johannes Berg <johannes.berg@intel.com>
+Date: Wed, 24 Jan 2024 17:12:49 +0100
+Subject: [PATCH] tests: proxyarp_errors: Sync carrier before sending frame
+
+Similar to other cases before, this may end up trying to
+send the frame before the carrier state is ready. Ensure
+it's ready before sending the frame.
+
+To do that, rename the sync_carrier() function and make
+the ifname argument optional.
+
+Signed-off-by: Johannes Berg <johannes.berg@intel.com>
+---
+ tests/hwsim/hwsim_utils.py  | 6 +++---
+ tests/hwsim/test_ap_hs20.py | 1 +
+ 2 files changed, 4 insertions(+), 3 deletions(-)
+
+diff --git a/tests/hwsim/hwsim_utils.py b/tests/hwsim/hwsim_utils.py
+index 48eee0f8b..7b0afb496 100644
+--- a/tests/hwsim/hwsim_utils.py
++++ b/tests/hwsim/hwsim_utils.py
+@@ -11,7 +11,7 @@ logger = logging.getLogger()
+ 
+ from wpasupplicant import WpaSupplicant
+ 
+-def _sync_carrier(dev, ifname):
++def sync_carrier(dev, ifname=None):
+     ifname = ifname or dev.ifname
+     carrier_p2p = None
+     try:
+@@ -40,7 +40,7 @@ def config_data_test(dev1, dev2, dev1group, dev2group, ifname1, ifname2):
+     if "OK" not in res:
+         raise Exception("Failed to enable data test functionality")
+ 
+-    _sync_carrier(dev1, ifname1)
++    sync_carrier(dev1, ifname1)
+ 
+     cmd = "DATA_TEST_CONFIG 1"
+     if ifname2:
+@@ -52,7 +52,7 @@ def config_data_test(dev1, dev2, dev1group, dev2group, ifname1, ifname2):
+     if "OK" not in res:
+         raise Exception("Failed to enable data test functionality")
+ 
+-    _sync_carrier(dev2, ifname2)
++    sync_carrier(dev2, ifname2)
+ 
+ def run_multicast_connectivity_test(dev1, dev2, tos=None,
+                                     dev1group=False, dev2group=False,
+diff --git a/tests/hwsim/test_ap_hs20.py b/tests/hwsim/test_ap_hs20.py
+index afb54c5d5..81becf04f 100644
+--- a/tests/hwsim/test_ap_hs20.py
++++ b/tests/hwsim/test_ap_hs20.py
+@@ -5483,6 +5483,7 @@ def run_proxyarp_errors(dev, apdev, params):
+         pkt = build_ns(src_ll=addr0, ip_src="aaaa:bbbb:cccc::2",
+                        ip_dst="ff02::1:ff00:2", target="aaaa:bbbb:cccc::2",
+                        opt=src_ll_opt0)
++        hwsim_utils.sync_carrier(dev[0])
+         if "OK" not in dev[0].request("DATA_TEST_FRAME " + binascii.hexlify(pkt).decode()):
+             raise Exception("DATA_TEST_FRAME failed")
+         wait_fail_trigger(hapd, "GET_ALLOC_FAIL")
+-- 
+2.43.0
+

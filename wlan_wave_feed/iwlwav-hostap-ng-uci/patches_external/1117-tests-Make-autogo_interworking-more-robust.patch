@@ -1,0 +1,29 @@
+From 05988387dcb73d113f9c70a1fa1a5334949e3ff7 Mon Sep 17 00:00:00 2001
+From: Jouni Malinen <quic_jouni@quicinc.com>
+Date: Sat, 30 Nov 2024 11:51:44 +0200
+Subject: [PATCH] tests: Make autogo_interworking more robust
+
+Clear scan cache to avoid issues with older BSS entries with the same
+BSSID from causing test failures due to not finding the expected
+Interworking element.
+
+Signed-off-by: Jouni Malinen <quic_jouni@quicinc.com>
+---
+ tests/hwsim/test_p2p_autogo.py | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/tests/hwsim/test_p2p_autogo.py b/tests/hwsim/test_p2p_autogo.py
+index 06be70f16..744c41466 100644
+--- a/tests/hwsim/test_p2p_autogo.py
++++ b/tests/hwsim/test_p2p_autogo.py
+@@ -942,6 +942,7 @@ def run_autogo_interworking(dev):
+     dev[0].global_request("SET go_venue_type 3")
+     res = autogo(dev[0])
+     bssid = dev[0].p2p_interface_addr()
++    dev[1].flush_scan_cache()
+     dev[1].scan_for_bss(bssid, freq=res['freq'])
+     bss = dev[1].get_bss(bssid)
+     dev[0].remove_group()
+-- 
+2.43.0
+

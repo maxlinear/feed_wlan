@@ -1,0 +1,126 @@
+From 6cd0231112025928c6390a25fd818135687e3201 Mon Sep 17 00:00:00 2001
+From: Jouni Malinen <quic_jouni@quicinc.com>
+Date: Wed, 29 May 2024 12:57:08 +0300
+Subject: [PATCH] WNM: Group rekeying skipping with BSS max idle period
+ management
+
+Allow hostapd to be configured to not disconnect a STA if the STA fails
+to reply to a group key handshake when BSS max idle period management is
+used. This might be needed for some STAs that use aggressive power
+saving (e.g., battery powered IoT devices).
+
+This is disabled by default since this can delayed group rekeying
+slightly and also to maintain the previous behavior. The more relaxed
+operation can be enabled with the new configuration parameter
+no_disconnect_on_group_keyerror=1.
+
+Signed-off-by: Jouni Malinen <quic_jouni@quicinc.com>
+---
+ hostapd/config_file.c  | 10 ++++++++++
+ hostapd/hostapd.conf   |  7 +++++++
+ src/ap/ap_config.h     |  1 +
+ src/ap/wpa_auth.c      |  8 ++++++++
+ src/ap/wpa_auth.h      |  2 ++
+ src/ap/wpa_auth_glue.c |  3 +++
+ 6 files changed, 31 insertions(+)
+
+diff --git a/hostapd/config_file.c b/hostapd/config_file.c
+index 5999f40dd..5c091fcd2 100644
+--- a/hostapd/config_file.c
++++ b/hostapd/config_file.c
+@@ -2558,6 +2558,16 @@ static int hostapd_config_fill(struct hostapd_config *conf,
+ 			return 1;
+ 		}
+ 		bss->bss_max_idle = val;
++	} else if (os_strcmp(buf, "no_disconnect_on_group_keyerror") == 0) {
++		int val = atoi(pos);
++
++		if (val < 0 || val > 1) {
++			wpa_printf(MSG_ERROR,
++				   "Line %d: Invalid no_disconnect_on_group_keyerror",
++				   line);
++			return 1;
++		}
++		bss->no_disconnect_on_group_keyerror = val;
+ 	} else if (os_strcmp(buf, "config_id") == 0) {
+ 		os_free(bss->config_id);
+ 		bss->config_id = os_strdup(pos);
+diff --git a/hostapd/hostapd.conf b/hostapd/hostapd.conf
+index c6d279c2f..be92db7a3 100644
+--- a/hostapd/hostapd.conf
++++ b/hostapd/hostapd.conf
+@@ -529,6 +529,13 @@ wmm_ac_vo_acm=0
+ # 2 = enabled requiring protected frames (advertise and manage BSS max idle
+ #     period and require STAs to use protected keep-alive frames)
+ #bss_max_idle=1
++#
++# Allow STA to skip group key handshake without getting disconnection when
++# BSS max idle period management is enabled.
++# 0 = disconnect STA if it does not reply to group key handshake (default)
++# 1 = do not disconnect STA if it does not reply to group key handshake and
++#     if BSS max idle period management is enabled
++#no_disconnect_on_group_keyerror=0
+ 
+ # Disassociate stations based on excessive transmission failures or other
+ # indications of connection loss. This depends on the driver capabilities and
+diff --git a/src/ap/ap_config.h b/src/ap/ap_config.h
+index 7fd638ea1..8daea416d 100644
+--- a/src/ap/ap_config.h
++++ b/src/ap/ap_config.h
+@@ -466,6 +466,7 @@ struct hostapd_bss_config {
+ 
+ 	int ap_max_inactivity;
+ 	int bss_max_idle;
++	bool no_disconnect_on_group_keyerror;
+ 	int ignore_broadcast_ssid;
+ 	int no_probe_resp_if_max_sta;
+ 
+diff --git a/src/ap/wpa_auth.c b/src/ap/wpa_auth.c
+index 8304c6047..08260c4b3 100644
+--- a/src/ap/wpa_auth.c
++++ b/src/ap/wpa_auth.c
+@@ -5308,6 +5308,14 @@ SM_STATE(WPA_PTK_GROUP, KEYERROR)
+ 	SM_ENTRY_MA(WPA_PTK_GROUP, KEYERROR, wpa_ptk_group);
+ 	if (sm->GUpdateStationKeys)
+ 		wpa_gkeydone_sta(sm);
++	if (sm->wpa_auth->conf.no_disconnect_on_group_keyerror &&
++	    sm->wpa == WPA_VERSION_WPA2) {
++		wpa_auth_vlogger(sm->wpa_auth, wpa_auth_get_spa(sm),
++				 LOGGER_DEBUG,
++				 "group key handshake failed after %u tries - allow STA to remain connected",
++				 sm->wpa_auth->conf.wpa_group_update_count);
++		return;
++	}
+ 	sm->Disconnect = true;
+ 	sm->disconnect_reason = WLAN_REASON_GROUP_KEY_UPDATE_TIMEOUT;
+ 	wpa_auth_vlogger(sm->wpa_auth, wpa_auth_get_spa(sm), LOGGER_INFO,
+diff --git a/src/ap/wpa_auth.h b/src/ap/wpa_auth.h
+index ed0442c18..89bc5e7f2 100644
+--- a/src/ap/wpa_auth.h
++++ b/src/ap/wpa_auth.h
+@@ -281,6 +281,8 @@ struct wpa_auth_config {
+ 
+ 	bool radius_psk;
+ 
++	bool no_disconnect_on_group_keyerror;
++
+ 	/* Pointer to Multi-BSSID transmitted BSS authenticator instance.
+ 	 * Set only in nontransmitted BSSs, i.e., is NULL for transmitted BSS
+ 	 * and in BSSs that are not part of a Multi-BSSID set. */
+diff --git a/src/ap/wpa_auth_glue.c b/src/ap/wpa_auth_glue.c
+index bbfb5b42f..9f8451004 100644
+--- a/src/ap/wpa_auth_glue.c
++++ b/src/ap/wpa_auth_glue.c
+@@ -224,6 +224,9 @@ static void hostapd_wpa_auth_conf(struct hostapd_bss_config *conf,
+ #endif /* CONFIG_PASN */
+ 
+ 	wconf->radius_psk = conf->wpa_psk_radius == PSK_RADIUS_DURING_4WAY_HS;
++	wconf->no_disconnect_on_group_keyerror =
++		conf->bss_max_idle && conf->ap_max_inactivity &&
++		conf->no_disconnect_on_group_keyerror;
+ }
+ 
+ 
+-- 
+2.43.0
+

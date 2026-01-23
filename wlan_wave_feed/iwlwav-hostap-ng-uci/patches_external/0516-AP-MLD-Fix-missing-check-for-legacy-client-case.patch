@@ -1,0 +1,32 @@
+From 216cfd708d978e2fe3bc2f03a63e5dc010b0d2e9 Mon Sep 17 00:00:00 2001
+From: Chenming Huang <quic_chenhuan@quicinc.com>
+Date: Wed, 27 Mar 2024 08:26:05 +0530
+Subject: [PATCH] AP MLD: Fix missing check for legacy client case
+
+The AP MLD case missed the "else" branch which handles legacy STA's
+disassociation. So this STA's sta_info will not be cleared ever.
+
+Add the "else" check to make sure the sta_info gets cleared.
+
+Fixes: 7ceafb6e9fd3 ("AP MLD: Handle disassociation notification with SME offload to driver")
+Signed-off-by: Chenming Huang <quic_chenhuan@quicinc.com>
+---
+ src/ap/drv_callbacks.c | 2 ++
+ 1 file changed, 2 insertions(+)
+
+diff --git a/src/ap/drv_callbacks.c b/src/ap/drv_callbacks.c
+index 9ca720548..2affda5eb 100644
+--- a/src/ap/drv_callbacks.c
++++ b/src/ap/drv_callbacks.c
+@@ -1006,6 +1006,8 @@ void hostapd_notif_disassoc(struct hostapd_data *hapd, const u8 *addr)
+ 					break;
+ 				}
+ 			}
++		} else if (!sta->mld_info.mld_sta) {
++			goto legacy;
+ 		}
+ 		if (!sta) {
+ 			wpa_printf(MSG_DEBUG,
+-- 
+2.43.0
+

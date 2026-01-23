@@ -1,0 +1,26 @@
+From ebfe8be3a4a96ca391e7b36de1e1296426bea98f Mon Sep 17 00:00:00 2001
+From: Jouni Malinen <j@w1.fi>
+Date: Sat, 22 Feb 2025 10:42:18 +0200
+Subject: [PATCH] Convert one-bit signed bitfield to unsigned
+
+Signed-off-by: Jouni Malinen <j@w1.fi>
+---
+ src/rsn_supp/wpa_i.h | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/src/rsn_supp/wpa_i.h b/src/rsn_supp/wpa_i.h
+index bb1641ba2..93152687c 100644
+--- a/src/rsn_supp/wpa_i.h
++++ b/src/rsn_supp/wpa_i.h
+@@ -69,7 +69,7 @@ struct wpa_sm {
+ 	u8 ssid[32];
+ 	size_t ssid_len;
+ 	int wpa_ptk_rekey;
+-	int wpa_deny_ptk0_rekey:1;
++	unsigned int wpa_deny_ptk0_rekey:1;
+ 	int p2p;
+ 	int wpa_rsc_relaxation;
+ 	int owe_ptk_workaround;
+-- 
+2.43.0
+

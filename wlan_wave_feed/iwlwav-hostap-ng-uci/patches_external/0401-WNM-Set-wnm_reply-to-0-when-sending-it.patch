@@ -1,0 +1,52 @@
+From c7cafef8a1a1cdcf0ea3c87c93ce46ed41502cb9 Mon Sep 17 00:00:00 2001
+From: Benjamin Berg <benjamin.berg@intel.com>
+Date: Tue, 20 Feb 2024 14:18:24 +0100
+Subject: [PATCH] WNM: Set wnm_reply to 0 when sending it
+
+There is no point in the caller to set it to zero. Just do so within
+wnm_send_bss_transition_mgmt_resp().
+
+Signed-off-by: Benjamin Berg <benjamin.berg@intel.com>
+---
+ wpa_supplicant/wnm_sta.c | 8 ++++----
+ 1 file changed, 4 insertions(+), 4 deletions(-)
+
+diff --git a/wpa_supplicant/wnm_sta.c b/wpa_supplicant/wnm_sta.c
+index cd2c2903d..8cc5559c9 100644
+--- a/wpa_supplicant/wnm_sta.c
++++ b/wpa_supplicant/wnm_sta.c
+@@ -1032,6 +1032,8 @@ static int wnm_send_bss_transition_mgmt_resp(
+ 	struct wpabuf *buf;
+ 	int res;
+ 
++	wpa_s->wnm_reply = 0;
++
+ 	wpa_printf(MSG_DEBUG,
+ 		   "WNM: Send BSS Transition Management Response to " MACSTR
+ 		   " dialog_token=%u status=%u reason=%u delay=%d",
+@@ -1120,7 +1122,6 @@ static void wnm_bss_tm_connect(struct wpa_supplicant *wpa_s,
+ 
+ 	/* Send the BSS Management Response - Accept */
+ 	if (wpa_s->wnm_reply) {
+-		wpa_s->wnm_reply = 0;
+ 		wpa_s->wnm_target_bss = bss;
+ 		wpa_printf(MSG_DEBUG,
+ 			   "WNM: Sending successful BSS Transition Management Response");
+@@ -1232,12 +1233,11 @@ int wnm_scan_process(struct wpa_supplicant *wpa_s, bool pre_scan_check)
+ send_bss_resp_fail:
+ 	/* Send reject response for all the failures */
+ 
+-	if (wpa_s->wnm_reply) {
+-		wpa_s->wnm_reply = 0;
++	if (wpa_s->wnm_reply)
+ 		wnm_send_bss_transition_mgmt_resp(wpa_s,
+ 						  wpa_s->wnm_dialog_token,
+ 						  status, reason, 0, NULL);
+-	}
++
+ 	wnm_deallocate_memory(wpa_s);
+ 
+ 	return 0;
+-- 
+2.43.0
+

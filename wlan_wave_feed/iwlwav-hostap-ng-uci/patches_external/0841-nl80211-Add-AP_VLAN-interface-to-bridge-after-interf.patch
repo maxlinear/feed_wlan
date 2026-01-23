@@ -1,0 +1,67 @@
+From 43943ea5b31fb84bcb3b01f0d85d301a28e66e4c Mon Sep 17 00:00:00 2001
+From: Radha Krishna Simha Jiguru <quic_rjiguru@quicinc.com>
+Date: Wed, 17 Jul 2024 22:27:39 +0530
+Subject: [PATCH] nl80211: Add AP_VLAN interface to bridge after interface is
+ up
+
+In the current hostapd flow, AP_VLAN net device is added to a bridge
+before the interface is brought up.
+
+Interface up event is used in mac80211 layer for setting device context
+in the driver. Vendor specific datapath offload configurations for net
+device might also be set up in interface up event context. Adding
+AP_VLAN interface to a bridge before the UP event could cause
+inconsistent state for datapath offload context setup in a vendor
+driver.
+
+Change the sequence to add AP_VLAN interface to a bridge after the
+interface is set up. This makes the interface up and bridge add sequence
+for AP_VLAN to be consistent with that of a regular AP interface.
+
+Signed-off-by: Radha Krishna Simha Jiguru <quic_rjiguru@quicinc.com>
+---
+ src/drivers/driver_nl80211.c | 14 ++++++++++----
+ 1 file changed, 10 insertions(+), 4 deletions(-)
+
+diff --git a/src/drivers/driver_nl80211.c b/src/drivers/driver_nl80211.c
+index b8b747d8b..ea2d739d7 100644
+--- a/src/drivers/driver_nl80211.c
++++ b/src/drivers/driver_nl80211.c
+@@ -8488,6 +8488,7 @@ static int i802_set_wds_sta(void *priv, const u8 *addr, int aid, int val,
+ 	struct wpa_driver_nl80211_data *drv = bss->drv;
+ 	char name[IFNAMSIZ + 1];
+ 	union wpa_event_data event;
++	bool add_br = false;
+ 	int ret;
+ 
+ 	ret = os_snprintf(name, sizeof(name), "%s.sta%d", bss->ifname, aid);
+@@ -8509,10 +8510,9 @@ static int i802_set_wds_sta(void *priv, const u8 *addr, int aid, int val,
+ 						 bss->addr, 1, NULL, NULL, 0) <
+ 			    0)
+ 				return -1;
+-			if (bridge_ifname &&
+-			    linux_br_add_if(drv->global->ioctl_sock,
+-					    bridge_ifname, name) < 0)
+-				return -1;
++
++			if (bridge_ifname)
++				add_br = true;
+ 
+ 			os_memset(&event, 0, sizeof(event));
+ 			event.wds_sta_interface.sta_addr = addr;
+@@ -8526,6 +8526,12 @@ static int i802_set_wds_sta(void *priv, const u8 *addr, int aid, int val,
+ 			wpa_printf(MSG_ERROR, "nl80211: Failed to set WDS STA "
+ 				   "interface %s up", name);
+ 		}
++
++		if (add_br &&
++		    linux_br_add_if(drv->global->ioctl_sock,
++				    bridge_ifname, name) < 0)
++			return -1;
++
+ 		return i802_set_sta_vlan(priv, addr, name, 0,
+ 					 NL80211_DRV_LINK_ID_NA);
+ 	} else {
+-- 
+2.43.0
+

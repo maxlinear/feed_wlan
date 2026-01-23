@@ -1,0 +1,66 @@
+From ebd18f1adee0443b12a5f1ea86754c35d61ca5fe Mon Sep 17 00:00:00 2001
+From: Benjamin Berg <benjamin.berg@intel.com>
+Date: Mon, 29 Apr 2024 13:51:43 +0200
+Subject: [PATCH] WNM: Rename wnm_dissoc_addr
+
+Use "disassoc" instead of "dissoc" when referring to disassociation.
+
+Signed-off-by: Benjamin Berg <benjamin.berg@intel.com>
+---
+ wpa_supplicant/wnm_sta.c          | 10 +++++-----
+ wpa_supplicant/wpa_supplicant_i.h |  2 +-
+ 2 files changed, 6 insertions(+), 6 deletions(-)
+
+diff --git a/wpa_supplicant/wnm_sta.c b/wpa_supplicant/wnm_sta.c
+index a588ff3c4..015a1948e 100644
+--- a/wpa_supplicant/wnm_sta.c
++++ b/wpa_supplicant/wnm_sta.c
+@@ -1496,16 +1496,16 @@ static void ieee802_11_rx_bss_trans_mgmt_req(struct wpa_supplicant *wpa_s,
+ 		 */
+ 		wpa_s->wnm_link_removal = true;
+ 		wpa_s->wnm_disassoc_mld = false;
+-		os_memcpy(wpa_s->wnm_dissoc_addr,
++		os_memcpy(wpa_s->wnm_disassoc_addr,
+ 			  wpa_s->links[wpa_s->mlo_assoc_link_id].bssid,
+ 			  ETH_ALEN);
+ 	} else if (wpa_s->valid_links) {
+ 		wpa_s->wnm_disassoc_mld = true;
+-		os_memcpy(wpa_s->wnm_dissoc_addr, wpa_s->ap_mld_addr,
++		os_memcpy(wpa_s->wnm_disassoc_addr, wpa_s->ap_mld_addr,
+ 			  ETH_ALEN);
+ 	} else {
+ 		wpa_s->wnm_disassoc_mld = false;
+-		os_memcpy(wpa_s->wnm_dissoc_addr, wpa_s->bssid, ETH_ALEN);
++		os_memcpy(wpa_s->wnm_disassoc_addr, wpa_s->bssid, ETH_ALEN);
+ 	}
+ 
+ 	if (disassoc_imminent) {
+@@ -2072,10 +2072,10 @@ bool wnm_is_bss_excluded(struct wpa_supplicant *wpa_s, struct wpa_bss *bss)
+ 	 * which we are connected.
+ 	 */
+ 	if (!wpa_s->wnm_disassoc_mld) {
+-		if (ether_addr_equal(bss->bssid, wpa_s->wnm_dissoc_addr))
++		if (ether_addr_equal(bss->bssid, wpa_s->wnm_disassoc_addr))
+ 			return true;
+ 	} else {
+-		if (ether_addr_equal(bss->mld_addr, wpa_s->wnm_dissoc_addr))
++		if (ether_addr_equal(bss->mld_addr, wpa_s->wnm_disassoc_addr))
+ 			return true;
+ 	}
+ 
+diff --git a/wpa_supplicant/wpa_supplicant_i.h b/wpa_supplicant/wpa_supplicant_i.h
+index 7888e7ee9..c34e71c3f 100644
+--- a/wpa_supplicant/wpa_supplicant_i.h
++++ b/wpa_supplicant/wpa_supplicant_i.h
+@@ -1309,7 +1309,7 @@ struct wpa_supplicant {
+ 	u8 wnm_mode;
+ 	bool wnm_link_removal;
+ 	bool wnm_disassoc_mld;
+-	u8 wnm_dissoc_addr[ETH_ALEN];
++	u8 wnm_disassoc_addr[ETH_ALEN];
+ 	u16 wnm_dissoc_timer;
+ 	u8 wnm_bss_termination_duration[12];
+ 	struct neighbor_report *wnm_neighbor_report_elements;
+-- 
+2.43.0
+

@@ -1,0 +1,30 @@
+From 1e31e6f64e0f360725295ded2569d0b77e2c9e12 Mon Sep 17 00:00:00 2001
+From: Jouni Malinen <j@w1.fi>
+Date: Mon, 30 Dec 2024 18:55:34 +0200
+Subject: [PATCH] tests: Avoid which -s since not all which implementations
+ have it
+
+Apparently it was too good to be true that one could have used which
+without having to direct stdout to /dev/null.
+
+Signed-off-by: Jouni Malinen <j@w1.fi>
+---
+ tests/hwsim/stop.sh | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/tests/hwsim/stop.sh b/tests/hwsim/stop.sh
+index 514993c1b..4eef7bf1a 100755
+--- a/tests/hwsim/stop.sh
++++ b/tests/hwsim/stop.sh
+@@ -19,7 +19,7 @@ if grep -q hwsim0 /proc/net/dev; then
+ fi
+ 
+ if [ -e /tmp/hlr_auc_gw.sock ]; then
+-    if which -s socat; then
++    if which socat > /dev/null; then
+ 	echo TERMINATE | socat - UNIX-SENDTO:/tmp/hlr_auc_gw.sock
+ 	sleep 0.1
+     fi
+-- 
+2.43.0
+

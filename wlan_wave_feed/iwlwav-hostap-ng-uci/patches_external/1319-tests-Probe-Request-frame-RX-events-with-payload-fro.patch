@@ -1,0 +1,46 @@
+From 7d502bb37aefbfc512a1455aac79fbb50b3d52b8 Mon Sep 17 00:00:00 2001
+From: Jouni Malinen <j@w1.fi>
+Date: Sat, 1 Feb 2025 20:04:52 +0200
+Subject: [PATCH] tests: Probe Request frame RX events with payload from
+ hostapd
+
+Signed-off-by: Jouni Malinen <j@w1.fi>
+---
+ tests/hwsim/test_scan.py | 14 +++++++++++++-
+ 1 file changed, 13 insertions(+), 1 deletion(-)
+
+diff --git a/tests/hwsim/test_scan.py b/tests/hwsim/test_scan.py
+index 5cb054d4d..302495804 100644
+--- a/tests/hwsim/test_scan.py
++++ b/tests/hwsim/test_scan.py
+@@ -1534,7 +1534,17 @@ def test_scan_specific_bssid(dev, apdev):
+ 
+ def test_scan_probe_req_events(dev, apdev):
+     """Probe Request frame RX events from hostapd"""
+-    hapd = hostapd.add_ap(apdev[0], {"ssid": "open"})
++    run_scan_probe_req_events(dev, apdev)
++
++def test_scan_probe_req_events_with_payload(dev, apdev):
++    """Probe Request frame RX events with payload from hostapd"""
++    run_scan_probe_req_events(dev, apdev, with_payload=True)
++
++def run_scan_probe_req_events(dev, apdev, with_payload=False):
++    params = {"ssid": "open"}
++    if with_payload:
++        params["notify_mgmt_frames"] = "1"
++    hapd = hostapd.add_ap(apdev[0], params)
+     hapd2 = hostapd.Hostapd(apdev[0]['ifname'])
+     if "OK" not in hapd2.mon.request("ATTACH probe_rx_events=1"):
+         raise Exception("Failed to register for events")
+@@ -1546,6 +1556,8 @@ def test_scan_probe_req_events(dev, apdev):
+         raise Exception("RX-PROBE-REQUEST not reported")
+     if "sa=" + dev[0].own_addr() not in ev:
+         raise Exception("Unexpected event parameters: " + ev)
++    if with_payload and " buf=40" not in ev:
++        raise Exception("Missing payload in event parameters: " + ev)
+ 
+     ev = hapd.wait_event(["RX-PROBE-REQUEST"], timeout=0.1)
+     if ev is not None:
+-- 
+2.43.0
+

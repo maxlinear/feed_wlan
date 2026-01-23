@@ -1,0 +1,61 @@
+From 6b837f61b6c06f1c9c77ce54bf8bfbf92cf93e37 Mon Sep 17 00:00:00 2001
+From: Jouni Malinen <j@w1.fi>
+Date: Sat, 22 Feb 2025 11:05:14 +0200
+Subject: [PATCH] dbus: Remove unused wpas_dbus_sta_signal_prop_changed()
+
+This does not seem to have been ever used.
+
+Signed-off-by: Jouni Malinen <j@w1.fi>
+---
+ wpa_supplicant/dbus/dbus_new.c | 35 ----------------------------------
+ 1 file changed, 35 deletions(-)
+
+diff --git a/wpa_supplicant/dbus/dbus_new.c b/wpa_supplicant/dbus/dbus_new.c
+index ff7e003cb..4269454e1 100644
+--- a/wpa_supplicant/dbus/dbus_new.c
++++ b/wpa_supplicant/dbus/dbus_new.c
+@@ -2603,41 +2603,6 @@ void wpas_dbus_bss_signal_prop_changed(struct wpa_supplicant *wpa_s,
+ }
+ 
+ 
+-/**
+- * wpas_dbus_sta_signal_prop_changed - Signals change of STA property
+- * @wpa_s: %wpa_supplicant network interface data
+- * @property: indicates which property has changed
+- * @address: unique BSS identifier
+- *
+- * Sends PropertyChanged signals with path, interface, and arguments depending
+- * on which property has changed.
+- */
+-void wpas_dbus_sta_signal_prop_changed(struct wpa_supplicant *wpa_s,
+-				       enum wpas_dbus_bss_prop property,
+-				       u8 address[ETH_ALEN])
+-{
+-	char path[WPAS_DBUS_OBJECT_PATH_MAX];
+-	char *prop;
+-
+-	switch (property) {
+-	case WPAS_DBUS_STA_PROP_ADDRESS:
+-		prop = "Address";
+-		break;
+-	default:
+-		wpa_printf(MSG_ERROR, "dbus: %s: Unknown Property value %d",
+-			   __func__, property);
+-		return;
+-	}
+-
+-	os_snprintf(path, WPAS_DBUS_OBJECT_PATH_MAX,
+-		    "%s/" WPAS_DBUS_NEW_STAS_PART "/" COMPACT_MACSTR,
+-		    wpa_s->dbus_new_path, MAC2STR(address));
+-
+-	wpa_dbus_mark_property_changed(wpa_s->global->dbus, path,
+-				       WPAS_DBUS_NEW_IFACE_STA, prop);
+-}
+-
+-
+ /**
+  * wpas_dbus_signal_debug_level_changed - Signals change of debug param
+  * @global: wpa_global structure
+-- 
+2.43.0
+

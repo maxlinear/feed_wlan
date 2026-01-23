@@ -1,0 +1,82 @@
+From ffc9fa0132856d0bb43ab5ea6e4e0909e63b7d07 Mon Sep 17 00:00:00 2001
+From: Jouni Malinen <quic_jouni@quicinc.com>
+Date: Fri, 6 Sep 2024 00:42:26 +0300
+Subject: [PATCH] Pass CSA parameters by reference instead by value
+
+There is no need to make a copy of the full struct csa_settings for
+this.
+
+Fixes: 5cb6747f9721 ("Add support to switch channel when CAC is in progress")
+Signed-off-by: Jouni Malinen <quic_jouni@quicinc.com>
+---
+ hostapd/ctrl_iface.c |  2 +-
+ src/ap/hostapd.c     | 14 +++++++-------
+ src/ap/hostapd.h     |  2 +-
+ 3 files changed, 9 insertions(+), 9 deletions(-)
+
+diff --git a/hostapd/ctrl_iface.c b/hostapd/ctrl_iface.c
+index bae827caf..2f581be0b 100644
+--- a/hostapd/ctrl_iface.c
++++ b/hostapd/ctrl_iface.c
+@@ -2772,7 +2772,7 @@ static int hostapd_ctrl_iface_chan_switch(struct hostapd_iface *iface,
+ 	if (iface->cac_started) {
+ 		wpa_printf(MSG_DEBUG,
+ 			   "CAC is in progress - switching channel without CSA");
+-		return hostapd_force_channel_switch(iface, settings);
++		return hostapd_force_channel_switch(iface, &settings);
+ 	}
+ 
+ 	for (i = 0; i < iface->num_bss; i++) {
+diff --git a/src/ap/hostapd.c b/src/ap/hostapd.c
+index f97311587..7d924893f 100644
+--- a/src/ap/hostapd.c
++++ b/src/ap/hostapd.c
+@@ -4564,15 +4564,15 @@ int hostapd_switch_channel(struct hostapd_data *hapd,
+ 
+ 
+ int hostapd_force_channel_switch(struct hostapd_iface *iface,
+-				 struct csa_settings settings)
++				 struct csa_settings *settings)
+ {
+ 	int ret = 0;
+ 
+-	if (!settings.freq_params.channel) {
++	if (!settings->freq_params.channel) {
+ 		/* Check if the new channel is supported */
+-		settings.freq_params.channel = hostapd_hw_get_channel(
+-			iface->bss[0], settings.freq_params.freq);
+-		if (!settings.freq_params.channel)
++		settings->freq_params.channel = hostapd_hw_get_channel(
++			iface->bss[0], settings->freq_params.freq);
++		if (!settings->freq_params.channel)
+ 			return -1;
+ 	}
+ 
+@@ -4582,9 +4582,9 @@ int hostapd_force_channel_switch(struct hostapd_iface *iface,
+ 		return ret;
+ 	}
+ 
+-	hostapd_chan_switch_config(iface->bss[0], &settings.freq_params);
++	hostapd_chan_switch_config(iface->bss[0], &settings->freq_params);
+ 	ret = hostapd_change_config_freq(iface->bss[0], iface->conf,
+-					 &settings.freq_params, NULL);
++					 &settings->freq_params, NULL);
+ 	if (ret) {
+ 		wpa_printf(MSG_DEBUG,
+ 			   "Failed to set the new channel in config");
+diff --git a/src/ap/hostapd.h b/src/ap/hostapd.h
+index dddefb593..7e72863af 100644
+--- a/src/ap/hostapd.h
++++ b/src/ap/hostapd.h
+@@ -787,7 +787,7 @@ void hostapd_chan_switch_config(struct hostapd_data *hapd,
+ int hostapd_switch_channel(struct hostapd_data *hapd,
+ 			   struct csa_settings *settings);
+ int hostapd_force_channel_switch(struct hostapd_iface *iface,
+-				 struct csa_settings settings);
++				 struct csa_settings *settings);
+ void
+ hostapd_switch_channel_fallback(struct hostapd_iface *iface,
+ 				const struct hostapd_freq_params *freq_params);
+-- 
+2.43.0
+

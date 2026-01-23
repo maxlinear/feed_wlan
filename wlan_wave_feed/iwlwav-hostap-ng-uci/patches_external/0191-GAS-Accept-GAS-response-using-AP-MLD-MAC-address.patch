@@ -1,0 +1,39 @@
+From bef417152190759c260b041adcd6231b8650a3c0 Mon Sep 17 00:00:00 2001
+From: Jouni Malinen <j@w1.fi>
+Date: Sat, 13 Jan 2024 12:22:01 +0200
+Subject: [PATCH] GAS: Accept GAS response using AP MLD MAC address
+
+The GAS request may have been issued using a link address of the AP
+MLD's affiliated link and the driver may translate that address to the
+MLD MAC address when associated with the AP MLD. Accept GAS responses
+where the addresses map to the same AP MLD.
+
+Signed-off-by: Jouni Malinen <j@w1.fi>
+---
+ wpa_supplicant/gas_query.c | 6 ++++++
+ 1 file changed, 6 insertions(+)
+
+diff --git a/wpa_supplicant/gas_query.c b/wpa_supplicant/gas_query.c
+index c301f7410..0cebe8c10 100644
+--- a/wpa_supplicant/gas_query.c
++++ b/wpa_supplicant/gas_query.c
+@@ -199,10 +199,16 @@ static struct gas_query_pending *
+ gas_query_get_pending(struct gas_query *gas, const u8 *addr, u8 dialog_token)
+ {
+ 	struct gas_query_pending *q;
++	struct wpa_supplicant *wpa_s = gas->wpa_s;
++
+ 	dl_list_for_each(q, &gas->pending, struct gas_query_pending, list) {
+ 		if (os_memcmp(q->addr, addr, ETH_ALEN) == 0 &&
+ 		    q->dialog_token == dialog_token)
+ 			return q;
++		if (wpa_s->valid_links &&
++		    os_memcmp(wpa_s->ap_mld_addr, addr, ETH_ALEN) == 0 &&
++		    wpas_ap_link_address(wpa_s, q->addr))
++			return q;
+ 	}
+ 	return NULL;
+ }
+-- 
+2.43.0
+

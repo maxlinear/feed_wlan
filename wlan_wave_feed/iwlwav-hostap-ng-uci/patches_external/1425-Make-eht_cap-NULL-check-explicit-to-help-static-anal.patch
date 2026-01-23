@@ -1,0 +1,31 @@
+From a36577c828dddb4636c99d67c9a82f2b49292bc4 Mon Sep 17 00:00:00 2001
+From: Jouni Malinen <j@w1.fi>
+Date: Sun, 23 Feb 2025 12:03:40 +0200
+Subject: [PATCH] Make eht_cap != NULL check explicit to help static analyzers
+
+data->eht_enabled was used to avoid getting here with eht_cap == NULL,
+but that was too complex for some static analyzers. Make this more
+explicit to avoid false reports.
+
+Signed-off-by: Jouni Malinen <j@w1.fi>
+---
+ src/common/hw_features_common.c | 3 ++-
+ 1 file changed, 2 insertions(+), 1 deletion(-)
+
+diff --git a/src/common/hw_features_common.c b/src/common/hw_features_common.c
+index 78a68aa87..d9276b935 100644
+--- a/src/common/hw_features_common.c
++++ b/src/common/hw_features_common.c
+@@ -594,7 +594,8 @@ int hostapd_set_freq_params(struct hostapd_freq_params *data,
+ 
+ 	if (data->eht_enabled) switch (oper_chwidth) {
+ 	case CONF_OPER_CHWIDTH_320MHZ:
+-		if (!(eht_cap->phy_cap[EHT_PHYCAP_320MHZ_IN_6GHZ_SUPPORT_IDX] &
++		if (eht_cap &&
++		    !(eht_cap->phy_cap[EHT_PHYCAP_320MHZ_IN_6GHZ_SUPPORT_IDX] &
+ 		      EHT_PHYCAP_320MHZ_IN_6GHZ_SUPPORT_MASK)) {
+ 			wpa_printf(MSG_ERROR,
+ 				   "320 MHz channel width is not supported in 5 or 6 GHz");
+-- 
+2.43.0
+

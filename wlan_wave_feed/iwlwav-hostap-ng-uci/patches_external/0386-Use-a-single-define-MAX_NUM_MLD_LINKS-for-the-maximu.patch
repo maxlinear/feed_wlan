@@ -1,0 +1,322 @@
+From 9ed51186e8dd9ccdae229f17bc837805d28b275e Mon Sep 17 00:00:00 2001
+From: Jouni Malinen <j@w1.fi>
+Date: Sat, 2 Mar 2024 11:21:48 +0200
+Subject: [PATCH] Use a single define MAX_NUM_MLD_LINKS for the maximum number
+ of links
+
+There is no need to maintain a separate MAX_NUM_MLO_LINKS define for
+practically the same thing.
+
+Signed-off-by: Jouni Malinen <j@w1.fi>
+---
+ src/common/wpa_common.c | 16 ++++++++--------
+ src/common/wpa_common.h | 32 ++++++++++++++++----------------
+ wlantest/rx_eapol.c     |  6 +++---
+ wlantest/rx_mgmt.c      | 22 +++++++++++-----------
+ wlantest/sta.c          |  6 +++---
+ wlantest/wlantest.h     |  2 +-
+ 6 files changed, 42 insertions(+), 42 deletions(-)
+
+diff --git a/src/common/wpa_common.c b/src/common/wpa_common.c
+index c82fd0e5d..6ea3311ce 100644
+--- a/src/common/wpa_common.c
++++ b/src/common/wpa_common.c
+@@ -1104,7 +1104,7 @@ static int wpa_ft_parse_ftie(const u8 *ie, size_t ie_len,
+ 			link_id = pos[2] & 0x0f;
+ 			wpa_printf(MSG_DEBUG, "FT: MLO GTK (Link ID %u)",
+ 				   link_id);
+-			if (link_id >= MAX_NUM_MLO_LINKS)
++			if (link_id >= MAX_NUM_MLD_LINKS)
+ 				break;
+ 			parse->valid_mlo_gtks |= BIT(link_id);
+ 			parse->mlo_gtk[link_id] = pos;
+@@ -1119,7 +1119,7 @@ static int wpa_ft_parse_ftie(const u8 *ie, size_t ie_len,
+ 			link_id = pos[2 + 6] & 0x0f;
+ 			wpa_printf(MSG_DEBUG, "FT: MLO IGTK (Link ID %u)",
+ 				   link_id);
+-			if (link_id >= MAX_NUM_MLO_LINKS)
++			if (link_id >= MAX_NUM_MLD_LINKS)
+ 				break;
+ 			parse->valid_mlo_igtks |= BIT(link_id);
+ 			parse->mlo_igtk[link_id] = pos;
+@@ -1134,7 +1134,7 @@ static int wpa_ft_parse_ftie(const u8 *ie, size_t ie_len,
+ 			link_id = pos[2 + 6] & 0x0f;
+ 			wpa_printf(MSG_DEBUG, "FT: MLO BIGTK (Link ID %u)",
+ 				   link_id);
+-			if (link_id >= MAX_NUM_MLO_LINKS)
++			if (link_id >= MAX_NUM_MLD_LINKS)
+ 				break;
+ 			parse->valid_mlo_bigtks |= BIT(link_id);
+ 			parse->mlo_bigtk[link_id] = pos;
+@@ -1353,7 +1353,7 @@ int wpa_ft_parse_ies(const u8 *ies, size_t ies_len, struct wpa_ft_ies *parse,
+ 
+ 		/* TODO: This count should be done based on all _requested_,
+ 		 * not _accepted_ links. */
+-		for (link_id = 0; link_id < MAX_NUM_MLO_LINKS; link_id++) {
++		for (link_id = 0; link_id < MAX_NUM_MLD_LINKS; link_id++) {
+ 			if (parse->mlo_gtk[link_id]) {
+ 				if (parse->rsn)
+ 					prot_ie_count--;
+@@ -3551,7 +3551,7 @@ static int wpa_parse_generic(const u8 *pos, struct wpa_eapol_ie_parse *ie)
+ 	    selector == RSN_KEY_DATA_MLO_GTK) {
+ 		link_id = (p[0] & RSN_MLO_GTK_KDE_PREFIX0_LINK_ID_MASK) >>
+ 			RSN_MLO_GTK_KDE_PREFIX0_LINK_ID_SHIFT;
+-		if (link_id >= MAX_NUM_MLO_LINKS)
++		if (link_id >= MAX_NUM_MLD_LINKS)
+ 			return 2;
+ 
+ 		ie->valid_mlo_gtks |= BIT(link_id);
+@@ -3569,7 +3569,7 @@ static int wpa_parse_generic(const u8 *pos, struct wpa_eapol_ie_parse *ie)
+ 	    selector == RSN_KEY_DATA_MLO_IGTK) {
+ 		link_id = (p[8] & RSN_MLO_IGTK_KDE_PREFIX8_LINK_ID_MASK) >>
+ 			  RSN_MLO_IGTK_KDE_PREFIX8_LINK_ID_SHIFT;
+-		if (link_id >= MAX_NUM_MLO_LINKS)
++		if (link_id >= MAX_NUM_MLD_LINKS)
+ 			return 2;
+ 
+ 		ie->valid_mlo_igtks |= BIT(link_id);
+@@ -3587,7 +3587,7 @@ static int wpa_parse_generic(const u8 *pos, struct wpa_eapol_ie_parse *ie)
+ 	    selector == RSN_KEY_DATA_MLO_BIGTK) {
+ 		link_id = (p[8] & RSN_MLO_BIGTK_KDE_PREFIX8_LINK_ID_MASK) >>
+ 			  RSN_MLO_BIGTK_KDE_PREFIX8_LINK_ID_SHIFT;
+-		if (link_id >= MAX_NUM_MLO_LINKS)
++		if (link_id >= MAX_NUM_MLD_LINKS)
+ 			return 2;
+ 
+ 		ie->valid_mlo_bigtks |= BIT(link_id);
+@@ -3605,7 +3605,7 @@ static int wpa_parse_generic(const u8 *pos, struct wpa_eapol_ie_parse *ie)
+ 	    selector == RSN_KEY_DATA_MLO_LINK) {
+ 		link_id = (p[0] & RSN_MLO_LINK_KDE_LI_LINK_ID_MASK) >>
+ 			  RSN_MLO_LINK_KDE_LI_LINK_ID_SHIFT;
+-		if (link_id >= MAX_NUM_MLO_LINKS)
++		if (link_id >= MAX_NUM_MLD_LINKS)
+ 			return 2;
+ 
+ 		ie->valid_mlo_links |= BIT(link_id);
+diff --git a/src/common/wpa_common.h b/src/common/wpa_common.h
+index a2c7033c9..01efeea3a 100644
+--- a/src/common/wpa_common.h
++++ b/src/common/wpa_common.h
+@@ -9,6 +9,8 @@
+ #ifndef WPA_COMMON_H
+ #define WPA_COMMON_H
+ 
++#include "common/defs.h"
++
+ /* IEEE 802.11i */
+ #define PMKID_LEN 16
+ #define PMK_LEN 32
+@@ -557,8 +559,6 @@ int wpa_compare_rsn_ie(int ft_initial_assoc,
+ 		       const u8 *ie2, size_t ie2len);
+ int wpa_insert_pmkid(u8 *ies, size_t *ies_len, const u8 *pmkid, bool replace);
+ 
+-#define MAX_NUM_MLO_LINKS 15
+-
+ struct wpa_ft_ies {
+ 	const u8 *mdie;
+ 	size_t mdie_len;
+@@ -596,14 +596,14 @@ struct wpa_ft_ies {
+ 	const u8 *rsnxe;
+ 	size_t rsnxe_len;
+ 	u16 valid_mlo_gtks; /* bitmap of valid link GTK subelements */
+-	const u8 *mlo_gtk[MAX_NUM_MLO_LINKS];
+-	size_t mlo_gtk_len[MAX_NUM_MLO_LINKS];
++	const u8 *mlo_gtk[MAX_NUM_MLD_LINKS];
++	size_t mlo_gtk_len[MAX_NUM_MLD_LINKS];
+ 	u16 valid_mlo_igtks; /* bitmap of valid link IGTK subelements */
+-	const u8 *mlo_igtk[MAX_NUM_MLO_LINKS];
+-	size_t mlo_igtk_len[MAX_NUM_MLO_LINKS];
++	const u8 *mlo_igtk[MAX_NUM_MLD_LINKS];
++	size_t mlo_igtk_len[MAX_NUM_MLD_LINKS];
+ 	u16 valid_mlo_bigtks; /* bitmap of valid link BIGTK subelements */
+-	const u8 *mlo_bigtk[MAX_NUM_MLO_LINKS];
+-	size_t mlo_bigtk_len[MAX_NUM_MLO_LINKS];
++	const u8 *mlo_bigtk[MAX_NUM_MLD_LINKS];
++	size_t mlo_bigtk_len[MAX_NUM_MLD_LINKS];
+ 
+ 	struct wpabuf *fte_buf;
+ };
+@@ -700,17 +700,17 @@ struct wpa_eapol_ie_parse {
+ 	const u8 *wmm;
+ 	size_t wmm_len;
+ 	u16 valid_mlo_gtks; /* bitmap of valid link GTK KDEs */
+-	const u8 *mlo_gtk[MAX_NUM_MLO_LINKS];
+-	size_t mlo_gtk_len[MAX_NUM_MLO_LINKS];
++	const u8 *mlo_gtk[MAX_NUM_MLD_LINKS];
++	size_t mlo_gtk_len[MAX_NUM_MLD_LINKS];
+ 	u16 valid_mlo_igtks; /* bitmap of valid link IGTK KDEs */
+-	const u8 *mlo_igtk[MAX_NUM_MLO_LINKS];
+-	size_t mlo_igtk_len[MAX_NUM_MLO_LINKS];
++	const u8 *mlo_igtk[MAX_NUM_MLD_LINKS];
++	size_t mlo_igtk_len[MAX_NUM_MLD_LINKS];
+ 	u16 valid_mlo_bigtks; /* bitmap of valid link BIGTK KDEs */
+-	const u8 *mlo_bigtk[MAX_NUM_MLO_LINKS];
+-	size_t mlo_bigtk_len[MAX_NUM_MLO_LINKS];
++	const u8 *mlo_bigtk[MAX_NUM_MLD_LINKS];
++	size_t mlo_bigtk_len[MAX_NUM_MLD_LINKS];
+ 	u16 valid_mlo_links; /* bitmap of valid MLO link KDEs */
+-	const u8 *mlo_link[MAX_NUM_MLO_LINKS];
+-	size_t mlo_link_len[MAX_NUM_MLO_LINKS];
++	const u8 *mlo_link[MAX_NUM_MLD_LINKS];
++	size_t mlo_link_len[MAX_NUM_MLD_LINKS];
+ };
+ 
+ int wpa_parse_kde_ies(const u8 *buf, size_t len, struct wpa_eapol_ie_parse *ie);
+diff --git a/wlantest/rx_eapol.c b/wlantest/rx_eapol.c
+index 1610b145c..8ce031c10 100644
+--- a/wlantest/rx_eapol.c
++++ b/wlantest/rx_eapol.c
+@@ -491,7 +491,7 @@ static void rx_data_eapol_key_2_of_4(struct wlantest *wt, const u8 *dst,
+ 		}
+ 	}
+ 
+-	for (link_id = 0; link_id < MAX_NUM_MLO_LINKS; link_id++) {
++	for (link_id = 0; link_id < MAX_NUM_MLD_LINKS; link_id++) {
+ 		const u8 *addr;
+ 
+ 		if (!ie.mlo_link[link_id])
+@@ -886,7 +886,7 @@ static void learn_kde_keys(struct wlantest *wt, struct wlantest_bss *bss,
+ 		}
+ 	}
+ 
+-	for (link_id = 0; link_id < MAX_NUM_MLO_LINKS; link_id++) {
++	for (link_id = 0; link_id < MAX_NUM_MLD_LINKS; link_id++) {
+ 		const u8 *addr;
+ 
+ 		if (!ie.mlo_link[link_id])
+@@ -1099,7 +1099,7 @@ static void rx_data_eapol_key_3_of_4(struct wlantest *wt, const u8 *dst,
+ 
+ 	rsne = ie.rsn_ie;
+ 	rsne_len = ie.rsn_ie_len;
+-	for (link_id = 0; !rsne && link_id < MAX_NUM_MLO_LINKS; link_id++) {
++	for (link_id = 0; !rsne && link_id < MAX_NUM_MLD_LINKS; link_id++) {
+ 		const u8 *addr, *pos, *end;
+ 
+ 		if (!ie.mlo_link[link_id])
+diff --git a/wlantest/rx_mgmt.c b/wlantest/rx_mgmt.c
+index 93263258f..a47a81fb2 100644
+--- a/wlantest/rx_mgmt.c
++++ b/wlantest/rx_mgmt.c
+@@ -280,7 +280,7 @@ static void parse_basic_ml(const u8 *ie, size_t len, bool ap,
+ 			}
+ 			wpa_printf(MSG_DEBUG, "STA MAC Address: " MACSTR,
+ 				   MAC2STR(pos));
+-			if (sta && link_id < MAX_NUM_MLO_LINKS) {
++			if (sta && link_id < MAX_NUM_MLD_LINKS) {
+ 				os_memcpy(sta->link_addr[link_id], pos,
+ 					  ETH_ALEN);
+ 				wpa_printf(MSG_DEBUG,
+@@ -998,7 +998,7 @@ static void dump_mld_info(struct wlantest *wt, struct wlantest_sta *sta)
+ 
+ 	os_memset(zero, 0, ETH_ALEN);
+ 
+-	for (link_id = 0; link_id < MAX_NUM_MLO_LINKS; link_id++) {
++	for (link_id = 0; link_id < MAX_NUM_MLD_LINKS; link_id++) {
+ 		bss = bss_find_mld(wt, sta->bss->mld_mac_addr, link_id);
+ 		if (!bss &&
+ 		    is_zero_ether_addr(sta->link_addr[link_id]))
+@@ -1560,10 +1560,10 @@ static void rx_mgmt_reassoc_req(struct wlantest *wt, const u8 *data,
+ 		if (elems.basic_mle) {
+ 			int i;
+ 
+-			extra = wpabuf_alloc(MAX_NUM_MLO_LINKS * ETH_ALEN);
++			extra = wpabuf_alloc(MAX_NUM_MLD_LINKS * ETH_ALEN);
+ 			if (!extra)
+ 				goto out;
+-			for (i = 0; i < MAX_NUM_MLO_LINKS; i++) {
++			for (i = 0; i < MAX_NUM_MLD_LINKS; i++) {
+ 				if (!is_zero_ether_addr(sta->link_addr[i]))
+ 					wpabuf_put_data(extra,
+ 							sta->link_addr[i],
+@@ -1607,7 +1607,7 @@ static void rx_mgmt_reassoc_req(struct wlantest *wt, const u8 *data,
+ 			wpa_hexdump(MSG_MSGDUMP, "FT: RSNXE",
+ 				    parse.rsnxe ? parse.rsnxe - 2 : NULL,
+ 				    parse.rsnxe ? parse.rsnxe_len + 2 : 0);
+-			for (link_id = 0; link_id < MAX_NUM_MLO_LINKS;
++			for (link_id = 0; link_id < MAX_NUM_MLD_LINKS;
+ 			     link_id++) {
+ 				if (is_zero_ether_addr(sta->link_addr[link_id]))
+ 					continue;
+@@ -1889,7 +1889,7 @@ static void process_fte_group_keys_mlo(struct wlantest *wt,
+ {
+ 	int link_id;
+ 
+-	for (link_id = 0; link_id < MAX_NUM_MLO_LINKS; link_id++) {
++	for (link_id = 0; link_id < MAX_NUM_MLD_LINKS; link_id++) {
+ 		struct wlantest_bss *l_bss;
+ 		struct wlantest_sta *l_sta;
+ 
+@@ -2169,13 +2169,13 @@ static void rx_mgmt_reassoc_resp(struct wlantest *wt, const u8 *data,
+ 			u8 rsne_buf[257];
+ 			size_t rsne_len;
+ 
+-			extra = wpabuf_alloc(MAX_NUM_MLO_LINKS * ETH_ALEN);
+-			rsne = wpabuf_alloc(MAX_NUM_MLO_LINKS * 256);
+-			rsnxe = wpabuf_alloc(MAX_NUM_MLO_LINKS * 256);
++			extra = wpabuf_alloc(MAX_NUM_MLD_LINKS * ETH_ALEN);
++			rsne = wpabuf_alloc(MAX_NUM_MLD_LINKS * 256);
++			rsnxe = wpabuf_alloc(MAX_NUM_MLD_LINKS * 256);
+ 			if (!extra || !rsne || !rsnxe)
+ 				goto out;
+ 
+-			for (link_id = 0; link_id < MAX_NUM_MLO_LINKS;
++			for (link_id = 0; link_id < MAX_NUM_MLD_LINKS;
+ 			     link_id++) {
+ 				struct wpa_ie_data ie_data;
+ 
+@@ -2297,7 +2297,7 @@ static void rx_mgmt_reassoc_resp(struct wlantest *wt, const u8 *data,
+ 				    elems.ftie - 2, elems.fte_defrag_len + 2);
+ 			wpa_hexdump_buf(MSG_MSGDUMP, "FT: RSNE", rsne);
+ 			wpa_hexdump_buf(MSG_MSGDUMP, "FT: RSNXE", rsnxe);
+-			for (link_id = 0; link_id < MAX_NUM_MLO_LINKS;
++			for (link_id = 0; link_id < MAX_NUM_MLD_LINKS;
+ 			     link_id++) {
+ 				struct wlantest_bss *l_bss;
+ 
+diff --git a/wlantest/sta.c b/wlantest/sta.c
+index eb46dc5c6..0ec5692e4 100644
+--- a/wlantest/sta.c
++++ b/wlantest/sta.c
+@@ -46,7 +46,7 @@ struct wlantest_sta * sta_find_mlo(struct wlantest *wt,
+ 		return NULL;
+ 
+ 	dl_list_for_each(sta, &bss->sta, struct wlantest_sta, list) {
+-		for (link_id = 0; link_id < MAX_NUM_MLO_LINKS; link_id++) {
++		for (link_id = 0; link_id < MAX_NUM_MLD_LINKS; link_id++) {
+ 			if (ether_addr_equal(sta->link_addr[link_id], addr))
+ 				return sta;
+ 		}
+@@ -63,7 +63,7 @@ struct wlantest_sta * sta_find_mlo(struct wlantest *wt,
+ 				return sta;
+ 			if (ether_addr_equal(sta->mld_mac_addr, addr))
+ 				return sta;
+-			for (link_id = 0; link_id < MAX_NUM_MLO_LINKS;
++			for (link_id = 0; link_id < MAX_NUM_MLD_LINKS;
+ 			     link_id++) {
+ 				if (ether_addr_equal(sta->link_addr[link_id],
+ 						     addr))
+@@ -336,7 +336,7 @@ void sta_new_ptk(struct wlantest *wt, struct wlantest_sta *sta,
+ 				continue;
+ 			if (ether_addr_equal(sta->addr, osta->addr))
+ 				match = true;
+-			for (link_id = 0; !match && link_id < MAX_NUM_MLO_LINKS;
++			for (link_id = 0; !match && link_id < MAX_NUM_MLD_LINKS;
+ 			     link_id++) {
+ 				if (ether_addr_equal(osta->link_addr[link_id],
+ 						     sta->addr))
+diff --git a/wlantest/wlantest.h b/wlantest/wlantest.h
+index ec1e3bb48..d8deaf0e8 100644
+--- a/wlantest/wlantest.h
++++ b/wlantest/wlantest.h
+@@ -56,7 +56,7 @@ struct wlantest_sta {
+ 	struct wlantest_bss *bss;
+ 	u8 addr[ETH_ALEN];
+ 	u8 mld_mac_addr[ETH_ALEN];
+-	u8 link_addr[MAX_NUM_MLO_LINKS][ETH_ALEN];
++	u8 link_addr[MAX_NUM_MLD_LINKS][ETH_ALEN];
+ 	enum {
+ 		STATE1 /* not authenticated */,
+ 		STATE2 /* authenticated */,
+-- 
+2.43.0
+

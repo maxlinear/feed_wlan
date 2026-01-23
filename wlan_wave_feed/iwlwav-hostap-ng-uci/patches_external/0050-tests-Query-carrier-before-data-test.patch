@@ -1,0 +1,64 @@
+From 29e998d75eab34c239eeb1b18cb2a871f0d68183 Mon Sep 17 00:00:00 2001
+From: Johannes Berg <johannes.berg@intel.com>
+Date: Tue, 12 Dec 2023 09:07:02 +0100
+Subject: [PATCH] tests: Query carrier before data test
+
+The kernel has an asynchronous work to enable TX, which hasn't always
+run by the time we get to TX tests. Do a sysfs read from the carrier
+file before TX, on newer kernels this synchronises the needed state.
+
+Signed-off-by: Johannes Berg <johannes.berg@intel.com>
+---
+ tests/hwsim/hwsim_utils.py | 22 ++++++++++++++++++++++
+ 1 file changed, 22 insertions(+)
+
+diff --git a/tests/hwsim/hwsim_utils.py b/tests/hwsim/hwsim_utils.py
+index eb312bf96..48eee0f8b 100644
+--- a/tests/hwsim/hwsim_utils.py
++++ b/tests/hwsim/hwsim_utils.py
+@@ -11,6 +11,24 @@ logger = logging.getLogger()
+ 
+ from wpasupplicant import WpaSupplicant
+ 
++def _sync_carrier(dev, ifname):
++    ifname = ifname or dev.ifname
++    carrier_p2p = None
++    try:
++        with open(f'/sys/class/net/{ifname}/carrier', 'r') as f:
++            carrier_main = f.read().strip() == '1'
++    except FileNotFoundError:
++        return
++    if (isinstance(dev, WpaSupplicant) and dev.group_ifname and
++        dev.group_ifname != ifname):
++        ifname = dev.group_ifname
++        try:
++            with open(f'/sys/class/net/{ifname}/carrier', 'r') as f:
++                carrier_p2p = f.read().strip() == '1'
++        except FileNotFoundError:
++            pass
++    assert carrier_main or carrier_p2p, "sending data without carrier won't work"
++
+ def config_data_test(dev1, dev2, dev1group, dev2group, ifname1, ifname2):
+     cmd = "DATA_TEST_CONFIG 1"
+     if ifname1:
+@@ -22,6 +40,8 @@ def config_data_test(dev1, dev2, dev1group, dev2group, ifname1, ifname2):
+     if "OK" not in res:
+         raise Exception("Failed to enable data test functionality")
+ 
++    _sync_carrier(dev1, ifname1)
++
+     cmd = "DATA_TEST_CONFIG 1"
+     if ifname2:
+         cmd = cmd + " ifname=" + ifname2
+@@ -32,6 +52,8 @@ def config_data_test(dev1, dev2, dev1group, dev2group, ifname1, ifname2):
+     if "OK" not in res:
+         raise Exception("Failed to enable data test functionality")
+ 
++    _sync_carrier(dev2, ifname2)
++
+ def run_multicast_connectivity_test(dev1, dev2, tos=None,
+                                     dev1group=False, dev2group=False,
+                                     ifname1=None, ifname2=None,
+-- 
+2.43.0
+

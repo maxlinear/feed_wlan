@@ -1,0 +1,52 @@
+From 9be122d2e0aeb3bec64dc4f3f72095dc499f3750 Mon Sep 17 00:00:00 2001
+From: Chenming Huang <quic_chenhuan@quicinc.com>
+Date: Wed, 13 Mar 2024 18:08:26 +0530
+Subject: [PATCH] nl80211: Fix AP MLD frequency update on channel switch
+
+mlme_event() calls nl80211_get_link_id_by_freq() to determine the link
+to handle reported events. However, in channel switch event it is always
+setting freq to the default link that leads to the issue that all other
+events that go to mlme_event() will be handled in the default link.
+
+Fix this by setting freq to the correct link specified by the link ID
+when processing the event for a completed channel switch.
+
+Signed-off-by: Chenming Huang <quic_chenhuan@quicinc.com>
+---
+ src/drivers/driver_nl80211_event.c | 15 ++++++++++++---
+ 1 file changed, 12 insertions(+), 3 deletions(-)
+
+diff --git a/src/drivers/driver_nl80211_event.c b/src/drivers/driver_nl80211_event.c
+index 02c6eae49..51b27bd5e 100644
+--- a/src/drivers/driver_nl80211_event.c
++++ b/src/drivers/driver_nl80211_event.c
+@@ -1260,14 +1260,23 @@ static void mlme_event_ch_switch(struct wpa_driver_nl80211_data *drv,
+ 	if (cf2)
+ 		data.ch_switch.cf2 = nla_get_u32(cf2);
+ 
+-	if (finished)
+-		bss->flink->freq = data.ch_switch.freq;
+-
+ 	if (link)
+ 		data.ch_switch.link_id = nla_get_u8(link);
+ 	else
+ 		data.ch_switch.link_id = NL80211_DRV_LINK_ID_NA;
+ 
++	if (finished) {
++		if (data.ch_switch.link_id != NL80211_DRV_LINK_ID_NA) {
++			struct i802_link *mld_link;
++
++			mld_link = nl80211_get_link(bss,
++						    data.ch_switch.link_id);
++			mld_link->freq = data.ch_switch.freq;
++		} else {
++			bss->flink->freq = data.ch_switch.freq;
++		}
++	}
++
+ 	if (link && is_sta_interface(drv->nlmode)) {
+ 		u8 link_id = data.ch_switch.link_id;
+ 
+-- 
+2.43.0
+

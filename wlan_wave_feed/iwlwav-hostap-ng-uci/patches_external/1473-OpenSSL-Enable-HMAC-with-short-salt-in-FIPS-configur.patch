@@ -1,0 +1,37 @@
+From 67feaa563c71396769e65c2ca9bf4ce85a752582 Mon Sep 17 00:00:00 2001
+From: Jouni Malinen <j@w1.fi>
+Date: Sat, 1 Mar 2025 20:29:45 +0200
+Subject: [PATCH] OpenSSL: Enable HMAC with short salt in FIPS configuration
+
+OpenSSL fips provider prevents use of HMAC with key size smaller than
+112 bits. This would be fine for actual cases that use HMAC with a key,
+but there are cases that use a shorter salt (e.g., SAE PWE derivation).
+Allow those cases to use the OpenSSL default provider instead of the
+fips provider in builds that do not use CONFIG_FIPS=y.
+
+Signed-off-by: Jouni Malinen <j@w1.fi>
+---
+ src/crypto/crypto_openssl.c | 7 +++++++
+ 1 file changed, 7 insertions(+)
+
+diff --git a/src/crypto/crypto_openssl.c b/src/crypto/crypto_openssl.c
+index ba87feb61..c84ccb466 100644
+--- a/src/crypto/crypto_openssl.c
++++ b/src/crypto/crypto_openssl.c
+@@ -1609,6 +1609,13 @@ static int openssl_hmac_vector(char *digest, const u8 *key,
+ 	if (os_strcmp(digest, "MD5") == 0) {
+ 		openssl_need_md5();
+ 		property_query = "provider!=fips";
++	} else if (key_len < 14 && OSSL_PROVIDER_available(NULL, "fips")) {
++		/* Need to use non-FIPS provider in OpenSSL to handle cases
++		 * where HMAC is used with salt that is less than 112 bits
++		 * instead of the HMAC uses with an actual key. */
++		openssl_disable_fips();
++		openssl_load_default_provider_if_fips();
++		property_query = "provider!=fips";
+ 	}
+ #endif /* CONFIG_FIPS */
+ 	hmac = EVP_MAC_fetch(NULL, "HMAC", property_query);
+-- 
+2.43.0
+

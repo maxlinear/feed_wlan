@@ -1,0 +1,31 @@
+From febb51bf879129d9a86d2ddde8322fca0923911b Mon Sep 17 00:00:00 2001
+From: Jouni Malinen <j@w1.fi>
+Date: Sat, 13 Jan 2024 12:16:51 +0200
+Subject: [PATCH] AP MLD: Fix Association Response frame ACK handling
+
+Invert the check on hapd->conf->mld_ap on the affiliated links to
+actually call the link specific callback handler. This is needed to set
+the STA associated.
+
+Fixes: 55038680a606 ("AP: MLO: Handle association callback")
+Signed-off-by: Jouni Malinen <j@w1.fi>
+---
+ src/ap/ieee802_11.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/src/ap/ieee802_11.c b/src/ap/ieee802_11.c
+index 50190a280..9aba561b2 100644
+--- a/src/ap/ieee802_11.c
++++ b/src/ap/ieee802_11.c
+@@ -6440,7 +6440,7 @@ static void hostapd_ml_handle_assoc_cb(struct hostapd_data *hapd,
+ 			struct hostapd_data *tmp_hapd =
+ 				hapd->iface->interfaces->iface[i]->bss[0];
+ 
+-			if (tmp_hapd->conf->mld_ap ||
++			if (!tmp_hapd->conf->mld_ap ||
+ 			    hapd->conf->mld_id != tmp_hapd->conf->mld_id)
+ 				continue;
+ 
+-- 
+2.43.0
+

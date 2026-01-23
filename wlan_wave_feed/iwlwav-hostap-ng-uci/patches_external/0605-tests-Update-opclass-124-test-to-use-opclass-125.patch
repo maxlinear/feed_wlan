@@ -1,0 +1,34 @@
+From b38f14e13db9d4a05ef2d5ea0b0e8bf6a3c996e5 Mon Sep 17 00:00:00 2001
+From: Jouni Malinen <quic_jouni@quicinc.com>
+Date: Wed, 24 Apr 2024 21:06:33 +0300
+Subject: [PATCH] tests: Update opclass 124 test to use opclass 125
+
+This is needed to match the implementation change to map the 5 GHz
+channels 149-175 to the global operating class 125 instead of 124.
+
+Signed-off-by: Jouni Malinen <quic_jouni@quicinc.com>
+---
+ tests/hwsim/test_ap_ht.py | 6 +++---
+ 1 file changed, 3 insertions(+), 3 deletions(-)
+
+diff --git a/tests/hwsim/test_ap_ht.py b/tests/hwsim/test_ap_ht.py
+index 404ccc094..610a6f461 100644
+--- a/tests/hwsim/test_ap_ht.py
++++ b/tests/hwsim/test_ap_ht.py
+@@ -1480,10 +1480,10 @@ def test_ap_ht_op_class_123(dev, apdev):
+         run_op_class(dev, apdev, "a", "104", "ZA", "[HT40-]", "-1", "5520", 123,
+                      use_op_class=o)
+ 
+-def test_ap_ht_op_class_124(dev, apdev):
+-    """HT20 on operating class 124"""
++def test_ap_ht_op_class_125_chan149(dev, apdev):
++    """HT20 on operating class 125 with channel 149"""
+     for o in [False, True]:
+-        run_op_class(dev, apdev, "a", "149", "US", "", "0", "5745", 124,
++        run_op_class(dev, apdev, "a", "149", "US", "", "0", "5745", 125,
+                      use_op_class=o)
+ 
+ def test_ap_ht_op_class_125(dev, apdev):
+-- 
+2.43.0
+

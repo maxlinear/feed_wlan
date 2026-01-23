@@ -1,0 +1,94 @@
+From 4d6ad78d07856bd5787c975043829d044df21d40 Mon Sep 17 00:00:00 2001
+From: Kavita Kavita <quic_kkavita@quicinc.com>
+Date: Wed, 24 Jul 2024 17:53:06 +0530
+Subject: [PATCH] Extend EAPOL frames processing workaround for reassociation
+ to same AP
+
+With commit 3ab35a660364 ("Extend EAPOL frames processing workaround for
+roaming cases") wpa_supplicant postpones EAPOL frame processing till
+roam indication from the driver when the source address of EAPOL frame
+does not match the current BSSID/AP MLD MAC address.
+
+However, this does not handle the cases in which STA tries to
+reassociate with the current AP. When STA tries to reassociate with the
+current AP, the source address of the EAPOL frame will be same as the
+current BSSID. So, wpa_supplicant does not postpone the EAPOL frame from
+the current connected AP since AP might have sent the EAPOL frame for
+PTK rekey.
+
+To address this issue, add additional support for reassociating to the
+same AP case. Check if replay counter value of the new EAPOL frame is
+greater than the reply counter of the last EAPOL frame, and if the new
+EAPOL frame replay counter is less, postpone the new EAPOL frame
+processing until roam indication from the driver.
+
+Signed-off-by: Jouni Malinen <quic_jouni@quicinc.com>
+---
+ src/rsn_supp/wpa.c              |  4 +++-
+ wpa_supplicant/wpa_supplicant.c | 21 ++++++++++++++++++---
+ 2 files changed, 21 insertions(+), 4 deletions(-)
+
+diff --git a/src/rsn_supp/wpa.c b/src/rsn_supp/wpa.c
+index ae7c4d51d..e0ebca64e 100644
+--- a/src/rsn_supp/wpa.c
++++ b/src/rsn_supp/wpa.c
+@@ -3817,7 +3817,8 @@ static int wpa_sm_rx_eapol_wpa(struct wpa_sm *sm, const u8 *src_addr,
+  * @buf: Pointer to the beginning of the EAPOL data (EAPOL header)
+  * @len: Length of the EAPOL frame
+  * @encrypted: Whether the frame was encrypted
+- * Returns: 1 = WPA EAPOL-Key processed, 0 = not a WPA EAPOL-Key, -1 failure
++ * Returns: 1 = WPA EAPOL-Key processed, 0 = not a WPA EAPOL-Key, -1 failure,
++ *	    -2 = reply counter did not increase.
+  *
+  * This function is called for each received EAPOL frame. Other than EAPOL-Key
+  * frames can be skipped if filtering is done elsewhere. wpa_sm_rx_eapol() is
+@@ -3926,6 +3927,7 @@ int wpa_sm_rx_eapol(struct wpa_sm *sm, const u8 *src_addr,
+ 		      WPA_REPLAY_COUNTER_LEN) <= 0) {
+ 		wpa_msg(sm->ctx->msg_ctx, MSG_WARNING,
+ 			"WPA: EAPOL-Key Replay Counter did not increase - dropping packet");
++		ret = -2;
+ 		goto out;
+ 	}
+ 
+diff --git a/wpa_supplicant/wpa_supplicant.c b/wpa_supplicant/wpa_supplicant.c
+index 74b113db8..1dabfe07b 100644
+--- a/wpa_supplicant/wpa_supplicant.c
++++ b/wpa_supplicant/wpa_supplicant.c
+@@ -5712,6 +5712,7 @@ void wpa_supplicant_rx_eapol(void *ctx, const u8 *src_addr,
+ 			MACSTR ")",
+ 			wpa_supplicant_state_txt(wpa_s->wpa_state),
+ 			MAC2STR(connected_addr));
++	delay_processing:
+ 		wpabuf_free(wpa_s->pending_eapol_rx);
+ 		wpa_s->pending_eapol_rx = wpabuf_alloc_copy(buf, len);
+ 		if (wpa_s->pending_eapol_rx) {
+@@ -5809,9 +5810,23 @@ void wpa_supplicant_rx_eapol(void *ctx, const u8 *src_addr,
+ 			      encrypted) > 0)
+ 		return;
+ 	wpa_drv_poll(wpa_s);
+-	if (!(wpa_s->drv_flags & WPA_DRIVER_FLAGS_4WAY_HANDSHAKE_PSK))
+-		wpa_sm_rx_eapol(wpa_s->wpa, src_addr, buf, len, encrypted);
+-	else if (wpa_key_mgmt_wpa_ieee8021x(wpa_s->key_mgmt)) {
++	if (!(wpa_s->drv_flags & WPA_DRIVER_FLAGS_4WAY_HANDSHAKE_PSK)) {
++		if (wpa_sm_rx_eapol(wpa_s->wpa, src_addr, buf, len,
++				    encrypted) == -2 &&
++#ifdef CONFIG_AP
++		    !wpa_s->ap_iface &&
++#endif /* CONFIG_AP */
++		    wpa_s->last_eapol_matches_bssid) {
++			/* Handle the case where reassociation occurs to the
++			 * current connected AP */
++			wpa_dbg(wpa_s, MSG_DEBUG,
++				"Delay processing of received EAPOL frame for reassociation to the current connected AP (state=%s connected_addr="
++				MACSTR ")",
++				wpa_supplicant_state_txt(wpa_s->wpa_state),
++				MAC2STR(connected_addr));
++			goto delay_processing;
++		}
++	} else if (wpa_key_mgmt_wpa_ieee8021x(wpa_s->key_mgmt)) {
+ 		/*
+ 		 * Set portValid = true here since we are going to skip 4-way
+ 		 * handshake processing which would normally set portValid. We
+-- 
+2.43.0
+

@@ -1,0 +1,147 @@
+From 4b80ad11943ad61432eb4bcf1dcd0b8ff1ea07c4 Mon Sep 17 00:00:00 2001
+From: Jun Yu <junyuu@chromium.org>
+Date: Wed, 29 Nov 2023 06:54:49 +0000
+Subject: [PATCH] Populate the new beacon hint event to wpa_msg()
+
+Beacon hinting is a feature that can temporarily change the regulatory
+rule flags on the channel where the radio hears the beacon. Add a new
+event CTRL-EVENT-REGDOM-BEACON-HINT to notify the wpa_supplicant user
+about an important update to the regulatory rules including which
+frequencies are impacted, new power limit, and new rule flags.
+
+Signed-off-by: Jun Yu <junyuu@chromium.org>
+---
+ src/common/wpa_ctrl.h              |  2 ++
+ src/drivers/driver.h               | 11 +++++++++++
+ src/drivers/driver_nl80211_event.c | 20 +++++++++++++++++---
+ wpa_supplicant/events.c            | 21 +++++++++++++++++++++
+ 4 files changed, 51 insertions(+), 3 deletions(-)
+
+diff --git a/src/common/wpa_ctrl.h b/src/common/wpa_ctrl.h
+index 416e0d6a8..154bac8fe 100644
+--- a/src/common/wpa_ctrl.h
++++ b/src/common/wpa_ctrl.h
+@@ -87,6 +87,8 @@ extern "C" {
+ #define WPA_EVENT_BEACON_LOSS "CTRL-EVENT-BEACON-LOSS "
+ /** Regulatory domain channel */
+ #define WPA_EVENT_REGDOM_CHANGE "CTRL-EVENT-REGDOM-CHANGE "
++/** Regulatory beacon hint */
++#define WPA_EVENT_REGDOM_BEACON_HINT "CTRL-EVENT-REGDOM-BEACON-HINT "
+ /** Channel switch started (followed by freq=<MHz> and other channel parameters)
+  */
+ #define WPA_EVENT_CHANNEL_SWITCH_STARTED "CTRL-EVENT-STARTED-CHANNEL-SWITCH "
+diff --git a/src/drivers/driver.h b/src/drivers/driver.h
+index 9e4df1d78..68a88e963 100644
+--- a/src/drivers/driver.h
++++ b/src/drivers/driver.h
+@@ -6554,11 +6554,22 @@ union wpa_event_data {
+ 	 * @initiator: Initiator of the regulatory change
+ 	 * @type: Regulatory change type
+ 	 * @alpha2: Country code (or "" if not available)
++	 * @beacon_hint_before: Data for frequency attributes before beacon hint
++	 *	event if initiator == REGDOM_BEACON_HINT
++	 * @beacon_hint_after: Data for frequency attributes after beacon hint
++	 *	event if initiator == REGDOM_BEACON_HINT
+ 	 */
+ 	struct channel_list_changed {
+ 		enum reg_change_initiator initiator;
+ 		enum reg_type type;
+ 		char alpha2[3];
++		struct frequency_attrs {
++			unsigned int freq;
++			unsigned int max_tx_power;
++			bool disabled;
++			bool no_ir;
++			bool radar;
++		} beacon_hint_before, beacon_hint_after;
+ 	} channel_list_changed;
+ 
+ 	/**
+diff --git a/src/drivers/driver_nl80211_event.c b/src/drivers/driver_nl80211_event.c
+index 60b4fb51f..c3242b45f 100644
+--- a/src/drivers/driver_nl80211_event.c
++++ b/src/drivers/driver_nl80211_event.c
+@@ -3413,7 +3413,8 @@ static void nl80211_reg_change_event(struct wpa_driver_nl80211_data *drv,
+ }
+ 
+ 
+-static void nl80211_dump_freq(const char *title, struct nlattr *nl_freq)
++static void nl80211_parse_freq_attrs(const char *title, struct nlattr *nl_freq,
++				     struct frequency_attrs *attrs)
+ {
+ 	static struct nla_policy freq_policy[NL80211_FREQUENCY_ATTR_MAX + 1] = {
+ 		[NL80211_FREQUENCY_ATTR_FREQ] = { .type = NLA_U32 },
+@@ -3440,6 +3441,15 @@ static void nl80211_dump_freq(const char *title, struct nlattr *nl_freq)
+ 		   tb[NL80211_FREQUENCY_ATTR_DISABLED] ? " disabled" : "",
+ 		   tb[NL80211_FREQUENCY_ATTR_NO_IR] ? " no-IR" : "",
+ 		   tb[NL80211_FREQUENCY_ATTR_RADAR] ? " radar" : "");
++
++	attrs->freq = freq;
++	attrs->max_tx_power = max_tx_power;
++	if (tb[NL80211_FREQUENCY_ATTR_DISABLED])
++		attrs->disabled = true;
++	if (tb[NL80211_FREQUENCY_ATTR_NO_IR])
++		attrs->no_ir = true;
++	if (tb[NL80211_FREQUENCY_ATTR_RADAR])
++		attrs->radar = true;
+ }
+ 
+ 
+@@ -3453,9 +3463,13 @@ static void nl80211_reg_beacon_hint_event(struct wpa_driver_nl80211_data *drv,
+ 	data.channel_list_changed.initiator = REGDOM_BEACON_HINT;
+ 
+ 	if (tb[NL80211_ATTR_FREQ_BEFORE])
+-		nl80211_dump_freq("before", tb[NL80211_ATTR_FREQ_BEFORE]);
++		nl80211_parse_freq_attrs(
++			"before", tb[NL80211_ATTR_FREQ_BEFORE],
++			&data.channel_list_changed.beacon_hint_before);
+ 	if (tb[NL80211_ATTR_FREQ_AFTER])
+-		nl80211_dump_freq("after", tb[NL80211_ATTR_FREQ_AFTER]);
++		nl80211_parse_freq_attrs(
++			"after", tb[NL80211_ATTR_FREQ_AFTER],
++			&data.channel_list_changed.beacon_hint_after);
+ 
+ 	wpa_supplicant_event(drv->ctx, EVENT_CHANNEL_LIST_CHANGED, &data);
+ }
+diff --git a/wpa_supplicant/events.c b/wpa_supplicant/events.c
+index da73faaaf..26059a1ad 100644
+--- a/wpa_supplicant/events.c
++++ b/wpa_supplicant/events.c
+@@ -5117,6 +5117,20 @@ static const char * reg_type_str(enum reg_type type)
+ }
+ 
+ 
++static void wpas_beacon_hint(struct wpa_supplicant *wpa_s, const char *title,
++			     struct frequency_attrs *attrs)
++{
++	if (!attrs->freq)
++		return;
++	wpa_msg(wpa_s, MSG_INFO, WPA_EVENT_REGDOM_BEACON_HINT
++		"%s freq=%u max_tx_power=%u%s%s%s",
++		title, attrs->freq, attrs->max_tx_power,
++		attrs->disabled ? " disabled=1" : "",
++		attrs->no_ir ? " no_ir=1" : "",
++		attrs->radar ? " radar=1" : "");
++}
++
++
+ void wpa_supplicant_update_channel_list(struct wpa_supplicant *wpa_s,
+ 					struct channel_list_changed *info)
+ {
+@@ -5138,6 +5152,13 @@ void wpa_supplicant_update_channel_list(struct wpa_supplicant *wpa_s,
+ 			reg_init_str(info->initiator), reg_type_str(info->type),
+ 			info->alpha2[0] ? " alpha2=" : "",
+ 			info->alpha2[0] ? info->alpha2 : "");
++
++		if (info->initiator == REGDOM_BEACON_HINT) {
++			wpas_beacon_hint(ifs, "before",
++					 &info->beacon_hint_before);
++			wpas_beacon_hint(ifs, "after",
++					 &info->beacon_hint_after);
++		}
+ 	}
+ 
+ 	if (wpa_s->drv_priv == NULL)
+-- 
+2.43.0
+

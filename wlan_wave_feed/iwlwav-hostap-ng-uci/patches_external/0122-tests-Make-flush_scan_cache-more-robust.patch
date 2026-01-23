@@ -1,0 +1,39 @@
+From a46c5738bc1c2019d34457d6691a411c87514075 Mon Sep 17 00:00:00 2001
+From: Jouni Malinen <quic_jouni@quicinc.com>
+Date: Wed, 20 Dec 2023 18:21:10 +0200
+Subject: [PATCH] tests: Make flush_scan_cache() more robust
+
+Handle the cases where the first attempt to start scan fails due to an
+ongoing scan. Stop such scan and try again instead of failing the test
+case immediately.
+
+Signed-off-by: Jouni Malinen <quic_jouni@quicinc.com>
+---
+ tests/hwsim/wpasupplicant.py | 11 +++++++++--
+ 1 file changed, 9 insertions(+), 2 deletions(-)
+
+diff --git a/tests/hwsim/wpasupplicant.py b/tests/hwsim/wpasupplicant.py
+index af57bc6ed..ae728a034 100644
+--- a/tests/hwsim/wpasupplicant.py
++++ b/tests/hwsim/wpasupplicant.py
+@@ -1196,8 +1196,15 @@ class WpaSupplicant:
+         raise Exception("Could not find BSS " + bssid + " in scan")
+ 
+     def flush_scan_cache(self, freq=2417):
+-        self.request("BSS_FLUSH 0")
+-        self.scan(freq=freq, only_new=True)
++        for i in range(3):
++            self.request("BSS_FLUSH 0")
++            try:
++                self.scan(freq=freq, only_new=True)
++            except Exception as e:
++                if i < 2:
++                    logger.info("flush_scan_cache: Failed to start scan: " + str(e))
++                    self.request("ABORT_SCAN")
++                    time.sleep(0.1)
+         res = self.request("SCAN_RESULTS")
+         if len(res.splitlines()) > 1:
+             logger.debug("Scan results remaining after first attempt to flush the results:\n" + res)
+-- 
+2.43.0
+

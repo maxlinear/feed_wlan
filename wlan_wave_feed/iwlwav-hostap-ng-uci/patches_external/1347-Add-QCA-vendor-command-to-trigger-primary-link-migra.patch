@@ -1,0 +1,87 @@
+From 8a8d66f00442e17302e26f87e04bcf5bc212b56b Mon Sep 17 00:00:00 2001
+From: Aditya Kumar Singh <quic_adisi@quicinc.com>
+Date: Wed, 5 Feb 2025 09:22:34 +0530
+Subject: [PATCH] Add QCA vendor command to trigger primary link migration
+
+During MLO, the driver might select one of the link peers as the primary
+link peer for doing one time operations/setup used at MLD peer level.
+The primary link is not same as the association link. Now there can be
+requirement to move the primary link from one link to other such as
+during ML reconfiguration or user would like to configure this based on
+its requirement such as load balancing.
+
+Add a new vendor command QCA_NL80211_VENDOR_SUBCMD_PRI_LINK_MIGRATE to
+trigger primary link migration from the userspace. Either just one ML
+client or a bunch of clients can be migrated.
+
+Signed-off-by: Aditya Kumar Singh <quic_adisi@quicinc.com>
+---
+ src/common/qca-vendor.h | 40 ++++++++++++++++++++++++++++++++++++++++
+ 1 file changed, 40 insertions(+)
+
+diff --git a/src/common/qca-vendor.h b/src/common/qca-vendor.h
+index 385a4ab65..f53215335 100644
+--- a/src/common/qca-vendor.h
++++ b/src/common/qca-vendor.h
+@@ -1325,6 +1325,18 @@ enum qca_radiotap_vendor_ids {
+  *
+  *	The attributes used with this event are defined in
+  *	enum qca_wlan_vendor_attr_idle_shutdown.
++ *
++ * @QCA_NL80211_VENDOR_SUBCMD_PRI_LINK_MIGRATE: Vendor subcommand that can
++ *	be used to trigger primary link migration from user space. Either just
++ *	one ML client or a bunch of clients can be migrated.
++ *
++ *	The attributes used with this subcommand are defined in
++ *	&enum qca_wlan_vendor_attr_pri_link_migrate.
++ *
++ *	@QCA_WLAN_VENDOR_ATTR_PRI_LINK_MIGR_MLD_MAC_ADDR and
++ *	@QCA_WLAN_VENDOR_ATTR_PRI_LINK_MIGR_CURRENT_PRI_LINK_ID are mutually
++ *	exclusive attributes. Migration should be requested for either one ML
++ *	client or a bunch of ML clients.
+  */
+ enum qca_nl80211_vendor_subcmds {
+ 	QCA_NL80211_VENDOR_SUBCMD_UNSPEC = 0,
+@@ -1564,6 +1576,7 @@ enum qca_nl80211_vendor_subcmds {
+ 	QCA_NL80211_VENDOR_SUBCMD_GET_FW_SCAN_REPORT = 253,
+ 	QCA_NL80211_VENDOR_SUBCMD_IDLE_SHUTDOWN = 254,
+ 	/* 255 - reserved for QCA */
++	QCA_NL80211_VENDOR_SUBCMD_PRI_LINK_MIGRATE = 256,
+ };
+ 
+ /* Compatibility defines for previously used subcmd names.
+@@ -18874,4 +18887,31 @@ enum qca_wlan_vendor_attr_idle_shutdown {
+ 	QCA_WLAN_VENDOR_ATTR_IDLE_SHUTDOWN_AFTER_LAST - 1,
+ };
+ 
++/**
++ * enum qca_wlan_vendor_attr_pri_link_migrate: Attributes used by the vendor
++ * 	subcommand %QCA_NL80211_VENDOR_SUBCMD_PRI_LINK_MIGRATE.
++ *
++ * @QCA_WLAN_VENDOR_ATTR_PRI_LINK_MIGR_MLD_MAC_ADDR: 6 byte MAC address. When
++ *	specified, indicates that primary link migration will occur only for
++ *	the ML client with the given MLD MAC address.
++ * @QCA_WLAN_VENDOR_ATTR_PRI_LINK_MIGR_CURRENT_PRI_LINK_ID: Optional u8
++ *	attribute. When specified, all ML clients having their current primary
++ *	link as specified will be considered for migration.
++ * @QCA_WLAN_VENDOR_ATTR_PRI_LINK_MIGR_NEW_PRI_LINK_ID: Optional u8 attribute.
++ *	Indicates the new primary link to which the selected ML clients
++ *	should be migrated to. If not provided, the driver will select a
++ *	suitable primary link on its own.
++ */
++enum qca_wlan_vendor_attr_pri_link_migrate {
++	QCA_WLAN_VENDOR_ATTR_PRI_LINK_MIGR_INVALID = 0,
++	QCA_WLAN_VENDOR_ATTR_PRI_LINK_MIGR_MLD_MAC_ADDR = 1,
++	QCA_WLAN_VENDOR_ATTR_PRI_LINK_MIGR_CURRENT_PRI_LINK_ID = 2,
++	QCA_WLAN_VENDOR_ATTR_PRI_LINK_MIGR_NEW_PRI_LINK_ID = 3,
++
++	/* keep this last */
++	QCA_WLAN_VENDOR_ATTR_PRI_LINK_MIGR_AFTER_LAST,
++	QCA_WLAN_VENDOR_ATTR_PRI_LINK_MIGR_MAX =
++	QCA_WLAN_VENDOR_ATTR_PRI_LINK_MIGR_AFTER_LAST - 1,
++};
++
+ #endif /* QCA_VENDOR_H */
+-- 
+2.43.0
+

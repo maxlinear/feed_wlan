@@ -1,0 +1,52 @@
+From 6c334d9f049ad2510c2c261404c90a8d37a87e38 Mon Sep 17 00:00:00 2001
+From: Chenming Huang <quic_chenhuan@quicinc.com>
+Date: Mon, 15 Jan 2024 17:33:18 +0530
+Subject: [PATCH] nl80211: Set allowed frequency list per link for AP MLD
+
+QCA_WLAN_VENDOR_ATTR_CONFIG_AP_ALLOWED_FREQ_LIST needs be to set per
+link if operating as an AP MLD.
+
+Signed-off-by: Chenming Huang <quic_chenhuan@quicinc.com>
+---
+ src/drivers/driver_nl80211.c | 11 +++++++++--
+ 1 file changed, 9 insertions(+), 2 deletions(-)
+
+diff --git a/src/drivers/driver_nl80211.c b/src/drivers/driver_nl80211.c
+index 6cc363e97..70adaca54 100644
+--- a/src/drivers/driver_nl80211.c
++++ b/src/drivers/driver_nl80211.c
+@@ -4880,7 +4880,8 @@ static int nl80211_mbssid(struct nl_msg *msg,
+ 
+ #ifdef CONFIG_DRIVER_NL80211_QCA
+ static void qca_set_allowed_ap_freqs(struct wpa_driver_nl80211_data *drv,
+-				    const int *freqs, int num_freqs)
++				     const int *freqs, int num_freqs,
++				     int link_id)
+ {
+ 	struct nl_msg *msg;
+ 	struct nlattr *params, *freqs_list;
+@@ -4898,6 +4899,10 @@ static void qca_set_allowed_ap_freqs(struct wpa_driver_nl80211_data *drv,
+ 	    !(params = nla_nest_start(msg, NL80211_ATTR_VENDOR_DATA)))
+ 		goto err;
+ 
++	if (link_id != NL80211_DRV_LINK_ID_NA &&
++	    nla_put_u8(msg, QCA_WLAN_VENDOR_ATTR_CONFIG_MLO_LINK_ID, link_id))
++		goto err;
++
+ 	freqs_list = nla_nest_start(
+ 		msg, QCA_WLAN_VENDOR_ATTR_CONFIG_AP_ALLOWED_FREQ_LIST);
+ 	if (!freqs_list)
+@@ -5406,7 +5411,9 @@ static int wpa_driver_nl80211_set_ap(void *priv,
+ #ifdef CONFIG_DRIVER_NL80211_QCA
+ 	if (cmd == NL80211_CMD_NEW_BEACON && params->allowed_freqs)
+ 		qca_set_allowed_ap_freqs(drv, params->allowed_freqs,
+-					 int_array_len(params->allowed_freqs));
++					 int_array_len(params->allowed_freqs),
++					 params->mld_ap ? params->mld_link_id :
++					 NL80211_DRV_LINK_ID_NA);
+ #endif /* CONFIG_DRIVER_NL80211_QCA */
+ 
+ 	if (nla_put_flag(msg, NL80211_ATTR_SOCKET_OWNER))
+-- 
+2.43.0
+

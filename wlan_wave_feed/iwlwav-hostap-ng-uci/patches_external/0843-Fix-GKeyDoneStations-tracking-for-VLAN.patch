@@ -1,0 +1,35 @@
+From 19e12d5e2d3217dd075bf3db0c25278e0c44cc05 Mon Sep 17 00:00:00 2001
+From: Jouni Malinen <quic_jouni@quicinc.com>
+Date: Tue, 13 Aug 2024 12:55:16 +0300
+Subject: [PATCH] Fix GKeyDoneStations tracking for VLAN
+
+The AP MLD change to use a helper function for this broke the design
+that depends on the value for sm->group (i.e., the currently assigned
+VLAN) being used instead of the sm->wpa_auth->group. Restore previous
+behavior to fix GKeyDoneStations tracking when VLANs are used.
+
+Fixes: 78adbf2c08f4 ("AP MLD: Mark GKeyDone completed for STAs in a helper function")
+Signed-off-by: Jouni Malinen <quic_jouni@quicinc.com>
+---
+ src/ap/wpa_auth.c | 5 +----
+ 1 file changed, 1 insertion(+), 4 deletions(-)
+
+diff --git a/src/ap/wpa_auth.c b/src/ap/wpa_auth.c
+index 93f157d62..a34563ce4 100644
+--- a/src/ap/wpa_auth.c
++++ b/src/ap/wpa_auth.c
+@@ -112,10 +112,7 @@ static void wpa_gkeydone_sta(struct wpa_state_machine *sm)
+ 	int link_id;
+ #endif /* CONFIG_IEEE80211BE */
+ 
+-	if (!sm->wpa_auth)
+-		return;
+-
+-	sm->wpa_auth->group->GKeyDoneStations--;
++	sm->group->GKeyDoneStations--;
+ 	sm->GUpdateStationKeys = false;
+ 
+ #ifdef CONFIG_IEEE80211BE
+-- 
+2.43.0
+

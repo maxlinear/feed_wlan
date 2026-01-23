@@ -1,0 +1,860 @@
+From 733069fd4c6c71197332642afa91997f3daa0f4a Mon Sep 17 00:00:00 2001
+From: Jouni Malinen <j@w1.fi>
+Date: Sat, 3 Aug 2024 19:02:29 +0300
+Subject: [PATCH] tests: Use newer hostapd.add_ap() argument style
+
+Convert the easy cases of old hostapd.add_ap() uses to the new one.
+
+Signed-off-by: Jouni Malinen <j@w1.fi>
+---
+ tests/hwsim/test_ap_ft.py       | 28 +++++------
+ tests/hwsim/test_ap_open.py     |  2 +-
+ tests/hwsim/test_fils.py        | 84 ++++++++++++++++-----------------
+ tests/hwsim/test_pasn.py        |  2 +-
+ tests/hwsim/test_rrm.py         | 64 ++++++++++++-------------
+ tests/hwsim/test_wpas_config.py |  4 +-
+ tests/hwsim/test_wpas_wmm_ac.py |  4 +-
+ 7 files changed, 94 insertions(+), 94 deletions(-)
+
+diff --git a/tests/hwsim/test_ap_ft.py b/tests/hwsim/test_ap_ft.py
+index 13461f014..5b890b4b6 100644
+--- a/tests/hwsim/test_ap_ft.py
++++ b/tests/hwsim/test_ap_ft.py
+@@ -374,12 +374,12 @@ def test_ap_ft_vlan(dev, apdev):
+     params = ft_params1(ssid=ssid, passphrase=passphrase)
+     params['dynamic_vlan'] = "1"
+     params['accept_mac_file'] = filename
+-    hapd0 = hostapd.add_ap(apdev[0]['ifname'], params)
++    hapd0 = hostapd.add_ap(apdev[0], params)
+ 
+     params = ft_params2(ssid=ssid, passphrase=passphrase)
+     params['dynamic_vlan'] = "1"
+     params['accept_mac_file'] = filename
+-    hapd1 = hostapd.add_ap(apdev[1]['ifname'], params)
++    hapd1 = hostapd.add_ap(apdev[1], params)
+ 
+     run_roams(dev[0], apdev, hapd0, hapd1, ssid, passphrase, conndev="brvlan1")
+     if "[WPA2-FT/PSK-CCMP]" not in dev[0].request("SCAN_RESULTS"):
+@@ -413,13 +413,13 @@ def test_ap_ft_vlan_disconnected(dev, apdev):
+     params['dynamic_vlan'] = "1"
+     params['accept_mac_file'] = filename
+     params['ft_psk_generate_local'] = "1"
+-    hapd0 = hostapd.add_ap(apdev[0]['ifname'], params)
++    hapd0 = hostapd.add_ap(apdev[0], params)
+ 
+     params = ft_params2a(ssid=ssid, passphrase=passphrase)
+     params['dynamic_vlan'] = "1"
+     params['accept_mac_file'] = filename
+     params['ft_psk_generate_local'] = "1"
+-    hapd1 = hostapd.add_ap(apdev[1]['ifname'], params)
++    hapd1 = hostapd.add_ap(apdev[1], params)
+ 
+     run_roams(dev[0], apdev, hapd0, hapd1, ssid, passphrase, conndev="brvlan1")
+     if "[WPA2-FT/PSK-CCMP]" not in dev[0].request("SCAN_RESULTS"):
+@@ -437,11 +437,11 @@ def test_ap_ft_vlan_2(dev, apdev):
+     params = ft_params1(ssid=ssid, passphrase=passphrase)
+     params['dynamic_vlan'] = "1"
+     params['accept_mac_file'] = filename
+-    hapd0 = hostapd.add_ap(apdev[0]['ifname'], params)
++    hapd0 = hostapd.add_ap(apdev[0], params)
+ 
+     params = ft_params2(ssid=ssid, passphrase=passphrase)
+     params['dynamic_vlan'] = "1"
+-    hapd1 = hostapd.add_ap(apdev[1]['ifname'], params)
++    hapd1 = hostapd.add_ap(apdev[1], params)
+ 
+     run_roams(dev[0], apdev, hapd0, hapd1, ssid, passphrase, conndev="brvlan1",
+               force_initial_conn_to_first_ap=True)
+@@ -520,12 +520,12 @@ def test_ap_ft_many_vlan(dev, apdev):
+     params = ft_params1(ssid=ssid, passphrase=passphrase)
+     params['dynamic_vlan'] = "1"
+     params['accept_mac_file'] = filename
+-    hapd0 = hostapd.add_ap(apdev[0]['ifname'], params)
++    hapd0 = hostapd.add_ap(apdev[0], params)
+ 
+     params = ft_params2(ssid=ssid, passphrase=passphrase)
+     params['dynamic_vlan'] = "1"
+     params['accept_mac_file'] = filename
+-    hapd1 = hostapd.add_ap(apdev[1]['ifname'], params)
++    hapd1 = hostapd.add_ap(apdev[1], params)
+ 
+     run_roams(dev[0], apdev, hapd0, hapd1, ssid, passphrase, roams=50,
+               conndev="brvlan1")
+@@ -862,11 +862,11 @@ def test_ap_ft_vlan_over_ds(dev, apdev):
+     params = ft_params1(ssid=ssid, passphrase=passphrase)
+     params['dynamic_vlan'] = "1"
+     params['accept_mac_file'] = filename
+-    hapd0 = hostapd.add_ap(apdev[0]['ifname'], params)
++    hapd0 = hostapd.add_ap(apdev[0], params)
+     params = ft_params2(ssid=ssid, passphrase=passphrase)
+     params['dynamic_vlan'] = "1"
+     params['accept_mac_file'] = filename
+-    hapd1 = hostapd.add_ap(apdev[1]['ifname'], params)
++    hapd1 = hostapd.add_ap(apdev[1], params)
+ 
+     dev[0].flush_scan_cache()
+     run_roams(dev[0], apdev, hapd0, hapd1, ssid, passphrase, over_ds=True,
+@@ -900,11 +900,11 @@ def test_ap_ft_vlan_over_ds_many(dev, apdev):
+     params = ft_params1(ssid=ssid, passphrase=passphrase)
+     params['dynamic_vlan'] = "1"
+     params['accept_mac_file'] = filename
+-    hapd0 = hostapd.add_ap(apdev[0]['ifname'], params)
++    hapd0 = hostapd.add_ap(apdev[0], params)
+     params = ft_params2(ssid=ssid, passphrase=passphrase)
+     params['dynamic_vlan'] = "1"
+     params['accept_mac_file'] = filename
+-    hapd1 = hostapd.add_ap(apdev[1]['ifname'], params)
++    hapd1 = hostapd.add_ap(apdev[1], params)
+ 
+     dev[0].flush_scan_cache()
+     run_roams(dev[0], apdev, hapd0, hapd1, ssid, passphrase, over_ds=True,
+@@ -1115,12 +1115,12 @@ def test_ap_ft_over_ds_pull_vlan(dev, apdev):
+     params["pmk_r1_push"] = "0"
+     params['dynamic_vlan'] = "1"
+     params['accept_mac_file'] = filename
+-    hapd0 = hostapd.add_ap(apdev[0]['ifname'], params)
++    hapd0 = hostapd.add_ap(apdev[0], params)
+     params = ft_params2(ssid=ssid, passphrase=passphrase)
+     params["pmk_r1_push"] = "0"
+     params['dynamic_vlan'] = "1"
+     params['accept_mac_file'] = filename
+-    hapd1 = hostapd.add_ap(apdev[1]['ifname'], params)
++    hapd1 = hostapd.add_ap(apdev[1], params)
+ 
+     dev[0].flush_scan_cache()
+     run_roams(dev[0], apdev, hapd0, hapd1, ssid, passphrase, over_ds=True,
+diff --git a/tests/hwsim/test_ap_open.py b/tests/hwsim/test_ap_open.py
+index 8c8a9c444..00801b313 100644
+--- a/tests/hwsim/test_ap_open.py
++++ b/tests/hwsim/test_ap_open.py
+@@ -131,7 +131,7 @@ def test_ap_open_assoc_timeout(dev, apdev):
+ 
+ def test_ap_open_auth_drop_sta(dev, apdev):
+     """AP dropping station after successful authentication"""
+-    hapd = hostapd.add_ap(apdev[0]['ifname'], {"ssid": "open"})
++    hapd = hostapd.add_ap(apdev[0], {"ssid": "open"})
+     dev[0].scan(freq="2412")
+     hapd.set("ext_mgmt_frame_handling", "1")
+     dev[0].connect("open", key_mgmt="NONE", scan_freq="2412",
+diff --git a/tests/hwsim/test_fils.py b/tests/hwsim/test_fils.py
+index 6f857243a..ced01e8dc 100644
+--- a/tests/hwsim/test_fils.py
++++ b/tests/hwsim/test_fils.py
+@@ -36,7 +36,7 @@ def test_fils_sk_full_auth(dev, apdev, params):
+     params['erp_domain'] = 'example.com'
+     params['fils_realm'] = 'example.com'
+     params['wpa_group_rekey'] = '1'
+-    hapd = hostapd.add_ap(apdev[0]['ifname'], params)
++    hapd = hostapd.add_ap(apdev[0], params)
+ 
+     dev[0].flush_scan_cache()
+     dev[0].scan_for_bss(bssid, freq=2412)
+@@ -86,7 +86,7 @@ def test_fils_sk_sha384_full_auth(dev, apdev, params):
+     params['erp_domain'] = 'example.com'
+     params['fils_realm'] = 'example.com'
+     params['wpa_group_rekey'] = '1'
+-    hapd = hostapd.add_ap(apdev[0]['ifname'], params)
++    hapd = hostapd.add_ap(apdev[0], params)
+ 
+     dev[0].flush_scan_cache()
+     dev[0].scan_for_bss(bssid, freq=2412)
+@@ -134,7 +134,7 @@ def test_fils_sk_pmksa_caching(dev, apdev, params):
+     params['auth_server_port'] = "18128"
+     params['erp_domain'] = 'example.com'
+     params['fils_realm'] = 'example.com'
+-    hapd = hostapd.add_ap(apdev[0]['ifname'], params)
++    hapd = hostapd.add_ap(apdev[0], params)
+ 
+     dev[0].scan_for_bss(bssid, freq=2412)
+     dev[0].request("ERP_FLUSH")
+@@ -202,7 +202,7 @@ def test_fils_sk_pmksa_caching_ocv(dev, apdev, params):
+     params['ieee80211w'] = '1'
+     params['ocv'] = '1'
+     try:
+-        hapd = hostapd.add_ap(apdev[0]['ifname'], params)
++        hapd = hostapd.add_ap(apdev[0], params)
+     except Exception as e:
+         if "Failed to set hostapd parameter ocv" in str(e):
+             raise HwsimSkip("OCV not supported")
+@@ -279,7 +279,7 @@ def test_fils_sk_pmksa_caching_and_cache_id(dev, apdev):
+     params["eap_fast_a_id_info"] = "test server"
+     params["eap_server_erp"] = "1"
+     params["erp_domain"] = "example.com"
+-    hapd = hostapd.add_ap(apdev[0]['ifname'], params)
++    hapd = hostapd.add_ap(apdev[0], params)
+ 
+     dev[0].scan_for_bss(bssid, freq=2412)
+     dev[0].request("ERP_FLUSH")
+@@ -305,7 +305,7 @@ def test_fils_sk_pmksa_caching_and_cache_id(dev, apdev):
+     params['erp_domain'] = 'example.com'
+     params['fils_realm'] = 'example.com'
+     params['fils_cache_id'] = "abcd"
+-    hapd2 = hostapd.add_ap(apdev[1]['ifname'], params)
++    hapd2 = hostapd.add_ap(apdev[1], params)
+ 
+     dev[0].scan_for_bss(bssid2, freq=2412)
+ 
+@@ -348,7 +348,7 @@ def test_fils_sk_pmksa_caching_ctrl_ext(dev, apdev, params):
+     params['erp_domain'] = 'example.com'
+     params['fils_realm'] = 'example.com'
+     params['fils_cache_id'] = "ffee"
+-    hapd = hostapd.add_ap(apdev[0]['ifname'], params)
++    hapd = hostapd.add_ap(apdev[0], params)
+ 
+     dev[0].scan_for_bss(bssid, freq=2412)
+     dev[0].request("ERP_FLUSH")
+@@ -386,7 +386,7 @@ def test_fils_sk_pmksa_caching_ctrl_ext(dev, apdev, params):
+     params['erp_domain'] = 'example.com'
+     params['fils_realm'] = 'example.com'
+     params['fils_cache_id'] = "ffee"
+-    hapd2 = hostapd.add_ap(apdev[1]['ifname'], params)
++    hapd2 = hostapd.add_ap(apdev[1], params)
+ 
+     dev[0].scan_for_bss(bssid2, freq=2412)
+     dev[0].set_network(id, "bssid", bssid2)
+@@ -417,7 +417,7 @@ def run_fils_sk_erp(dev, apdev, key_mgmt, params):
+     params['erp_domain'] = 'example.com'
+     params['fils_realm'] = 'example.com'
+     params['disable_pmksa_caching'] = '1'
+-    hapd = hostapd.add_ap(apdev[0]['ifname'], params)
++    hapd = hostapd.add_ap(apdev[0], params)
+ 
+     dev[0].scan_for_bss(bssid, freq=2412)
+     dev[0].request("ERP_FLUSH")
+@@ -458,7 +458,7 @@ def test_fils_sk_erp_followed_by_pmksa_caching(dev, apdev, params):
+     params['auth_server_port'] = "18128"
+     params['erp_domain'] = 'example.com'
+     params['fils_realm'] = 'example.com'
+-    hapd = hostapd.add_ap(apdev[0]['ifname'], params)
++    hapd = hostapd.add_ap(apdev[0], params)
+ 
+     dev[0].scan_for_bss(bssid, freq=2412)
+     dev[0].request("ERP_FLUSH")
+@@ -533,7 +533,7 @@ def test_fils_sk_erp_another_ssid(dev, apdev, params):
+     params['erp_domain'] = 'example.com'
+     params['fils_realm'] = 'example.com'
+     params['disable_pmksa_caching'] = '1'
+-    hapd = hostapd.add_ap(apdev[0]['ifname'], params)
++    hapd = hostapd.add_ap(apdev[0], params)
+ 
+     dev[0].scan_for_bss(bssid, freq=2412)
+     dev[0].request("ERP_FLUSH")
+@@ -557,7 +557,7 @@ def test_fils_sk_erp_another_ssid(dev, apdev, params):
+     params['erp_domain'] = 'example.com'
+     params['fils_realm'] = 'example.com'
+     params['disable_pmksa_caching'] = '1'
+-    hapd = hostapd.add_ap(apdev[0]['ifname'], params)
++    hapd = hostapd.add_ap(apdev[0], params)
+ 
+     dev[0].scan_for_bss(bssid, freq=2412)
+     dev[0].dump_monitor()
+@@ -600,7 +600,7 @@ def test_fils_sk_multiple_realms(dev, apdev, params):
+     params['fils_realm'] = fils_realms
+     params['fils_cache_id'] = "1234"
+     params['hessid'] = bssid
+-    hapd = hostapd.add_ap(apdev[0]['ifname'], params)
++    hapd = hostapd.add_ap(apdev[0], params)
+ 
+     dev[0].flush_scan_cache()
+     dev[0].scan_for_bss(bssid, freq=2412)
+@@ -785,7 +785,7 @@ def run_fils_sk_hlp(dev, apdev, rapid_commit_server, params):
+     params['fils_hlp_wait_time'] = '10000'
+     if not rapid_commit_server:
+         params['dhcp_rapid_commit_proxy'] = '1'
+-    hapd = hostapd.add_ap(apdev[0]['ifname'], params)
++    hapd = hostapd.add_ap(apdev[0], params)
+ 
+     dev[0].scan_for_bss(bssid, freq=2412)
+     dev[0].request("ERP_FLUSH")
+@@ -890,7 +890,7 @@ def test_fils_sk_hlp_timeout(dev, apdev, params):
+ 
+     bssid = apdev[0]['bssid']
+     params = fils_hlp_config(fils_hlp_wait_time=30)
+-    hapd = hostapd.add_ap(apdev[0]['ifname'], params)
++    hapd = hostapd.add_ap(apdev[0], params)
+ 
+     dev[0].scan_for_bss(bssid, freq=2412)
+     dev[0].request("ERP_FLUSH")
+@@ -937,7 +937,7 @@ def test_fils_sk_hlp_oom(dev, apdev, params):
+     bssid = apdev[0]['bssid']
+     params = fils_hlp_config(fils_hlp_wait_time=500)
+     params['dhcp_rapid_commit_proxy'] = '1'
+-    hapd = hostapd.add_ap(apdev[0]['ifname'], params)
++    hapd = hostapd.add_ap(apdev[0], params)
+ 
+     dev[0].scan_for_bss(bssid, freq=2412)
+     dev[0].request("ERP_FLUSH")
+@@ -1037,7 +1037,7 @@ def test_fils_sk_hlp_req_parsing(dev, apdev, params):
+ 
+     bssid = apdev[0]['bssid']
+     params = fils_hlp_config(fils_hlp_wait_time=30)
+-    hapd = hostapd.add_ap(apdev[0]['ifname'], params)
++    hapd = hostapd.add_ap(apdev[0], params)
+ 
+     dev[0].scan_for_bss(bssid, freq=2412)
+     dev[0].request("ERP_FLUSH")
+@@ -1212,7 +1212,7 @@ def test_fils_sk_hlp_dhcp_parsing(dev, apdev, params):
+     bssid = apdev[0]['bssid']
+     params = fils_hlp_config(fils_hlp_wait_time=30)
+     params['dhcp_rapid_commit_proxy'] = '1'
+-    hapd = hostapd.add_ap(apdev[0]['ifname'], params)
++    hapd = hostapd.add_ap(apdev[0], params)
+ 
+     dev[0].scan_for_bss(bssid, freq=2412)
+     dev[0].request("ERP_FLUSH")
+@@ -1374,7 +1374,7 @@ def test_fils_sk_erp_and_reauth(dev, apdev, params):
+     params['fils_realm'] = 'example.com'
+     params['disable_pmksa_caching'] = '1'
+     params['broadcast_deauth'] = '0'
+-    hapd = hostapd.add_ap(apdev[0]['ifname'], params)
++    hapd = hostapd.add_ap(apdev[0], params)
+ 
+     dev[0].scan_for_bss(bssid, freq=2412)
+     dev[0].request("ERP_FLUSH")
+@@ -1413,7 +1413,7 @@ def test_fils_sk_erp_sim(dev, apdev, params):
+     params['auth_server_port'] = "18128"
+     params['fils_realm'] = realm
+     params['disable_pmksa_caching'] = '1'
+-    hapd = hostapd.add_ap(apdev[0]['ifname'], params)
++    hapd = hostapd.add_ap(apdev[0], params)
+ 
+     dev[0].scan_for_bss(bssid, freq=2412)
+     dev[0].request("ERP_FLUSH")
+@@ -1499,7 +1499,7 @@ def run_fils_sk_pfs(dev, apdev, group, params):
+     params['fils_realm'] = 'example.com'
+     params['disable_pmksa_caching'] = '1'
+     params['fils_dh_group'] = group
+-    hapd = hostapd.add_ap(apdev[0]['ifname'], params)
++    hapd = hostapd.add_ap(apdev[0], params)
+ 
+     dev[0].scan_for_bss(bssid, freq=2412)
+     dev[0].request("ERP_FLUSH")
+@@ -1542,7 +1542,7 @@ def test_fils_sk_pfs_group_mismatch(dev, apdev, params):
+     params['fils_realm'] = 'example.com'
+     params['disable_pmksa_caching'] = '1'
+     params['fils_dh_group'] = "20"
+-    hapd = hostapd.add_ap(apdev[0]['ifname'], params)
++    hapd = hostapd.add_ap(apdev[0], params)
+ 
+     dev[0].scan_for_bss(bssid, freq=2412)
+     dev[0].request("ERP_FLUSH")
+@@ -1577,7 +1577,7 @@ def test_fils_sk_pfs_pmksa_caching(dev, apdev, params):
+     params['erp_domain'] = 'example.com'
+     params['fils_realm'] = 'example.com'
+     params['fils_dh_group'] = "19"
+-    hapd = hostapd.add_ap(apdev[0]['ifname'], params)
++    hapd = hostapd.add_ap(apdev[0], params)
+ 
+     dev[0].scan_for_bss(bssid, freq=2412)
+     dev[0].request("ERP_FLUSH")
+@@ -1694,7 +1694,7 @@ def test_fils_sk_auth_mismatch(dev, apdev, params):
+     params['erp_domain'] = 'example.com'
+     params['fils_realm'] = 'example.com'
+     params['disable_pmksa_caching'] = '1'
+-    hapd = hostapd.add_ap(apdev[0]['ifname'], params)
++    hapd = hostapd.add_ap(apdev[0], params)
+ 
+     dev[0].scan_for_bss(bssid, freq=2412)
+     dev[0].request("ERP_FLUSH")
+@@ -1741,7 +1741,7 @@ def setup_fils_rekey(dev, apdev, params, wpa_ptk_rekey=0, wpa_group_rekey=0,
+             params['disable_pmksa_caching'] = '1'
+     if ext_key_id:
+         params['extended_key_id'] = '1'
+-    hapd = hostapd.add_ap(apdev[0]['ifname'], params)
++    hapd = hostapd.add_ap(apdev[0], params)
+ 
+     dev[0].scan_for_bss(bssid, freq=2412)
+     dev[0].request("ERP_FLUSH")
+@@ -1823,7 +1823,7 @@ def test_fils_and_ft(dev, apdev, params):
+     params['erp_domain'] = 'example.com'
+     params['fils_realm'] = 'example.com'
+     params['disable_pmksa_caching'] = '1'
+-    hapd = hostapd.add_ap(apdev[0]['ifname'], params)
++    hapd = hostapd.add_ap(apdev[0], params)
+ 
+     dev[0].scan_for_bss(bssid, freq=2412)
+     dev[0].request("ERP_FLUSH")
+@@ -1856,7 +1856,7 @@ def test_fils_and_ft(dev, apdev, params):
+     params['r0kh'] = ["02:00:00:00:04:00 nas2.w1.fi 300102030405060708090a0b0c0d0e0f"]
+     params['r1kh'] = "02:00:00:00:04:00 00:01:02:03:04:06 200102030405060708090a0b0c0d0e0f"
+     params['ieee80211w'] = "1"
+-    hapd = hostapd.add_ap(apdev[0]['ifname'], params)
++    hapd = hostapd.add_ap(apdev[0], params)
+ 
+     dev[0].scan_for_bss(bssid, freq=2412)
+     dev[0].dump_monitor()
+@@ -1893,7 +1893,7 @@ def test_fils_and_ft(dev, apdev, params):
+     params['r1_key_holder'] = "000102030406"
+     params['r0kh'] = ["02:00:00:00:03:00 nas1.w1.fi 200102030405060708090a0b0c0d0e0f"]
+     params['r1kh'] = "02:00:00:00:03:00 00:01:02:03:04:05 300102030405060708090a0b0c0d0e0f"
+-    hapd2 = hostapd.add_ap(apdev[1]['ifname'], params)
++    hapd2 = hostapd.add_ap(apdev[1], params)
+ 
+     dev[0].scan_for_bss(apdev[1]['bssid'], freq="2412", force_scan=True)
+     # FIX: Cannot use FT-over-DS without the FTE MIC issue addressed
+@@ -1984,7 +1984,7 @@ def run_fils_and_ft_setup(dev, apdev, params, key_mgmt):
+     params['fils_realm'] = 'example.com'
+     params['disable_pmksa_caching'] = '1'
+     params['ieee80211w'] = "2"
+-    hapd = hostapd.add_ap(apdev[0]['ifname'], params)
++    hapd = hostapd.add_ap(apdev[0], params)
+ 
+     dev[0].scan_for_bss(bssid, freq=2412)
+     dev[0].request("ERP_FLUSH")
+@@ -2021,7 +2021,7 @@ def run_fils_and_ft_setup(dev, apdev, params, key_mgmt):
+                       "02:00:00:00:04:00 nas2.w1.fi 300102030405060708090a0b0c0d0e0f"]
+     params['r1kh'] = "02:00:00:00:04:00 00:01:02:03:04:06 200102030405060708090a0b0c0d0e0f"
+     params['ieee80211w'] = "2"
+-    hapd = hostapd.add_ap(apdev[0]['ifname'], params)
++    hapd = hostapd.add_ap(apdev[0], params)
+ 
+     dev[0].scan_for_bss(bssid, freq=2412)
+     dev[0].dump_monitor()
+@@ -2052,7 +2052,7 @@ def run_fils_and_ft_setup(dev, apdev, params, key_mgmt):
+     params['r0kh'] = ["02:00:00:00:03:00 nas1.w1.fi 200102030405060708090a0b0c0d0e0f",
+                       "02:00:00:00:04:00 nas2.w1.fi 000102030405060708090a0b0c0d0e0f000102030405060708090a0b0c0d0e0f"]
+     params['r1kh'] = "02:00:00:00:03:00 00:01:02:03:04:05 300102030405060708090a0b0c0d0e0f"
+-    hapd2 = hostapd.add_ap(apdev[1]['ifname'], params)
++    hapd2 = hostapd.add_ap(apdev[1], params)
+ 
+     return hapd, hapd2
+ 
+@@ -2070,7 +2070,7 @@ def test_fils_assoc_replay(dev, apdev, params):
+     params['auth_server_port'] = "18128"
+     params['erp_domain'] = 'example.com'
+     params['fils_realm'] = 'example.com'
+-    hapd = hostapd.add_ap(apdev[0]['ifname'], params)
++    hapd = hostapd.add_ap(apdev[0], params)
+ 
+     dev[0].scan_for_bss(bssid, freq=2412)
+     dev[0].request("ERP_FLUSH")
+@@ -2163,7 +2163,7 @@ def test_fils_sk_erp_server_flush(dev, apdev, params):
+     params['erp_domain'] = 'example.com'
+     params['fils_realm'] = 'example.com'
+     params['disable_pmksa_caching'] = '1'
+-    hapd = hostapd.add_ap(apdev[0]['ifname'], params)
++    hapd = hostapd.add_ap(apdev[0], params)
+ 
+     dev[0].scan_for_bss(bssid, freq=2412)
+     dev[0].request("ERP_FLUSH")
+@@ -2260,7 +2260,7 @@ def run_fils_sk_erp_radius_ext(dev, apdev, params):
+     params['erp_domain'] = 'erp.example.com'
+     params['fils_realm'] = 'erp.example.com'
+     params['disable_pmksa_caching'] = '1'
+-    hapd = hostapd.add_ap(apdev[0]['ifname'], params)
++    hapd = hostapd.add_ap(apdev[0], params)
+ 
+     dev[0].scan_for_bss(bssid, freq=2412)
+     dev[0].request("ERP_FLUSH")
+@@ -2313,7 +2313,7 @@ def run_fils_sk_erp_radius_roam(dev, apdev):
+     params['erp_domain'] = 'example.com'
+     params['fils_realm'] = 'example.com'
+     params['disable_pmksa_caching'] = '1'
+-    hapd = hostapd.add_ap(apdev[0]['ifname'], params)
++    hapd = hostapd.add_ap(apdev[0], params)
+ 
+     dev[0].scan_for_bss(bssid, freq=2412)
+     dev[0].request("ERP_FLUSH")
+@@ -2329,7 +2329,7 @@ def run_fils_sk_erp_radius_roam(dev, apdev):
+     params['erp_domain'] = 'example.com'
+     params['fils_realm'] = 'example.com'
+     params['disable_pmksa_caching'] = '1'
+-    hapd2 = hostapd.add_ap(apdev[1]['ifname'], params)
++    hapd2 = hostapd.add_ap(apdev[1], params)
+ 
+     dev[0].scan_for_bss(bssid2, freq=2412)
+ 
+@@ -2362,7 +2362,7 @@ def test_fils_sk_erp_roam_diff_akm(dev, apdev, params):
+     params['auth_server_port'] = "18128"
+     params['erp_domain'] = 'example.com'
+     params['fils_realm'] = 'example.com'
+-    hapd = hostapd.add_ap(apdev[0]['ifname'], params)
++    hapd = hostapd.add_ap(apdev[0], params)
+ 
+     dev[0].scan_for_bss(bssid, freq=2412)
+     dev[0].request("ERP_FLUSH")
+@@ -2389,7 +2389,7 @@ def test_fils_sk_erp_roam_diff_akm(dev, apdev, params):
+     params['auth_server_port'] = "18128"
+     params['erp_domain'] = 'example.com'
+     params['fils_realm'] = 'example.com'
+-    hapd2 = hostapd.add_ap(apdev[1]['ifname'], params)
++    hapd2 = hostapd.add_ap(apdev[1], params)
+ 
+     dev[0].scan_for_bss(bssid2, freq=2412)
+ 
+@@ -2452,7 +2452,7 @@ def test_fils_discovery_frame(dev, apdev, params):
+     params['wpa_group_rekey'] = '1'
+     params['fils_discovery_min_interval'] = '20'
+     params['fils_discovery_max_interval'] = '20'
+-    hapd = hostapd.add_ap(apdev[0]['ifname'], params, no_enable=True)
++    hapd = hostapd.add_ap(apdev[0], params, no_enable=True)
+ 
+     if "OK" not in hapd.request("ENABLE"):
+         raise HwsimSkip("FILS Discovery frame transmission not supported")
+@@ -2493,7 +2493,7 @@ def run_fils_offload_to_driver(dev, apdev, params):
+     params['erp_domain'] = 'example.com'
+     params['fils_realm'] = 'example.com'
+     params['disable_pmksa_caching'] = '1'
+-    hapd = hostapd.add_ap(apdev[0]['ifname'], params)
++    hapd = hostapd.add_ap(apdev[0], params)
+ 
+     dev.request("ERP_FLUSH")
+     id = dev.connect("fils", key_mgmt="FILS-SHA256",
+@@ -2535,7 +2535,7 @@ def test_fils_sk_okc(dev, apdev, params):
+     params['auth_server_port'] = "18128"
+     params['erp_domain'] = 'example.com'
+     params['fils_realm'] = 'example.com'
+-    hapd = hostapd.add_ap(apdev[0]['ifname'], params)
++    hapd = hostapd.add_ap(apdev[0], params)
+ 
+     dev[0].scan_for_bss(bssid, freq=2412)
+     dev[0].request("ERP_FLUSH")
+@@ -2584,7 +2584,7 @@ def test_fils_sk_ptk_rekey_request(dev, apdev, params):
+     params['erp_send_reauth_start'] = '1'
+     params['erp_domain'] = 'example.com'
+     params['fils_realm'] = 'example.com'
+-    hapd = hostapd.add_ap(apdev[0]['ifname'], params)
++    hapd = hostapd.add_ap(apdev[0], params)
+ 
+     dev[0].flush_scan_cache()
+     dev[0].scan_for_bss(bssid, freq=2412)
+diff --git a/tests/hwsim/test_pasn.py b/tests/hwsim/test_pasn.py
+index 5139ce7c3..1a82e48e3 100644
+--- a/tests/hwsim/test_pasn.py
++++ b/tests/hwsim/test_pasn.py
+@@ -569,7 +569,7 @@ def pasn_fils_setup(wpas, apdev, params, key_mgmt):
+     params['erp_domain'] = 'example.com'
+     params['fils_realm'] = 'example.com'
+     params['disable_pmksa_caching'] = '1'
+-    hapd = hostapd.add_ap(apdev[0]['ifname'], params)
++    hapd = hostapd.add_ap(apdev[0], params)
+ 
+     id = wpas.connect("fils", key_mgmt=key_mgmt,
+                       eap="PSK", identity="psk.user@example.com",
+diff --git a/tests/hwsim/test_rrm.py b/tests/hwsim/test_rrm.py
+index edf9ac1bf..9eddadcbd 100644
+--- a/tests/hwsim/test_rrm.py
++++ b/tests/hwsim/test_rrm.py
+@@ -64,9 +64,9 @@ def check_nr_results(dev, bssids=None, lci=False, civic=False):
+ def test_rrm_neighbor_db(dev, apdev):
+     """hostapd ctrl_iface SET_NEIGHBOR"""
+     params = {"ssid": "test", "rrm_neighbor_report": "1"}
+-    hapd = hostapd.add_ap(apdev[0]['ifname'], params)
++    hapd = hostapd.add_ap(apdev[0], params)
+     params = {"ssid": "test2", "rrm_neighbor_report": "1"}
+-    hapd2 = hostapd.add_ap(apdev[1]['ifname'], params)
++    hapd2 = hostapd.add_ap(apdev[1], params)
+ 
+     res = hapd.request("SHOW_NEIGHBOR")
+     if len(res.splitlines()) != 1:
+@@ -215,7 +215,7 @@ def test_rrm_neighbor_db(dev, apdev):
+ def test_rrm_neighbor_db_failures(dev, apdev):
+     """hostapd ctrl_iface SET_NEIGHBOR failures"""
+     params = {"ssid": "test", "rrm_neighbor_report": "1"}
+-    hapd = hostapd.add_ap(apdev[0]['ifname'], params)
++    hapd = hostapd.add_ap(apdev[0], params)
+     cmd = "SET_NEIGHBOR 00:11:22:33:44:55 ssid=\"test1\" nr=" + nr + " lci=" + lci + " civic=" + civic
+     tests = [(1, "hostapd_neighbor_add"),
+              (1, "wpabuf_dup;hostapd_neighbor_set"),
+@@ -229,7 +229,7 @@ def test_rrm_neighbor_db_failures(dev, apdev):
+ def test_rrm_neighbor_db_disabled(dev, apdev):
+     """hostapd ctrl_iface SHOW_NEIGHBOR while neighbor report disabled"""
+     params = {"ssid": "test"}
+-    hapd = hostapd.add_ap(apdev[0]['ifname'], params)
++    hapd = hostapd.add_ap(apdev[0], params)
+     if "FAIL" not in hapd.request("SHOW_NEIGHBOR"):
+         raise Exception("SHOW_NEIGHBOR accepted")
+ 
+@@ -242,9 +242,9 @@ def test_rrm_neighbor_rep_req(dev, apdev):
+     nr3 = "dd112233445500000000510107"
+ 
+     params = {"ssid": "test", "rnr": "1"}
+-    hostapd.add_ap(apdev[0]['ifname'], params)
++    hostapd.add_ap(apdev[0], params)
+     params = {"ssid": "test2", "rrm_neighbor_report": "1", "rnr": "1"}
+-    hapd = hostapd.add_ap(apdev[1]['ifname'], params)
++    hapd = hostapd.add_ap(apdev[1], params)
+ 
+     bssid1 = apdev[1]['bssid']
+ 
+@@ -351,7 +351,7 @@ def test_rrm_neighbor_rep_oom(dev, apdev):
+     nr3 = "dd112233445500000000510107"
+ 
+     params = {"ssid": "test", "rrm_neighbor_report": "1"}
+-    hapd = hostapd.add_ap(apdev[0]['ifname'], params)
++    hapd = hostapd.add_ap(apdev[0], params)
+ 
+     dev[0].connect("test", key_mgmt="NONE", scan_freq="2412")
+ 
+@@ -367,7 +367,7 @@ def test_rrm_lci_req(dev, apdev):
+     check_rrm_support(dev[0])
+ 
+     params = {"ssid": "rrm", "rrm_neighbor_report": "1"}
+-    hapd = hostapd.add_ap(apdev[0]['ifname'], params)
++    hapd = hostapd.add_ap(apdev[0], params)
+ 
+     # station not specified
+     if "FAIL" not in hapd.request("REQ_LCI "):
+@@ -400,7 +400,7 @@ def test_rrm_lci_req_timeout(dev, apdev):
+     check_rrm_support(dev[0])
+ 
+     params = {"ssid": "rrm", "rrm_neighbor_report": "1"}
+-    hapd = hostapd.add_ap(apdev[0]['ifname'], params)
++    hapd = hostapd.add_ap(apdev[0], params)
+ 
+     dev[0].request("SET LCI " + lci)
+     dev[0].connect("rrm", key_mgmt="NONE", scan_freq="2412")
+@@ -431,7 +431,7 @@ def test_rrm_lci_req_oom(dev, apdev):
+     check_rrm_support(dev[0])
+ 
+     params = {"ssid": "rrm", "rrm_neighbor_report": "1"}
+-    hapd = hostapd.add_ap(apdev[0]['ifname'], params)
++    hapd = hostapd.add_ap(apdev[0], params)
+ 
+     dev[0].request("SET LCI " + lci)
+     dev[0].connect("rrm", key_mgmt="NONE", scan_freq="2412")
+@@ -454,7 +454,7 @@ def test_rrm_lci_req_ap_oom(dev, apdev):
+     check_rrm_support(dev[0])
+ 
+     params = {"ssid": "rrm", "rrm_neighbor_report": "1"}
+-    hapd = hostapd.add_ap(apdev[0]['ifname'], params)
++    hapd = hostapd.add_ap(apdev[0], params)
+ 
+     dev[0].request("SET LCI " + lci)
+     dev[0].connect("rrm", key_mgmt="NONE", scan_freq="2412")
+@@ -472,7 +472,7 @@ def test_rrm_lci_req_get_reltime_failure(dev, apdev):
+     check_rrm_support(dev[0])
+ 
+     params = {"ssid": "rrm", "rrm_neighbor_report": "1"}
+-    hapd = hostapd.add_ap(apdev[0]['ifname'], params)
++    hapd = hostapd.add_ap(apdev[0], params)
+ 
+     dev[0].request("SET LCI " + lci)
+     dev[0].connect("rrm", key_mgmt="NONE", scan_freq="2412")
+@@ -488,7 +488,7 @@ def test_rrm_neighbor_rep_req_from_conf(dev, apdev):
+ 
+     params = {"ssid": "test2", "rrm_neighbor_report": "1",
+               "stationary_ap": "1", "lci": lci, "civic": civic}
+-    hapd = hostapd.add_ap(apdev[0]['ifname'], params)
++    hapd = hostapd.add_ap(apdev[0], params)
+ 
+     bssid = apdev[0]['bssid']
+ 
+@@ -504,7 +504,7 @@ def test_rrm_neighbor_rep_req_timeout(dev, apdev):
+ 
+     params = {"ssid": "test2", "rrm_neighbor_report": "1",
+               "stationary_ap": "1", "lci": lci, "civic": civic}
+-    hapd = hostapd.add_ap(apdev[0]['ifname'], params)
++    hapd = hostapd.add_ap(apdev[0], params)
+ 
+     dev[0].connect("test2", key_mgmt="NONE", scan_freq="2412")
+ 
+@@ -523,7 +523,7 @@ def test_rrm_neighbor_rep_req_oom(dev, apdev):
+ 
+     params = {"ssid": "test2", "rrm_neighbor_report": "1",
+               "stationary_ap": "1", "lci": lci, "civic": civic}
+-    hapd = hostapd.add_ap(apdev[0]['ifname'], params)
++    hapd = hostapd.add_ap(apdev[0], params)
+ 
+     dev[0].connect("test2", key_mgmt="NONE", scan_freq="2412")
+ 
+@@ -548,7 +548,7 @@ def test_rrm_neighbor_rep_req_disconnect(dev, apdev):
+ 
+     params = {"ssid": "test2", "rrm_neighbor_report": "1",
+               "stationary_ap": "1", "lci": lci, "civic": civic}
+-    hapd = hostapd.add_ap(apdev[0]['ifname'], params)
++    hapd = hostapd.add_ap(apdev[0], params)
+ 
+     if "FAIL" not in dev[0].request("NEIGHBOR_REP_REQUEST"):
+         raise Exception("Request accepted while disconnected")
+@@ -570,7 +570,7 @@ def test_rrm_neighbor_rep_req_not_supported(dev, apdev):
+     check_rrm_support(dev[0])
+ 
+     params = {"ssid": "test2", "rrm_beacon_report": "1"}
+-    hapd = hostapd.add_ap(apdev[0]['ifname'], params)
++    hapd = hostapd.add_ap(apdev[0], params)
+ 
+     dev[0].connect("test2", key_mgmt="NONE", scan_freq="2412")
+ 
+@@ -583,7 +583,7 @@ def test_rrm_neighbor_rep_req_busy(dev, apdev):
+ 
+     params = {"ssid": "test2", "rrm_neighbor_report": "1",
+               "stationary_ap": "1", "lci": lci, "civic": civic}
+-    hapd = hostapd.add_ap(apdev[0]['ifname'], params)
++    hapd = hostapd.add_ap(apdev[0], params)
+ 
+     dev[0].connect("test2", key_mgmt="NONE", scan_freq="2412")
+ 
+@@ -608,7 +608,7 @@ def test_rrm_ftm_range_req(dev, apdev):
+ 
+ def run_rrm_ftm_range_req(dev, apdev):
+     params = {"ssid": "rrm", "rrm_neighbor_report": "1"}
+-    hapd = hostapd.add_ap(apdev[0]['ifname'], params)
++    hapd = hostapd.add_ap(apdev[0], params)
+     bssid = hapd.own_addr()
+ 
+     # station not specified
+@@ -694,7 +694,7 @@ def test_rrm_ftm_range_req_timeout(dev, apdev):
+ 
+ def run_rrm_ftm_range_req_timeout(dev, apdev):
+     params = {"ssid": "rrm", "rrm_neighbor_report": "1"}
+-    hapd = hostapd.add_ap(apdev[0]['ifname'], params)
++    hapd = hostapd.add_ap(apdev[0], params)
+     bssid = hapd.own_addr()
+ 
+     # Override RM capabilities to include FTM range report
+@@ -734,7 +734,7 @@ def test_rrm_ftm_range_req_failure(dev, apdev):
+ 
+ def run_rrm_ftm_range_req_failure(dev, apdev):
+     params = {"ssid": "rrm", "rrm_neighbor_report": "1"}
+-    hapd = hostapd.add_ap(apdev[0]['ifname'], params)
++    hapd = hostapd.add_ap(apdev[0], params)
+     bssid = hapd.own_addr()
+ 
+     # Override RM capabilities to include FTM range report
+@@ -764,7 +764,7 @@ def _test_rrm_ftm_capa_indication(dev, apdev):
+     params = {"ssid": "ftm",
+               "ftm_responder": "1",
+               "ftm_initiator": "1",}
+-    hapd = hostapd.add_ap(apdev[0]['ifname'], params)
++    hapd = hostapd.add_ap(apdev[0], params)
+ 
+     if "OK" not in dev[0].request("SET ftm_initiator 1"):
+         raise Exception("could not set ftm_initiator")
+@@ -1564,7 +1564,7 @@ def test_rrm_beacon_req_active_many(dev, apdev):
+ 
+     params = {"ssid": "rrm", "rrm_beacon_report": "1"}
+     params['vendor_elements'] = "dd50" + 80*'aa'
+-    hapd = hostapd.add_ap(apdev[1]['ifname'], params)
++    hapd = hostapd.add_ap(apdev[1], params)
+ 
+     dev[0].connect("rrm", key_mgmt="NONE", scan_freq="2412")
+     addr = dev[0].own_addr()
+@@ -2058,7 +2058,7 @@ def test_rrm_beacon_req_ap_errors(dev, apdev):
+ 
+ def run_rrm_beacon_req_ap_errors(dev, apdev):
+     params = {"ssid": "rrm", "rrm_beacon_report": "1"}
+-    hapd = hostapd.add_ap(apdev[0]['ifname'], params)
++    hapd = hostapd.add_ap(apdev[0], params)
+     bssid = hapd.own_addr()
+     dev[0].scan_for_bss(bssid, freq=2412)
+     dev[0].connect("rrm", key_mgmt="NONE", scan_freq="2412")
+@@ -2106,7 +2106,7 @@ def run_rrm_beacon_req_ap_errors(dev, apdev):
+ def test_rrm_req_reject_oom(dev, apdev):
+     """Radio measurement request - OOM while rejecting a request"""
+     params = {"ssid": "rrm", "rrm_beacon_report": "1"}
+-    hapd = hostapd.add_ap(apdev[0]['ifname'], params)
++    hapd = hostapd.add_ap(apdev[0], params)
+     bssid = hapd.own_addr()
+ 
+     dev[0].connect("rrm", key_mgmt="NONE", scan_freq="2412")
+@@ -2129,7 +2129,7 @@ def test_rrm_req_reject_oom(dev, apdev):
+ def test_rrm_req_when_rrm_not_used(dev, apdev):
+     """Radio/link measurement request for non-RRM association"""
+     params = {"ssid": "rrm"}
+-    hapd = hostapd.add_ap(apdev[0]['ifname'], params)
++    hapd = hostapd.add_ap(apdev[0], params)
+     bssid = hapd.own_addr()
+ 
+     dev[0].connect("rrm", key_mgmt="NONE", scan_freq="2412")
+@@ -2268,7 +2268,7 @@ def test_rrm_link_measurement(dev, apdev):
+     """Radio measurement request - link measurement"""
+     check_tx_power_support(dev[0])
+     params = {"ssid": "rrm", "rrm_beacon_report": "1"}
+-    hapd = hostapd.add_ap(apdev[0]['ifname'], params)
++    hapd = hostapd.add_ap(apdev[0], params)
+     bssid = hapd.own_addr()
+ 
+     dev[0].connect("rrm", key_mgmt="NONE", scan_freq="2412")
+@@ -2289,7 +2289,7 @@ def test_rrm_link_measurement_oom(dev, apdev):
+     """Radio measurement request - link measurement OOM"""
+     check_tx_power_support(dev[0])
+     params = {"ssid": "rrm", "rrm_beacon_report": "1"}
+-    hapd = hostapd.add_ap(apdev[0]['ifname'], params)
++    hapd = hostapd.add_ap(apdev[0], params)
+     bssid = hapd.own_addr()
+ 
+     dev[0].connect("rrm", key_mgmt="NONE", scan_freq="2412")
+@@ -2319,7 +2319,7 @@ def test_rrm_rep_parse_proto(dev, apdev):
+     check_rrm_support(dev[0])
+ 
+     params = {"ssid": "rrm", "rrm_neighbor_report": "1"}
+-    hapd = hostapd.add_ap(apdev[0]['ifname'], params)
++    hapd = hostapd.add_ap(apdev[0], params)
+     bssid = hapd.own_addr()
+ 
+     dev[0].request("SET LCI " + lci)
+@@ -2354,7 +2354,7 @@ def test_rrm_unexpected(dev, apdev):
+     check_rrm_support(dev[0])
+ 
+     params = {"ssid": "rrm", "rrm_neighbor_report": "0"}
+-    hapd = hostapd.add_ap(apdev[0]['ifname'], params)
++    hapd = hostapd.add_ap(apdev[0], params)
+     bssid = hapd.own_addr()
+ 
+     dev[0].connect("rrm", key_mgmt="NONE", scan_freq="2412")
+@@ -2381,7 +2381,7 @@ def check_beacon_req(hapd, addr, idx):
+ def test_rrm_reassociation(dev, apdev):
+     """Radio measurement request - reassociation"""
+     params = {"ssid": "rrm", "rrm_beacon_report": "1"}
+-    hapd = hostapd.add_ap(apdev[0]['ifname'], params)
++    hapd = hostapd.add_ap(apdev[0], params)
+     bssid = hapd.own_addr()
+ 
+     addr = dev[0].own_addr()
+@@ -2395,7 +2395,7 @@ def test_rrm_reassociation(dev, apdev):
+     hapd.wait_sta()
+     check_beacon_req(hapd, addr, 1)
+ 
+-    hapd2 = hostapd.add_ap(apdev[1]['ifname'], params)
++    hapd2 = hostapd.add_ap(apdev[1], params)
+     bssid2 = hapd2.own_addr()
+     dev[0].scan_for_bss(bssid2, freq=2412, force_scan=True)
+     dev[0].roam(bssid2)
+diff --git a/tests/hwsim/test_wpas_config.py b/tests/hwsim/test_wpas_config.py
+index 2b6ab2ac0..17f5563fa 100644
+--- a/tests/hwsim/test_wpas_config.py
++++ b/tests/hwsim/test_wpas_config.py
+@@ -317,7 +317,7 @@ def test_wpas_config_file_wps(dev, apdev):
+ 
+     params = {"ssid": "test-wps", "eap_server": "1", "wps_state": "2",
+               "skip_cred_build": "1", "extra_cred": "wps-ctrl-cred"}
+-    hapd = hostapd.add_ap(apdev[0]['ifname'], params)
++    hapd = hostapd.add_ap(apdev[0], params)
+ 
+     wpas = WpaSupplicant(global_iface='/tmp/wpas-wlan5')
+ 
+@@ -362,7 +362,7 @@ def test_wpas_config_file_wps2(dev, apdev):
+ 
+     params = {"ssid": "test-wps", "eap_server": "1", "wps_state": "2",
+               "skip_cred_build": "1", "extra_cred": "wps-ctrl-cred2"}
+-    hapd = hostapd.add_ap(apdev[0]['ifname'], params)
++    hapd = hostapd.add_ap(apdev[0], params)
+ 
+     wpas = WpaSupplicant(global_iface='/tmp/wpas-wlan5')
+ 
+diff --git a/tests/hwsim/test_wpas_wmm_ac.py b/tests/hwsim/test_wpas_wmm_ac.py
+index f9c40f33b..32e6afe64 100644
+--- a/tests/hwsim/test_wpas_wmm_ac.py
++++ b/tests/hwsim/test_wpas_wmm_ac.py
+@@ -299,7 +299,7 @@ def test_wmm_element(dev, apdev):
+ 
+ def run_wmm_element(dev, apdev):
+     params = {"ssid": "wmm"}
+-    hapd = hostapd.add_ap(apdev[0]['ifname'], params)
++    hapd = hostapd.add_ap(apdev[0], params)
+     bssid = hapd.own_addr()
+ 
+     # Too short WMM IE
+@@ -381,7 +381,7 @@ def test_tspec_ap_parsing(dev, apdev):
+ def test_wmm_disabled(dev, apdev):
+     """WMM disabled and unexpected TSPEC"""
+     params = {"ssid": "no-wmm", "ieee80211n": "0", "wmm_enabled": "0"}
+-    hapd = hostapd.add_ap(apdev[0]['ifname'], params)
++    hapd = hostapd.add_ap(apdev[0], params)
+     bssid = hapd.own_addr()
+     dev[0].connect("no-wmm", key_mgmt="NONE", scan_freq="2412")
+     addr = dev[0].own_addr()
+-- 
+2.43.0
+

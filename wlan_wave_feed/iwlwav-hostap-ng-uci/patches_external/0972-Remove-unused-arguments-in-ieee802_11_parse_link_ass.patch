@@ -1,0 +1,69 @@
+From 8035c11dfecd58951a67a3a9012cd1c9a7c48f67 Mon Sep 17 00:00:00 2001
+From: Adil Saeed Musthafa <quic_adilm@quicinc.com>
+Date: Thu, 19 Sep 2024 10:16:02 -0700
+Subject: [PATCH] Remove unused arguments in ieee802_11_parse_link_assoc_req()
+
+The unparsed buffer of all IEs was not actually used at all in
+ieee802_11_parse_link_assoc_req().
+
+Signed-off-by: Adil Saeed Musthafa <quic_adilm@quicinc.com>
+---
+ src/ap/ieee802_11.c            | 5 ++---
+ src/common/ieee802_11_common.c | 4 ++--
+ src/common/ieee802_11_common.h | 3 +--
+ 3 files changed, 5 insertions(+), 7 deletions(-)
+
+diff --git a/src/ap/ieee802_11.c b/src/ap/ieee802_11.c
+index 3d5674d2f..d26b9c546 100644
+--- a/src/ap/ieee802_11.c
++++ b/src/ap/ieee802_11.c
+@@ -4573,9 +4573,8 @@ static int ieee80211_ml_process_link(struct hostapd_data *hapd,
+ 	if (!mlbuf)
+ 		goto out;
+ 
+-	if (ieee802_11_parse_link_assoc_req(ies, ies_len, &elems, mlbuf,
+-					    hapd->mld_link_id, true) ==
+-	    ParseFailed) {
++	if (ieee802_11_parse_link_assoc_req(&elems, mlbuf, hapd->mld_link_id,
++					    true) == ParseFailed) {
+ 		wpa_printf(MSG_DEBUG,
+ 			   "MLD: link: Failed to parse association request Multi-Link element");
+ 		status = WLAN_STATUS_UNSPECIFIED_FAILURE;
+diff --git a/src/common/ieee802_11_common.c b/src/common/ieee802_11_common.c
+index 56d556980..4a35479fc 100644
+--- a/src/common/ieee802_11_common.c
++++ b/src/common/ieee802_11_common.c
+@@ -985,14 +985,14 @@ void ieee802_11_elems_clear_ext_ids(struct ieee802_11_elems *elems,
+ }
+ 
+ 
+-ParseRes ieee802_11_parse_link_assoc_req(const u8 *start, size_t len,
+-					 struct ieee802_11_elems *elems,
++ParseRes ieee802_11_parse_link_assoc_req(struct ieee802_11_elems *elems,
+ 					 struct wpabuf *mlbuf,
+ 					 u8 link_id, bool show_errors)
+ {
+ 	const struct ieee80211_eht_ml *ml;
+ 	const u8 *pos;
+ 	ParseRes res = ParseFailed;
++	size_t len;
+ 
+ 	pos = wpabuf_head(mlbuf);
+ 	len = wpabuf_len(mlbuf);
+diff --git a/src/common/ieee802_11_common.h b/src/common/ieee802_11_common.h
+index b8cecab0d..b98617ea6 100644
+--- a/src/common/ieee802_11_common.h
++++ b/src/common/ieee802_11_common.h
+@@ -210,8 +210,7 @@ void ieee802_11_elems_clear_ids(struct ieee802_11_elems *elems,
+ 				const u8 *ids, size_t num);
+ void ieee802_11_elems_clear_ext_ids(struct ieee802_11_elems *elems,
+ 				    const u8 *ids, size_t num);
+-ParseRes ieee802_11_parse_link_assoc_req(const u8 *start, size_t len,
+-					 struct ieee802_11_elems *elems,
++ParseRes ieee802_11_parse_link_assoc_req(struct ieee802_11_elems *elems,
+ 					 struct wpabuf *mlbuf,
+ 					 u8 link_id, bool show_errors);
+ int ieee802_11_ie_count(const u8 *ies, size_t ies_len);
+-- 
+2.43.0
+

@@ -1,0 +1,31 @@
+From 5be1eb0003200752830a9f2f2d323e2bf6d3b5e0 Mon Sep 17 00:00:00 2001
+From: Jouni Malinen <j@w1.fi>
+Date: Sat, 22 Feb 2025 11:48:28 +0200
+Subject: [PATCH] tests: Avoid leaving dpp_connector_privacy_default=1 to next
+ test case
+
+sigma_dut_ap_dpp_self_config_connector_privacy could end up leaving the
+default DPP connector privacy setting modified for the following test
+case. That would make dpp_network_intro_version_missing_req fail. Fix
+this by explicitly clearing the modified configuration parameter.
+
+Signed-off-by: Jouni Malinen <j@w1.fi>
+---
+ tests/hwsim/test_sigma_dut.py | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/tests/hwsim/test_sigma_dut.py b/tests/hwsim/test_sigma_dut.py
+index c570aa0ef..4d45ed7e4 100644
+--- a/tests/hwsim/test_sigma_dut.py
++++ b/tests/hwsim/test_sigma_dut.py
+@@ -3252,6 +3252,7 @@ def test_sigma_dut_ap_dpp_self_config_connector_privacy(dev, apdev, params):
+          SigmaDut(iface, hostapd_logdir=logdir) as dut:
+         dev[0].set("dpp_connector_privacy_default", "1")
+         run_sigma_dut_ap_dpp_self_config(dut, dev, apdev)
++        dev[0].set("dpp_connector_privacy_default", "0")
+ 
+ def run_sigma_dut_ap_dpp_self_config(dut, dev, apdev):
+     check_dpp_capab(dev[0])
+-- 
+2.43.0
+

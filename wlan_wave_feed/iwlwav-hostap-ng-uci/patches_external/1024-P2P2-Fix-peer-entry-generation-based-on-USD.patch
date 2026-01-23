@@ -1,0 +1,32 @@
+From 564c969a52bfe0161327cc514ab26ce0d39c1e67 Mon Sep 17 00:00:00 2001
+From: Jouni Malinen <quic_jouni@quicinc.com>
+Date: Tue, 29 Oct 2024 12:27:12 +0200
+Subject: [PATCH] P2P2: Fix peer entry generation based on USD
+
+All cases calling dev_found() for a P2P peer will need to set the peer
+flags to indicate it has been reported. In particular, this is needed to
+avoid memory leaks in D-Bus code and in P2P peer cleanup. The recently
+added P2P2 case using USD did not update the flags, so fix it to match
+other cases.
+
+Fixes: b4f9742ee246 ("P2P2: Process Element container attribute from NAN SDFs")
+Signed-off-by: Jouni Malinen <quic_jouni@quicinc.com>
+---
+ src/p2p/p2p.c | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/src/p2p/p2p.c b/src/p2p/p2p.c
+index 9d5e63d3c..e009a1502 100644
+--- a/src/p2p/p2p.c
++++ b/src/p2p/p2p.c
+@@ -6097,6 +6097,7 @@ void p2p_process_usd_elems(struct p2p_data *p2p, const u8 *ies, u16 ies_len,
+ 
+ 	p2p->cfg->dev_found(p2p->cfg->cb_ctx, dev->info.p2p_device_addr,
+ 			    &dev->info, !(dev->flags & P2P_DEV_REPORTED_ONCE));
++	dev->flags |= P2P_DEV_REPORTED | P2P_DEV_REPORTED_ONCE;
+ 
+ 	p2p_parse_free(&msg);
+ }
+-- 
+2.43.0
+

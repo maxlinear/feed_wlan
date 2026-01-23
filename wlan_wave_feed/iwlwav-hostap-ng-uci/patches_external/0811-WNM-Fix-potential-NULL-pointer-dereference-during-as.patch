@@ -1,0 +1,41 @@
+From b7f08c28cd6f1d27ab99c5a709d5c16fa2f5f8d5 Mon Sep 17 00:00:00 2001
+From: Rameshkumar Sundaram <quic_ramess@quicinc.com>
+Date: Wed, 7 Aug 2024 10:08:23 +0530
+Subject: [PATCH] WNM: Fix potential NULL pointer dereference during assoc
+ response handling
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+In the send_assoc_resp() function, there’s a chance that the sta
+argument could be NULL. Therefore, it’s crucial not to directly
+dereference sta without first checking whether it’s a valid pointer.
+However, commit 58ac46baf7b0 (“WNM: AP configuration to allow BSS max
+idle period requests”) introduces direct dereferencing of max idle
+period from sta, which might lead to a NULL pointer dereference. Fix
+this now.
+
+Fixes: 58ac46baf7b0 ("WNM: AP configuration to allow BSS max idle period requests")
+Signed-off-by: Rameshkumar Sundaram <quic_ramess@quicinc.com>
+Signed-off-by: Aditya Kumar Singh <quic_adisi@quicinc.com>
+---
+ src/ap/ieee802_11.c | 3 ++-
+ 1 file changed, 2 insertions(+), 1 deletion(-)
+
+diff --git a/src/ap/ieee802_11.c b/src/ap/ieee802_11.c
+index c0e5cff5a..5e484641a 100644
+--- a/src/ap/ieee802_11.c
++++ b/src/ap/ieee802_11.c
+@@ -5014,7 +5014,8 @@ static u16 send_assoc_resp(struct hostapd_data *hapd, struct sta_info *sta,
+ #endif /* CONFIG_IEEE80211AX */
+ 
+ 	p = hostapd_eid_ext_capab(hapd, p, false);
+-	p = hostapd_eid_bss_max_idle_period(hapd, p, sta->max_idle_period);
++	p = hostapd_eid_bss_max_idle_period(hapd, p,
++					    sta ? sta->max_idle_period : 0);
+ 	if (sta && sta->qos_map_enabled)
+ 		p = hostapd_eid_qos_map_set(hapd, p);
+ 
+-- 
+2.43.0
+

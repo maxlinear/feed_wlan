@@ -1,0 +1,149 @@
+From 9929426b92d0189b6efbd3a4e74a3e7ca59bd023 Mon Sep 17 00:00:00 2001
+From: Jouni Malinen <j@w1.fi>
+Date: Sat, 3 Feb 2024 20:39:56 +0200
+Subject: [PATCH] FT: Allow PMKIDs from AssocReq to be in EAPOL-Key msg 2/4
+
+The standard is somewhat unclear on whether the PMKIDs used in
+(Re)Association Request frame (i.e., potential PMKIDs that could be used
+for PMKSA caching during the initial mobility domain association) are to
+be retained or removed when generating EAPOL-Key msg 2/4.
+
+hostapd used to require that only the PMKR1Name is included in the PMKID
+List of RSNE in EAPOL-Key msg 2/4. Extend this to allow the PMKIDs that
+were included in the (Re)Association Request frame to be present as long
+as the correct PMKR1Name is also present. This would allow PMKSA caching
+to be used in initial mobility domain association with supplicant
+implementations that insert the PMKR1Name without removing the PMKIDs
+used in the (Re)Association Request frame. wpa_supplicant did not use to
+that, but other implementations might.
+
+Signed-off-by: Jouni Malinen <j@w1.fi>
+---
+ src/ap/wpa_auth.c   | 82 +++++++++++++++++++++++++++++++--------------
+ src/ap/wpa_auth_i.h |  2 --
+ 2 files changed, 56 insertions(+), 28 deletions(-)
+
+diff --git a/src/ap/wpa_auth.c b/src/ap/wpa_auth.c
+index 9cd32a7ec..0bb8b4872 100644
+--- a/src/ap/wpa_auth.c
++++ b/src/ap/wpa_auth.c
+@@ -921,19 +921,70 @@ static int ft_check_msg_2_of_4(struct wpa_authenticator *wpa_auth,
+ 			       struct wpa_state_machine *sm,
+ 			       struct wpa_eapol_ie_parse *kde)
+ {
+-	struct wpa_ie_data ie;
++	struct wpa_ie_data ie, assoc_ie;
+ 	struct rsn_mdie *mdie;
++	unsigned int i, j;
++	bool found = false;
++
++	/* Verify that PMKR1Name from EAPOL-Key message 2/4 matches the value
++	 * we derived. */
+ 
+ 	if (wpa_parse_wpa_ie_rsn(kde->rsn_ie, kde->rsn_ie_len, &ie) < 0 ||
+-	    ie.num_pmkid != 1 || !ie.pmkid) {
++	    ie.num_pmkid < 1 || !ie.pmkid) {
+ 		wpa_printf(MSG_DEBUG,
+ 			   "FT: No PMKR1Name in FT 4-way handshake message 2/4");
+ 		return -1;
+ 	}
+ 
+-	os_memcpy(sm->sup_pmk_r1_name, ie.pmkid, PMKID_LEN);
+-	wpa_hexdump(MSG_DEBUG, "FT: PMKR1Name from Supplicant",
+-		    sm->sup_pmk_r1_name, PMKID_LEN);
++	if (wpa_parse_wpa_ie_rsn(sm->wpa_ie, sm->wpa_ie_len, &assoc_ie) < 0) {
++		wpa_printf(MSG_DEBUG,
++			   "FT: Could not parse (Re)Association Request frame RSNE");
++		os_memset(&assoc_ie, 0, sizeof(assoc_ie));
++		/* Continue to allow PMKR1Name matching to be done to cover the
++		 * case where it is the only listed PMKID. */
++	}
++
++	for (i = 0; i < ie.num_pmkid; i++) {
++		const u8 *pmkid = ie.pmkid + i * PMKID_LEN;
++
++		if (os_memcmp_const(pmkid, sm->pmk_r1_name,
++				    WPA_PMK_NAME_LEN) == 0) {
++			wpa_printf(MSG_DEBUG,
++				   "FT: RSNE[PMKID[%u]] from supplicant matches PMKR1Name",
++				   i);
++			found = true;
++		} else {
++			for (j = 0; j < assoc_ie.num_pmkid; j++) {
++				if (os_memcmp(pmkid,
++					      assoc_ie.pmkid + j * PMKID_LEN,
++					      PMKID_LEN) == 0)
++					break;
++			}
++
++			if (j == assoc_ie.num_pmkid) {
++				wpa_printf(MSG_DEBUG,
++					   "FT: RSNE[PMKID[%u]] from supplicant is neither PMKR1Name nor included in AssocReq",
++					   i);
++				found = false;
++				break;
++			}
++			wpa_printf(MSG_DEBUG,
++				   "FT: RSNE[PMKID[%u]] from supplicant is not PMKR1Name, but matches a PMKID in AssocReq",
++				   i);
++		}
++	}
++
++	if (!found) {
++		wpa_auth_logger(sm->wpa_auth, wpa_auth_get_spa(sm),
++				LOGGER_DEBUG,
++				"PMKR1Name mismatch in FT 4-way handshake");
++		wpa_hexdump(MSG_DEBUG,
++			    "FT: PMKIDs/PMKR1Name from Supplicant",
++			    ie.pmkid, ie.num_pmkid * PMKID_LEN);
++		wpa_hexdump(MSG_DEBUG, "FT: Derived PMKR1Name",
++			    sm->pmk_r1_name, WPA_PMK_NAME_LEN);
++		return -1;
++	}
+ 
+ 	if (!kde->mdie || !kde->ftie) {
+ 		wpa_printf(MSG_DEBUG,
+@@ -3644,27 +3695,6 @@ SM_STATE(WPA_PTK, PTKCALCNEGOTIATING)
+ 		return;
+ 	}
+ 
+-#ifdef CONFIG_IEEE80211R_AP
+-	if (sm->wpa == WPA_VERSION_WPA2 && wpa_key_mgmt_ft(sm->wpa_key_mgmt)) {
+-		/*
+-		 * Verify that PMKR1Name from EAPOL-Key message 2/4 matches
+-		 * with the value we derived.
+-		 */
+-		if (os_memcmp_const(sm->sup_pmk_r1_name, sm->pmk_r1_name,
+-				    WPA_PMK_NAME_LEN) != 0) {
+-			wpa_auth_logger(sm->wpa_auth, wpa_auth_get_spa(sm),
+-					LOGGER_DEBUG,
+-					"PMKR1Name mismatch in FT 4-way handshake");
+-			wpa_hexdump(MSG_DEBUG,
+-				    "FT: PMKR1Name from Supplicant",
+-				    sm->sup_pmk_r1_name, WPA_PMK_NAME_LEN);
+-			wpa_hexdump(MSG_DEBUG, "FT: Derived PMKR1Name",
+-				    sm->pmk_r1_name, WPA_PMK_NAME_LEN);
+-			goto out;
+-		}
+-	}
+-#endif /* CONFIG_IEEE80211R_AP */
+-
+ 	if (vlan_id && wpa_key_mgmt_wpa_psk(sm->wpa_key_mgmt) &&
+ 	    wpa_auth_update_vlan(wpa_auth, sm->addr, vlan_id) < 0) {
+ 		wpa_sta_disconnect(wpa_auth, sm->addr,
+diff --git a/src/ap/wpa_auth_i.h b/src/ap/wpa_auth_i.h
+index b2fa78912..9ba830415 100644
+--- a/src/ap/wpa_auth_i.h
++++ b/src/ap/wpa_auth_i.h
+@@ -134,8 +134,6 @@ struct wpa_state_machine {
+ 					   * Request */
+ 	u8 r0kh_id[FT_R0KH_ID_MAX_LEN]; /* R0KH-ID from FT Auth Request */
+ 	size_t r0kh_id_len;
+-	u8 sup_pmk_r1_name[WPA_PMK_NAME_LEN]; /* PMKR1Name from EAPOL-Key
+-					       * message 2/4 */
+ 	u8 *assoc_resp_ftie;
+ 
+ 	void (*ft_pending_cb)(void *ctx, const u8 *dst, const u8 *bssid,
+-- 
+2.43.0
+

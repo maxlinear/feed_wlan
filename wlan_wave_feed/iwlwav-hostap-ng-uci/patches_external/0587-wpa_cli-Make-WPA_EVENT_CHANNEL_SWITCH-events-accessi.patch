@@ -1,0 +1,30 @@
+From f44a07d5c474de6dbd2506df5a894280dcf35189 Mon Sep 17 00:00:00 2001
+From: "arun.jose" <arun.jose.wg@bp.renesas.com>
+Date: Mon, 15 Apr 2024 14:18:22 +0530
+Subject: [PATCH] wpa_cli: Make WPA_EVENT_CHANNEL_SWITCH events accessible to
+ action scripts
+
+Make the channel switch complete event, WPA_EVENT_CHANNEL_SWITCH,
+accessible to the action script.
+
+Signed-off-by: arun.jose <arun.jose.wg@bp.renesas.com>
+---
+ wpa_supplicant/wpa_cli.c | 2 ++
+ 1 file changed, 2 insertions(+)
+
+diff --git a/wpa_supplicant/wpa_cli.c b/wpa_supplicant/wpa_cli.c
+index 60f85624f..7d4cb4564 100644
+--- a/wpa_supplicant/wpa_cli.c
++++ b/wpa_supplicant/wpa_cli.c
+@@ -4380,6 +4380,8 @@ static void wpa_cli_action_process(const char *msg)
+ 		}
+ 	} else if (str_starts(pos, WPA_EVENT_CHANNEL_SWITCH_STARTED)) {
+ 		wpa_cli_exec(action_file, ctrl_ifname, pos);
++	} else if (str_starts(pos, WPA_EVENT_CHANNEL_SWITCH)) {
++		wpa_cli_exec(action_file, ctrl_ifname, pos);
+ 	} else if (str_starts(pos, AP_EVENT_ENABLED)) {
+ 		wpa_cli_exec(action_file, ctrl_ifname, pos);
+ 	} else if (str_starts(pos, AP_EVENT_DISABLED)) {
+-- 
+2.43.0
+

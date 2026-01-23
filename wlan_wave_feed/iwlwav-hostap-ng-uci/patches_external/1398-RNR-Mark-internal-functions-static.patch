@@ -1,0 +1,41 @@
+From f1425f2e14d421a9c3b8b5736c49c599e9381422 Mon Sep 17 00:00:00 2001
+From: Jouni Malinen <j@w1.fi>
+Date: Sat, 22 Feb 2025 11:00:17 +0200
+Subject: [PATCH] RNR: Mark internal functions static
+
+These are not used outside the file in which they are defined.
+
+Signed-off-by: Jouni Malinen <j@w1.fi>
+---
+ src/ap/ieee802_11.c | 8 ++++----
+ 1 file changed, 4 insertions(+), 4 deletions(-)
+
+diff --git a/src/ap/ieee802_11.c b/src/ap/ieee802_11.c
+index 72910394c..30f8285c3 100644
+--- a/src/ap/ieee802_11.c
++++ b/src/ap/ieee802_11.c
+@@ -8066,8 +8066,8 @@ repeat_rnr:
+ }
+ 
+ 
+-u8 * hostapd_eid_rnr_colocation(struct hostapd_data *hapd, u8 *eid,
+-				size_t *current_len)
++static u8 * hostapd_eid_rnr_colocation(struct hostapd_data *hapd, u8 *eid,
++				       size_t *current_len)
+ {
+ 	struct hostapd_iface *iface;
+ 	size_t i;
+@@ -8091,8 +8091,8 @@ u8 * hostapd_eid_rnr_colocation(struct hostapd_data *hapd, u8 *eid,
+ }
+ 
+ 
+-u8 * hostapd_eid_rnr_mlo(struct hostapd_data *hapd, u32 type,
+-			 u8 *eid, size_t *current_len)
++static u8 * hostapd_eid_rnr_mlo(struct hostapd_data *hapd, u32 type,
++				u8 *eid, size_t *current_len)
+ {
+ #ifdef CONFIG_IEEE80211BE
+ 	struct hostapd_iface *iface;
+-- 
+2.43.0
+

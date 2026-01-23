@@ -1,0 +1,38 @@
+From 9f0429c9e1a7698f6dac4a0ead01870ef607e1b2 Mon Sep 17 00:00:00 2001
+From: Jouni Malinen <j@w1.fi>
+Date: Thu, 11 Jul 2024 18:35:28 +0300
+Subject: [PATCH] dbus: Make sure ServiceDiscoveryRequest/Result does not
+ override pointers
+
+Explicitly free the previously allocated copy if ServiceDiscoveryRequest
+or Service DiscvoveryResponse parsing loop finds multiple instances of
+the same dict entry.
+
+Signed-off-by: Jouni Malinen <j@w1.fi>
+---
+ wpa_supplicant/dbus/dbus_new_handlers_p2p.c | 2 ++
+ 1 file changed, 2 insertions(+)
+
+diff --git a/wpa_supplicant/dbus/dbus_new_handlers_p2p.c b/wpa_supplicant/dbus/dbus_new_handlers_p2p.c
+index d001c0154..5d55ede5e 100644
+--- a/wpa_supplicant/dbus/dbus_new_handlers_p2p.c
++++ b/wpa_supplicant/dbus/dbus_new_handlers_p2p.c
+@@ -2925,6 +2925,7 @@ DBusMessage * wpas_dbus_handler_p2p_service_sd_req(
+ 			if (entry.type != DBUS_TYPE_ARRAY ||
+ 			    entry.array_type != DBUS_TYPE_BYTE)
+ 				goto error_clear;
++			wpabuf_free(tlv);
+ 			tlv = wpabuf_alloc_copy(entry.bytearray_value,
+ 						entry.array_len);
+ 		} else
+@@ -3011,6 +3012,7 @@ DBusMessage * wpas_dbus_handler_p2p_service_sd_res(
+ 			if (entry.type != DBUS_TYPE_ARRAY ||
+ 			    entry.array_type != DBUS_TYPE_BYTE)
+ 				goto error_clear;
++			wpabuf_free(tlv);
+ 			tlv = wpabuf_alloc_copy(entry.bytearray_value,
+ 						entry.array_len);
+ 		} else
+-- 
+2.43.0
+

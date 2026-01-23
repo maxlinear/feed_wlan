@@ -1,0 +1,34 @@
+From b39a9cae8a72dd5b9531cea2ef9d2504bc12a230 Mon Sep 17 00:00:00 2001
+From: Jouni Malinen <j@w1.fi>
+Date: Sun, 22 Dec 2024 10:49:27 +0200
+Subject: [PATCH] AP MLD: Do not try to set hapd->mld multiple times
+
+Now that there is more than one path that could end up calling
+hostapd_bss_setup_multi_link(), it looks like it was possible to end up
+allocating the MLD context twice and that resulted in resource leaks.
+Avoid this by explicitly checking that hapd->mld is not set before
+trying to determine whether to set it to an existing context or create a
+new one.
+
+Signed-off-by: Jouni Malinen <j@w1.fi>
+---
+ src/ap/hostapd.c | 3 +++
+ 1 file changed, 3 insertions(+)
+
+diff --git a/src/ap/hostapd.c b/src/ap/hostapd.c
+index 8e350f087..58f93e28b 100644
+--- a/src/ap/hostapd.c
++++ b/src/ap/hostapd.c
+@@ -3108,6 +3108,9 @@ void hostapd_bss_setup_multi_link(struct hostapd_data *hapd,
+ 	struct hostapd_bss_config *conf;
+ 	size_t i;
+ 
++	if (hapd->mld)
++		return;
++
+ 	conf = hapd->conf;
+ 
+ 	if (!hapd->iconf || !hapd->iconf->ieee80211be || !conf->mld_ap ||
+-- 
+2.43.0
+

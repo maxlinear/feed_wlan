@@ -1,0 +1,100 @@
+From e693a28c3b45c87fe90d4788afcc463477d12b50 Mon Sep 17 00:00:00 2001
+From: Venkatasaiprudhvi Sannidhi <vsannidhi@maxlinear.com>
+Date: Wed, 26 Mar 2025 11:41:37 +0530
+Subject: [PATCH] WLANRTSYS-86418 Bss critical update support for inclusion of
+ Operating Mode notification IE.
+
+    Description: Added code changes regarding critical update support for OMN IE.
+
+    Unit test: Pass. Validated the below cases.
+	1) Legacy VAP
+    	2) MLO VAPs(2G-5G, 5G-6G, 2G-6G tx VAP combinations)
+	3) MLO with 6G non tx VAP
+---
+ src/ap/mxl_hostapd.c | 17 +++++++++++++++++
+ src/ap/mxl_mld.c     | 29 +++++++++++++++++++++++++++++
+ 2 files changed, 46 insertions(+)
+
+diff --git a/src/ap/mxl_hostapd.c b/src/ap/mxl_hostapd.c
+index d95a3f9d6..a6de58169 100644
+--- a/src/ap/mxl_hostapd.c
++++ b/src/ap/mxl_hostapd.c
+@@ -2486,7 +2486,24 @@ end:
+ 	iface->mxl_iface.require_omn = bw_params->coc_omn_IE;
+ 	eloop_cancel_timeout(mxl_ap_max_nss_omn_elem_timeout, iface, NULL);
+ 
++#ifdef CONFIG_IEEE80211BE_MXL_MLO
++	if (iface->mxl_iface.require_omn) {
++		for (i = 0; i < iface->num_bss; i++) {
++			if (!mxl_is_mlo_enabled(iface->bss[i]->conf)) {
++				mxl_ml_send_bss_critical_update_info(iface->bss[i],
++												BSS_CRITICAL_UPDATE_COMMON, 0, 0);
++				if (iface->bss[i]->beacon_set_done && iface->bss[i]->started)
++					ieee802_11_set_beacon(iface->bss[i]);
++			} else {
++				mxl_ml_handle_critical_update(iface->bss[i]);
++			}
++		}
++	} else {
++		ieee802_11_update_beacons(iface);
++	}
++#else
+ 	ieee802_11_update_beacons(iface);
++#endif /* CONFIG_IEEE80211BE_MXL_MLO */
+ 
+ 	iface->mxl_iface.coc_BW = 0;
+ 	if (bw_params->coc_is_max_nss)
+diff --git a/src/ap/mxl_mld.c b/src/ap/mxl_mld.c
+index b00457811..4ae95cd54 100644
+--- a/src/ap/mxl_mld.c
++++ b/src/ap/mxl_mld.c
+@@ -1679,6 +1679,7 @@ int mxl_ml_handle_critical_update(struct hostapd_data *hapd)
+ {
+ 	struct hostapd_data *hapd_tx = NULL, *sib_hapd = NULL, *sib_hapd_tx = NULL;
+ 	int flags = BSS_CRITICAL_UPDATE_COMMON; /* Bit6 */
++	size_t tx_bss_idx, sib_tx_bss_idx;
+ 
+ 	hapd->parameter_set_count++;
+ 
+@@ -1698,10 +1699,38 @@ int mxl_ml_handle_critical_update(struct hostapd_data *hapd)
+ 		mxl_ml_increment_bss_param_change_count(hapd);
+ 
+ 		hapd_tx = hapd;
++		if ((hapd->iconf->multibss_enable) && (MULTIBSS_REFERENCE_BSS_IDX != hapd->conf->bss_idx)) {
++			/* Set Non-Tx Critical Update */
++			hapd->mxl_data.ml_non_tx_critical_update = true;
++			tx_bss_idx = mxl_hostapd_get_mbssid_tx_bss_idx(hapd->iface);
++			hapd_tx = hapd->iface->bss[tx_bss_idx];
++			flags = NON_TX_BSS_CRITICAL_UPDATE_COMMON; /* Bit7 */
++		}
++
++		/* Send BSS critical update vendor cmd on link A */
++		if (mxl_ml_send_bss_critical_update_info(hapd_tx, flags, 0, 0) < 0) {
++			wpa_printf(MSG_ERROR, "Critical update on link A failed");
++			return -1;
++		}
+ 
+ 		flags = BSS_CRITICAL_UPDATE_COMMON;
+ 		sib_hapd_tx = sib_hapd;
+ 
++		if ((sib_hapd->iconf->multibss_enable)
++		    && (MULTIBSS_REFERENCE_BSS_IDX != sib_hapd->conf->bss_idx)) {
++			/* Set Non-Tx Critical Update */
++			sib_hapd->mxl_data.ml_non_tx_critical_update = true;
++			sib_tx_bss_idx = mxl_hostapd_get_mbssid_tx_bss_idx(sib_hapd->iface);
++			sib_hapd_tx = sib_hapd->iface->bss[sib_tx_bss_idx];
++			flags = NON_TX_BSS_CRITICAL_UPDATE_COMMON; /* Bit7 */
++		}
++
++		/* Send BSS critical update vendor cmd on link B */
++		if (mxl_ml_send_bss_critical_update_info(sib_hapd_tx, flags, 0, 0) < 0) {
++			wpa_printf(MSG_ERROR, "Critical update on link B failed");
++			return -1;
++		}
++
+ 		ieee802_11_set_beacon_per_bss_only(hapd_tx);
+ 		ieee802_11_set_beacon_per_bss_only(sib_hapd_tx);
+ 
+-- 
+2.43.0
+

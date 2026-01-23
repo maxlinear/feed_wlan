@@ -1,0 +1,29 @@
+From 7b90bb0a055685deb286c65cbc214b45ee110c14 Mon Sep 17 00:00:00 2001
+From: Kaidong Wang <kaidong@chromium.org>
+Date: Tue, 17 Sep 2024 23:00:20 +0000
+Subject: [PATCH] Fix the documentation of SignalPoll method
+
+Method SignalPoll wraps the dictionary of properties in a variant
+container, update the documentation to reflect the wrapping.
+
+Signed-off-by: Kaidong Wang <kaidong@chromium.org>
+---
+ doc/dbus.doxygen | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/doc/dbus.doxygen b/doc/dbus.doxygen
+index b91a81cd1..31f7a010f 100644
+--- a/doc/dbus.doxygen
++++ b/doc/dbus.doxygen
+@@ -653,7 +653,7 @@ fi.w1.wpa_supplicant1.CreateInterface.
+       </li>
+       <li>
+ 	<h3>SignalPoll ( ) --> a{sv} : properties</h3>
+-	<p>Fetch signal properties for the current connection.</p>
++	<p>Fetch signal properties for the current connection. The dictionary of properties is stored within a variant container.</p>
+ 	<h4>Returns</h4>
+ 	<dl>
+ 	  <dt>a{sv} : properties</dt>
+-- 
+2.43.0
+

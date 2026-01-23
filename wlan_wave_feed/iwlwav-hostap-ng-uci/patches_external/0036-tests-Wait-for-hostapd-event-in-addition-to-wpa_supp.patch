@@ -1,0 +1,761 @@
+From b0fc0154f562443bd9b1279e345023155fd334d8 Mon Sep 17 00:00:00 2001
+From: Jouni Malinen <j@w1.fi>
+Date: Sat, 9 Dec 2023 13:04:14 +0200
+Subject: [PATCH] tests: Wait for hostapd event in addition to wpa_supplicant
+
+Wait for hostapd to complete processing before taking the next step in a
+test instead of waiting just for wpa_supplicant. This avoids race
+conditions with UML time-travel.
+
+Signed-off-by: Jouni Malinen <j@w1.fi>
+---
+ tests/hwsim/hostapd.py             | 17 ++++++++-
+ tests/hwsim/p2p_utils.py           |  7 ++++
+ tests/hwsim/test_ap_eap.py         | 20 ++++++++++
+ tests/hwsim/test_ap_hs20.py        | 60 ++++++++++++++++--------------
+ tests/hwsim/test_ap_psk.py         |  4 +-
+ tests/hwsim/test_ap_qosmap.py      |  7 ++++
+ tests/hwsim/test_ap_vlan.py        |  1 +
+ tests/hwsim/test_ap_wps.py         |  4 ++
+ tests/hwsim/test_eap_proto.py      | 12 ++++++
+ tests/hwsim/test_fils.py           |  7 ++++
+ tests/hwsim/test_fst_module.py     |  1 +
+ tests/hwsim/test_p2p_autogo.py     |  4 ++
+ tests/hwsim/test_p2p_grpform.py    |  1 +
+ tests/hwsim/test_p2p_persistent.py |  5 +++
+ tests/hwsim/test_pmksa_cache.py    |  2 +
+ tests/hwsim/test_sae_pk.py         |  2 +
+ tests/hwsim/test_wnm.py            |  2 +
+ tests/hwsim/wpasupplicant.py       | 28 +++++++++++++-
+ 18 files changed, 153 insertions(+), 31 deletions(-)
+
+diff --git a/tests/hwsim/hostapd.py b/tests/hwsim/hostapd.py
+index ed9378bdc..bae610b91 100644
+--- a/tests/hwsim/hostapd.py
++++ b/tests/hwsim/hostapd.py
+@@ -294,12 +294,27 @@ class Hostapd:
+                 break
+         return None
+ 
+-    def wait_sta(self, addr=None, timeout=2):
++    def wait_sta(self, addr=None, timeout=2, wait_4way_hs=False):
+         ev = self.wait_event(["AP-STA-CONNECT"], timeout=timeout)
+         if ev is None:
+             raise Exception("AP did not report STA connection")
+         if addr and addr not in ev:
+             raise Exception("Unexpected STA address in connection event: " + ev)
++        if wait_4way_hs:
++            ev2 = self.wait_event(["EAPOL-4WAY-HS-COMPLETED"],
++                                  timeout=timeout)
++            if ev2 is None:
++                raise Exception("AP did not report 4-way handshake completion")
++            if addr and addr not in ev2:
++                raise Exception("Unexpected STA address in 4-way handshake completion event: " + ev2)
++        return ev
++
++    def wait_sta_disconnect(self, addr=None, timeout=2):
++        ev = self.wait_event(["AP-STA-DISCONNECT"], timeout=timeout)
++        if ev is None:
++            raise Exception("AP did not report STA disconnection")
++        if addr and addr not in ev:
++            raise Exception("Unexpected STA address in disconnection event: " + ev)
+         return ev
+ 
+     def wait_ptkinitdone(self, addr, timeout=2):
+diff --git a/tests/hwsim/p2p_utils.py b/tests/hwsim/p2p_utils.py
+index bfd8e2e44..f30acfe0e 100644
+--- a/tests/hwsim/p2p_utils.py
++++ b/tests/hwsim/p2p_utils.py
+@@ -205,6 +205,7 @@ def connect_cli(go, client, social=False, freq=None):
+     res = client.p2p_connect_group(go.p2p_dev_addr(), pin, timeout=60,
+                                    social=social, freq=freq)
+     logger.info("Client connected")
++    go.wait_sta(client.p2p_interface_addr())
+     hwsim_utils.test_connectivity_p2p(go, client)
+     return res
+ 
+@@ -295,6 +296,12 @@ def go_neg_pin_authorized(i_dev, r_dev, i_intent=None, r_intent=None,
+     r_res = r_dev.p2p_go_neg_auth_result(expect_failure=expect_failure)
+     logger.debug("i_res: " + str(i_res))
+     logger.debug("r_res: " + str(r_res))
++    if not expect_failure and i_res and r_res and \
++       i_res['result'] == 'success' and r_res['result'] == 'success':
++        if i_res['role'] == 'GO':
++            i_dev.wait_sta(addr=r_dev.p2p_interface_addr())
++        if r_res['role'] == 'GO':
++            r_dev.wait_sta(addr=i_dev.p2p_interface_addr())
+     r_dev.dump_monitor()
+     i_dev.dump_monitor()
+     if i_go_neg_status:
+diff --git a/tests/hwsim/test_ap_eap.py b/tests/hwsim/test_ap_eap.py
+index 0ddaa07d5..df8fa0211 100644
+--- a/tests/hwsim/test_ap_eap.py
++++ b/tests/hwsim/test_ap_eap.py
+@@ -1259,12 +1259,18 @@ def test_ap_wpa2_eap_aka_sql(dev, apdev, params):
+ 
+     logger.info("AKA fast re-authentication")
+     eap_reauth(dev[0], "AKA")
++    ev = hapd.wait_event(["EAPOL-4WAY-HS-COMPLETED"], timeout=1)
++    if ev is None:
++        raise Exception("hostapd did not report 4-way handshake completion")
+ 
+     logger.info("AKA full auth with pseudonym")
+     with con:
+         cur = con.cursor()
+         cur.execute("DELETE FROM reauth WHERE permanent='0232010000000000'")
+     eap_reauth(dev[0], "AKA")
++    ev = hapd.wait_event(["EAPOL-4WAY-HS-COMPLETED"], timeout=1)
++    if ev is None:
++        raise Exception("hostapd did not report 4-way handshake completion")
+ 
+     logger.info("AKA full auth with permanent identity")
+     with con:
+@@ -1272,6 +1278,9 @@ def test_ap_wpa2_eap_aka_sql(dev, apdev, params):
+         cur.execute("DELETE FROM reauth WHERE permanent='0232010000000000'")
+         cur.execute("DELETE FROM pseudonyms WHERE permanent='0232010000000000'")
+     eap_reauth(dev[0], "AKA")
++    ev = hapd.wait_event(["EAPOL-4WAY-HS-COMPLETED"], timeout=1)
++    if ev is None:
++        raise Exception("hostapd did not report 4-way handshake completion")
+ 
+     logger.info("AKA reauth with mismatching MK")
+     with con:
+@@ -1286,12 +1295,20 @@ def test_ap_wpa2_eap_aka_sql(dev, apdev, params):
+         cur = con.cursor()
+         cur.execute("UPDATE reauth SET counter='10' WHERE permanent='0232010000000000'")
+     eap_reauth(dev[0], "AKA")
++    ev = hapd.wait_event(["EAPOL-4WAY-HS-COMPLETED"], timeout=1)
++    if ev is None:
++        raise Exception("hostapd did not report 4-way handshake completion")
+     with con:
+         cur = con.cursor()
+         cur.execute("UPDATE reauth SET counter='10' WHERE permanent='0232010000000000'")
+     logger.info("AKA reauth with mismatching counter")
+     eap_reauth(dev[0], "AKA")
++    ev = hapd.wait_event(["EAPOL-4WAY-HS-COMPLETED"], timeout=1)
++    if ev is None:
++        raise Exception("hostapd did not report 4-way handshake completion")
+     dev[0].request("REMOVE_NETWORK all")
++    dev[0].wait_disconnected()
++    hapd.wait_sta_disconnect()
+ 
+     eap_connect(dev[0], hapd, "AKA", "0232010000000000",
+                 password="90dca4eda45b53cf0f12d7c9c3bc6a89:cb9cccc4b9258e6dca4760379fb82581:000000000123")
+@@ -1300,6 +1317,9 @@ def test_ap_wpa2_eap_aka_sql(dev, apdev, params):
+         cur.execute("UPDATE reauth SET counter='1001' WHERE permanent='0232010000000000'")
+     logger.info("AKA reauth with max reauth count reached")
+     eap_reauth(dev[0], "AKA")
++    ev = hapd.wait_event(["EAPOL-4WAY-HS-COMPLETED"], timeout=1)
++    if ev is None:
++        raise Exception("hostapd did not report 4-way handshake completion")
+ 
+ def test_ap_wpa2_eap_aka_sql_fallback_to_pseudonym_id(dev, apdev, params):
+     """WPA2-Enterprise connection using EAP-AKA (SQL) and fallback to pseudonym using AKA-Identity"""
+diff --git a/tests/hwsim/test_ap_hs20.py b/tests/hwsim/test_ap_hs20.py
+index c77c8d2e9..00c359c27 100644
+--- a/tests/hwsim/test_ap_hs20.py
++++ b/tests/hwsim/test_ap_hs20.py
+@@ -55,15 +55,19 @@ def hs20_ap_params(ssid="test-hs20"):
+     params['anqp_3gpp_cell_net'] = "244,91"
+     return params
+ 
+-def check_auto_select(dev, bssid):
++def check_auto_select(dev, bssid, hapd=None):
+     dev.scan_for_bss(bssid, freq="2412")
+     dev.request("INTERWORKING_SELECT auto freq=2412")
+     ev = dev.wait_connected(timeout=15)
+     if bssid not in ev:
+         raise Exception("Connected to incorrect network")
++    if hapd:
++        hapd.wait_sta()
+     dev.request("REMOVE_NETWORK all")
+     dev.wait_disconnected()
+     dev.dump_monitor()
++    if hapd:
++        hapd.wait_sta_disconnect()
+ 
+ def interworking_select(dev, bssid, type=None, no_match=False, freq=None):
+     dev.dump_monitor()
+@@ -1485,7 +1489,7 @@ def test_ap_hs20_gas_while_associated(dev, apdev):
+     bssid = apdev[0]['bssid']
+     params = hs20_ap_params()
+     params['hessid'] = bssid
+-    hostapd.add_ap(apdev[0], params)
++    hapd = hostapd.add_ap(apdev[0], params)
+ 
+     dev[0].hs20_enable()
+     id = dev[0].add_cred_values({'realm': "example.com",
+@@ -1495,6 +1499,7 @@ def test_ap_hs20_gas_while_associated(dev, apdev):
+                                  'domain': "example.com"})
+     interworking_select(dev[0], bssid, "home", freq="2412")
+     interworking_connect(dev[0], bssid, "TTLS")
++    hapd.wait_sta()
+ 
+     logger.info("Verifying GAS query while associated")
+     dev[0].request("FETCH_ANQP")
+@@ -1509,7 +1514,7 @@ def test_ap_hs20_gas_with_another_ap_while_associated(dev, apdev):
+     bssid = apdev[0]['bssid']
+     params = hs20_ap_params()
+     params['hessid'] = bssid
+-    hostapd.add_ap(apdev[0], params)
++    hapd = hostapd.add_ap(apdev[0], params)
+ 
+     bssid2 = apdev[1]['bssid']
+     params = hs20_ap_params()
+@@ -1525,6 +1530,7 @@ def test_ap_hs20_gas_with_another_ap_while_associated(dev, apdev):
+                                  'domain': "example.com"})
+     interworking_select(dev[0], bssid, "home", freq="2412")
+     interworking_connect(dev[0], bssid, "TTLS")
++    hapd.wait_sta()
+     dev[0].dump_monitor()
+ 
+     logger.info("Verifying GAS query with same AP while associated")
+@@ -2253,7 +2259,7 @@ def test_ap_hs20_req_conn_capab(dev, apdev):
+     check_eap_capa(dev[0], "MSCHAPV2")
+     bssid = apdev[0]['bssid']
+     params = hs20_ap_params()
+-    hostapd.add_ap(apdev[0], params)
++    hapd = hostapd.add_ap(apdev[0], params)
+ 
+     dev[0].hs20_enable()
+     dev[0].scan_for_bss(bssid, freq="2412")
+@@ -2269,7 +2275,7 @@ def test_ap_hs20_req_conn_capab(dev, apdev):
+     check_conn_capab_selection(dev[0], "roaming", True)
+ 
+     logger.info("Verify that req_conn_capab does not prevent connection if no other network is available")
+-    check_auto_select(dev[0], bssid)
++    check_auto_select(dev[0], bssid, hapd=hapd)
+ 
+     logger.info("Additional req_conn_capab checks")
+ 
+@@ -2324,25 +2330,25 @@ def test_ap_hs20_req_conn_capab_and_roaming_partner_preference(dev, apdev):
+     params = hs20_ap_params()
+     params['domain_name'] = "roaming.example.org"
+     params['hs20_conn_capab'] = ["1:0:2", "6:22:1", "17:5060:0", "50:0:1"]
+-    hostapd.add_ap(apdev[0], params)
++    hapd = hostapd.add_ap(apdev[0], params)
+ 
+     bssid2 = apdev[1]['bssid']
+     params = hs20_ap_params(ssid="test-hs20-b")
+     params['domain_name'] = "roaming.example.net"
+-    hostapd.add_ap(apdev[1], params)
++    hapd2 = hostapd.add_ap(apdev[1], params)
+ 
+     values = default_cred()
+     values['roaming_partner'] = "roaming.example.net,1,127,*"
+     id = dev[0].add_cred_values(values)
+-    check_auto_select(dev[0], bssid2)
++    check_auto_select(dev[0], bssid2, hapd=hapd2)
+ 
+     dev[0].set_cred(id, "req_conn_capab", "50")
+-    check_auto_select(dev[0], bssid)
++    check_auto_select(dev[0], bssid, hapd=hapd)
+ 
+     dev[0].remove_cred(id)
+     id = dev[0].add_cred_values(values)
+     dev[0].set_cred(id, "req_conn_capab", "51")
+-    check_auto_select(dev[0], bssid2)
++    check_auto_select(dev[0], bssid2, hapd=hapd2)
+ 
+ def check_bandwidth_selection(dev, type, below):
+     dev.request("INTERWORKING_SELECT freq=2412")
+@@ -2374,7 +2380,7 @@ def test_ap_hs20_min_bandwidth_home(dev, apdev):
+     check_eap_capa(dev[0], "MSCHAPV2")
+     bssid = apdev[0]['bssid']
+     params = hs20_ap_params()
+-    hostapd.add_ap(apdev[0], params)
++    hapd = hostapd.add_ap(apdev[0], params)
+ 
+     dev[0].hs20_enable()
+     dev[0].scan_for_bss(bssid, freq="2412")
+@@ -2396,14 +2402,14 @@ def test_ap_hs20_min_bandwidth_home(dev, apdev):
+     values = bw_cred(domain="example.com", dl_home=5491, ul_home=59)
+     id = dev[0].add_cred_values(values)
+     check_bandwidth_selection(dev[0], "home", True)
+-    check_auto_select(dev[0], bssid)
++    check_auto_select(dev[0], bssid, hapd=hapd)
+ 
+     bssid2 = apdev[1]['bssid']
+     params = hs20_ap_params(ssid="test-hs20-b")
+     params['hs20_wan_metrics'] = "01:8000:1000:1:1:3000"
+-    hostapd.add_ap(apdev[1], params)
++    hapd2 = hostapd.add_ap(apdev[1], params)
+ 
+-    check_auto_select(dev[0], bssid2)
++    check_auto_select(dev[0], bssid2, hapd=hapd2)
+ 
+ def test_ap_hs20_min_bandwidth_home2(dev, apdev):
+     """Hotspot 2.0 network selection with min bandwidth - special cases"""
+@@ -2446,7 +2452,7 @@ def test_ap_hs20_min_bandwidth_home_hidden_ssid_in_scan_res(dev, apdev):
+     hapd_global.remove(apdev[0]['ifname'])
+ 
+     params = hs20_ap_params()
+-    hostapd.add_ap(apdev[0], params)
++    hapd = hostapd.add_ap(apdev[0], params)
+ 
+     dev[0].hs20_enable()
+     dev[0].scan_for_bss(bssid, freq="2412")
+@@ -2468,14 +2474,14 @@ def test_ap_hs20_min_bandwidth_home_hidden_ssid_in_scan_res(dev, apdev):
+     values = bw_cred(domain="example.com", dl_home=5491, ul_home=59)
+     id = dev[0].add_cred_values(values)
+     check_bandwidth_selection(dev[0], "home", True)
+-    check_auto_select(dev[0], bssid)
++    check_auto_select(dev[0], bssid, hapd=hapd)
+ 
+     bssid2 = apdev[1]['bssid']
+     params = hs20_ap_params(ssid="test-hs20-b")
+     params['hs20_wan_metrics'] = "01:8000:1000:1:1:3000"
+-    hostapd.add_ap(apdev[1], params)
++    hapd2 = hostapd.add_ap(apdev[1], params)
+ 
+-    check_auto_select(dev[0], bssid2)
++    check_auto_select(dev[0], bssid2, hapd=hapd2)
+ 
+     dev[0].flush_scan_cache()
+ 
+@@ -2484,7 +2490,7 @@ def test_ap_hs20_min_bandwidth_roaming(dev, apdev):
+     check_eap_capa(dev[0], "MSCHAPV2")
+     bssid = apdev[0]['bssid']
+     params = hs20_ap_params()
+-    hostapd.add_ap(apdev[0], params)
++    hapd = hostapd.add_ap(apdev[0], params)
+ 
+     dev[0].hs20_enable()
+     dev[0].scan_for_bss(bssid, freq="2412")
+@@ -2506,14 +2512,14 @@ def test_ap_hs20_min_bandwidth_roaming(dev, apdev):
+     values = bw_cred(domain="example.org", dl_roaming=5491, ul_roaming=59)
+     id = dev[0].add_cred_values(values)
+     check_bandwidth_selection(dev[0], "roaming", True)
+-    check_auto_select(dev[0], bssid)
++    check_auto_select(dev[0], bssid, hapd=hapd)
+ 
+     bssid2 = apdev[1]['bssid']
+     params = hs20_ap_params(ssid="test-hs20-b")
+     params['hs20_wan_metrics'] = "01:8000:1000:1:1:3000"
+-    hostapd.add_ap(apdev[1], params)
++    hapd2 = hostapd.add_ap(apdev[1], params)
+ 
+-    check_auto_select(dev[0], bssid2)
++    check_auto_select(dev[0], bssid2, hapd=hapd2)
+ 
+ def test_ap_hs20_min_bandwidth_and_roaming_partner_preference(dev, apdev):
+     """Hotspot 2.0 and minimum bandwidth with roaming partner preference"""
+@@ -2522,23 +2528,23 @@ def test_ap_hs20_min_bandwidth_and_roaming_partner_preference(dev, apdev):
+     params = hs20_ap_params()
+     params['domain_name'] = "roaming.example.org"
+     params['hs20_wan_metrics'] = "01:8000:1000:1:1:3000"
+-    hostapd.add_ap(apdev[0], params)
++    hapd = hostapd.add_ap(apdev[0], params)
+ 
+     bssid2 = apdev[1]['bssid']
+     params = hs20_ap_params(ssid="test-hs20-b")
+     params['domain_name'] = "roaming.example.net"
+-    hostapd.add_ap(apdev[1], params)
++    hapd2 = hostapd.add_ap(apdev[1], params)
+ 
+     values = default_cred()
+     values['roaming_partner'] = "roaming.example.net,1,127,*"
+     id = dev[0].add_cred_values(values)
+-    check_auto_select(dev[0], bssid2)
++    check_auto_select(dev[0], bssid2, hapd=hapd2)
+ 
+     dev[0].set_cred(id, "min_dl_bandwidth_roaming", "6000")
+-    check_auto_select(dev[0], bssid)
++    check_auto_select(dev[0], bssid, hapd=hapd)
+ 
+     dev[0].set_cred(id, "min_dl_bandwidth_roaming", "10000")
+-    check_auto_select(dev[0], bssid2)
++    check_auto_select(dev[0], bssid2, hapd=hapd2)
+ 
+ def test_ap_hs20_min_bandwidth_no_wan_metrics(dev, apdev):
+     """Hotspot 2.0 network selection with min bandwidth but no WAN Metrics"""
+diff --git a/tests/hwsim/test_ap_psk.py b/tests/hwsim/test_ap_psk.py
+index 4d493cb3c..34086cd55 100644
+--- a/tests/hwsim/test_ap_psk.py
++++ b/tests/hwsim/test_ap_psk.py
+@@ -646,8 +646,8 @@ def test_ap_wpa2_bridge_fdb(dev, apdev):
+                        bssid=apdev[0]['bssid'])
+         dev[1].connect(ssid, psk=passphrase, scan_freq="2412",
+                        bssid=apdev[0]['bssid'])
+-        hapd.wait_sta()
+-        hapd.wait_sta()
++        hapd.wait_sta(wait_4way_hs=True)
++        hapd.wait_sta(wait_4way_hs=True)
+         addr0 = dev[0].p2p_interface_addr()
+         hwsim_utils.test_connectivity_sta(dev[0], dev[1])
+         err, macs1 = hapd.cmd_execute(['brctl', 'showmacs', 'ap-br0'])
+diff --git a/tests/hwsim/test_ap_qosmap.py b/tests/hwsim/test_ap_qosmap.py
+index e4e940f08..fb2647487 100644
+--- a/tests/hwsim/test_ap_qosmap.py
++++ b/tests/hwsim/test_ap_qosmap.py
+@@ -45,6 +45,7 @@ def test_ap_qosmap(dev, apdev):
+     params['qos_map_set'] = '53,2,22,6,8,15,0,7,255,255,16,31,32,39,255,255,40,47,48,55'
+     hapd = hostapd.add_ap(apdev[0], params)
+     dev[0].connect(ssid, key_mgmt="NONE", scan_freq="2412")
++    hapd.wait_sta()
+     time.sleep(0.1)
+     addr = dev[0].p2p_interface_addr()
+     dev[0].request("DATA_TEST_CONFIG 1")
+@@ -82,6 +83,8 @@ def test_ap_qosmap_default(dev, apdev):
+     params = {"ssid": ssid}
+     hapd = hostapd.add_ap(apdev[0], params)
+     dev[0].connect(ssid, key_mgmt="NONE", scan_freq="2412")
++    hapd.wait_sta()
++    time.sleep(0.1)
+     addr = dev[0].p2p_interface_addr()
+     dev[0].request("DATA_TEST_CONFIG 1")
+     hapd.request("DATA_TEST_CONFIG 1")
+@@ -119,6 +122,8 @@ def test_ap_qosmap_default_acm(dev, apdev):
+     hapd = hostapd.add_ap(apdev[0], params)
+     dev[0].connect(ssid, key_mgmt="NONE", scan_freq="2412")
+     addr = dev[0].p2p_interface_addr()
++    hapd.wait_sta()
++    time.sleep(0.1)
+     dev[0].request("DATA_TEST_CONFIG 1")
+     hapd.request("DATA_TEST_CONFIG 1")
+     Wlantest.setup(hapd)
+@@ -163,6 +168,8 @@ def test_ap_qosmap_invalid(dev, apdev):
+             raise Exception("SET_QOS_MAP_SET accepted during forced driver failure")
+ 
+     dev[0].connect(ssid, key_mgmt="NONE", scan_freq="2412")
++    hapd.wait_sta()
++    time.sleep(0.1)
+     with alloc_fail(hapd, 1,
+                     "wpabuf_alloc;hostapd_ctrl_iface_send_qos_map_conf"):
+         if "FAIL" not in hapd.request("SEND_QOS_MAP_CONF " + dev[0].own_addr()):
+diff --git a/tests/hwsim/test_ap_vlan.py b/tests/hwsim/test_ap_vlan.py
+index d2271fad8..37acdf3e8 100644
+--- a/tests/hwsim/test_ap_vlan.py
++++ b/tests/hwsim/test_ap_vlan.py
+@@ -593,6 +593,7 @@ def test_ap_vlan_without_station(dev, apdev, p):
+         time.sleep(.1)
+ 
+         dev[0].connect("test-vlan", psk="12345678x", scan_freq="2412")
++        hapd.wait_sta()
+ 
+         # inject some traffic
+         sa = hapd.own_addr()
+diff --git a/tests/hwsim/test_ap_wps.py b/tests/hwsim/test_ap_wps.py
+index 60dee71d8..54312065c 100644
+--- a/tests/hwsim/test_ap_wps.py
++++ b/tests/hwsim/test_ap_wps.py
+@@ -10327,6 +10327,10 @@ def test_ap_wps_random_uuid(dev, apdev, params):
+ 
+         wpas.interface_remove("wlan5")
+ 
++        for j in range(3):
++            ev = hapd.wait_event(["WPS-ENROLLEE-SEEN"], timeout=1)
++            if ev:
++                logger.info("Ignored extra event at the end: " + ev)
+         hapd.dump_monitor()
+ 
+     logger.info("Seen UUIDs: " + str(uuid))
+diff --git a/tests/hwsim/test_eap_proto.py b/tests/hwsim/test_eap_proto.py
+index 5e42c4443..655c3d071 100644
+--- a/tests/hwsim/test_eap_proto.py
++++ b/tests/hwsim/test_eap_proto.py
+@@ -5584,6 +5584,7 @@ def test_eap_proto_sim_errors(dev, apdev):
+         dev[0].request("REMOVE_NETWORK all")
+         dev[0].dump_monitor()
+ 
++    hapd2.dump_monitor()
+     tests = ["eap_sim_msg_add_encr_start;eap_sim_response_notification",
+              "aes_128_cbc_encrypt;eap_sim_response_notification"]
+     for func in tests:
+@@ -5593,6 +5594,7 @@ def test_eap_proto_sim_errors(dev, apdev):
+                            eap="SIM", identity="1232010000000000",
+                            phase1="result_ind=1",
+                            password="90dca4eda45b53cf0f12d7c9c3bc6a89:cb9cccc4b9258e6dca4760379fb82581")
++            hapd2.wait_sta()
+             dev[0].request("REAUTHENTICATE")
+             ev = dev[0].wait_event(["CTRL-EVENT-EAP-METHOD"], timeout=5)
+             if ev is None:
+@@ -5601,7 +5603,9 @@ def test_eap_proto_sim_errors(dev, apdev):
+             wait_fail_trigger(dev[0], "GET_FAIL")
+             dev[0].request("REMOVE_NETWORK all")
+             dev[0].dump_monitor()
++            hapd2.wait_sta_disconnect()
+ 
++    hapd2.dump_monitor()
+     tests = ["eap_sim_parse_encr;eap_sim_process_notification_reauth"]
+     for func in tests:
+         with alloc_fail(dev[0], 1, func):
+@@ -5610,6 +5614,7 @@ def test_eap_proto_sim_errors(dev, apdev):
+                            eap="SIM", identity="1232010000000000",
+                            phase1="result_ind=1",
+                            password="90dca4eda45b53cf0f12d7c9c3bc6a89:cb9cccc4b9258e6dca4760379fb82581")
++            hapd2.wait_sta()
+             dev[0].request("REAUTHENTICATE")
+             ev = dev[0].wait_event(["CTRL-EVENT-EAP-METHOD"], timeout=5)
+             if ev is None:
+@@ -5618,6 +5623,7 @@ def test_eap_proto_sim_errors(dev, apdev):
+             wait_fail_trigger(dev[0], "GET_ALLOC_FAIL")
+             dev[0].request("REMOVE_NETWORK all")
+             dev[0].dump_monitor()
++            hapd2.wait_sta_disconnect()
+ 
+ def test_eap_proto_aka_errors(dev, apdev):
+     """EAP-AKA protocol tests (error paths)"""
+@@ -5694,6 +5700,7 @@ def test_eap_proto_aka_errors(dev, apdev):
+             dev[0].wait_disconnected()
+             dev[0].dump_monitor()
+ 
++    hapd2.dump_monitor()
+     tests = ["eap_sim_msg_add_encr_start;eap_aka_response_notification",
+              "aes_128_cbc_encrypt;eap_aka_response_notification"]
+     for func in tests:
+@@ -5703,6 +5710,7 @@ def test_eap_proto_aka_errors(dev, apdev):
+                            eap="AKA", identity="0232010000000000",
+                            phase1="result_ind=1",
+                            password="90dca4eda45b53cf0f12d7c9c3bc6a89:cb9cccc4b9258e6dca4760379fb82581:000000000123")
++            hapd2.wait_sta()
+             dev[0].request("REAUTHENTICATE")
+             ev = dev[0].wait_event(["CTRL-EVENT-EAP-METHOD"], timeout=5)
+             if ev is None:
+@@ -5711,7 +5719,9 @@ def test_eap_proto_aka_errors(dev, apdev):
+             wait_fail_trigger(dev[0], "GET_FAIL")
+             dev[0].request("REMOVE_NETWORK all")
+             dev[0].dump_monitor()
++            hapd2.wait_sta_disconnect()
+ 
++    hapd2.dump_monitor()
+     tests = ["eap_sim_parse_encr;eap_aka_process_notification_reauth"]
+     for func in tests:
+         with alloc_fail(dev[0], 1, func):
+@@ -5720,6 +5730,7 @@ def test_eap_proto_aka_errors(dev, apdev):
+                            eap="AKA", identity="0232010000000000",
+                            phase1="result_ind=1",
+                            password="90dca4eda45b53cf0f12d7c9c3bc6a89:cb9cccc4b9258e6dca4760379fb82581:000000000123")
++            hapd2.wait_sta()
+             dev[0].request("REAUTHENTICATE")
+             ev = dev[0].wait_event(["CTRL-EVENT-EAP-METHOD"], timeout=5)
+             if ev is None:
+@@ -5728,6 +5739,7 @@ def test_eap_proto_aka_errors(dev, apdev):
+             wait_fail_trigger(dev[0], "GET_ALLOC_FAIL")
+             dev[0].request("REMOVE_NETWORK all")
+             dev[0].dump_monitor()
++            hapd2.wait_sta_disconnect()
+ 
+ def test_eap_proto_aka_prime_errors(dev, apdev):
+     """EAP-AKA' protocol tests (error paths)"""
+diff --git a/tests/hwsim/test_fils.py b/tests/hwsim/test_fils.py
+index 662ed8c5a..9b00090b0 100644
+--- a/tests/hwsim/test_fils.py
++++ b/tests/hwsim/test_fils.py
+@@ -205,8 +205,10 @@ def test_fils_sk_pmksa_caching_ocv(dev, apdev, params):
+     if pmksa is None:
+         raise Exception("No PMKSA cache entry created")
+ 
++    hapd.wait_sta()
+     dev[0].request("DISCONNECT")
+     dev[0].wait_disconnected()
++    hapd.wait_sta_disconnect()
+ 
+     dev[0].dump_monitor()
+     dev[0].select_network(id, freq=2412)
+@@ -216,6 +218,7 @@ def test_fils_sk_pmksa_caching_ocv(dev, apdev, params):
+         raise Exception("Connection using PMKSA caching timed out")
+     if "CTRL-EVENT-EAP-STARTED" in ev:
+         raise Exception("Unexpected EAP exchange")
++    hapd.wait_sta()
+     hwsim_utils.test_connectivity(dev[0], hapd)
+     pmksa2 = dev[0].get_pmksa(bssid)
+     if pmksa2 is None:
+@@ -231,6 +234,9 @@ def test_fils_sk_pmksa_caching_ocv(dev, apdev, params):
+     ev = dev[0].wait_event(["CTRL-EVENT-EAP-SUCCESS"], timeout=5)
+     if ev is None:
+         raise Exception("EAP authentication did not succeed")
++    ev = hapd.wait_event(["CTRL-EVENT-EAP-SUCCESS2"], timeout=1)
++    if ev is None:
++        raise Exception("hostapd did not report EAP-Success on reauth")
+     time.sleep(0.1)
+     hwsim_utils.test_connectivity(dev[0], hapd)
+ 
+@@ -346,6 +352,7 @@ def test_fils_sk_pmksa_caching_ctrl_ext(dev, apdev, params):
+     if "ffee" not in res1:
+         raise Exception("FILS Cache Identifier not seen in PMKSA cache entry")
+ 
++    hapd.wait_sta()
+     dev[0].request("DISCONNECT")
+     dev[0].wait_disconnected()
+     hapd_as.disable()
+diff --git a/tests/hwsim/test_fst_module.py b/tests/hwsim/test_fst_module.py
+index bb3b44ca3..ab6f55a2b 100644
+--- a/tests/hwsim/test_fst_module.py
++++ b/tests/hwsim/test_fst_module.py
+@@ -2239,6 +2239,7 @@ def test_fst_session_respond_fail(dev, apdev, test_params):
+         sta = sta1.get_instance()
+         sta.request("DISCONNECT")
+         sta.wait_disconnected()
++        ap1.hapd.wait_sta_disconnect()
+         req = "FST-MANAGER SESSION_RESPOND %s reject" % ev['id']
+         s = ap1.grequest(req)
+         if not s.startswith("FAIL"):
+diff --git a/tests/hwsim/test_p2p_autogo.py b/tests/hwsim/test_p2p_autogo.py
+index 0801172e3..d4554dff4 100644
+--- a/tests/hwsim/test_p2p_autogo.py
++++ b/tests/hwsim/test_p2p_autogo.py
+@@ -439,10 +439,13 @@ def test_autogo_passphrase_len(dev):
+         dev[2].dump_monitor()
+         dev[2].request("WPS_PIN any " + pin)
+         dev[2].wait_connected(timeout=30)
++        dev[0].wait_sta(addr=dev[2].own_addr())
+         status = dev[2].get_status()
+         if status['wpa_state'] != 'COMPLETED':
+             raise Exception("Not fully connected")
+         dev[2].request("DISCONNECT")
++        dev[2].wait_disconnected()
++        dev[0].wait_sta_disconnect()
+ 
+         logger.info("Connect legacy non-WPS client")
+         dev[2].request("FLUSH")
+@@ -450,6 +453,7 @@ def test_autogo_passphrase_len(dev):
+         dev[2].connect(ssid=res['ssid'], psk=res['passphrase'], proto='RSN',
+                        key_mgmt='WPA-PSK', pairwise='CCMP', group='CCMP',
+                        scan_freq=res['freq'])
++        dev[0].wait_sta(addr=dev[2].own_addr())
+         hwsim_utils.test_connectivity_p2p_sta(dev[1], dev[2])
+         dev[2].request("DISCONNECT")
+ 
+diff --git a/tests/hwsim/test_p2p_grpform.py b/tests/hwsim/test_p2p_grpform.py
+index 88e253c0b..dcf88c1a6 100644
+--- a/tests/hwsim/test_p2p_grpform.py
++++ b/tests/hwsim/test_p2p_grpform.py
+@@ -308,6 +308,7 @@ def test_grpform_per_sta_psk(dev):
+     pin = dev[2].wps_read_pin()
+     dev[0].p2p_go_authorize_client(pin)
+     c_res = dev[2].p2p_connect_group(dev[0].p2p_dev_addr(), pin, timeout=60)
++    dev[0].wait_sta(dev[2].p2p_interface_addr())
+     check_grpform_results(i_res, c_res)
+ 
+     if r_res['psk'] == c_res['psk']:
+diff --git a/tests/hwsim/test_p2p_persistent.py b/tests/hwsim/test_p2p_persistent.py
+index d81c84572..00204c01c 100644
+--- a/tests/hwsim/test_p2p_persistent.py
++++ b/tests/hwsim/test_p2p_persistent.py
+@@ -124,11 +124,15 @@ def test_persistent_group_per_sta_psk(dev):
+             raise Exception("Timeout on group restart")
+         dev[i].group_form_result(ev)
+ 
++    dev[0].wait_sta()
++    dev[0].wait_sta()
++
+     logger.info("Leave persistent group and rejoin it")
+     dev[2].remove_group()
+     ev = dev[2].wait_global_event(["P2P-GROUP-REMOVED"], timeout=3)
+     if ev is None:
+         raise Exception("Group removal event timed out")
++    dev[0].wait_sta_disconnect()
+     if not dev[2].discover_peer(addr0, social=True):
+         raise Exception("Peer " + addr0 + " not found")
+     dev[2].dump_monitor()
+@@ -140,6 +144,7 @@ def test_persistent_group_per_sta_psk(dev):
+     cli_res = dev[2].group_form_result(ev)
+     if not cli_res['persistent']:
+         raise Exception("Persistent group not restarted as persistent (cli)")
++    dev[0].wait_sta(addr=dev[2].p2p_interface_addr())
+     hwsim_utils.test_connectivity_p2p(dev[1], dev[2])
+ 
+     logger.info("Remove one of the clients from the group without removing persistent group information for the client")
+diff --git a/tests/hwsim/test_pmksa_cache.py b/tests/hwsim/test_pmksa_cache.py
+index 17f478f1c..b3fee386f 100644
+--- a/tests/hwsim/test_pmksa_cache.py
++++ b/tests/hwsim/test_pmksa_cache.py
+@@ -1115,6 +1115,7 @@ def test_pmksa_cache_ctrl_ext_ft(dev, apdev):
+                         eap="GPSK", identity="gpsk user",
+                         password="abcdefghijklmnop0123456789abcdef",
+                         scan_freq="2412")
++    hapd.wait_sta()
+ 
+     res1 = dev[0].request("PMKSA_GET %d" % id)
+     logger.info("PMKSA_GET: " + res1)
+@@ -1127,6 +1128,7 @@ def test_pmksa_cache_ctrl_ext_ft(dev, apdev):
+     dev[0].wait_disconnected()
+     dev[0].dump_monitor()
+     dev[0].request("PMKSA_FLUSH")
++    hapd.wait_sta_disconnect()
+ 
+     id = dev[0].connect("test-pmksa-cache", proto="RSN", key_mgmt="FT-EAP",
+                         eap="GPSK", identity="gpsk user",
+diff --git a/tests/hwsim/test_sae_pk.py b/tests/hwsim/test_sae_pk.py
+index 236082be7..6ef3e4e38 100644
+--- a/tests/hwsim/test_sae_pk.py
++++ b/tests/hwsim/test_sae_pk.py
+@@ -227,9 +227,11 @@ def test_sae_pk_modes(dev, apdev):
+         val = dev[0].get_status_field("sae_pk")
+         if val != str(expected):
+             raise Exception("Unexpected sae_pk=%d result %s" % (sae_pk, val))
++        hapd.wait_sta()
+         dev[0].request("REMOVE_NETWORK *")
+         dev[0].wait_disconnected()
+         dev[0].dump_monitor()
++        hapd.wait_sta_disconnect()
+ 
+ def test_sae_pk_not_on_ap(dev, apdev):
+     """SAE-PK password, but no PK on AP"""
+diff --git a/tests/hwsim/test_wnm.py b/tests/hwsim/test_wnm.py
+index e33470805..d1ad0a8fd 100644
+--- a/tests/hwsim/test_wnm.py
++++ b/tests/hwsim/test_wnm.py
+@@ -221,6 +221,7 @@ def test_wnm_ess_disassoc_imminent_pmf(dev, apdev):
+     dev[0].connect("test-wnm-rsn", psk="12345678", ieee80211w="2",
+                    key_mgmt="WPA-PSK-SHA256", proto="WPA2", scan_freq="2412")
+     addr = dev[0].p2p_interface_addr()
++    hapd.wait_sta(wait_4way_hs=True)
+     hapd.request("ESS_DISASSOC " + addr + " 10 http://example.com/session-info")
+     ev = dev[0].wait_event(["ESS-DISASSOC-IMMINENT"])
+     if ev is None:
+@@ -472,6 +473,7 @@ def test_wnm_sleep_mode_rsn_ocv_failure(dev, apdev):
+ 
+     dev[0].connect("test-wnm-rsn", psk="12345678", ieee80211w="2", ocv="1",
+                    key_mgmt="WPA-PSK-SHA256", proto="WPA2", scan_freq="2412")
++    hapd.wait_sta()
+     # Failed to allocate buffer for OCI element in WNM-Sleep Mode frame
+     with alloc_fail(hapd, 2, "ieee802_11_send_wnmsleep_resp"):
+             if "OK" not in dev[0].request("WNM_SLEEP enter"):
+diff --git a/tests/hwsim/wpasupplicant.py b/tests/hwsim/wpasupplicant.py
+index 8e8664299..af57bc6ed 100644
+--- a/tests/hwsim/wpasupplicant.py
++++ b/tests/hwsim/wpasupplicant.py
+@@ -797,7 +797,6 @@ class WpaSupplicant:
+                 if expect_failure:
+                     return None
+                 raise Exception("Group formation timed out")
+-        self.dump_monitor()
+         return self.group_form_result(ev, expect_failure, go_neg_res)
+ 
+     def p2p_go_neg_init(self, peer, pin, method, timeout=0, go_intent=None,
+@@ -1700,3 +1699,30 @@ class WpaSupplicant:
+             vals['kdk'] = kdk
+             return vals
+         return None
++
++    def wait_sta(self, addr=None, timeout=2, wait_4way_hs=False):
++        ev = self.wait_group_event(["AP-STA-CONNECT"], timeout=timeout)
++        if ev is None:
++            ev = self.wait_event(["AP-STA-CONNECT"], timeout=timeout)
++            if ev is None:
++                raise Exception("AP did not report STA connection")
++        if addr and addr not in ev:
++            raise Exception("Unexpected STA address in connection event: " + ev)
++        if wait_4way_hs:
++            ev2 = self.wait_group_event(["EAPOL-4WAY-HS-COMPLETED"],
++                                        timeout=timeout)
++            if ev2 is None:
++                raise Exception("AP did not report 4-way handshake completion")
++            if addr and addr not in ev2:
++                raise Exception("Unexpected STA address in 4-way handshake completion event: " + ev2)
++        return ev
++
++    def wait_sta_disconnect(self, addr=None, timeout=2):
++        ev = self.wait_group_event(["AP-STA-DISCONNECT"], timeout=timeout)
++        if ev is None:
++            ev = self.wait_event(["AP-STA-CONNECT"], timeout=timeout)
++            if ev is None:
++                raise Exception("AP did not report STA disconnection")
++        if addr and addr not in ev:
++            raise Exception("Unexpected STA address in disconnection event: " + ev)
++        return ev
+-- 
+2.43.0
+

@@ -1,0 +1,55 @@
+From 14c5f401f05bc25b8cc9446b80d1aeb290ba246a Mon Sep 17 00:00:00 2001
+From: Jouni Malinen <j@w1.fi>
+Date: Sun, 28 Jan 2024 19:15:08 +0200
+Subject: [PATCH] Remove forgotted STAKey related functionality in EAPOL-Key
+ Request
+
+The use of a MAC KDE in the Key Data field of an EAPOL-Key Request frame
+was only for the STAKey handshake. That handshake was implemented in
+2005 as an experimental functionality and it was then removed in 2006.
+However, this part of the functionality was forgotten. This does not do
+anything in practice, so simplify the implementation and remove it.
+
+Signed-off-by: Jouni Malinen <j@w1.fi>
+---
+ src/ap/wpa_auth.c | 10 ----------
+ 1 file changed, 10 deletions(-)
+
+diff --git a/src/ap/wpa_auth.c b/src/ap/wpa_auth.c
+index 79ecd4e5b..9cd32a7ec 100644
+--- a/src/ap/wpa_auth.c
++++ b/src/ap/wpa_auth.c
+@@ -1248,7 +1248,6 @@ void wpa_receive(struct wpa_authenticator *wpa_auth,
+ 	u16 key_info, ver, key_data_length;
+ 	enum eapol_key_msg msg;
+ 	const char *msgtxt;
+-	struct wpa_eapol_ie_parse kde;
+ 	const u8 *key_data;
+ 	size_t keyhdrlen, mic_len;
+ 	u8 *mic;
+@@ -1533,11 +1532,6 @@ void wpa_receive(struct wpa_authenticator *wpa_auth,
+ 			goto out;
+ 		}
+ 
+-		/*
+-		 * TODO: should decrypt key data field if encryption was used;
+-		 * even though MAC address KDE is not normally encrypted,
+-		 * supplicant is allowed to encrypt it.
+-		 */
+ 		if (key_info & WPA_KEY_INFO_ERROR) {
+ 			if (wpa_receive_error_report(
+ 				    wpa_auth, sm,
+@@ -1548,10 +1542,6 @@ void wpa_receive(struct wpa_authenticator *wpa_auth,
+ 					LOGGER_INFO,
+ 					"received EAPOL-Key Request for new 4-Way Handshake");
+ 			wpa_request_new_ptk(sm);
+-		} else if (key_data_length > 0 &&
+-			   wpa_parse_kde_ies(key_data, key_data_length,
+-					     &kde) == 0 &&
+-			   kde.mac_addr) {
+ 		} else {
+ 			wpa_auth_logger(wpa_auth, wpa_auth_get_spa(sm),
+ 					LOGGER_INFO,
+-- 
+2.43.0
+

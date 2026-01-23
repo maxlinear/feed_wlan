@@ -1,0 +1,59 @@
+From afd306cf79f4836a10c121e3a15225adca479368 Mon Sep 17 00:00:00 2001
+From: Jouni Malinen <quic_jouni@quicinc.com>
+Date: Tue, 19 Dec 2023 01:09:22 +0200
+Subject: [PATCH] nl80211: Remove send_and_recv_msgs()
+
+This helper is of no real use anymore, so get rid of it. This completes
+send_and_recv*() cleanup. What remains is the most generic
+send_and_recv() and two wrappers for it to cover the most common simpler
+cases.
+
+Signed-off-by: Jouni Malinen <quic_jouni@quicinc.com>
+---
+ src/drivers/driver_nl80211.c |  4 ++--
+ src/drivers/driver_nl80211.h | 14 --------------
+ 2 files changed, 2 insertions(+), 16 deletions(-)
+
+diff --git a/src/drivers/driver_nl80211.c b/src/drivers/driver_nl80211.c
+index c4448d66c..dbe092adf 100644
+--- a/src/drivers/driver_nl80211.c
++++ b/src/drivers/driver_nl80211.c
+@@ -6169,8 +6169,8 @@ static int nl80211_tx_control_port(void *priv, const u8 *dest,
+ 
+ 	os_memset(&ext_arg, 0, sizeof(struct nl80211_ack_ext_arg));
+ 	ext_arg.ext_data = &cookie;
+-	ret = send_and_recv_msgs(bss->drv, msg, NULL, NULL,
+-				 ack_handler_cookie, &ext_arg, NULL);
++	ret = send_and_recv(bss->drv->global, bss->drv->global->nl, msg,
++			    NULL, NULL, ack_handler_cookie, &ext_arg, NULL);
+ 	if (ret) {
+ 		wpa_printf(MSG_DEBUG,
+ 			   "nl80211: tx_control_port failed: ret=%d (%s)",
+diff --git a/src/drivers/driver_nl80211.h b/src/drivers/driver_nl80211.h
+index ee736d17a..2b2bc9b11 100644
+--- a/src/drivers/driver_nl80211.h
++++ b/src/drivers/driver_nl80211.h
+@@ -305,20 +305,6 @@ send_and_recv_resp(struct wpa_driver_nl80211_data *drv,
+ 			     valid_handler, valid_data, NULL, NULL, NULL);
+ }
+ 
+-static inline int
+-send_and_recv_msgs(struct wpa_driver_nl80211_data *drv,
+-		   struct nl_msg *msg,
+-		   int (*valid_handler)(struct nl_msg *, void *),
+-		   void *valid_data,
+-		   int (*ack_handler_custom)(struct nl_msg *, void *),
+-		   void *ack_data,
+-		   struct nl80211_err_info *err_info)
+-{
+-	return send_and_recv(drv->global, drv->global->nl, msg,
+-			     valid_handler, valid_data,
+-			     ack_handler_custom, ack_data, err_info);
+-}
+-
+ int nl80211_create_iface(struct wpa_driver_nl80211_data *drv,
+ 			 const char *ifname, enum nl80211_iftype iftype,
+ 			 const u8 *addr, int wds,
+-- 
+2.43.0
+

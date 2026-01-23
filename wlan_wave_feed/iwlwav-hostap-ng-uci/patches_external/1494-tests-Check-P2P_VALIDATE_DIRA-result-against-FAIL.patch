@@ -1,0 +1,29 @@
+From 35173ec97a4b03b34b98237272579d21c111fa72 Mon Sep 17 00:00:00 2001
+From: Jouni Malinen <quic_jouni@quicinc.com>
+Date: Thu, 6 Mar 2025 23:50:52 +0200
+Subject: [PATCH] tests: Check P2P_VALIDATE_DIRA result against FAIL
+
+This is in preparation for a change to the return value in the success
+case to return the DevIK identifier instead of just OK.
+
+Signed-off-by: Jouni Malinen <quic_jouni@quicinc.com>
+---
+ tests/hwsim/test_p2p2.py | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/tests/hwsim/test_p2p2.py b/tests/hwsim/test_p2p2.py
+index 582330443..e48f08004 100644
+--- a/tests/hwsim/test_p2p2.py
++++ b/tests/hwsim/test_p2p2.py
+@@ -572,7 +572,7 @@ def test_p2p_pairing_verification(dev, apdev):
+ 
+     cmd = "P2P_VALIDATE_DIRA " + addr + " nonce=" + nonce + " tag=" + tag
+     res = wpas.group_request(cmd)
+-    if "OK" not in res:
++    if "FAIL" in res:
+         raise Exception("DIRA validation failed")
+ 
+     dev[1].remove_group()
+-- 
+2.43.0
+

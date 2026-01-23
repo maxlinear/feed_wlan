@@ -1,0 +1,53 @@
+From 0aecf9e62ca91716e69213d858c12234ee59ba4f Mon Sep 17 00:00:00 2001
+From: Jouni Malinen <j@w1.fi>
+Date: Sat, 9 Dec 2023 12:56:27 +0200
+Subject: [PATCH] tests: Make sigma_dut AP SAE tests more robust
+
+Wait some time before requesting disconnection to allow hostapd to
+complete 4-way handshake processing. Wait some time after disconnection
+has been completed on the STA before trying to use SAE again with the AP
+so that hostapd has a chance to complete disconnection with UML
+time-travel.
+
+Signed-off-by: Jouni Malinen <j@w1.fi>
+---
+ tests/hwsim/test_sigma_dut.py | 12 ++++++++++++
+ 1 file changed, 12 insertions(+)
+
+diff --git a/tests/hwsim/test_sigma_dut.py b/tests/hwsim/test_sigma_dut.py
+index a981295b1..239bdb061 100644
+--- a/tests/hwsim/test_sigma_dut.py
++++ b/tests/hwsim/test_sigma_dut.py
+@@ -1078,8 +1078,14 @@ def test_sigma_dut_ap_sae_pw_id(dev, apdev, params):
+                 dev[0].connect("test-sae", key_mgmt="SAE", sae_password=pw,
+                                sae_password_id=pw_id,
+                                ieee80211w="2", scan_freq="2412")
++                # Allow some time for AP to complete handling of connection
++                # before disconnecting.
++                time.sleep(0.1)
+                 dev[0].request("REMOVE_NETWORK all")
+                 dev[0].wait_disconnected()
++                # Allow some time for AP to complete handling of disconnection
++                # before trying SAE again.
++                time.sleep(0.1)
+ 
+             sigma_dut_cmd_check("ap_reset_default")
+         finally:
+@@ -1148,8 +1154,14 @@ def test_sigma_dut_ap_sae_pw_id_ft(dev, apdev, params):
+                 dev[0].connect("test-sae", key_mgmt=key_mgmt, sae_password=pw,
+                                sae_password_id=pw_id,
+                                ieee80211w="2", scan_freq="2412")
++                # Allow some time for AP to complete handling of connection
++                # before disconnecting.
++                time.sleep(0.1)
+                 dev[0].request("REMOVE_NETWORK all")
+                 dev[0].wait_disconnected()
++                # Allow some time for AP to complete handling of disconnection
++                # before trying SAE again.
++                time.sleep(0.1)
+ 
+             sigma_dut_cmd_check("ap_reset_default")
+         finally:
+-- 
+2.43.0
+

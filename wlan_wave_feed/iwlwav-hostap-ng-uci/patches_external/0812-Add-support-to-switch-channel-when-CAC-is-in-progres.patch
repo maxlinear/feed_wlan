@@ -1,0 +1,105 @@
+From 5cb6747f9721accaf264bd9935ca257183799877 Mon Sep 17 00:00:00 2001
+From: Amith A <quic_amitajit@quicinc.com>
+Date: Wed, 7 Aug 2024 11:34:07 +0530
+Subject: [PATCH] Add support to switch channel when CAC is in progress
+
+Prior to initiating communication on a DFS channel, channel availability
+check needs to be performed. During this period, the AP does not beacon.
+Hence, no channel switch was allowed during this period. However, if a
+user wishes to switch to a non-DFS channel during the potentially long
+CAC period and start transmission immediately, there is no provision to
+do that currently.
+
+Extend the existing CHAN_SWITCH control interface command to allow
+channel switch even when the AP is in CAC state. To do this, first
+disable the interface to abort the CAC in progress and then configure
+the interface with the new parameters and finally re-enable the
+interface.
+
+Signed-off-by: Amith A <quic_amitajit@quicinc.com>
+---
+ hostapd/ctrl_iface.c |  6 ++++++
+ src/ap/hostapd.c     | 36 ++++++++++++++++++++++++++++++++++++
+ src/ap/hostapd.h     |  2 ++
+ 3 files changed, 44 insertions(+)
+
+diff --git a/hostapd/ctrl_iface.c b/hostapd/ctrl_iface.c
+index 39b9ef59d..62ec23941 100644
+--- a/hostapd/ctrl_iface.c
++++ b/hostapd/ctrl_iface.c
+@@ -2735,6 +2735,12 @@ static int hostapd_ctrl_iface_chan_switch(struct hostapd_iface *iface,
+ 		return 0;
+ 	}
+ 
++	if (iface->cac_started) {
++		wpa_printf(MSG_DEBUG,
++			   "CAC is in progress - switching channel without CSA");
++		return hostapd_force_channel_switch(iface, settings);
++	}
++
+ 	for (i = 0; i < iface->num_bss; i++) {
+ 
+ 		/* Save CHAN_SWITCH VHT, HE, and EHT config */
+diff --git a/src/ap/hostapd.c b/src/ap/hostapd.c
+index 6bd4805d5..37e08e35d 100644
+--- a/src/ap/hostapd.c
++++ b/src/ap/hostapd.c
+@@ -4504,6 +4504,42 @@ int hostapd_switch_channel(struct hostapd_data *hapd,
+ }
+ 
+ 
++int hostapd_force_channel_switch(struct hostapd_iface *iface,
++				 struct csa_settings settings)
++{
++	int ret = 0;
++
++	if (!settings.freq_params.channel) {
++		/* Check if the new channel is supported */
++		settings.freq_params.channel = hostapd_hw_get_channel(
++			iface->bss[0], settings.freq_params.freq);
++		if (!settings.freq_params.channel)
++			return -1;
++	}
++
++	ret = hostapd_disable_iface(iface);
++	if (ret) {
++		wpa_printf(MSG_DEBUG, "Failed to disable the interface");
++		return ret;
++	}
++
++	hostapd_chan_switch_config(iface->bss[0], &settings.freq_params);
++	ret = hostapd_change_config_freq(iface->bss[0], iface->conf,
++					 &settings.freq_params, NULL);
++	if (ret) {
++		wpa_printf(MSG_DEBUG,
++			   "Failed to set the new channel in config");
++		return ret;
++	}
++
++	ret = hostapd_enable_iface(iface);
++	if (ret)
++		wpa_printf(MSG_DEBUG, "Failed to enable the interface");
++
++	return ret;
++}
++
++
+ void
+ hostapd_switch_channel_fallback(struct hostapd_iface *iface,
+ 				const struct hostapd_freq_params *freq_params)
+diff --git a/src/ap/hostapd.h b/src/ap/hostapd.h
+index dcf395ca5..e5ca81236 100644
+--- a/src/ap/hostapd.h
++++ b/src/ap/hostapd.h
+@@ -753,6 +753,8 @@ void hostapd_chan_switch_config(struct hostapd_data *hapd,
+ 				struct hostapd_freq_params *freq_params);
+ int hostapd_switch_channel(struct hostapd_data *hapd,
+ 			   struct csa_settings *settings);
++int hostapd_force_channel_switch(struct hostapd_iface *iface,
++				 struct csa_settings settings);
+ void
+ hostapd_switch_channel_fallback(struct hostapd_iface *iface,
+ 				const struct hostapd_freq_params *freq_params);
+-- 
+2.43.0
+

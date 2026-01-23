@@ -1,0 +1,32 @@
+From 40ef706e55a8261db68b82cb0356cf7b8877495c Mon Sep 17 00:00:00 2001
+From: Benjamin Berg <benjamin.berg@intel.com>
+Date: Tue, 20 Feb 2024 14:18:17 +0100
+Subject: [PATCH] WNM: Don't scan frequencies of neighbors that should be
+ ignored
+
+It does not make sense to scan for neighbors that we are not supposed to
+use anyway. As such, skip them.
+
+Signed-off-by: Benjamin Berg <benjamin.berg@intel.com>
+---
+ wpa_supplicant/wnm_sta.c | 4 ++++
+ 1 file changed, 4 insertions(+)
+
+diff --git a/wpa_supplicant/wnm_sta.c b/wpa_supplicant/wnm_sta.c
+index 9cec9e451..652c6d0e7 100644
+--- a/wpa_supplicant/wnm_sta.c
++++ b/wpa_supplicant/wnm_sta.c
+@@ -1358,6 +1358,10 @@ static void wnm_set_scan_freqs(struct wpa_supplicant *wpa_s)
+ 		struct neighbor_report *nei;
+ 
+ 		nei = &wpa_s->wnm_neighbor_report_elements[i];
++
++		if (nei->preference_present && nei->preference == 0)
++			continue;
++
+ 		if (nei->freq <= 0) {
+ 			wpa_printf(MSG_DEBUG,
+ 				   "WNM: Unknown neighbor operating frequency for "
+-- 
+2.43.0
+

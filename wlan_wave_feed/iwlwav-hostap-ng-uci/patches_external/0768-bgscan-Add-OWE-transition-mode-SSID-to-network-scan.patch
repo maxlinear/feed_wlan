@@ -1,0 +1,81 @@
+From 69d18ab9f256360e3a444f45e53840fcf3aa8f19 Mon Sep 17 00:00:00 2001
+From: David Bauer <mail@david-bauer.net>
+Date: Sun, 28 Apr 2024 15:13:43 +0200
+Subject: [PATCH] bgscan: Add OWE transition mode SSID to network scan
+
+Add transition mode SSIDs to the SSID scan-list for bgscan. This is
+currently missing and bgscan fails to scan for SSIDs on the OWE
+transition network if one is currently used.
+
+Signed-off-by: David Bauer <mail@david-bauer.net>
+---
+ wpa_supplicant/bgscan_learn.c  | 5 +++++
+ wpa_supplicant/bgscan_simple.c | 4 ++++
+ wpa_supplicant/scan.c          | 6 +++---
+ wpa_supplicant/scan.h          | 3 +++
+ 4 files changed, 15 insertions(+), 3 deletions(-)
+
+diff --git a/wpa_supplicant/bgscan_learn.c b/wpa_supplicant/bgscan_learn.c
+index cab4ae2ac..bc9f32405 100644
+--- a/wpa_supplicant/bgscan_learn.c
++++ b/wpa_supplicant/bgscan_learn.c
+@@ -280,6 +280,11 @@ static void bgscan_learn_timeout(void *eloop_ctx, void *timeout_ctx)
+ 	params.num_ssids = 1;
+ 	params.ssids[0].ssid = data->ssid->ssid;
+ 	params.ssids[0].ssid_len = data->ssid->ssid_len;
++
++	/* Add OWE transition mode SSID of the current network */
++	wpa_add_owe_scan_ssid(wpa_s, &params, data->ssid,
++			      wpa_s->max_scan_ssids - params.num_ssids);
++
+ 	if (data->ssid->scan_freq)
+ 		params.freqs = data->ssid->scan_freq;
+ 	else {
+diff --git a/wpa_supplicant/bgscan_simple.c b/wpa_supplicant/bgscan_simple.c
+index a90cf86e5..d9aaa634f 100644
+--- a/wpa_supplicant/bgscan_simple.c
++++ b/wpa_supplicant/bgscan_simple.c
+@@ -89,6 +89,10 @@ static void bgscan_simple_timeout(void *eloop_ctx, void *timeout_ctx)
+ 	params.ssids[0].ssid_len = data->ssid->ssid_len;
+ 	params.freqs = data->ssid->scan_freq;
+ 
++	/* Add OWE transition mode SSID of the current network */
++	wpa_add_owe_scan_ssid(wpa_s, &params, data->ssid,
++			      wpa_s->max_scan_ssids - params.num_ssids);
++
+ 	/*
+ 	 * A more advanced bgscan module would learn about most like channels
+ 	 * over time and request scans only for some channels (probing others
+diff --git a/wpa_supplicant/scan.c b/wpa_supplicant/scan.c
+index ba7c15b1a..f0ab122f5 100644
+--- a/wpa_supplicant/scan.c
++++ b/wpa_supplicant/scan.c
+@@ -940,9 +940,9 @@ static void wpa_add_scan_ssid(struct wpa_supplicant *wpa_s,
+ }
+ 
+ 
+-static void wpa_add_owe_scan_ssid(struct wpa_supplicant *wpa_s,
+-				  struct wpa_driver_scan_params *params,
+-				  struct wpa_ssid *ssid, size_t max_ssids)
++void wpa_add_owe_scan_ssid(struct wpa_supplicant *wpa_s,
++			   struct wpa_driver_scan_params *params,
++			   const struct wpa_ssid *ssid, size_t max_ssids)
+ {
+ #ifdef CONFIG_OWE
+ 	struct wpa_bss *bss;
+diff --git a/wpa_supplicant/scan.h b/wpa_supplicant/scan.h
+index d4c06c1ae..7ea99928c 100644
+--- a/wpa_supplicant/scan.h
++++ b/wpa_supplicant/scan.h
+@@ -104,5 +104,8 @@ int wpas_channel_width_rssi_bump(const u8 *ies, size_t ies_len,
+ 				 enum chan_width cw);
+ int wpas_adjust_snr_by_chanwidth(const u8 *ies, size_t ies_len,
+ 				 enum chan_width max_cw, int snr);
++void wpa_add_owe_scan_ssid(struct wpa_supplicant *wpa_s,
++			   struct wpa_driver_scan_params *params,
++			   const struct wpa_ssid *ssid, size_t max_ssids);
+ 
+ #endif /* SCAN_H */
+-- 
+2.43.0
+

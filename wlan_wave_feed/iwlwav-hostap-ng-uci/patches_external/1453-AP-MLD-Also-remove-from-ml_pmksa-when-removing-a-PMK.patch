@@ -1,0 +1,63 @@
+From 8e326cabce574b7fb2604b114f5bc8e5ca206342 Mon Sep 17 00:00:00 2001
+From: Chenming Huang <quic_chenhuan@quicinc.com>
+Date: Wed, 26 Feb 2025 20:02:22 +0530
+Subject: [PATCH] AP MLD: Also remove from ml_pmksa when removing a PMKSA entry
+
+When removing a PMKSA entry or flushing PMKSA entries, do the same for
+both wpa_auth->pmksa and wpa_auth->ml_pmksa.
+
+Signed-off-by: Chenming Huang <quic_chenhuan@quicinc.com>
+---
+ src/ap/wpa_auth.c | 22 +++++++++++++++++++++-
+ 1 file changed, 21 insertions(+), 1 deletion(-)
+
+diff --git a/src/ap/wpa_auth.c b/src/ap/wpa_auth.c
+index f8f704d3e..4a8218ab6 100644
+--- a/src/ap/wpa_auth.c
++++ b/src/ap/wpa_auth.c
+@@ -6599,12 +6599,27 @@ void wpa_auth_pmksa_remove(struct wpa_authenticator *wpa_auth,
+ 
+ 	if (!wpa_auth || !wpa_auth->pmksa)
+ 		return;
++
+ 	pmksa = pmksa_cache_auth_get(wpa_auth->pmksa, sta_addr, NULL);
+ 	if (pmksa) {
+ 		wpa_printf(MSG_DEBUG, "WPA: Remove PMKSA cache entry for "
+ 			   MACSTR " based on request", MAC2STR(sta_addr));
+ 		pmksa_cache_free_entry(wpa_auth->pmksa, pmksa);
+ 	}
++
++#ifdef CONFIG_IEEE80211BE
++	if (wpa_auth->ml_pmksa) {
++		pmksa = pmksa_cache_auth_get(wpa_auth->ml_pmksa,
++					     sta_addr, NULL);
++		if (pmksa) {
++			wpa_printf(MSG_DEBUG,
++				   "WPA: Remove PMKSA cache entry for " MACSTR
++				   " based on request (MLD)",
++				   MAC2STR(sta_addr));
++			pmksa_cache_free_entry(wpa_auth->ml_pmksa, pmksa);
++		}
++	}
++#endif /* CONFIG_IEEE80211BE */
+ }
+ 
+ 
+@@ -6619,8 +6634,13 @@ int wpa_auth_pmksa_list(struct wpa_authenticator *wpa_auth, char *buf,
+ 
+ void wpa_auth_pmksa_flush(struct wpa_authenticator *wpa_auth)
+ {
+-	if (wpa_auth && wpa_auth->pmksa)
++	if (wpa_auth && wpa_auth->pmksa) {
+ 		pmksa_cache_auth_flush(wpa_auth->pmksa);
++#ifdef CONFIG_IEEE80211BE
++		if (wpa_auth->ml_pmksa && wpa_auth->primary_auth)
++			pmksa_cache_auth_flush(wpa_auth->ml_pmksa);
++#endif /* CONFIG_IEEE80211BE */
++	}
+ }
+ 
+ 
+-- 
+2.43.0
+

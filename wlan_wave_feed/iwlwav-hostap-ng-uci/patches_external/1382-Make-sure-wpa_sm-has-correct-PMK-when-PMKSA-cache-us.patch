@@ -1,0 +1,64 @@
+From 00a7cad9cfc6ac1251c59b5a06d3f6fecf70af96 Mon Sep 17 00:00:00 2001
+From: Veerendranath Jakkam <quic_vjakkam@quicinc.com>
+Date: Thu, 13 Feb 2025 17:39:36 +0530
+Subject: [PATCH] Make sure wpa_sm has correct PMK when PMKSA cache used by
+ driver
+
+The PMK corresponding to the PMKSA cache entry used by the driver is
+updated to wpa_sm only when the authorized flag set in the association
+event data. In cases where the authorized flag is not set, i.e., initial
+association or roam indication with 4-way handshake not completed by the
+driver, the PMK is not updated and may be left at the default value
+based on not yet known AKM and group. That would result in issues for
+SAE-EXT-KEY cases where groups 20 or 21 are used since the Key MIC
+length of the EAPOL-Key frames depends on the used PMK length. In
+particular, wpa_sm needs to know the correct PMK length to determine the
+Key MIC field length and the offset of the Key Data Length field
+correctly in the EAPOL-Key msg 1/4. Otherwise, wpa_sm may fail to parse
+the EAPOL-Key msg 1/4.
+
+Fix this by always setting the PMK from the PMKSA entry corresponding to
+the PMKID used by the driver in the (Re)Association Request frame to
+wpa_sm.
+
+Signed-off-by: Veerendranath Jakkam <quic_vjakkam@quicinc.com>
+---
+ wpa_supplicant/events.c | 8 +++-----
+ 1 file changed, 3 insertions(+), 5 deletions(-)
+
+diff --git a/wpa_supplicant/events.c b/wpa_supplicant/events.c
+index a6b25a86f..cf8f0667c 100644
+--- a/wpa_supplicant/events.c
++++ b/wpa_supplicant/events.c
+@@ -442,7 +442,7 @@ void wpa_supplicant_mark_disassoc(struct wpa_supplicant *wpa_s)
+ }
+ 
+ 
+-static void wpa_find_assoc_pmkid(struct wpa_supplicant *wpa_s, bool authorized)
++static void wpa_find_assoc_pmkid(struct wpa_supplicant *wpa_s)
+ {
+ 	struct wpa_ie_data ie;
+ 	int pmksa_set = -1;
+@@ -467,8 +467,7 @@ static void wpa_find_assoc_pmkid(struct wpa_supplicant *wpa_s, bool authorized)
+ 						    true);
+ 		if (pmksa_set == 0) {
+ 			eapol_sm_notify_pmkid_attempt(wpa_s->eapol);
+-			if (authorized)
+-				wpa_sm_set_pmk_from_pmksa(wpa_s->wpa);
++			wpa_sm_set_pmk_from_pmksa(wpa_s->wpa);
+ 			break;
+ 		}
+ 	}
+@@ -3559,8 +3558,7 @@ static int wpa_supplicant_event_associnfo(struct wpa_supplicant *wpa_s,
+ 			if (wpa_sm_set_assoc_wpa_ie(wpa_s->wpa, p, len))
+ 				break;
+ 			found = 1;
+-			wpa_find_assoc_pmkid(wpa_s,
+-					     data->assoc_info.authorized);
++			wpa_find_assoc_pmkid(wpa_s);
+ 		}
+ #ifndef CONFIG_NO_WPA
+ 		if (!found_x && p[0] == WLAN_EID_RSNX) {
+-- 
+2.43.0
+

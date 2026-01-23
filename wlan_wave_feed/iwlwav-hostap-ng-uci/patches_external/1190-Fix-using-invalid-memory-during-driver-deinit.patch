@@ -1,0 +1,61 @@
+From a931a4782a6d24b0946ed0e4e33a6d23ec50e3e9 Mon Sep 17 00:00:00 2001
+From: Ming Kuang <ming@imkuang.com>
+Date: Mon, 23 Sep 2024 23:25:29 +0800
+Subject: [PATCH] Fix using invalid memory during driver deinit
+
+The address of hapd_iface->bss[0]->drv_priv is stored before calling
+hostapd_free_hapd_data() and then passed to hostapd_deinit_driver()
+after the call. However, hostapd_free_hapd_data() may free the
+hapd->drv_priv memory, which could lead to hostapd_deinit_driver() using
+an invalid memory address that has already been freed.
+
+Commit 7554565299a1 ("hostapd: Add ctrl_iface for
+enabling/reloading/disabling interface") added this split design of
+storing a copy of driver/drv_priv before some deinit steps and then
+using the stored values. That was likely done based on the earlier
+examples of similar split which was needed in some cases a long time ago
+before commit f7c478337957 ("Split hostapd_interface_deinit() into
+deinit and free parts") when hostapd_interface_deinit() freed bss[0] and
+as such, those pointers could not have been used without making the
+separate copy first. That is not needed anymore, so get rid of it here.
+
+Signed-off-by: Ming Kuang <ming@imkuang.com>
+---
+ src/ap/hostapd.c | 7 ++-----
+ 1 file changed, 2 insertions(+), 5 deletions(-)
+
+diff --git a/src/ap/hostapd.c b/src/ap/hostapd.c
+index 5d8df7800..db2d467d7 100644
+--- a/src/ap/hostapd.c
++++ b/src/ap/hostapd.c
+@@ -3633,8 +3633,6 @@ int hostapd_reload_bss_only(struct hostapd_data *bss)
+ int hostapd_disable_iface(struct hostapd_iface *hapd_iface)
+ {
+ 	size_t j;
+-	const struct wpa_driver_ops *driver;
+-	void *drv_priv;
+ 
+ 	if (hapd_iface == NULL)
+ 		return -1;
+@@ -3649,8 +3647,6 @@ int hostapd_disable_iface(struct hostapd_iface *hapd_iface)
+ 	}
+ 
+ 	wpa_msg(hapd_iface->bss[0]->msg_ctx, MSG_INFO, AP_EVENT_DISABLED);
+-	driver = hapd_iface->bss[0]->driver;
+-	drv_priv = hapd_iface->bss[0]->drv_priv;
+ 
+ 	hapd_iface->driver_ap_teardown =
+ 		!!(hapd_iface->drv_flags &
+@@ -3669,7 +3665,8 @@ int hostapd_disable_iface(struct hostapd_iface *hapd_iface)
+ 		hostapd_free_hapd_data(hapd);
+ 	}
+ 
+-	hostapd_deinit_driver(driver, drv_priv, hapd_iface);
++	hostapd_deinit_driver(hapd_iface->bss[0]->driver,
++			      hapd_iface->bss[0]->drv_priv, hapd_iface);
+ 
+ 	/* From hostapd_cleanup_iface: These were initialized in
+ 	 * hostapd_setup_interface and hostapd_setup_interface_complete
+-- 
+2.43.0
+

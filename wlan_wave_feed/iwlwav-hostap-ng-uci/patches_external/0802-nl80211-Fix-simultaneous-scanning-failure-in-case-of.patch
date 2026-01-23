@@ -1,0 +1,70 @@
+From 666d695bbd0479e9853f9fb81a8202fcd6869ac8 Mon Sep 17 00:00:00 2001
+From: Aditya Kumar Singh <quic_adisi@quicinc.com>
+Date: Fri, 21 Jun 2024 11:04:39 +0530
+Subject: [PATCH] nl80211: Fix simultaneous scanning failure in case of MLO
+
+Currently only one scan can be performed on per phy level at a time in
+the driver. Due to this, if another scan request is sent via anoother
+underlying phy, the kernel returns -EBUSY. This would result in hostapd
+trying to set the interface into station mode if it was originally in AP
+mode and retry sending a scan request. However, this behavior is
+expected in case of multi link operation and hence there is no need to
+switch the mode as such.
+
+Hence, add logic to not change the NL mode if the kernel returns -EBUSY
+during multi link AP operation. The caller can accordingly decide and,
+if needed, it can re-schedule a scan request after some time.
+
+Signed-off-by: Aditya Kumar Singh <quic_adisi@quicinc.com>
+---
+ src/drivers/driver_nl80211_scan.c | 34 +++++++++++++++++++++++++++++++
+ 1 file changed, 34 insertions(+)
+
+diff --git a/src/drivers/driver_nl80211_scan.c b/src/drivers/driver_nl80211_scan.c
+index 9a1e36f32..d0ed7ad95 100644
+--- a/src/drivers/driver_nl80211_scan.c
++++ b/src/drivers/driver_nl80211_scan.c
+@@ -416,6 +416,40 @@ int wpa_driver_nl80211_scan(struct i802_bss *bss,
+ 		wpa_printf(MSG_DEBUG, "nl80211: Scan trigger failed: ret=%d "
+ 			   "(%s)", ret, strerror(-ret));
+ 		if (drv->hostapd && is_ap_interface(drv->nlmode)) {
++#ifdef CONFIG_IEEE80211BE
++			/* For multi link BSS, retry scan if any other links
++			 * are busy scanning. */
++			if (ret == -EBUSY &&
++			    nl80211_link_valid(bss->valid_links,
++					       params->link_id)) {
++				struct i802_bss *link_bss;
++				u8 link_id;
++
++				wpa_printf(MSG_DEBUG,
++					   "nl80211: Scan trigger on multi link BSS failed (requested link=%d on interface %s)",
++					   params->link_id, bss->ifname);
++
++				for (link_bss = drv->first_bss; link_bss;
++				     link_bss = link_bss->next) {
++					if (link_bss->scan_link)
++						break;
++				}
++
++				if (!link_bss) {
++					wpa_printf(MSG_DEBUG,
++						   "nl80211: BSS information already running scan not available");
++					goto fail;
++				}
++
++				link_id = nl80211_get_link_id_from_link(
++					link_bss, link_bss->scan_link);
++				wpa_printf(MSG_DEBUG,
++					   "nl80211: Scan already running on interface %s link %d",
++					   link_bss->ifname, link_id);
++				goto fail;
++			}
++#endif /* CONFIG_IEEE80211BE */
++
+ 			/*
+ 			 * mac80211 does not allow scan requests in AP mode, so
+ 			 * try to do this in station mode.
+-- 
+2.43.0
+

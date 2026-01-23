@@ -1,0 +1,89 @@
+From 733de85680a49bb36b071dde90815729f6cb2450 Mon Sep 17 00:00:00 2001
+From: Michael-CY Lee <michael-cy.lee@mediatek.com>
+Date: Fri, 22 Dec 2023 12:59:09 +0800
+Subject: [PATCH] ACS: Fix not selecting the best channel in the segment
+
+Fix the following bugs about selecting the best channels in the segment:
+1. If the 'update_best' once became false, it never becomes true again.
+   In other word, if one of the channels in the segment is not usable,
+   the remaining channels in the segment were never able to be the best
+   channel.
+2. The primary channel in the segment might not be usable due to the
+   insufficient survey data. Therefore, it cannot be the best channel and
+   we cannot take its factor/weight into account.
+
+Co-developed-by: Money Wang <money.wang@mediatek.com>
+Signed-off-by: Michael-CY Lee <michael-cy.lee@mediatek.com>
+---
+ src/ap/acs.c | 29 ++++++++++++++++-------------
+ 1 file changed, 16 insertions(+), 13 deletions(-)
+
+diff --git a/src/ap/acs.c b/src/ap/acs.c
+index 8c6621f0e..2b7a43e14 100644
+--- a/src/ap/acs.c
++++ b/src/ap/acs.c
+@@ -793,11 +793,10 @@ acs_find_ideal_chan_mode(struct hostapd_iface *iface,
+ 		secondary_channel = iface->conf->secondary_channel;
+ 
+ 	for (i = 0; i < mode->num_channels; i++) {
+-		double total_weight;
++		double total_weight = 0;
+ 		struct acs_bias *bias, tmp_bias;
+-		bool update_best = true;
+ 
+-		best = chan = &mode->channels[i];
++		chan = &mode->channels[i];
+ 
+ 		/* Since in the current ACS implementation the first channel is
+ 		 * always a primary channel, skip channels not available as
+@@ -883,9 +882,12 @@ acs_find_ideal_chan_mode(struct hostapd_iface *iface,
+ 		}
+ 
+ 		factor = 0;
+-		if (acs_usable_chan(chan))
++		best = NULL;
++		if (acs_usable_chan(chan)) {
+ 			factor = chan->interference_factor;
+-		total_weight = 1;
++			total_weight = 1;
++			best = chan;
++		}
+ 
+ 		for (j = 1; j < n_chans; j++) {
+ 			adj_chan = acs_find_chan(iface, chan->freq +
+@@ -900,16 +902,14 @@ acs_find_ideal_chan_mode(struct hostapd_iface *iface,
+ 				break;
+ 			}
+ 
+-			if (acs_usable_chan(adj_chan)) {
+-				factor += adj_chan->interference_factor;
+-				total_weight += 1;
+-			} else {
+-				update_best = false;
+-			}
++			if (!acs_usable_chan(adj_chan))
++				continue;
++
++			factor += adj_chan->interference_factor;
++			total_weight += 1;
+ 
+ 			/* find the best channel in this segment */
+-			if (update_best &&
+-			    adj_chan->interference_factor <
++			if (!best || adj_chan->interference_factor <
+ 			    best->interference_factor)
+ 				best = adj_chan;
+ 		}
+@@ -972,6 +972,9 @@ acs_find_ideal_chan_mode(struct hostapd_iface *iface,
+ 			}
+ 		}
+ 
++		if (total_weight == 0)
++			continue;
++
+ 		factor /= total_weight;
+ 
+ 		bias = NULL;
+-- 
+2.43.0
+

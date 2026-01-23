@@ -1,0 +1,2284 @@
+From e835288592fd672469f46dc35a03e64115b996e5 Mon Sep 17 00:00:00 2001
+From: Jouni Malinen <quic_jouni@quicinc.com>
+Date: Sat, 22 Feb 2025 21:15:41 +0200
+Subject: [PATCH] OSEN: Remove all OSEN functionality
+
+Passpoint spec v3.4 removed all OSU functionality, including OSEN. In
+practice, this means that there is not going to any deployment or use of
+the OSEN functionality in the future and as such, there is no need to
+maintain this implementation.
+
+Signed-off-by: Jouni Malinen <quic_jouni@quicinc.com>
+---
+ hostapd/config_file.c                  |  6 --
+ hostapd/eap_register.c                 |  7 --
+ hostapd/hostapd.conf                   |  4 --
+ src/ap/ap_config.c                     |  5 --
+ src/ap/ap_config.h                     |  2 -
+ src/ap/ap_drv_ops.c                    |  5 --
+ src/ap/beacon.c                        | 23 +-----
+ src/ap/drv_callbacks.c                 | 29 --------
+ src/ap/hostapd.c                       |  6 +-
+ src/ap/hs20.c                          | 56 ---------------
+ src/ap/ieee802_11.c                    | 31 +-------
+ src/ap/ieee802_1x.c                    | 11 ++-
+ src/ap/wpa_auth.c                      | 35 ++-------
+ src/ap/wpa_auth_ft.c                   | 19 +----
+ src/ap/wpa_auth_glue.c                 | 11 ---
+ src/ap/wpa_auth_ie.c                   | 99 --------------------------
+ src/common/defs.h                      |  4 --
+ src/common/ieee802_11_common.c         |  5 --
+ src/common/ieee802_11_common.h         |  2 -
+ src/common/ieee802_11_defs.h           |  2 -
+ src/common/wpa_common.c                | 39 ++--------
+ src/common/wpa_common.h                |  1 -
+ src/drivers/driver.h                   |  6 --
+ src/drivers/driver_atheros.c           | 19 -----
+ src/drivers/driver_nl80211.c           |  5 --
+ src/drivers/driver_nl80211_capa.c      |  3 -
+ src/eap_peer/eap_tls.c                 | 55 --------------
+ src/eap_peer/eap_tls_common.c          | 11 +--
+ src/eap_peer/eap_tls_common.h          |  1 -
+ src/eap_server/eap_server_tls.c        | 54 --------------
+ src/eap_server/eap_server_tls_common.c |  8 ---
+ src/eap_server/eap_tls_common.h        |  1 -
+ src/rsn_supp/wpa.c                     | 28 +++-----
+ src/rsn_supp/wpa_ie.c                  | 72 -------------------
+ wlantest/bss.c                         | 36 +---------
+ wlantest/rx_eapol.c                    |  5 --
+ wlantest/sta.c                         | 24 +------
+ wlantest/wlantest.h                    |  1 -
+ wpa_supplicant/README-HS20             | 22 ------
+ wpa_supplicant/config.c                | 26 -------
+ wpa_supplicant/ctrl_iface.c            | 32 ++-------
+ wpa_supplicant/eap_register.c          |  7 --
+ wpa_supplicant/events.c                | 50 +++----------
+ wpa_supplicant/hs20_supplicant.c       | 14 +---
+ wpa_supplicant/sme.c                   | 19 -----
+ wpa_supplicant/wpa_supplicant.c        | 52 ++------------
+ 46 files changed, 63 insertions(+), 890 deletions(-)
+
+diff --git a/hostapd/config_file.c b/hostapd/config_file.c
+index 937383c54..bc8e90e32 100644
+--- a/hostapd/config_file.c
++++ b/hostapd/config_file.c
+@@ -713,10 +713,6 @@ static int hostapd_config_parse_key_mgmt(int line, const char *value)
+ 		else if (os_strcmp(start, "DPP") == 0)
+ 			val |= WPA_KEY_MGMT_DPP;
+ #endif /* CONFIG_DPP */
+-#ifdef CONFIG_HS20
+-		else if (os_strcmp(start, "OSEN") == 0)
+-			val |= WPA_KEY_MGMT_OSEN;
+-#endif /* CONFIG_HS20 */
+ #ifdef CONFIG_PASN
+ 		else if (os_strcmp(start, "PASN") == 0)
+ 			val |= WPA_KEY_MGMT_PASN;
+@@ -4385,8 +4381,6 @@ static int hostapd_config_fill(struct hostapd_config *conf,
+ 		bss->disable_dgaf = atoi(pos);
+ 	} else if (os_strcmp(buf, "na_mcast_to_ucast") == 0) {
+ 		bss->na_mcast_to_ucast = atoi(pos);
+-	} else if (os_strcmp(buf, "osen") == 0) {
+-		bss->osen = atoi(pos);
+ 	} else if (os_strcmp(buf, "anqp_domain_id") == 0) {
+ 		bss->anqp_domain_id = atoi(pos);
+ 	} else if (os_strcmp(buf, "hs20_deauth_req_timeout") == 0) {
+diff --git a/hostapd/eap_register.c b/hostapd/eap_register.c
+index 3e870c7f0..8bb25f234 100644
+--- a/hostapd/eap_register.c
++++ b/hostapd/eap_register.c
+@@ -44,13 +44,6 @@ int eap_server_register_methods(void)
+ 		ret = eap_server_unauth_tls_register();
+ #endif /* EAP_SERVER_TLS */
+ 
+-#ifdef EAP_SERVER_TLS
+-#ifdef CONFIG_HS20
+-	if (ret == 0)
+-		ret = eap_server_wfa_unauth_tls_register();
+-#endif /* CONFIG_HS20 */
+-#endif /* EAP_SERVER_TLS */
+-
+ #ifdef EAP_SERVER_MSCHAPV2
+ 	if (ret == 0)
+ 		ret = eap_server_mschapv2_register();
+diff --git a/hostapd/hostapd.conf b/hostapd/hostapd.conf
+index 95e9a94ec..25bb3cb82 100644
+--- a/hostapd/hostapd.conf
++++ b/hostapd/hostapd.conf
+@@ -1881,7 +1881,6 @@ own_ip_addr=127.0.0.1
+ # FT-FILS-SHA384 = FT and Fast Initial Link Setup with SHA384
+ # OWE = Opportunistic Wireless Encryption (a.k.a. Enhanced Open)
+ # DPP = Device Provisioning Protocol
+-# OSEN = Hotspot 2.0 online signup with encryption
+ # (dot11RSNAConfigAuthenticationSuitesTable)
+ #wpa_key_mgmt=WPA-PSK WPA-EAP
+ 
+@@ -3077,9 +3076,6 @@ own_ip_addr=127.0.0.1
+ # forging such frames to other stations in the BSS.
+ #disable_dgaf=1
+ 
+-# OSU Server-Only Authenticated L2 Encryption Network
+-#osen=1
+-
+ # ANQP Domain ID (0..65535)
+ # An identifier for a set of APs in an ESS that share the same common ANQP
+ # information. 0 = Some of the ANQP information is unique to this AP (default).
+diff --git a/src/ap/ap_config.c b/src/ap/ap_config.c
+index 40243f160..71d8d0494 100644
+--- a/src/ap/ap_config.c
++++ b/src/ap/ap_config.c
+@@ -1701,11 +1701,6 @@ void hostapd_set_security_params(struct hostapd_bss_config *bss,
+ 		if (full_config)
+ 			bss->wpa_key_mgmt = WPA_KEY_MGMT_NONE;
+ #endif /* CONFIG_WEP */
+-	} else if (bss->osen) {
+-		bss->ssid.security_policy = SECURITY_OSEN;
+-		bss->wpa_group = WPA_CIPHER_CCMP;
+-		bss->wpa_pairwise = 0;
+-		bss->rsn_pairwise = WPA_CIPHER_CCMP;
+ 	} else {
+ 		bss->ssid.security_policy = SECURITY_PLAINTEXT;
+ 		if (full_config) {
+diff --git a/src/ap/ap_config.h b/src/ap/ap_config.h
+index bac874ebb..0b13595e9 100644
+--- a/src/ap/ap_config.h
++++ b/src/ap/ap_config.h
+@@ -93,7 +93,6 @@ typedef enum hostap_security_policy {
+ 	SECURITY_IEEE_802_1X = 2,
+ 	SECURITY_WPA_PSK = 3,
+ 	SECURITY_WPA = 4,
+-	SECURITY_OSEN = 5
+ } secpolicy;
+ 
+ struct hostapd_ssid {
+@@ -624,7 +623,6 @@ struct hostapd_bss_config {
+ 	u8 qos_map_set[16 + 2 * 21];
+ 	unsigned int qos_map_set_len;
+ 
+-	int osen;
+ 	int proxy_arp;
+ 	int na_mcast_to_ucast;
+ 
+diff --git a/src/ap/ap_drv_ops.c b/src/ap/ap_drv_ops.c
+index 8e9c41e41..d342132db 100644
+--- a/src/ap/ap_drv_ops.c
++++ b/src/ap/ap_drv_ops.c
+@@ -185,11 +185,6 @@ int hostapd_build_ap_extra_ies(struct hostapd_data *hapd,
+ 	if (add_buf_data(&beacon, buf, pos - buf) < 0 ||
+ 	    add_buf_data(&proberesp, buf, pos - buf) < 0)
+ 		goto fail;
+-
+-	pos = hostapd_eid_osen(hapd, buf);
+-	if (add_buf_data(&beacon, buf, pos - buf) < 0 ||
+-	    add_buf_data(&proberesp, buf, pos - buf) < 0)
+-		goto fail;
+ #endif /* CONFIG_HS20 */
+ 
+ #ifdef CONFIG_MBO
+diff --git a/src/ap/beacon.c b/src/ap/beacon.c
+index 71f7bc3c7..3e48e57ac 100644
+--- a/src/ap/beacon.c
++++ b/src/ap/beacon.c
+@@ -403,19 +403,6 @@ static u8 * hostapd_get_wpa_ie(struct hostapd_data *hapd, u8 *pos, size_t len)
+ }
+ 
+ 
+-static u8 * hostapd_get_osen_ie(struct hostapd_data *hapd, u8 *pos, size_t len)
+-{
+-	const u8 *ie;
+-
+-	ie = hostapd_vendor_wpa_ie(hapd, OSEN_IE_VENDOR_TYPE);
+-	if (!ie || 2U + ie[1] > len)
+-		return pos;
+-
+-	os_memcpy(pos, ie, 2 + ie[1]);
+-	return pos + 2 + ie[1];
+-}
+-
+-
+ static u8 * hostapd_get_rsne_override(struct hostapd_data *hapd, u8 *pos,
+ 				      size_t len)
+ {
+@@ -955,9 +942,8 @@ static u8 * hostapd_probe_resp_fill_elems(struct hostapd_data *hapd,
+ 		pos = hostapd_eid_vendor_vht(hapd, pos);
+ #endif /* CONFIG_IEEE80211AC */
+ 
+-	/* WPA / OSEN */
++	/* WPA */
+ 	pos = hostapd_get_wpa_ie(hapd, pos, epos - pos);
+-	pos = hostapd_get_osen_ie(hapd, pos, epos - pos);
+ 
+ 	/* Wi-Fi Alliance WMM */
+ 	pos = hostapd_eid_wmm(hapd, pos);
+@@ -2423,9 +2409,8 @@ int ieee802_11_build_ap_params(struct hostapd_data *hapd,
+ 		tailpos = hostapd_eid_vendor_vht(hapd, tailpos);
+ #endif /* CONFIG_IEEE80211AC */
+ 
+-	/* WPA / OSEN */
++	/* WPA */
+ 	tailpos = hostapd_get_wpa_ie(hapd, tailpos, tailend - tailpos);
+-	tailpos = hostapd_get_osen_ie(hapd, tailpos, tailend - tailpos);
+ 
+ 	/* Wi-Fi Alliance WMM */
+ 	tailpos = hostapd_eid_wmm(hapd, tailpos);
+@@ -2597,10 +2582,6 @@ int ieee802_11_build_ap_params(struct hostapd_data *hapd,
+ #endif /* CONFIG_P2P */
+ #ifdef CONFIG_HS20
+ 	params->disable_dgaf = hapd->conf->disable_dgaf;
+-	if (hapd->conf->osen) {
+-		params->privacy = 1;
+-		params->osen = 1;
+-	}
+ #endif /* CONFIG_HS20 */
+ 	params->multicast_to_unicast = hapd->conf->multicast_to_unicast;
+ 	params->pbss = hapd->conf->pbss;
+diff --git a/src/ap/drv_callbacks.c b/src/ap/drv_callbacks.c
+index d781cca3d..bd2157805 100644
+--- a/src/ap/drv_callbacks.c
++++ b/src/ap/drv_callbacks.c
+@@ -366,12 +366,6 @@ int hostapd_notif_assoc(struct hostapd_data *hapd, const u8 *addr,
+ 		ie = elems.wpa_ie - 2;
+ 		ielen = elems.wpa_ie_len + 2;
+ 		wpa_printf(MSG_DEBUG, "STA included WPA IE in (Re)AssocReq");
+-#ifdef CONFIG_HS20
+-	} else if (elems.osen) {
+-		ie = elems.osen - 2;
+-		ielen = elems.osen_len + 2;
+-		wpa_printf(MSG_DEBUG, "STA included OSEN IE in (Re)AssocReq");
+-#endif /* CONFIG_HS20 */
+ 	} else {
+ 		ie = NULL;
+ 		ielen = 0;
+@@ -718,29 +712,6 @@ int hostapd_notif_assoc(struct hostapd_data *hapd, const u8 *addr,
+ 			sta->flags |= WLAN_STA_MAYBE_WPS;
+ 		wpabuf_free(wps);
+ #endif /* CONFIG_WPS */
+-#ifdef CONFIG_HS20
+-	} else if (hapd->conf->osen) {
+-		if (elems.osen == NULL) {
+-			hostapd_logger(
+-				hapd, sta->addr, HOSTAPD_MODULE_IEEE80211,
+-				HOSTAPD_LEVEL_INFO,
+-				"No HS 2.0 OSEN element in association request");
+-			return WLAN_STATUS_INVALID_IE;
+-		}
+-
+-		wpa_printf(MSG_DEBUG, "HS 2.0: OSEN association");
+-		if (sta->wpa_sm == NULL)
+-			sta->wpa_sm = wpa_auth_sta_init(hapd->wpa_auth,
+-							sta->addr, NULL);
+-		if (sta->wpa_sm == NULL) {
+-			wpa_printf(MSG_WARNING,
+-				   "Failed to initialize WPA state machine");
+-			return WLAN_STATUS_UNSPECIFIED_FAILURE;
+-		}
+-		if (wpa_validate_osen(hapd->wpa_auth, sta->wpa_sm,
+-				      elems.osen - 2, elems.osen_len + 2) < 0)
+-			return WLAN_STATUS_INVALID_IE;
+-#endif /* CONFIG_HS20 */
+ 	}
+ #ifdef CONFIG_WPS
+ skip_wpa_check:
+diff --git a/src/ap/hostapd.c b/src/ap/hostapd.c
+index 1907a6b62..2e23239e5 100644
+--- a/src/ap/hostapd.c
++++ b/src/ap/hostapd.c
+@@ -162,7 +162,7 @@ static void hostapd_reload_bss(struct hostapd_data *hapd)
+ 	else
+ 		hostapd_set_drv_ieee8021x(hapd, hapd->conf->iface, 0);
+ 
+-	if ((hapd->conf->wpa || hapd->conf->osen) && hapd->wpa_auth == NULL) {
++	if (hapd->conf->wpa && hapd->wpa_auth == NULL) {
+ 		hostapd_setup_wpa(hapd);
+ 		if (hapd->wpa_auth)
+ 			wpa_init_keys(hapd->wpa_auth);
+@@ -1671,7 +1671,7 @@ setup_mld:
+ 		return -1;
+ 	}
+ 
+-	if ((conf->wpa || conf->osen) && hostapd_setup_wpa(hapd))
++	if (conf->wpa && hostapd_setup_wpa(hapd))
+ 		return -1;
+ 
+ 	if (accounting_init(hapd)) {
+@@ -4133,7 +4133,7 @@ void hostapd_new_assoc_sta(struct hostapd_data *hapd, struct sta_info *sta,
+ 	/* Start accounting here, if IEEE 802.1X and WPA are not used.
+ 	 * IEEE 802.1X/WPA code will start accounting after the station has
+ 	 * been authorized. */
+-	if (!hapd->conf->ieee802_1x && !hapd->conf->wpa && !hapd->conf->osen) {
++	if (!hapd->conf->ieee802_1x && !hapd->conf->wpa) {
+ 		if (ap_sta_set_authorized(hapd, sta, 1)) {
+ 			/* Update driver authorized flag for the STA to cover
+ 			 * the case where AP SME is in the driver and there is
+diff --git a/src/ap/hs20.c b/src/ap/hs20.c
+index 05e9b9d20..83af4d32b 100644
+--- a/src/ap/hs20.c
++++ b/src/ap/hs20.c
+@@ -44,62 +44,6 @@ u8 * hostapd_eid_hs20_indication(struct hostapd_data *hapd, u8 *eid)
+ }
+ 
+ 
+-u8 * hostapd_eid_osen(struct hostapd_data *hapd, u8 *eid)
+-{
+-	u8 *len;
+-	u16 capab;
+-
+-	if (!hapd->conf->osen)
+-		return eid;
+-
+-	*eid++ = WLAN_EID_VENDOR_SPECIFIC;
+-	len = eid++; /* to be filled */
+-	WPA_PUT_BE24(eid, OUI_WFA);
+-	eid += 3;
+-	*eid++ = HS20_OSEN_OUI_TYPE;
+-
+-	/* Group Data Cipher Suite */
+-	RSN_SELECTOR_PUT(eid, RSN_CIPHER_SUITE_NO_GROUP_ADDRESSED);
+-	eid += RSN_SELECTOR_LEN;
+-
+-	/* Pairwise Cipher Suite Count and List */
+-	WPA_PUT_LE16(eid, 1);
+-	eid += 2;
+-	RSN_SELECTOR_PUT(eid, RSN_CIPHER_SUITE_CCMP);
+-	eid += RSN_SELECTOR_LEN;
+-
+-	/* AKM Suite Count and List */
+-	WPA_PUT_LE16(eid, 1);
+-	eid += 2;
+-	RSN_SELECTOR_PUT(eid, RSN_AUTH_KEY_MGMT_OSEN);
+-	eid += RSN_SELECTOR_LEN;
+-
+-	/* RSN Capabilities */
+-	capab = 0;
+-	if (hapd->conf->wmm_enabled) {
+-		/* 4 PTKSA replay counters when using WMM */
+-		capab |= (RSN_NUM_REPLAY_COUNTERS_16 << 2);
+-	}
+-	if (hapd->conf->ieee80211w != NO_MGMT_FRAME_PROTECTION) {
+-		capab |= WPA_CAPABILITY_MFPC;
+-		if (hapd->conf->ieee80211w == MGMT_FRAME_PROTECTION_REQUIRED)
+-			capab |= WPA_CAPABILITY_MFPR;
+-	}
+-#ifdef CONFIG_OCV
+-	if (hapd->conf->ocv &&
+-	    (hapd->iface->drv_flags2 &
+-	     (WPA_DRIVER_FLAGS2_AP_SME | WPA_DRIVER_FLAGS2_OCV)))
+-		capab |= WPA_CAPABILITY_OCVC;
+-#endif /* CONFIG_OCV */
+-	WPA_PUT_LE16(eid, capab);
+-	eid += 2;
+-
+-	*len = eid - len - 1;
+-
+-	return eid;
+-}
+-
+-
+ int hs20_send_wnm_notification(struct hostapd_data *hapd, const u8 *addr,
+ 			       u8 osu_method, const char *url)
+ {
+diff --git a/src/ap/ieee802_11.c b/src/ap/ieee802_11.c
+index 6e1f11924..64b5b6bbf 100644
+--- a/src/ap/ieee802_11.c
++++ b/src/ap/ieee802_11.c
+@@ -249,11 +249,6 @@ u16 hostapd_own_capab_info(struct hostapd_data *hapd)
+ 	if (hapd->conf->wpa)
+ 		privacy = 1;
+ 
+-#ifdef CONFIG_HS20
+-	if (hapd->conf->osen)
+-		privacy = 1;
+-#endif /* CONFIG_HS20 */
+-
+ 	if (privacy)
+ 		capab |= WLAN_CAPABILITY_PRIVACY;
+ 
+@@ -4551,29 +4546,6 @@ static int __check_assoc_ies(struct hostapd_data *hapd, struct sta_info *sta,
+ 			ieee802_11_rsnx_capab_len(
+ 				elems->rsnxe, elems->rsnxe_len,
+ 				WLAN_RSNX_CAPAB_SSID_PROTECTION));
+-#ifdef CONFIG_HS20
+-	} else if (hapd->conf->osen) {
+-		if (!elems->osen) {
+-			hostapd_logger(
+-				hapd, sta->addr, HOSTAPD_MODULE_IEEE80211,
+-				HOSTAPD_LEVEL_INFO,
+-				"No HS 2.0 OSEN element in association request");
+-			return WLAN_STATUS_INVALID_IE;
+-		}
+-
+-		wpa_printf(MSG_DEBUG, "HS 2.0: OSEN association");
+-		if (sta->wpa_sm == NULL)
+-			sta->wpa_sm = wpa_auth_sta_init(hapd->wpa_auth,
+-							sta->addr, NULL);
+-		if (sta->wpa_sm == NULL) {
+-			wpa_printf(MSG_WARNING, "Failed to initialize WPA "
+-				   "state machine");
+-			return WLAN_STATUS_UNSPECIFIED_FAILURE;
+-		}
+-		if (wpa_validate_osen(hapd->wpa_auth, sta->wpa_sm,
+-				      elems->osen - 2, elems->osen_len + 2) < 0)
+-			return WLAN_STATUS_INVALID_IE;
+-#endif /* CONFIG_HS20 */
+ 	} else
+ 		wpa_auth_sta_no_wpa(sta->wpa_sm);
+ 
+@@ -6953,8 +6925,7 @@ static void handle_assoc_cb(struct hostapd_data *hapd,
+ 		new_assoc = 0;
+ 	sta->flags |= WLAN_STA_ASSOC;
+ 	sta->flags &= ~WLAN_STA_WNM_SLEEP_MODE;
+-	if ((!hapd->conf->ieee802_1x && !hapd->conf->wpa &&
+-	     !hapd->conf->osen) ||
++	if ((!hapd->conf->ieee802_1x && !hapd->conf->wpa) ||
+ 	    sta->auth_alg == WLAN_AUTH_FILS_SK ||
+ 	    sta->auth_alg == WLAN_AUTH_FILS_SK_PFS ||
+ 	    sta->auth_alg == WLAN_AUTH_FILS_PK ||
+diff --git a/src/ap/ieee802_1x.c b/src/ap/ieee802_1x.c
+index e8d21ff7a..1da1d2321 100644
+--- a/src/ap/ieee802_1x.c
++++ b/src/ap/ieee802_1x.c
+@@ -451,8 +451,7 @@ static int add_common_radius_sta_attr_rsn(struct hostapd_data *hapd,
+ 		return -1;
+ 	}
+ 
+-	suite = wpa_cipher_to_suite(((hapd->conf->wpa & 0x2) ||
+-				     hapd->conf->osen) ?
++	suite = wpa_cipher_to_suite(((hapd->conf->wpa & 0x2)) ?
+ 				    WPA_PROTO_RSN : WPA_PROTO_WPA,
+ 				    hapd->conf->wpa_group);
+ 	if (!hostapd_config_get_radius_attr(req_attr,
+@@ -581,7 +580,7 @@ static int add_common_radius_sta_attr(struct hostapd_data *hapd,
+ 	}
+ #endif /* CONFIG_IEEE80211R_AP */
+ 
+-	if ((hapd->conf->wpa || hapd->conf->osen) && sta->wpa_sm &&
++	if (hapd->conf->wpa && sta->wpa_sm &&
+ 	    add_common_radius_sta_attr_rsn(hapd, req_attr, sta, msg) < 0)
+ 		return -1;
+ 
+@@ -1123,7 +1122,7 @@ void ieee802_1x_receive(struct hostapd_data *hapd, const u8 *sa, const u8 *buf,
+ 	struct rsn_pmksa_cache_entry *pmksa;
+ 	int key_mgmt;
+ 
+-	if (!hapd->conf->ieee802_1x && !hapd->conf->wpa && !hapd->conf->osen &&
++	if (!hapd->conf->ieee802_1x && !hapd->conf->wpa &&
+ 	    !hapd->conf->wps_state)
+ 		return;
+ 
+@@ -1183,7 +1182,7 @@ void ieee802_1x_receive(struct hostapd_data *hapd, const u8 *sa, const u8 *buf,
+ 		return;
+ 	}
+ 
+-	if (!hapd->conf->ieee802_1x && !hapd->conf->osen &&
++	if (!hapd->conf->ieee802_1x &&
+ 	    !(sta->flags & (WLAN_STA_WPS | WLAN_STA_MAYBE_WPS))) {
+ 		wpa_printf(MSG_DEBUG,
+ 			   "IEEE 802.1X: Ignore EAPOL message - 802.1X not enabled and WPS not used");
+@@ -1356,7 +1355,7 @@ void ieee802_1x_new_station(struct hostapd_data *hapd, struct sta_info *sta)
+ 	}
+ #endif /* CONFIG_WPS */
+ 
+-	if (!force_1x && !hapd->conf->ieee802_1x && !hapd->conf->osen) {
++	if (!force_1x && !hapd->conf->ieee802_1x) {
+ 		wpa_printf(MSG_DEBUG,
+ 			   "IEEE 802.1X: Ignore STA - 802.1X not enabled or forced for WPS");
+ 		/*
+diff --git a/src/ap/wpa_auth.c b/src/ap/wpa_auth.c
+index a7e6ae2b8..fdeac6278 100644
+--- a/src/ap/wpa_auth.c
++++ b/src/ap/wpa_auth.c
+@@ -2784,8 +2784,7 @@ SM_STATE(WPA_PTK, PTKSTART)
+ 	if (sm->wpa == WPA_VERSION_WPA2 &&
+ 	    (wpa_key_mgmt_wpa_ieee8021x(sm->wpa_key_mgmt) ||
+ 	     (sm->wpa_key_mgmt == WPA_KEY_MGMT_OWE && sm->pmksa) ||
+-	     wpa_key_mgmt_sae(sm->wpa_key_mgmt)) &&
+-	    sm->wpa_key_mgmt != WPA_KEY_MGMT_OSEN) {
++	     wpa_key_mgmt_sae(sm->wpa_key_mgmt))) {
+ 		pmkid = buf;
+ 		kde_len = 2 + RSN_SELECTOR_LEN + PMKID_LEN;
+ 		pmkid[0] = WLAN_EID_VENDOR_SPECIFIC;
+@@ -3432,7 +3431,7 @@ static struct wpabuf * fils_prepare_plainbuf(struct wpa_state_machine *sm,
+ 	/* GTK KDE */
+ 	gtk = gsm->GTK[gsm->GN - 1];
+ 	gtk_len = gsm->GTK_len;
+-	if (conf->disable_gtk || sm->wpa_key_mgmt == WPA_KEY_MGMT_OSEN) {
++	if (conf->disable_gtk) {
+ 		/*
+ 		 * Provide unique random GTK to each STA to prevent use
+ 		 * of GTK in the BSS.
+@@ -3853,9 +3852,6 @@ SM_STATE(WPA_PTK, PTKCALCNEGOTIATING)
+ 	if (kde.rsn_ie) {
+ 		eapol_key_ie = kde.rsn_ie;
+ 		eapol_key_ie_len = kde.rsn_ie_len;
+-	} else if (kde.osen) {
+-		eapol_key_ie = kde.osen;
+-		eapol_key_ie_len = kde.osen_len;
+ 	} else {
+ 		eapol_key_ie = kde.wpa_ie;
+ 		eapol_key_ie_len = kde.wpa_ie_len;
+@@ -4109,7 +4105,7 @@ static u8 * ieee80211w_kde_add(struct wpa_state_machine *sm, u8 *pos)
+ 	else
+ 		os_memcpy(igtk.pn, rsc, sizeof(igtk.pn));
+ 	os_memcpy(igtk.igtk, gsm->IGTK[gsm->GN_igtk - 4], len);
+-	if (conf->disable_gtk || sm->wpa_key_mgmt == WPA_KEY_MGMT_OSEN) {
++	if (conf->disable_gtk) {
+ 		/*
+ 		 * Provide unique random IGTK to each STA to prevent use of
+ 		 * IGTK in the BSS.
+@@ -4140,14 +4136,6 @@ static u8 * ieee80211w_kde_add(struct wpa_state_machine *sm, u8 *pos)
+ 	else
+ 		os_memcpy(bigtk.pn, rsc, sizeof(bigtk.pn));
+ 	os_memcpy(bigtk.bigtk, gsm->BIGTK[gsm->GN_bigtk - 6], len);
+-	if (sm->wpa_key_mgmt == WPA_KEY_MGMT_OSEN) {
+-		/*
+-		 * Provide unique random BIGTK to each OSEN STA to prevent use
+-		 * of BIGTK in the BSS.
+-		 */
+-		if (random_get_bytes(bigtk.bigtk, len) < 0)
+-			return pos;
+-	}
+ 	pos = wpa_add_kde(pos, RSN_KEY_DATA_BIGTK,
+ 			  (const u8 *) &bigtk, WPA_BIGTK_KDE_PREFIX_LEN + len,
+ 			  NULL, 0);
+@@ -4841,8 +4829,7 @@ SM_STATE(WPA_PTK, PTKINITNEGOTIATING)
+ 		secure = 1;
+ 		gtk = gsm->GTK[gsm->GN - 1];
+ 		gtk_len = gsm->GTK_len;
+-		if (conf->disable_gtk ||
+-		    sm->wpa_key_mgmt == WPA_KEY_MGMT_OSEN) {
++		if (conf->disable_gtk) {
+ 			/*
+ 			 * Provide unique random GTK to each STA to prevent use
+ 			 * of GTK in the BSS.
+@@ -5397,7 +5384,7 @@ SM_STATE(WPA_PTK_GROUP, REKEYNEGOTIATING)
+ 			"sending 1/2 msg of Group Key Handshake");
+ 
+ 	gtk = gsm->GTK[gsm->GN - 1];
+-	if (conf->disable_gtk || sm->wpa_key_mgmt == WPA_KEY_MGMT_OSEN) {
++	if (conf->disable_gtk) {
+ 		/*
+ 		 * Provide unique random GTK to each STA to prevent use
+ 		 * of GTK in the BSS.
+@@ -5778,7 +5765,7 @@ int wpa_wnmsleep_gtk_subelem(struct wpa_state_machine *sm, u8 *pos)
+ 		return 0;
+ 	pos += 8;
+ 	os_memcpy(pos, gsm->GTK[gsm->GN - 1], gsm->GTK_len);
+-	if (conf->disable_gtk || sm->wpa_key_mgmt == WPA_KEY_MGMT_OSEN) {
++	if (conf->disable_gtk) {
+ 		/*
+ 		 * Provide unique random GTK to each STA to prevent use
+ 		 * of GTK in the BSS.
+@@ -5817,7 +5804,7 @@ int wpa_wnmsleep_igtk_subelem(struct wpa_state_machine *sm, u8 *pos)
+ 	pos += 6;
+ 
+ 	os_memcpy(pos, gsm->IGTK[gsm->GN_igtk - 4], len);
+-	if (conf->disable_gtk || sm->wpa_key_mgmt == WPA_KEY_MGMT_OSEN) {
++	if (conf->disable_gtk) {
+ 		/*
+ 		 * Provide unique random IGTK to each STA to prevent use
+ 		 * of IGTK in the BSS.
+@@ -5856,14 +5843,6 @@ int wpa_wnmsleep_bigtk_subelem(struct wpa_state_machine *sm, u8 *pos)
+ 	pos += 6;
+ 
+ 	os_memcpy(pos, gsm->BIGTK[gsm->GN_bigtk - 6], len);
+-	if (sm->wpa_key_mgmt == WPA_KEY_MGMT_OSEN) {
+-		/*
+-		 * Provide unique random BIGTK to each STA to prevent use
+-		 * of BIGTK in the BSS.
+-		 */
+-		if (random_get_bytes(pos, len) < 0)
+-			return 0;
+-	}
+ 	pos += len;
+ 
+ 	wpa_printf(MSG_DEBUG, "WNM: BIGTK Key ID %u in WNM-Sleep Mode exit",
+diff --git a/src/ap/wpa_auth_ft.c b/src/ap/wpa_auth_ft.c
+index de16c314d..d5400a9f7 100644
+--- a/src/ap/wpa_auth_ft.c
++++ b/src/ap/wpa_auth_ft.c
+@@ -2247,8 +2247,7 @@ static u8 * wpa_ft_gtk_subelem(struct wpa_state_machine *sm, size_t *len)
+ 		pad_len += 8;
+ 	if (pad_len && key_len < sizeof(keybuf)) {
+ 		os_memcpy(keybuf, gsm->GTK[gsm->GN - 1], key_len);
+-		if (conf->disable_gtk ||
+-		    sm->wpa_key_mgmt == WPA_KEY_MGMT_OSEN) {
++		if (conf->disable_gtk) {
+ 			/*
+ 			 * Provide unique random GTK to each STA to prevent use
+ 			 * of GTK in the BSS.
+@@ -2260,7 +2259,7 @@ static u8 * wpa_ft_gtk_subelem(struct wpa_state_machine *sm, size_t *len)
+ 		keybuf[key_len] = 0xdd;
+ 		key_len += pad_len;
+ 		key = keybuf;
+-	} else if (conf->disable_gtk || sm->wpa_key_mgmt == WPA_KEY_MGMT_OSEN) {
++	} else if (conf->disable_gtk) {
+ 		/*
+ 		 * Provide unique random GTK to each STA to prevent use of GTK
+ 		 * in the BSS.
+@@ -2339,7 +2338,7 @@ static u8 * wpa_ft_igtk_subelem(struct wpa_state_machine *sm, size_t *len)
+ 	pos += 6;
+ 	*pos++ = igtk_len;
+ 	igtk = gsm->IGTK[gsm->GN_igtk - 4];
+-	if (conf->disable_gtk || sm->wpa_key_mgmt == WPA_KEY_MGMT_OSEN) {
++	if (conf->disable_gtk) {
+ 		/*
+ 		 * Provide unique random IGTK to each STA to prevent use of
+ 		 * IGTK in the BSS.
+@@ -2372,7 +2371,6 @@ static u8 * wpa_ft_bigtk_subelem(struct wpa_state_machine *sm, size_t *len)
+ 	const u8 *kek, *bigtk;
+ 	size_t kek_len;
+ 	size_t bigtk_len;
+-	u8 stub_bigtk[WPA_IGTK_MAX_LEN];
+ 
+ 	if (wpa_key_mgmt_fils(sm->wpa_key_mgmt)) {
+ 		kek = sm->PTK.kek2;
+@@ -2400,17 +2398,6 @@ static u8 * wpa_ft_bigtk_subelem(struct wpa_state_machine *sm, size_t *len)
+ 	pos += 6;
+ 	*pos++ = bigtk_len;
+ 	bigtk = gsm->BIGTK[gsm->GN_bigtk - 6];
+-	if (sm->wpa_key_mgmt == WPA_KEY_MGMT_OSEN) {
+-		/*
+-		 * Provide unique random BIGTK to each OSEN STA to prevent use
+-		 * of BIGTK in the BSS.
+-		 */
+-		if (random_get_bytes(stub_bigtk, bigtk_len / 8) < 0) {
+-			os_free(subelem);
+-			return NULL;
+-		}
+-		bigtk = stub_bigtk;
+-	}
+ 	if (aes_wrap(kek, kek_len, bigtk_len / 8, bigtk, pos)) {
+ 		wpa_printf(MSG_DEBUG,
+ 			   "FT: BIGTK subelem encryption failed: kek_len=%d",
+diff --git a/src/ap/wpa_auth_glue.c b/src/ap/wpa_auth_glue.c
+index afd849b7e..83be41266 100644
+--- a/src/ap/wpa_auth_glue.c
++++ b/src/ap/wpa_auth_glue.c
+@@ -110,17 +110,6 @@ static void hostapd_wpa_auth_conf(struct hostapd_iface *iface,
+ #endif /* CONFIG_IEEE80211R_AP */
+ #ifdef CONFIG_HS20
+ 	wconf->disable_gtk = conf->disable_dgaf;
+-	if (conf->osen) {
+-		wconf->disable_gtk = 1;
+-		wconf->wpa = WPA_PROTO_OSEN;
+-		wconf->wpa_key_mgmt = WPA_KEY_MGMT_OSEN;
+-		wconf->wpa_pairwise = 0;
+-		wconf->wpa_group = WPA_CIPHER_CCMP;
+-		wconf->rsn_pairwise = WPA_CIPHER_CCMP;
+-		wconf->rsn_preauth = 0;
+-		wconf->disable_pmksa_caching = 1;
+-		wconf->ieee80211w = 1;
+-	}
+ #endif /* CONFIG_HS20 */
+ #ifdef CONFIG_TESTING_OPTIONS
+ 	wconf->corrupt_gtk_rekey_mic_probability =
+diff --git a/src/ap/wpa_auth_ie.c b/src/ap/wpa_auth_ie.c
+index 93847fe7a..4636f7fde 100644
+--- a/src/ap/wpa_auth_ie.c
++++ b/src/ap/wpa_auth_ie.c
+@@ -296,13 +296,6 @@ static u8 * rsne_write_data(u8 *buf, size_t len, u8 *pos, int group,
+ 		num_suites++;
+ 	}
+ #endif /* CONFIG_DPP */
+-#ifdef CONFIG_HS20
+-	if (key_mgmt & WPA_KEY_MGMT_OSEN) {
+-		RSN_SELECTOR_PUT(pos, RSN_AUTH_KEY_MGMT_OSEN);
+-		pos += RSN_SELECTOR_LEN;
+-		num_suites++;
+-	}
+-#endif /* CONFIG_HS20 */
+ #ifdef CONFIG_PASN
+ 	if (key_mgmt & WPA_KEY_MGMT_PASN) {
+ 		RSN_SELECTOR_PUT(pos, RSN_AUTH_KEY_MGMT_PASN);
+@@ -581,57 +574,6 @@ static int wpa_write_rsnxe_override(struct wpa_auth_config *conf, u8 *buf,
+ }
+ 
+ 
+-static u8 * wpa_write_osen(struct wpa_auth_config *conf, u8 *eid)
+-{
+-	u8 *len;
+-	u16 capab;
+-
+-	*eid++ = WLAN_EID_VENDOR_SPECIFIC;
+-	len = eid++; /* to be filled */
+-	WPA_PUT_BE24(eid, OUI_WFA);
+-	eid += 3;
+-	*eid++ = HS20_OSEN_OUI_TYPE;
+-
+-	/* Group Data Cipher Suite */
+-	RSN_SELECTOR_PUT(eid, RSN_CIPHER_SUITE_NO_GROUP_ADDRESSED);
+-	eid += RSN_SELECTOR_LEN;
+-
+-	/* Pairwise Cipher Suite Count and List */
+-	WPA_PUT_LE16(eid, 1);
+-	eid += 2;
+-	RSN_SELECTOR_PUT(eid, RSN_CIPHER_SUITE_CCMP);
+-	eid += RSN_SELECTOR_LEN;
+-
+-	/* AKM Suite Count and List */
+-	WPA_PUT_LE16(eid, 1);
+-	eid += 2;
+-	RSN_SELECTOR_PUT(eid, RSN_AUTH_KEY_MGMT_OSEN);
+-	eid += RSN_SELECTOR_LEN;
+-
+-	/* RSN Capabilities */
+-	capab = 0;
+-	if (conf->wmm_enabled) {
+-		/* 4 PTKSA replay counters when using WMM */
+-		capab |= (RSN_NUM_REPLAY_COUNTERS_16 << 2);
+-	}
+-	if (conf->ieee80211w != NO_MGMT_FRAME_PROTECTION) {
+-		capab |= WPA_CAPABILITY_MFPC;
+-		if (conf->ieee80211w == MGMT_FRAME_PROTECTION_REQUIRED)
+-			capab |= WPA_CAPABILITY_MFPR;
+-	}
+-#ifdef CONFIG_OCV
+-	if (conf->ocv)
+-		capab |= WPA_CAPABILITY_OCVC;
+-#endif /* CONFIG_OCV */
+-	WPA_PUT_LE16(eid, capab);
+-	eid += 2;
+-
+-	*len = eid - len - 1;
+-
+-	return eid;
+-}
+-
+-
+ int wpa_auth_gen_wpa_ie(struct wpa_authenticator *wpa_auth)
+ {
+ 	u8 *pos, buf[1500];
+@@ -656,9 +598,6 @@ int wpa_auth_gen_wpa_ie(struct wpa_authenticator *wpa_auth)
+ 
+ 	pos = buf;
+ 
+-	if (wpa_auth->conf.wpa == WPA_PROTO_OSEN) {
+-		pos = wpa_write_osen(&wpa_auth->conf, pos);
+-	}
+ 	if (wpa_auth->conf.wpa & WPA_PROTO_RSN) {
+ #ifdef CONFIG_TESTING_OPTIONS
+ 		if (wpa_auth->conf.rsne_override_set) {
+@@ -960,10 +899,6 @@ wpa_validate_wpa_ie(struct wpa_authenticator *wpa_auth,
+ 		else if (data.key_mgmt & WPA_KEY_MGMT_DPP)
+ 			selector = RSN_AUTH_KEY_MGMT_DPP;
+ #endif /* CONFIG_DPP */
+-#ifdef CONFIG_HS20
+-		else if (data.key_mgmt & WPA_KEY_MGMT_OSEN)
+-			selector = RSN_AUTH_KEY_MGMT_OSEN;
+-#endif /* CONFIG_HS20 */
+ #ifdef CONFIG_SHA384
+ 		else if (data.key_mgmt & WPA_KEY_MGMT_IEEE8021X_SHA384)
+ 			selector = RSN_AUTH_KEY_MGMT_802_1X_SHA384;
+@@ -1084,10 +1019,6 @@ wpa_validate_wpa_ie(struct wpa_authenticator *wpa_auth,
+ 	else if (key_mgmt & WPA_KEY_MGMT_DPP)
+ 		sm->wpa_key_mgmt = WPA_KEY_MGMT_DPP;
+ #endif /* CONFIG_DPP */
+-#ifdef CONFIG_HS20
+-	else if (key_mgmt & WPA_KEY_MGMT_OSEN)
+-		sm->wpa_key_mgmt = WPA_KEY_MGMT_OSEN;
+-#endif /* CONFIG_HS20 */
+ 	else
+ 		sm->wpa_key_mgmt = WPA_KEY_MGMT_PSK;
+ 
+@@ -1386,36 +1317,6 @@ wpa_validate_wpa_ie(struct wpa_authenticator *wpa_auth,
+ }
+ 
+ 
+-#ifdef CONFIG_HS20
+-int wpa_validate_osen(struct wpa_authenticator *wpa_auth,
+-		      struct wpa_state_machine *sm,
+-		      const u8 *osen_ie, size_t osen_ie_len)
+-{
+-	if (wpa_auth == NULL || sm == NULL)
+-		return -1;
+-
+-	/* TODO: parse OSEN element */
+-	sm->wpa_key_mgmt = WPA_KEY_MGMT_OSEN;
+-	sm->mgmt_frame_prot = 1;
+-	sm->pairwise = WPA_CIPHER_CCMP;
+-	sm->wpa = WPA_VERSION_WPA2;
+-
+-	if (sm->wpa_ie == NULL || sm->wpa_ie_len < osen_ie_len) {
+-		os_free(sm->wpa_ie);
+-		sm->wpa_ie = os_malloc(osen_ie_len);
+-		if (sm->wpa_ie == NULL)
+-			return -1;
+-	}
+-
+-	os_memcpy(sm->wpa_ie, osen_ie, osen_ie_len);
+-	sm->wpa_ie_len = osen_ie_len;
+-
+-	return 0;
+-}
+-
+-#endif /* CONFIG_HS20 */
+-
+-
+ int wpa_auth_uses_mfp(struct wpa_state_machine *sm)
+ {
+ 	return sm ? sm->mgmt_frame_prot : 0;
+diff --git a/src/common/defs.h b/src/common/defs.h
+index 85e0f02d1..0a79ba2a6 100644
+--- a/src/common/defs.h
++++ b/src/common/defs.h
+@@ -39,7 +39,6 @@
+ #define WPA_KEY_MGMT_WAPI_PSK BIT(12)
+ #define WPA_KEY_MGMT_WAPI_CERT BIT(13)
+ #define WPA_KEY_MGMT_CCKM BIT(14)
+-#define WPA_KEY_MGMT_OSEN BIT(15)
+ #define WPA_KEY_MGMT_IEEE8021X_SUITE_B BIT(16)
+ #define WPA_KEY_MGMT_IEEE8021X_SUITE_B_192 BIT(17)
+ #define WPA_KEY_MGMT_FILS_SHA256 BIT(18)
+@@ -69,7 +68,6 @@ static inline int wpa_key_mgmt_wpa_ieee8021x(int akm)
+ 			 WPA_KEY_MGMT_FT_IEEE8021X |
+ 			 WPA_KEY_MGMT_FT_IEEE8021X_SHA384 |
+ 			 WPA_KEY_MGMT_CCKM |
+-			 WPA_KEY_MGMT_OSEN |
+ 			 WPA_KEY_MGMT_IEEE8021X_SHA256 |
+ 			 WPA_KEY_MGMT_IEEE8021X_SUITE_B |
+ 			 WPA_KEY_MGMT_IEEE8021X_SUITE_B_192 |
+@@ -153,7 +151,6 @@ static inline int wpa_key_mgmt_sha256(int akm)
+ 			 WPA_KEY_MGMT_IEEE8021X_SHA256 |
+ 			 WPA_KEY_MGMT_SAE |
+ 			 WPA_KEY_MGMT_FT_SAE |
+-			 WPA_KEY_MGMT_OSEN |
+ 			 WPA_KEY_MGMT_IEEE8021X_SUITE_B |
+ 			 WPA_KEY_MGMT_FILS_SHA256 |
+ 			 WPA_KEY_MGMT_FT_FILS_SHA256));
+@@ -205,7 +202,6 @@ static inline int wpa_key_mgmt_cross_akm(int akm)
+ #define WPA_PROTO_WPA BIT(0)
+ #define WPA_PROTO_RSN BIT(1)
+ #define WPA_PROTO_WAPI BIT(2)
+-#define WPA_PROTO_OSEN BIT(3)
+ 
+ #define WPA_AUTH_ALG_OPEN BIT(0)
+ #define WPA_AUTH_ALG_SHARED BIT(1)
+diff --git a/src/common/ieee802_11_common.c b/src/common/ieee802_11_common.c
+index f8e852961..ba6262765 100644
+--- a/src/common/ieee802_11_common.c
++++ b/src/common/ieee802_11_common.c
+@@ -111,11 +111,6 @@ static int ieee802_11_parse_vendor_specific(const u8 *pos, size_t elen,
+ 			elems->hs20 = pos;
+ 			elems->hs20_len = elen;
+ 			break;
+-		case HS20_OSEN_OUI_TYPE:
+-			/* Hotspot 2.0 OSEN */
+-			elems->osen = pos;
+-			elems->osen_len = elen;
+-			break;
+ 		case MBO_OUI_TYPE:
+ 			/* MBO-OCE */
+ 			elems->mbo = pos;
+diff --git a/src/common/ieee802_11_common.h b/src/common/ieee802_11_common.h
+index e22138c7d..0edd34c65 100644
+--- a/src/common/ieee802_11_common.h
++++ b/src/common/ieee802_11_common.h
+@@ -75,7 +75,6 @@ struct ieee802_11_elems {
+ 	const u8 *ext_capab;
+ 	const u8 *bss_max_idle_period;
+ 	const u8 *ssid_list;
+-	const u8 *osen;
+ 	const u8 *mbo;
+ 	const u8 *ampe;
+ 	const u8 *mic;
+@@ -151,7 +150,6 @@ struct ieee802_11_elems {
+ 	u8 hs20_len;
+ 	u8 ext_capab_len;
+ 	u8 ssid_list_len;
+-	u8 osen_len;
+ 	u8 mbo_len;
+ 	u8 ampe_len;
+ 	u8 mic_len;
+diff --git a/src/common/ieee802_11_defs.h b/src/common/ieee802_11_defs.h
+index f9e6f2bb3..9143c9171 100644
+--- a/src/common/ieee802_11_defs.h
++++ b/src/common/ieee802_11_defs.h
+@@ -1451,7 +1451,6 @@ struct ieee80211_ampe_ie {
+ #define WFD_IE_VENDOR_TYPE 0x506f9a0a
+ #define WFD_OUI_TYPE 10
+ #define HS20_IE_VENDOR_TYPE 0x506f9a10
+-#define OSEN_IE_VENDOR_TYPE 0x506f9a12
+ #define NAN_IE_VENDOR_TYPE 0x506f9a13
+ #define NAN_SDF_VENDOR_TYPE 0x506f9a13
+ #define NAN_OUI_TYPE 0x13
+@@ -1610,7 +1609,6 @@ enum wmm_ac {
+ 
+ #define HS20_INDICATION_OUI_TYPE 16
+ #define HS20_ANQP_OUI_TYPE 17
+-#define HS20_OSEN_OUI_TYPE 18
+ #define HS20_ROAMING_CONS_SEL_OUI_TYPE 29
+ #define HS20_STYPE_QUERY_LIST 1
+ #define HS20_STYPE_CAPABILITY_LIST 2
+diff --git a/src/common/wpa_common.c b/src/common/wpa_common.c
+index 9c96269d5..613ea7fde 100644
+--- a/src/common/wpa_common.c
++++ b/src/common/wpa_common.c
+@@ -134,8 +134,7 @@ unsigned int wpa_mic_len(int akmp, size_t pmk_len)
+  */
+ int wpa_use_akm_defined(int akmp)
+ {
+-	return akmp == WPA_KEY_MGMT_OSEN ||
+-		akmp == WPA_KEY_MGMT_OWE ||
++	return akmp == WPA_KEY_MGMT_OWE ||
+ 		akmp == WPA_KEY_MGMT_DPP ||
+ 		akmp == WPA_KEY_MGMT_FT_IEEE8021X_SHA384 ||
+ 		akmp == WPA_KEY_MGMT_IEEE8021X_SHA384 ||
+@@ -152,8 +151,7 @@ int wpa_use_akm_defined(int akmp)
+  */
+ int wpa_use_cmac(int akmp)
+ {
+-	return akmp == WPA_KEY_MGMT_OSEN ||
+-		akmp == WPA_KEY_MGMT_OWE ||
++	return akmp == WPA_KEY_MGMT_OWE ||
+ 		akmp == WPA_KEY_MGMT_DPP ||
+ 		wpa_key_mgmt_ft(akmp) ||
+ 		wpa_key_mgmt_sha256(akmp) ||
+@@ -174,8 +172,7 @@ int wpa_use_cmac(int akmp)
+  */
+ int wpa_use_aes_key_wrap(int akmp)
+ {
+-	return akmp == WPA_KEY_MGMT_OSEN ||
+-		akmp == WPA_KEY_MGMT_OWE ||
++	return akmp == WPA_KEY_MGMT_OWE ||
+ 		akmp == WPA_KEY_MGMT_DPP ||
+ 		akmp == WPA_KEY_MGMT_IEEE8021X_SHA384 ||
+ 		wpa_key_mgmt_ft(akmp) ||
+@@ -266,12 +263,6 @@ int wpa_eapol_key_mic(const u8 *key, size_t key_len, int akmp, int ver,
+ 			os_memcpy(mic, hash, key_len);
+ 			break;
+ #endif /* CONFIG_SAE */
+-#ifdef CONFIG_HS20
+-		case WPA_KEY_MGMT_OSEN:
+-			wpa_printf(MSG_DEBUG,
+-				   "WPA: EAPOL-Key MIC using AES-CMAC (AKM-defined - OSEN)");
+-			return omac1_aes_128(key, buf, len, mic);
+-#endif /* CONFIG_HS20 */
+ #ifdef CONFIG_SUITEB
+ 		case WPA_KEY_MGMT_IEEE8021X_SUITE_B:
+ 			wpa_printf(MSG_DEBUG,
+@@ -1831,8 +1822,6 @@ static int rsn_key_mgmt_to_bitfield(const u8 *s)
+ 	if (RSN_SELECTOR_GET(s) == RSN_AUTH_KEY_MGMT_DPP)
+ 		return WPA_KEY_MGMT_DPP;
+ #endif /* CONFIG_DPP */
+-	if (RSN_SELECTOR_GET(s) == RSN_AUTH_KEY_MGMT_OSEN)
+-		return WPA_KEY_MGMT_OSEN;
+ #ifdef CONFIG_PASN
+ 	if (RSN_SELECTOR_GET(s) == RSN_AUTH_KEY_MGMT_PASN)
+ 		return WPA_KEY_MGMT_PASN;
+@@ -1893,17 +1882,7 @@ int wpa_parse_wpa_ie_rsn(const u8 *rsn_ie, size_t rsn_ie_len,
+ 		return -1;
+ 	}
+ 
+-	if (rsn_ie_len >= 6 && rsn_ie[1] >= 4 &&
+-	    rsn_ie[1] == rsn_ie_len - 2 &&
+-	    WPA_GET_BE32(&rsn_ie[2]) == OSEN_IE_VENDOR_TYPE) {
+-		pos = rsn_ie + 6;
+-		left = rsn_ie_len - 6;
+-
+-		data->group_cipher = WPA_CIPHER_GTK_NOT_USED;
+-		data->has_group = 1;
+-		data->key_mgmt = WPA_KEY_MGMT_OSEN;
+-		data->proto = WPA_PROTO_OSEN;
+-	} else if (rsn_ie_len >= 2 + 4 + 2 && rsn_ie[1] >= 4 + 2 &&
++	if (rsn_ie_len >= 2 + 4 + 2 && rsn_ie[1] >= 4 + 2 &&
+ 		   rsn_ie[1] == rsn_ie_len - 2 &&
+ 		   (WPA_GET_BE32(&rsn_ie[2]) == RSNE_OVERRIDE_IE_VENDOR_TYPE ||
+ 		    WPA_GET_BE32(&rsn_ie[2]) ==
+@@ -2801,8 +2780,6 @@ const char * wpa_key_mgmt_txt(int key_mgmt, int proto)
+ 		return "FT-SAE";
+ 	case WPA_KEY_MGMT_FT_SAE_EXT_KEY:
+ 		return "FT-SAE-EXT-KEY";
+-	case WPA_KEY_MGMT_OSEN:
+-		return "OSEN";
+ 	case WPA_KEY_MGMT_IEEE8021X_SUITE_B:
+ 		return "WPA2-EAP-SUITE-B";
+ 	case WPA_KEY_MGMT_IEEE8021X_SUITE_B_192:
+@@ -2849,8 +2826,6 @@ u32 wpa_akm_to_suite(int akm)
+ 		return RSN_AUTH_KEY_MGMT_PSK_OVER_802_1X;
+ 	if (akm & WPA_KEY_MGMT_CCKM)
+ 		return RSN_AUTH_KEY_MGMT_CCKM;
+-	if (akm & WPA_KEY_MGMT_OSEN)
+-		return RSN_AUTH_KEY_MGMT_OSEN;
+ 	if (akm & WPA_KEY_MGMT_IEEE8021X_SUITE_B)
+ 		return RSN_AUTH_KEY_MGMT_802_1X_SUITE_B;
+ 	if (akm & WPA_KEY_MGMT_IEEE8021X_SUITE_B_192)
+@@ -3483,12 +3458,6 @@ static int wpa_parse_generic(const u8 *pos, struct wpa_eapol_ie_parse *ie)
+ 		return 0;
+ 	}
+ 
+-	if (selector == OSEN_IE_VENDOR_TYPE) {
+-		ie->osen = pos;
+-		ie->osen_len = dlen;
+-		return 0;
+-	}
+-
+ 	if (left >= PMKID_LEN && selector == RSN_KEY_DATA_PMKID) {
+ 		ie->pmkid = p;
+ 		wpa_hexdump(MSG_DEBUG, "WPA: PMKID in EAPOL-Key", pos, dlen);
+diff --git a/src/common/wpa_common.h b/src/common/wpa_common.h
+index e8abe2308..d2c326c43 100644
+--- a/src/common/wpa_common.h
++++ b/src/common/wpa_common.h
+@@ -94,7 +94,6 @@ WPA_CIPHER_BIP_CMAC_256)
+ #define RSN_AUTH_KEY_MGMT_FT_SAE_EXT_KEY RSN_SELECTOR(0x00, 0x0f, 0xac, 25)
+ 
+ #define RSN_AUTH_KEY_MGMT_CCKM RSN_SELECTOR(0x00, 0x40, 0x96, 0x00)
+-#define RSN_AUTH_KEY_MGMT_OSEN RSN_SELECTOR(0x50, 0x6f, 0x9a, 0x01)
+ #define RSN_AUTH_KEY_MGMT_DPP RSN_SELECTOR(0x50, 0x6f, 0x9a, 0x02)
+ 
+ #define RSN_CIPHER_SUITE_NONE RSN_SELECTOR(0x00, 0x0f, 0xac, 0)
+diff --git a/src/drivers/driver.h b/src/drivers/driver.h
+index b9d3d0013..566475214 100644
+--- a/src/drivers/driver.h
++++ b/src/drivers/driver.h
+@@ -1649,11 +1649,6 @@ struct wpa_driver_ap_params {
+ 	 */
+ 	int disable_dgaf;
+ 
+-	/**
+-	 * osen - Whether OSEN security is enabled
+-	 */
+-	int osen;
+-
+ 	/**
+ 	 * freq - Channel parameters for dynamic bandwidth changes
+ 	 */
+@@ -2153,7 +2148,6 @@ struct wpa_driver_capa {
+ #define WPA_DRIVER_CAPA_KEY_MGMT_FT_SAE		0x00100000
+ #define WPA_DRIVER_CAPA_KEY_MGMT_FT_802_1X_SHA384	0x00200000
+ #define WPA_DRIVER_CAPA_KEY_MGMT_CCKM		0x00400000
+-#define WPA_DRIVER_CAPA_KEY_MGMT_OSEN		0x00800000
+ #define WPA_DRIVER_CAPA_KEY_MGMT_SAE_EXT_KEY	0x01000000
+ #define WPA_DRIVER_CAPA_KEY_MGMT_FT_SAE_EXT_KEY	0x02000000
+ 	/** Bitfield of supported key management suites */
+diff --git a/src/drivers/driver_atheros.c b/src/drivers/driver_atheros.c
+index 47da8669e..8fb23a802 100644
+--- a/src/drivers/driver_atheros.c
++++ b/src/drivers/driver_atheros.c
+@@ -1943,25 +1943,6 @@ static int atheros_set_ap(void *priv, struct wpa_driver_ap_params *params)
+ 	wpa_hexdump_buf(MSG_DEBUG, "atheros: assocresp_ies",
+ 			params->assocresp_ies);
+ 
+-#if defined(CONFIG_HS20) && (defined(IEEE80211_PARAM_OSEN) || defined(CONFIG_ATHEROS_OSEN))
+-	if (params->osen) {
+-		struct wpa_bss_params bss_params;
+-
+-		os_memset(&bss_params, 0, sizeof(struct wpa_bss_params));
+-		bss_params.enabled = 1;
+-		bss_params.wpa = 2;
+-		bss_params.wpa_pairwise = WPA_CIPHER_CCMP;
+-		bss_params.wpa_group = WPA_CIPHER_CCMP;
+-		bss_params.ieee802_1x = 1;
+-
+-		if (atheros_set_privacy(priv, 1) ||
+-		    set80211param(priv, IEEE80211_PARAM_OSEN, 1))
+-			return -1;
+-
+-		return atheros_set_ieee8021x(priv, &bss_params);
+-	}
+-#endif /* CONFIG_HS20 && IEEE80211_PARAM_OSEN */
+-
+ 	return 0;
+ }
+ 
+diff --git a/src/drivers/driver_nl80211.c b/src/drivers/driver_nl80211.c
+index 3d5d62e1b..bc92d45ae 100644
+--- a/src/drivers/driver_nl80211.c
++++ b/src/drivers/driver_nl80211.c
+@@ -3424,7 +3424,6 @@ static int wpa_key_mgmt_to_suites(unsigned int key_mgmt_suites, u32 suites[],
+ 	__AKM(FT_SAE, FT_SAE);
+ 	__AKM(FT_SAE_EXT_KEY, FT_SAE_EXT_KEY);
+ 	__AKM(CCKM, CCKM);
+-	__AKM(OSEN, OSEN);
+ 	__AKM(IEEE8021X_SUITE_B, 802_1X_SUITE_B);
+ 	__AKM(IEEE8021X_SUITE_B_192, 802_1X_SUITE_B_192);
+ 	__AKM(FILS_SHA256, FILS_SHA256);
+@@ -6950,7 +6949,6 @@ static int nl80211_connect_common(struct wpa_driver_nl80211_data *drv,
+ 	    params->key_mgmt_suite == WPA_KEY_MGMT_FT_IEEE8021X ||
+ 	    params->key_mgmt_suite == WPA_KEY_MGMT_FT_PSK ||
+ 	    params->key_mgmt_suite == WPA_KEY_MGMT_CCKM ||
+-	    params->key_mgmt_suite == WPA_KEY_MGMT_OSEN ||
+ 	    params->key_mgmt_suite == WPA_KEY_MGMT_IEEE8021X_SHA256 ||
+ 	    params->key_mgmt_suite == WPA_KEY_MGMT_PSK_SHA256 ||
+ 	    params->key_mgmt_suite == WPA_KEY_MGMT_SAE ||
+@@ -7008,9 +7006,6 @@ static int nl80211_connect_common(struct wpa_driver_nl80211_data *drv,
+ 		case WPA_KEY_MGMT_PSK_SHA256:
+ 			mgmt[0] = RSN_AUTH_KEY_MGMT_PSK_SHA256;
+ 			break;
+-		case WPA_KEY_MGMT_OSEN:
+-			mgmt[0] = RSN_AUTH_KEY_MGMT_OSEN;
+-			break;
+ 		case WPA_KEY_MGMT_SAE:
+ 			mgmt[0] = RSN_AUTH_KEY_MGMT_SAE;
+ 			break;
+diff --git a/src/drivers/driver_nl80211_capa.c b/src/drivers/driver_nl80211_capa.c
+index 3442e7231..dc3a99c9e 100644
+--- a/src/drivers/driver_nl80211_capa.c
++++ b/src/drivers/driver_nl80211_capa.c
+@@ -303,9 +303,6 @@ static unsigned int get_akm_suites_info(struct nlattr *tb)
+ 		case RSN_AUTH_KEY_MGMT_CCKM:
+ 			key_mgmt |= WPA_DRIVER_CAPA_KEY_MGMT_CCKM;
+ 			break;
+-		case RSN_AUTH_KEY_MGMT_OSEN:
+-			key_mgmt |= WPA_DRIVER_CAPA_KEY_MGMT_OSEN;
+-			break;
+ 		case RSN_AUTH_KEY_MGMT_802_1X_SUITE_B:
+ 			key_mgmt |= WPA_DRIVER_CAPA_KEY_MGMT_SUITE_B;
+ 			break;
+diff --git a/src/eap_peer/eap_tls.c b/src/eap_peer/eap_tls.c
+index 4167e992b..7e167f0b2 100644
+--- a/src/eap_peer/eap_tls.c
++++ b/src/eap_peer/eap_tls.c
+@@ -106,33 +106,6 @@ static void * eap_unauth_tls_init(struct eap_sm *sm)
+ #endif /* EAP_UNAUTH_TLS */
+ 
+ 
+-#ifdef CONFIG_HS20
+-static void * eap_wfa_unauth_tls_init(struct eap_sm *sm)
+-{
+-	struct eap_tls_data *data;
+-	struct eap_peer_config *config = eap_get_config(sm);
+-
+-	data = os_zalloc(sizeof(*data));
+-	if (data == NULL)
+-		return NULL;
+-
+-	data->ssl_ctx = sm->init_phase2 && sm->ssl_ctx2 ? sm->ssl_ctx2 :
+-		sm->ssl_ctx;
+-
+-	if (eap_peer_tls_ssl_init(sm, &data->ssl, config,
+-				  EAP_WFA_UNAUTH_TLS_TYPE)) {
+-		wpa_printf(MSG_INFO, "EAP-TLS: Failed to initialize SSL.");
+-		eap_tls_deinit(sm, data);
+-		return NULL;
+-	}
+-
+-	data->eap_type = EAP_WFA_UNAUTH_TLS_TYPE;
+-
+-	return data;
+-}
+-#endif /* CONFIG_HS20 */
+-
+-
+ static void eap_tls_free_key(struct eap_tls_data *data)
+ {
+ 	if (data->key_data) {
+@@ -478,31 +451,3 @@ int eap_peer_unauth_tls_register(void)
+ 	return eap_peer_method_register(eap);
+ }
+ #endif /* EAP_UNAUTH_TLS */
+-
+-
+-#ifdef CONFIG_HS20
+-int eap_peer_wfa_unauth_tls_register(void)
+-{
+-	struct eap_method *eap;
+-
+-	eap = eap_peer_method_alloc(EAP_PEER_METHOD_INTERFACE_VERSION,
+-				    EAP_VENDOR_WFA_NEW,
+-				    EAP_VENDOR_WFA_UNAUTH_TLS,
+-				    "WFA-UNAUTH-TLS");
+-	if (eap == NULL)
+-		return -1;
+-
+-	eap->init = eap_wfa_unauth_tls_init;
+-	eap->deinit = eap_tls_deinit;
+-	eap->process = eap_tls_process;
+-	eap->isKeyAvailable = eap_tls_isKeyAvailable;
+-	eap->getKey = eap_tls_getKey;
+-	eap->get_status = eap_tls_get_status;
+-	eap->has_reauth_data = eap_tls_has_reauth_data;
+-	eap->deinit_for_reauth = eap_tls_deinit_for_reauth;
+-	eap->init_for_reauth = eap_tls_init_for_reauth;
+-	eap->get_emsk = eap_tls_get_emsk;
+-
+-	return eap_peer_method_register(eap);
+-}
+-#endif /* CONFIG_HS20 */
+diff --git a/src/eap_peer/eap_tls_common.c b/src/eap_peer/eap_tls_common.c
+index ea60b1172..9b40b3a85 100644
+--- a/src/eap_peer/eap_tls_common.c
++++ b/src/eap_peer/eap_tls_common.c
+@@ -23,10 +23,6 @@ static struct wpabuf * eap_tls_msg_alloc(enum eap_type type, size_t payload_len,
+ 		return eap_msg_alloc(EAP_VENDOR_UNAUTH_TLS,
+ 				     EAP_VENDOR_TYPE_UNAUTH_TLS, payload_len,
+ 				     code, identifier);
+-	if (type == EAP_WFA_UNAUTH_TLS_TYPE)
+-		return eap_msg_alloc(EAP_VENDOR_WFA_NEW,
+-				     EAP_VENDOR_WFA_UNAUTH_TLS, payload_len,
+-				     code, identifier);
+ 	return eap_msg_alloc(EAP_VENDOR_IETF, type, payload_len, code,
+ 			     identifier);
+ }
+@@ -195,8 +191,7 @@ static int eap_tls_params_from_conf(struct eap_sm *sm,
+ 	}
+ #ifndef EAP_TLSV1_3
+ 	if (data->eap_type == EAP_TYPE_TLS ||
+-	    data->eap_type == EAP_UNAUTH_TLS_TYPE ||
+-	    data->eap_type == EAP_WFA_UNAUTH_TLS_TYPE) {
++	    data->eap_type == EAP_UNAUTH_TLS_TYPE) {
+ 		/* While the current EAP-TLS implementation is more or less
+ 		 * complete for TLS v1.3, there has been only minimal
+ 		 * interoperability testing with other implementations, so
+@@ -928,10 +923,6 @@ const u8 * eap_peer_tls_process_init(struct eap_sm *sm,
+ 		pos = eap_hdr_validate(EAP_VENDOR_UNAUTH_TLS,
+ 				       EAP_VENDOR_TYPE_UNAUTH_TLS, reqData,
+ 				       &left);
+-	else if (eap_type == EAP_WFA_UNAUTH_TLS_TYPE)
+-		pos = eap_hdr_validate(EAP_VENDOR_WFA_NEW,
+-				       EAP_VENDOR_WFA_UNAUTH_TLS, reqData,
+-				       &left);
+ 	else
+ 		pos = eap_hdr_validate(EAP_VENDOR_IETF, eap_type, reqData,
+ 				       &left);
+diff --git a/src/eap_peer/eap_tls_common.h b/src/eap_peer/eap_tls_common.h
+index 334863413..2551ff551 100644
+--- a/src/eap_peer/eap_tls_common.h
++++ b/src/eap_peer/eap_tls_common.h
+@@ -99,7 +99,6 @@ struct eap_ssl_data {
+ 
+ /* stub type used as a flag for UNAUTH-TLS */
+ #define EAP_UNAUTH_TLS_TYPE 255
+-#define EAP_WFA_UNAUTH_TLS_TYPE 254
+ 
+ 
+ int eap_peer_tls_ssl_init(struct eap_sm *sm, struct eap_ssl_data *data,
+diff --git a/src/eap_server/eap_server_tls.c b/src/eap_server/eap_server_tls.c
+index 443c293ce..0caa4c3b7 100644
+--- a/src/eap_server/eap_server_tls.c
++++ b/src/eap_server/eap_server_tls.c
+@@ -114,29 +114,6 @@ static void * eap_unauth_tls_init(struct eap_sm *sm)
+ #endif /* EAP_SERVER_UNAUTH_TLS */
+ 
+ 
+-#ifdef CONFIG_HS20
+-static void * eap_wfa_unauth_tls_init(struct eap_sm *sm)
+-{
+-	struct eap_tls_data *data;
+-
+-	data = os_zalloc(sizeof(*data));
+-	if (data == NULL)
+-		return NULL;
+-	data->state = START;
+-
+-	if (eap_server_tls_ssl_init(sm, &data->ssl, 0,
+-				    EAP_WFA_UNAUTH_TLS_TYPE)) {
+-		wpa_printf(MSG_INFO, "EAP-TLS: Failed to initialize SSL.");
+-		eap_tls_reset(sm, data);
+-		return NULL;
+-	}
+-
+-	data->eap_type = EAP_WFA_UNAUTH_TLS_TYPE;
+-	return data;
+-}
+-#endif /* CONFIG_HS20 */
+-
+-
+ static void eap_tls_reset(struct eap_sm *sm, void *priv)
+ {
+ 	struct eap_tls_data *data = priv;
+@@ -237,10 +214,6 @@ static bool eap_tls_check(struct eap_sm *sm, void *priv,
+ 		pos = eap_hdr_validate(EAP_VENDOR_UNAUTH_TLS,
+ 				       EAP_VENDOR_TYPE_UNAUTH_TLS, respData,
+ 				       &len);
+-	else if (data->eap_type == EAP_WFA_UNAUTH_TLS_TYPE)
+-		pos = eap_hdr_validate(EAP_VENDOR_WFA_NEW,
+-				       EAP_VENDOR_WFA_UNAUTH_TLS, respData,
+-				       &len);
+ 	else
+ 		pos = eap_hdr_validate(EAP_VENDOR_IETF, data->eap_type,
+ 				       respData, &len);
+@@ -474,30 +447,3 @@ int eap_server_unauth_tls_register(void)
+ 	return eap_server_method_register(eap);
+ }
+ #endif /* EAP_SERVER_UNAUTH_TLS */
+-
+-
+-#ifdef CONFIG_HS20
+-int eap_server_wfa_unauth_tls_register(void)
+-{
+-	struct eap_method *eap;
+-
+-	eap = eap_server_method_alloc(EAP_SERVER_METHOD_INTERFACE_VERSION,
+-				      EAP_VENDOR_WFA_NEW,
+-				      EAP_VENDOR_WFA_UNAUTH_TLS,
+-				      "WFA-UNAUTH-TLS");
+-	if (eap == NULL)
+-		return -1;
+-
+-	eap->init = eap_wfa_unauth_tls_init;
+-	eap->reset = eap_tls_reset;
+-	eap->buildReq = eap_tls_buildReq;
+-	eap->check = eap_tls_check;
+-	eap->process = eap_tls_process;
+-	eap->isDone = eap_tls_isDone;
+-	eap->getKey = eap_tls_getKey;
+-	eap->isSuccess = eap_tls_isSuccess;
+-	eap->get_emsk = eap_tls_get_emsk;
+-
+-	return eap_server_method_register(eap);
+-}
+-#endif /* CONFIG_HS20 */
+diff --git a/src/eap_server/eap_server_tls_common.c b/src/eap_server/eap_server_tls_common.c
+index 717af2e89..81d1eedd4 100644
+--- a/src/eap_server/eap_server_tls_common.c
++++ b/src/eap_server/eap_server_tls_common.c
+@@ -25,10 +25,6 @@ struct wpabuf * eap_tls_msg_alloc(enum eap_type type, size_t payload_len,
+ 		return eap_msg_alloc(EAP_VENDOR_UNAUTH_TLS,
+ 				     EAP_VENDOR_TYPE_UNAUTH_TLS, payload_len,
+ 				     code, identifier);
+-	else if (type == EAP_WFA_UNAUTH_TLS_TYPE)
+-		return eap_msg_alloc(EAP_VENDOR_WFA_NEW,
+-				     EAP_VENDOR_WFA_UNAUTH_TLS, payload_len,
+-				     code, identifier);
+ 	return eap_msg_alloc(EAP_VENDOR_IETF, type, payload_len, code,
+ 			     identifier);
+ }
+@@ -541,10 +537,6 @@ int eap_server_tls_process(struct eap_sm *sm, struct eap_ssl_data *data,
+ 		pos = eap_hdr_validate(EAP_VENDOR_UNAUTH_TLS,
+ 				       EAP_VENDOR_TYPE_UNAUTH_TLS, respData,
+ 				       &left);
+-	else if (eap_type == EAP_WFA_UNAUTH_TLS_TYPE)
+-		pos = eap_hdr_validate(EAP_VENDOR_WFA_NEW,
+-				       EAP_VENDOR_WFA_UNAUTH_TLS, respData,
+-				       &left);
+ 	else
+ 		pos = eap_hdr_validate(EAP_VENDOR_IETF, eap_type, respData,
+ 				       &left);
+diff --git a/src/eap_server/eap_tls_common.h b/src/eap_server/eap_tls_common.h
+index ad28c7962..2a8faf9f4 100644
+--- a/src/eap_server/eap_tls_common.h
++++ b/src/eap_server/eap_tls_common.h
+@@ -72,7 +72,6 @@ struct eap_ssl_data {
+ 
+ /* stub type used as a flag for UNAUTH-TLS */
+ #define EAP_UNAUTH_TLS_TYPE 255
+-#define EAP_WFA_UNAUTH_TLS_TYPE 254
+ 
+ 
+ struct wpabuf * eap_tls_msg_alloc(enum eap_type type, size_t payload_len,
+diff --git a/src/rsn_supp/wpa.c b/src/rsn_supp/wpa.c
+index 0d8473841..49412854c 100644
+--- a/src/rsn_supp/wpa.c
++++ b/src/rsn_supp/wpa.c
+@@ -255,8 +255,7 @@ void wpa_sm_key_request(struct wpa_sm *sm, int error, int pairwise)
+ 	if (rbuf == NULL)
+ 		return;
+ 
+-	reply->type = (sm->proto == WPA_PROTO_RSN ||
+-		       sm->proto == WPA_PROTO_OSEN) ?
++	reply->type = (sm->proto == WPA_PROTO_RSN) ?
+ 		EAPOL_KEY_TYPE_RSN : EAPOL_KEY_TYPE_WPA;
+ 	key_info = WPA_KEY_INFO_REQUEST | ver;
+ 	key_info |= WPA_KEY_INFO_SECURE;
+@@ -481,8 +480,7 @@ static int wpa_supplicant_get_pmk(struct wpa_sm *sm,
+ 
+ 	if (abort_cached && wpa_key_mgmt_wpa_ieee8021x(sm->key_mgmt) &&
+ 	    !wpa_key_mgmt_suite_b(sm->key_mgmt) &&
+-	    !wpa_key_mgmt_ft(sm->key_mgmt) && sm->key_mgmt != WPA_KEY_MGMT_OSEN)
+-	{
++	    !wpa_key_mgmt_ft(sm->key_mgmt)) {
+ 		/* Send EAPOL-Start to trigger full EAP authentication. */
+ 		u8 *buf;
+ 		size_t buflen;
+@@ -636,8 +634,7 @@ int wpa_supplicant_send_2_of_4(struct wpa_sm *sm, const unsigned char *dst,
+ 		return -1;
+ 	}
+ 
+-	reply->type = (sm->proto == WPA_PROTO_RSN ||
+-		       sm->proto == WPA_PROTO_OSEN) ?
++	reply->type = (sm->proto == WPA_PROTO_RSN) ?
+ 		EAPOL_KEY_TYPE_RSN : EAPOL_KEY_TYPE_WPA;
+ 	key_info = ver | WPA_KEY_INFO_KEY_TYPE;
+ 	if (sm->ptk_set && sm->proto != WPA_PROTO_WPA)
+@@ -653,7 +650,7 @@ int wpa_supplicant_send_2_of_4(struct wpa_sm *sm, const unsigned char *dst,
+ 		key_info |= sm->eapol_2_key_info_set_mask;
+ #endif /* CONFIG_TESTING_OPTIONS */
+ 	WPA_PUT_BE16(reply->key_info, key_info);
+-	if (sm->proto == WPA_PROTO_RSN || sm->proto == WPA_PROTO_OSEN)
++	if (sm->proto == WPA_PROTO_RSN)
+ 		WPA_PUT_BE16(reply->key_length, 0);
+ 	else
+ 		os_memcpy(reply->key_length, key->key_length, 2);
+@@ -1260,7 +1257,7 @@ static int wpa_supplicant_install_ptk(struct wpa_sm *sm,
+ 	}
+ 	rsclen = wpa_cipher_rsc_len(sm->pairwise_cipher);
+ 
+-	if (sm->proto == WPA_PROTO_RSN || sm->proto == WPA_PROTO_OSEN) {
++	if (sm->proto == WPA_PROTO_RSN) {
+ 		key_rsc = null_rsc;
+ 	} else {
+ 		key_rsc = key->key_rsc;
+@@ -2371,8 +2368,7 @@ int wpa_supplicant_send_4_of_4(struct wpa_sm *sm, const unsigned char *dst,
+ 		return -1;
+ 	}
+ 
+-	reply->type = (sm->proto == WPA_PROTO_RSN ||
+-		       sm->proto == WPA_PROTO_OSEN) ?
++	reply->type = (sm->proto == WPA_PROTO_RSN) ?
+ 		EAPOL_KEY_TYPE_RSN : EAPOL_KEY_TYPE_WPA;
+ 	key_info &= WPA_KEY_INFO_SECURE;
+ 	key_info |= ver | WPA_KEY_INFO_KEY_TYPE;
+@@ -2385,7 +2381,7 @@ int wpa_supplicant_send_4_of_4(struct wpa_sm *sm, const unsigned char *dst,
+ 		key_info |= WPA_KEY_INFO_ENCR_KEY_DATA;
+ #endif /* CONFIG_TESTING_OPTIONS */
+ 	WPA_PUT_BE16(reply->key_info, key_info);
+-	if (sm->proto == WPA_PROTO_RSN || sm->proto == WPA_PROTO_OSEN)
++	if (sm->proto == WPA_PROTO_RSN)
+ 		WPA_PUT_BE16(reply->key_length, 0);
+ 	else
+ 		os_memcpy(reply->key_length, key->key_length, 2);
+@@ -3037,8 +3033,7 @@ static int wpa_supplicant_send_2_of_2(struct wpa_sm *sm,
+ 	if (rbuf == NULL)
+ 		return -1;
+ 
+-	reply->type = (sm->proto == WPA_PROTO_RSN ||
+-		       sm->proto == WPA_PROTO_OSEN) ?
++	reply->type = (sm->proto == WPA_PROTO_RSN) ?
+ 		EAPOL_KEY_TYPE_RSN : EAPOL_KEY_TYPE_WPA;
+ 	key_info &= WPA_KEY_INFO_KEY_INDEX_MASK;
+ 	key_info |= ver | WPA_KEY_INFO_SECURE;
+@@ -3047,7 +3042,7 @@ static int wpa_supplicant_send_2_of_2(struct wpa_sm *sm,
+ 	else
+ 		key_info |= WPA_KEY_INFO_ENCR_KEY_DATA;
+ 	WPA_PUT_BE16(reply->key_info, key_info);
+-	if (sm->proto == WPA_PROTO_RSN || sm->proto == WPA_PROTO_OSEN)
++	if (sm->proto == WPA_PROTO_RSN)
+ 		WPA_PUT_BE16(reply->key_length, 0);
+ 	else
+ 		os_memcpy(reply->key_length, key->key_length, 2);
+@@ -4089,7 +4084,7 @@ int wpa_sm_rx_eapol(struct wpa_sm *sm, const u8 *src_addr,
+ 	}
+ #endif /* CONFIG_FILS */
+ 
+-	if ((sm->proto == WPA_PROTO_RSN || sm->proto == WPA_PROTO_OSEN) &&
++	if (sm->proto == WPA_PROTO_RSN &&
+ 	    (key_info & WPA_KEY_INFO_ENCR_KEY_DATA) && mic_len) {
+ 		/*
+ 		 * Only decrypt the Key Data field if the frame's authenticity
+@@ -4159,8 +4154,7 @@ static u32 wpa_key_mgmt_suite(struct wpa_sm *sm)
+ {
+ 	switch (sm->key_mgmt) {
+ 	case WPA_KEY_MGMT_IEEE8021X:
+-		return ((sm->proto == WPA_PROTO_RSN ||
+-			 sm->proto == WPA_PROTO_OSEN) ?
++		return ((sm->proto == WPA_PROTO_RSN) ?
+ 			RSN_AUTH_KEY_MGMT_UNSPEC_802_1X :
+ 			WPA_AUTH_KEY_MGMT_UNSPEC_802_1X);
+ 	case WPA_KEY_MGMT_PSK:
+diff --git a/src/rsn_supp/wpa_ie.c b/src/rsn_supp/wpa_ie.c
+index d07f5b367..d27bcf905 100644
+--- a/src/rsn_supp/wpa_ie.c
++++ b/src/rsn_supp/wpa_ie.c
+@@ -30,9 +30,6 @@ int wpa_parse_wpa_ie(const u8 *wpa_ie, size_t wpa_ie_len,
+ {
+ 	if (wpa_ie_len >= 1 && wpa_ie[0] == WLAN_EID_RSN)
+ 		return wpa_parse_wpa_ie_rsn(wpa_ie, wpa_ie_len, data);
+-	if (wpa_ie_len >= 6 && wpa_ie[0] == WLAN_EID_VENDOR_SPECIFIC &&
+-	    wpa_ie[1] >= 4 && WPA_GET_BE32(&wpa_ie[2]) == OSEN_IE_VENDOR_TYPE)
+-		return wpa_parse_wpa_ie_rsn(wpa_ie, wpa_ie_len, data);
+ 	if (wpa_ie_len >= 6 && wpa_ie[0] == WLAN_EID_VENDOR_SPECIFIC &&
+ 	    wpa_ie[1] >= 4 &&
+ 	    WPA_GET_BE32(&wpa_ie[2]) == RSNE_OVERRIDE_IE_VENDOR_TYPE)
+@@ -233,10 +230,6 @@ static int wpa_gen_wpa_ie_rsn(u8 *rsn_ie, size_t rsn_ie_len,
+ 	} else if (key_mgmt & WPA_KEY_MGMT_DPP) {
+ 		RSN_SELECTOR_PUT(pos, RSN_AUTH_KEY_MGMT_DPP);
+ #endif /* CONFIG_DPP */
+-#ifdef CONFIG_HS20
+-	} else if (key_mgmt & WPA_KEY_MGMT_OSEN) {
+-		RSN_SELECTOR_PUT(pos, RSN_AUTH_KEY_MGMT_OSEN);
+-#endif /* CONFIG_HS20 */
+ #ifdef CONFIG_SHA384
+ 	} else if (key_mgmt == WPA_KEY_MGMT_IEEE8021X_SHA384) {
+ 		RSN_SELECTOR_PUT(pos, RSN_AUTH_KEY_MGMT_802_1X_SHA384);
+@@ -282,64 +275,6 @@ static int wpa_gen_wpa_ie_rsn(u8 *rsn_ie, size_t rsn_ie_len,
+ }
+ 
+ 
+-#ifdef CONFIG_HS20
+-static int wpa_gen_wpa_ie_osen(u8 *wpa_ie, size_t wpa_ie_len,
+-			       int pairwise_cipher, int group_cipher,
+-			       int key_mgmt)
+-{
+-	u8 *pos, *len;
+-	u32 suite;
+-
+-	if (wpa_ie_len < 2 + 4 + RSN_SELECTOR_LEN +
+-	    2 + RSN_SELECTOR_LEN + 2 + RSN_SELECTOR_LEN)
+-		return -1;
+-
+-	pos = wpa_ie;
+-	*pos++ = WLAN_EID_VENDOR_SPECIFIC;
+-	len = pos++; /* to be filled */
+-	WPA_PUT_BE24(pos, OUI_WFA);
+-	pos += 3;
+-	*pos++ = HS20_OSEN_OUI_TYPE;
+-
+-	/* Group Data Cipher Suite */
+-	suite = wpa_cipher_to_suite(WPA_PROTO_RSN, group_cipher);
+-	if (suite == 0) {
+-		wpa_printf(MSG_WARNING, "Invalid group cipher (%d).",
+-			   group_cipher);
+-		return -1;
+-	}
+-	RSN_SELECTOR_PUT(pos, suite);
+-	pos += RSN_SELECTOR_LEN;
+-
+-	/* Pairwise Cipher Suite Count and List */
+-	WPA_PUT_LE16(pos, 1);
+-	pos += 2;
+-	suite = wpa_cipher_to_suite(WPA_PROTO_RSN, pairwise_cipher);
+-	if (suite == 0 ||
+-	    (!wpa_cipher_valid_pairwise(pairwise_cipher) &&
+-	     pairwise_cipher != WPA_CIPHER_NONE)) {
+-		wpa_printf(MSG_WARNING, "Invalid pairwise cipher (%d).",
+-			   pairwise_cipher);
+-		return -1;
+-	}
+-	RSN_SELECTOR_PUT(pos, suite);
+-	pos += RSN_SELECTOR_LEN;
+-
+-	/* AKM Suite Count and List */
+-	WPA_PUT_LE16(pos, 1);
+-	pos += 2;
+-	RSN_SELECTOR_PUT(pos, RSN_AUTH_KEY_MGMT_OSEN);
+-	pos += RSN_SELECTOR_LEN;
+-
+-	*len = pos - len - 1;
+-
+-	WPA_ASSERT((size_t) (pos - wpa_ie) <= wpa_ie_len);
+-
+-	return pos - wpa_ie;
+-}
+-#endif /* CONFIG_HS20 */
+-
+-
+ /**
+  * wpa_gen_wpa_ie - Generate WPA/RSN IE based on current security policy
+  * @sm: Pointer to WPA state machine data from wpa_sm_init()
+@@ -355,13 +290,6 @@ int wpa_gen_wpa_ie(struct wpa_sm *sm, u8 *wpa_ie, size_t wpa_ie_len)
+ 					  sm->group_cipher,
+ 					  sm->key_mgmt, sm->mgmt_group_cipher,
+ 					  sm);
+-#ifdef CONFIG_HS20
+-	else if (sm->proto == WPA_PROTO_OSEN)
+-		return wpa_gen_wpa_ie_osen(wpa_ie, wpa_ie_len,
+-					   sm->pairwise_cipher,
+-					   sm->group_cipher,
+-					   sm->key_mgmt);
+-#endif /* CONFIG_HS20 */
+ 	else
+ 		return wpa_gen_wpa_ie_wpa(wpa_ie, wpa_ie_len,
+ 					  sm->pairwise_cipher,
+diff --git a/wlantest/bss.c b/wlantest/bss.c
+index b0de1d4eb..0e94ab1cc 100644
+--- a/wlantest/bss.c
++++ b/wlantest/bss.c
+@@ -174,27 +174,6 @@ void bss_update(struct wlantest *wt, struct wlantest_bss *bss,
+ 		bss_add_pmk(wt, bss);
+ 	}
+ 
+-	if (elems->osen == NULL) {
+-		if (bss->osenie[0]) {
+-			add_note(wt, MSG_INFO, "BSS " MACSTR
+-				 " - OSEN IE removed", MAC2STR(bss->bssid));
+-			bss->rsnie[0] = 0;
+-			update = 1;
+-		}
+-	} else {
+-		if (bss->osenie[0] == 0 ||
+-		    os_memcmp(bss->osenie, elems->osen - 2,
+-			      elems->osen_len + 2) != 0) {
+-			wpa_printf(MSG_INFO, "BSS " MACSTR " - OSEN IE "
+-				   "stored", MAC2STR(bss->bssid));
+-			wpa_hexdump(MSG_DEBUG, "OSEN IE", elems->osen - 2,
+-				    elems->osen_len + 2);
+-			update = 1;
+-		}
+-		os_memcpy(bss->osenie, elems->osen - 2,
+-			  elems->osen_len + 2);
+-	}
+-
+ 	/* S1G does not include RSNE in beacon, so only clear it from
+ 	 * Probe Response frames. Note this assumes short beacons were dropped
+ 	 * due to missing SSID above.
+@@ -315,33 +294,25 @@ void bss_update(struct wlantest *wt, struct wlantest_bss *bss,
+ 		}
+ 	}
+ 
+-	if (bss->osenie[0]) {
+-		bss->proto |= WPA_PROTO_OSEN;
+-		bss->pairwise_cipher |= WPA_CIPHER_CCMP;
+-		bss->group_cipher |= WPA_CIPHER_CCMP;
+-		bss->key_mgmt |= WPA_KEY_MGMT_OSEN;
+-	}
+-
+ 	if (!(bss->proto & WPA_PROTO_RSN) ||
+ 	    !(bss->rsn_capab & WPA_CAPABILITY_MFPC))
+ 		bss->mgmt_group_cipher = 0;
+ 
+-	if (!bss->wpaie[0] && !bss->rsnie[0] && !bss->osenie[0] &&
++	if (!bss->wpaie[0] && !bss->rsnie[0] &&
+ 	    (bss->capab_info & WLAN_CAPABILITY_PRIVACY))
+ 		bss->group_cipher = WPA_CIPHER_WEP40;
+ 
+ 	wpa_printf(MSG_INFO, "BSS " MACSTR
+-		   " proto=%s%s%s%s"
++		   " proto=%s%s%s"
+ 		   "pairwise=%s%s%s%s%s%s%s"
+ 		   "group=%s%s%s%s%s%s%s%s%s"
+ 		   "mgmt_group_cipher=%s%s%s%s%s"
+-		   "key_mgmt=%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s"
++		   "key_mgmt=%s%s%s%s%s%s%s%s%s%s%s%s%s%s"
+ 		   "rsn_capab=%s%s%s%s%s%s%s%s%s%s",
+ 		   MAC2STR(bss->bssid),
+ 		   bss->proto == 0 ? "OPEN " : "",
+ 		   bss->proto & WPA_PROTO_WPA ? "WPA " : "",
+ 		   bss->proto & WPA_PROTO_RSN ? "WPA2 " : "",
+-		   bss->proto & WPA_PROTO_OSEN ? "OSEN " : "",
+ 		   bss->pairwise_cipher == 0 ? "N/A " : "",
+ 		   bss->pairwise_cipher & WPA_CIPHER_NONE ? "NONE " : "",
+ 		   bss->pairwise_cipher & WPA_CIPHER_TKIP ? "TKIP " : "",
+@@ -381,7 +352,6 @@ void bss_update(struct wlantest *wt, struct wlantest_bss *bss,
+ 		   "PSK-SHA256 " : "",
+ 		   bss->key_mgmt & WPA_KEY_MGMT_OWE ? "OWE " : "",
+ 		   bss->key_mgmt & WPA_KEY_MGMT_PASN ? "PASN " : "",
+-		   bss->key_mgmt & WPA_KEY_MGMT_OSEN ? "OSEN " : "",
+ 		   bss->key_mgmt & WPA_KEY_MGMT_DPP ? "DPP " : "",
+ 		   bss->key_mgmt & WPA_KEY_MGMT_IEEE8021X_SUITE_B ?
+ 		   "EAP-SUITE-B " : "",
+diff --git a/wlantest/rx_eapol.c b/wlantest/rx_eapol.c
+index b24272794..dd58ae521 100644
+--- a/wlantest/rx_eapol.c
++++ b/wlantest/rx_eapol.c
+@@ -343,10 +343,6 @@ static void elems_from_eapol_ie(struct ieee802_11_elems *elems,
+ 		elems->rsn_ie = ie->rsn_ie + 2;
+ 		elems->rsn_ie_len = ie->rsn_ie_len - 2;
+ 	}
+-	if (ie->osen) {
+-		elems->osen = ie->osen + 2;
+-		elems->osen_len = ie->osen_len - 2;
+-	}
+ }
+ 
+ 
+@@ -601,7 +597,6 @@ static u8 * decrypt_eapol_key_data(struct wlantest *wt,
+ 		return decrypt_eapol_key_data_aes(wt, kek, kek_len, hdr,
+ 						  keydata, keydatalen, len);
+ 	case WPA_KEY_INFO_TYPE_AKM_DEFINED:
+-		/* For now, assume this is OSEN */
+ 		return decrypt_eapol_key_data_aes(wt, kek, kek_len, hdr,
+ 						  keydata, keydatalen, len);
+ 	default:
+diff --git a/wlantest/sta.c b/wlantest/sta.c
+index 0ec5692e4..7bc96f722 100644
+--- a/wlantest/sta.c
++++ b/wlantest/sta.c
+@@ -154,15 +154,6 @@ void sta_update_assoc(struct wlantest_sta *sta, struct ieee802_11_elems *elems)
+ 		elems->rsn_ie = NULL;
+ 	}
+ 
+-	if (elems->osen && !bss->osenie[0] &&
+-	    (bss->beacon_seen || bss->proberesp_seen)) {
+-		wpa_printf(MSG_INFO, "OSEN IE included in Association Request "
+-			   "frame from " MACSTR " even though BSS does not "
+-			   "use OSEN - ignore IE",
+-			   MAC2STR(sta->addr));
+-		elems->osen = NULL;
+-	}
+-
+ 	if (elems->wpa_ie && elems->rsn_ie) {
+ 		wpa_printf(MSG_INFO, "Both WPA IE and RSN IE included in "
+ 			   "Association Request frame from " MACSTR,
+@@ -189,15 +180,6 @@ void sta_update_assoc(struct wlantest_sta *sta, struct ieee802_11_elems *elems)
+ 			wpa_printf(MSG_INFO, "Failed to parse WPA IE from "
+ 				   MACSTR, MAC2STR(sta->addr));
+ 		}
+-	} else if (elems->osen) {
+-		wpa_hexdump(MSG_DEBUG, "OSEN IE", elems->osen - 2,
+-			    elems->osen_len + 2);
+-		os_memcpy(sta->osenie, elems->osen - 2, elems->osen_len + 2);
+-		sta->proto = WPA_PROTO_OSEN;
+-		sta->pairwise_cipher = WPA_CIPHER_CCMP;
+-		sta->key_mgmt = WPA_KEY_MGMT_OSEN;
+-		sta->rsn_capab = 0;
+-		goto skip_rsn_wpa;
+ 	} else {
+ 		sta->rsnie[0] = 0;
+ 		sta->proto = 0;
+@@ -248,15 +230,14 @@ void sta_update_assoc(struct wlantest_sta *sta, struct ieee802_11_elems *elems)
+ 
+ skip_rsn_wpa:
+ 	wpa_printf(MSG_INFO, "STA " MACSTR
+-		   " proto=%s%s%s%s"
++		   " proto=%s%s%s"
+ 		   "pairwise=%s%s%s%s%s%s%s"
+-		   "key_mgmt=%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s"
++		   "key_mgmt=%s%s%s%s%s%s%s%s%s%s%s%s%s%s"
+ 		   "rsn_capab=%s%s%s%s%s%s%s%s%s%s",
+ 		   MAC2STR(sta->addr),
+ 		   sta->proto == 0 ? "OPEN " : "",
+ 		   sta->proto & WPA_PROTO_WPA ? "WPA " : "",
+ 		   sta->proto & WPA_PROTO_RSN ? "WPA2 " : "",
+-		   sta->proto & WPA_PROTO_OSEN ? "OSEN " : "",
+ 		   sta->pairwise_cipher == 0 ? "N/A " : "",
+ 		   sta->pairwise_cipher & WPA_CIPHER_NONE ? "NONE " : "",
+ 		   sta->pairwise_cipher & WPA_CIPHER_TKIP ? "TKIP " : "",
+@@ -278,7 +259,6 @@ skip_rsn_wpa:
+ 		   "PSK-SHA256 " : "",
+ 		   sta->key_mgmt & WPA_KEY_MGMT_OWE ? "OWE " : "",
+ 		   sta->key_mgmt & WPA_KEY_MGMT_PASN ? "PASN " : "",
+-		   sta->key_mgmt & WPA_KEY_MGMT_OSEN ? "OSEN " : "",
+ 		   sta->key_mgmt & WPA_KEY_MGMT_DPP ? "DPP " : "",
+ 		   sta->key_mgmt & WPA_KEY_MGMT_IEEE8021X_SUITE_B ?
+ 		   "EAP-SUITE-B " : "",
+diff --git a/wlantest/wlantest.h b/wlantest/wlantest.h
+index 516e341df..72b5a02ba 100644
+--- a/wlantest/wlantest.h
++++ b/wlantest/wlantest.h
+@@ -68,7 +68,6 @@ struct wlantest_sta {
+ 	u8 rsnie[257]; /* WPA/RSN IE */
+ 	u8 rsnxe[254]; /* RSNXE data */
+ 	size_t rsnxe_len;
+-	u8 osenie[257]; /* OSEN IE */
+ 	int proto;
+ 	int pairwise_cipher;
+ 	int group_cipher;
+diff --git a/wpa_supplicant/README-HS20 b/wpa_supplicant/README-HS20
+index 7d30e23c6..f5488f204 100644
+--- a/wpa_supplicant/README-HS20
++++ b/wpa_supplicant/README-HS20
+@@ -618,28 +618,6 @@ OK
+ <3>ANQP fetch completed
+ 
+ 
+-Hotspot 2.0 Rel 2 online signup and OSEN
+-----------------------------------------
+-
+-Following parameters can be used to create a network profile for
+-link-layer protected Hotspot 2.0 online signup connection with
+-OSEN. Note that ssid and identify (NAI) values need to be set based on
+-the information for the selected provider in the OSU Providers list
+-ANQP-element.
+-
+-network={
+-    ssid="HS 2.0 OSU"
+-    proto=OSEN
+-    key_mgmt=OSEN
+-    pairwise=CCMP
+-    group=GTK_NOT_USED
+-    eap=WFA-UNAUTH-TLS
+-    identity="anonymous@example.com"
+-    ca_cert="osu-ca.pem"
+-    ocsp=2
+-}
+-
+-
+ Hotspot 2.0 connection with external network selection
+ ------------------------------------------------------
+ 
+diff --git a/wpa_supplicant/config.c b/wpa_supplicant/config.c
+index 6dfb3165a..1cad3e7d3 100644
+--- a/wpa_supplicant/config.c
++++ b/wpa_supplicant/config.c
+@@ -693,8 +693,6 @@ static int wpa_config_parse_proto(const struct parse_data *data,
+ 		else if (os_strcmp(start, "RSN") == 0 ||
+ 			 os_strcmp(start, "WPA2") == 0)
+ 			val |= WPA_PROTO_RSN;
+-		else if (os_strcmp(start, "OSEN") == 0)
+-			val |= WPA_PROTO_OSEN;
+ 		else {
+ 			wpa_printf(MSG_ERROR, "Line %d: invalid proto '%s'",
+ 				   line, start);
+@@ -749,14 +747,6 @@ static char * wpa_config_write_proto(const struct parse_data *data,
+ 		pos += ret;
+ 	}
+ 
+-	if (ssid->proto & WPA_PROTO_OSEN) {
+-		ret = os_snprintf(pos, end - pos, "%sOSEN",
+-				  pos == buf ? "" : " ");
+-		if (os_snprintf_error(end - pos, ret))
+-			return buf;
+-		pos += ret;
+-	}
+-
+ 	if (pos == buf) {
+ 		os_free(buf);
+ 		buf = NULL;
+@@ -831,10 +821,6 @@ static int wpa_config_parse_key_mgmt(const struct parse_data *data,
+ 		else if (os_strcmp(start, "FT-SAE-EXT-KEY") == 0)
+ 			val |= WPA_KEY_MGMT_FT_SAE_EXT_KEY;
+ #endif /* CONFIG_SAE */
+-#ifdef CONFIG_HS20
+-		else if (os_strcmp(start, "OSEN") == 0)
+-			val |= WPA_KEY_MGMT_OSEN;
+-#endif /* CONFIG_HS20 */
+ #ifdef CONFIG_SUITEB
+ 		else if (os_strcmp(start, "WPA-EAP-SUITE-B") == 0)
+ 			val |= WPA_KEY_MGMT_IEEE8021X_SUITE_B;
+@@ -1071,18 +1057,6 @@ static char * wpa_config_write_key_mgmt(const struct parse_data *data,
+ 	}
+ #endif /* CONFIG_SAE */
+ 
+-#ifdef CONFIG_HS20
+-	if (ssid->key_mgmt & WPA_KEY_MGMT_OSEN) {
+-		ret = os_snprintf(pos, end - pos, "%sOSEN",
+-				  pos == buf ? "" : " ");
+-		if (os_snprintf_error(end - pos, ret)) {
+-			end[-1] = '\0';
+-			return buf;
+-		}
+-		pos += ret;
+-	}
+-#endif /* CONFIG_HS20 */
+-
+ #ifdef CONFIG_SUITEB
+ 	if (ssid->key_mgmt & WPA_KEY_MGMT_IEEE8021X_SUITE_B) {
+ 		ret = os_snprintf(pos, end - pos, "%sWPA-EAP-SUITE-B",
+diff --git a/wpa_supplicant/ctrl_iface.c b/wpa_supplicant/ctrl_iface.c
+index 85fbbe458..575ec9923 100644
+--- a/wpa_supplicant/ctrl_iface.c
++++ b/wpa_supplicant/ctrl_iface.c
+@@ -3014,14 +3014,6 @@ static char * wpa_supplicant_ie_txt(char *pos, char *end, const char *proto,
+ 	}
+ #endif /* CONFIG_DPP */
+ 
+-	if (data.key_mgmt & WPA_KEY_MGMT_OSEN) {
+-		ret = os_snprintf(pos, end - pos, "%sOSEN",
+-				  pos == start ? "" : "+");
+-		if (os_snprintf_error(end - pos, ret))
+-			return pos;
+-		pos += ret;
+-	}
+-
+ #ifdef CONFIG_SHA384
+ 	if (data.key_mgmt & WPA_KEY_MGMT_IEEE8021X_SHA384) {
+ 		ret = os_snprintf(pos, end - pos, "%sEAP-SHA384",
+@@ -3099,7 +3091,7 @@ static int wpa_supplicant_ctrl_iface_scan_result(
+ {
+ 	char *pos, *end;
+ 	int ret;
+-	const u8 *ie, *ie2, *osen_ie, *p2p, *mesh, *owe, *rsnxe;
++	const u8 *ie, *ie2, *p2p, *mesh, *owe, *rsnxe;
+ 
+ 	mesh = wpa_bss_get_ie(bss, WLAN_EID_MESH_ID);
+ 	p2p = wpa_bss_get_vendor_ie(bss, P2P_IE_VENDOR_TYPE);
+@@ -3139,10 +3131,6 @@ static int wpa_supplicant_ctrl_iface_scan_result(
+ 			return -1;
+ 		pos += ret;
+ 	}
+-	osen_ie = wpa_bss_get_vendor_ie(bss, OSEN_IE_VENDOR_TYPE);
+-	if (osen_ie)
+-		pos = wpa_supplicant_ie_txt(pos, end, "OSEN",
+-					    osen_ie, 2 + osen_ie[1]);
+ 	owe = wpa_bss_get_vendor_ie(bss, OWE_IE_VENDOR_TYPE);
+ 	if (owe) {
+ 		ret = os_snprintf(pos, end - pos,
+@@ -3152,7 +3140,7 @@ static int wpa_supplicant_ctrl_iface_scan_result(
+ 		pos += ret;
+ 	}
+ 	pos = wpa_supplicant_wps_ie_txt(wpa_s, pos, end, bss);
+-	if (!ie && !ie2 && !osen_ie && (bss->caps & IEEE80211_CAP_PRIVACY)) {
++	if (!ie && !ie2 && (bss->caps & IEEE80211_CAP_PRIVACY)) {
+ 		ret = os_snprintf(pos, end - pos, "[WEP]");
+ 		if (os_snprintf_error(end - pos, ret))
+ 			return -1;
+@@ -4462,14 +4450,6 @@ static int ctrl_iface_get_capability_key_mgmt(int res, bool strict,
+ 		pos += ret;
+ 	}
+ #endif /* CONFIG_SHA256 */
+-#ifdef CONFIG_HS20
+-	if (key_mgmt & WPA_DRIVER_CAPA_KEY_MGMT_OSEN) {
+-		ret = os_snprintf(pos, end - pos, " OSEN");
+-		if (os_snprintf_error(end - pos, ret))
+-			return pos - buf;
+-		pos += ret;
+-	}
+-#endif /* CONFIG_HS20 */
+ 
+ 	return pos - buf;
+ }
+@@ -5331,7 +5311,7 @@ static int print_bss_info(struct wpa_supplicant *wpa_s, struct wpa_bss *bss,
+ 	size_t i;
+ 	int ret;
+ 	char *pos, *end;
+-	const u8 *ie, *ie2, *osen_ie, *mesh, *owe, *rsnxe;
++	const u8 *ie, *ie2, *mesh, *owe, *rsnxe;
+ 
+ 	pos = buf;
+ 	end = buf + buflen;
+@@ -5464,10 +5444,6 @@ static int print_bss_info(struct wpa_supplicant *wpa_s, struct wpa_bss *bss,
+ 				return 0;
+ 			pos += ret;
+ 		}
+-		osen_ie = wpa_bss_get_vendor_ie(bss, OSEN_IE_VENDOR_TYPE);
+-		if (osen_ie)
+-			pos = wpa_supplicant_ie_txt(pos, end, "OSEN",
+-						    osen_ie, 2 + osen_ie[1]);
+ 		owe = wpa_bss_get_vendor_ie(bss, OWE_IE_VENDOR_TYPE);
+ 		if (owe) {
+ 			ret = os_snprintf(
+@@ -5478,7 +5454,7 @@ static int print_bss_info(struct wpa_supplicant *wpa_s, struct wpa_bss *bss,
+ 			pos += ret;
+ 		}
+ 		pos = wpa_supplicant_wps_ie_txt(wpa_s, pos, end, bss);
+-		if (!ie && !ie2 && !osen_ie &&
++		if (!ie && !ie2 &&
+ 		    (bss->caps & IEEE80211_CAP_PRIVACY)) {
+ 			ret = os_snprintf(pos, end - pos, "[WEP]");
+ 			if (os_snprintf_error(end - pos, ret))
+diff --git a/wpa_supplicant/eap_register.c b/wpa_supplicant/eap_register.c
+index 3f018c4b3..794ec19ad 100644
+--- a/wpa_supplicant/eap_register.c
++++ b/wpa_supplicant/eap_register.c
+@@ -40,13 +40,6 @@ int eap_register_methods(void)
+ 		ret = eap_peer_unauth_tls_register();
+ #endif /* EAP_UNAUTH_TLS */
+ 
+-#ifdef EAP_TLS
+-#ifdef CONFIG_HS20
+-	if (ret == 0)
+-		ret = eap_peer_wfa_unauth_tls_register();
+-#endif /* CONFIG_HS20 */
+-#endif /* EAP_TLS */
+-
+ #ifdef EAP_MSCHAPv2
+ 	if (ret == 0)
+ 		ret = eap_peer_mschapv2_register();
+diff --git a/wpa_supplicant/events.c b/wpa_supplicant/events.c
+index 89d4036ae..1568fccf7 100644
+--- a/wpa_supplicant/events.c
++++ b/wpa_supplicant/events.c
+@@ -639,9 +639,6 @@ static int wpa_supplicant_match_privacy(struct wpa_bss *bss,
+ 	if (wpa_key_mgmt_wpa(ssid->key_mgmt))
+ 		privacy = 1;
+ 
+-	if (ssid->key_mgmt & WPA_KEY_MGMT_OSEN)
+-		privacy = 1;
+-
+ 	if (bss->caps & IEEE80211_CAP_PRIVACY)
+ 		return privacy;
+ 	return !privacy;
+@@ -681,7 +678,7 @@ static int wpa_supplicant_ssid_bss_match(struct wpa_supplicant *wpa_s,
+ 		return 0;
+ 	}
+ 
+-	while ((ssid->proto & (WPA_PROTO_RSN | WPA_PROTO_OSEN)) && rsn_ie) {
++	while ((ssid->proto & WPA_PROTO_RSN) && rsn_ie) {
+ 		proto_match++;
+ 
+ 		if (wpa_parse_wpa_ie(rsn_ie, 2 + rsn_ie[1], &ie)) {
+@@ -716,8 +713,7 @@ static int wpa_supplicant_ssid_bss_match(struct wpa_supplicant *wpa_s,
+ 		}
+ #endif /* CONFIG_WEP */
+ 
+-		if (!(ie.proto & ssid->proto) &&
+-		    !(ssid->proto & WPA_PROTO_OSEN)) {
++		if (!(ie.proto & ssid->proto)) {
+ 			if (debug_print)
+ 				wpa_dbg(wpa_s, MSG_DEBUG,
+ 					"   skip RSN IE - proto mismatch");
+@@ -919,13 +915,6 @@ static int wpa_supplicant_ssid_bss_match(struct wpa_supplicant *wpa_s,
+ 		return 0;
+ 	}
+ 
+-	if ((ssid->key_mgmt & WPA_KEY_MGMT_OSEN) &&
+-	    wpa_bss_get_vendor_ie(bss, OSEN_IE_VENDOR_TYPE)) {
+-		if (debug_print)
+-			wpa_dbg(wpa_s, MSG_DEBUG, "   allow in OSEN");
+-		return 1;
+-	}
+-
+ 	if (!wpa_key_mgmt_wpa(ssid->key_mgmt)) {
+ 		if (debug_print)
+ 			wpa_dbg(wpa_s, MSG_DEBUG, "   allow in non-WPA/WPA2");
+@@ -1268,10 +1257,7 @@ static bool wpa_scan_res_ok(struct wpa_supplicant *wpa_s, struct wpa_ssid *ssid,
+ 			    bool debug_print)
+ {
+ 	int res;
+-	bool wpa, check_ssid, osen, rsn_osen = false;
+-#ifndef CONFIG_NO_WPA
+-	struct wpa_ie_data data;
+-#endif /* CONFIG_NO_WPA */
++	bool wpa, check_ssid = false;
+ #ifdef CONFIG_MBO
+ 	const u8 *assoc_disallow;
+ #endif /* CONFIG_MBO */
+@@ -1285,13 +1271,6 @@ static bool wpa_scan_res_ok(struct wpa_supplicant *wpa_s, struct wpa_ssid *ssid,
+ 	wpa = ie && ie[1];
+ 	ie = wpa_bss_get_rsne(wpa_s, bss, ssid, false);
+ 	wpa |= ie && ie[1];
+-#ifndef CONFIG_NO_WPA
+-	if (ie && wpa_parse_wpa_ie_rsn(ie, 2 + ie[1], &data) == 0 &&
+-	    (data.key_mgmt & WPA_KEY_MGMT_OSEN))
+-		rsn_osen = true;
+-#endif /* CONFIG_NO_WPA */
+-	ie = wpa_bss_get_vendor_ie(bss, OSEN_IE_VENDOR_TYPE);
+-	osen = ie != NULL;
+ 
+ #ifdef CONFIG_SAE
+ 	ie = wpa_bss_get_rsnxe(wpa_s, bss, ssid, false);
+@@ -1380,7 +1359,7 @@ static bool wpa_scan_res_ok(struct wpa_supplicant *wpa_s, struct wpa_ssid *ssid,
+ 	if (!wpa_supplicant_ssid_bss_match(wpa_s, ssid, bss, debug_print))
+ 		return false;
+ 
+-	if (!osen && !wpa &&
++	if (!wpa &&
+ 	    !(ssid->key_mgmt & WPA_KEY_MGMT_NONE) &&
+ 	    !(ssid->key_mgmt & WPA_KEY_MGMT_WPS) &&
+ 	    !(ssid->key_mgmt & WPA_KEY_MGMT_OWE) &&
+@@ -1400,13 +1379,6 @@ static bool wpa_scan_res_ok(struct wpa_supplicant *wpa_s, struct wpa_ssid *ssid,
+ 	}
+ #endif /* CONFIG_WEP */
+ 
+-	if ((ssid->key_mgmt & WPA_KEY_MGMT_OSEN) && !osen && !rsn_osen) {
+-		if (debug_print)
+-			wpa_dbg(wpa_s, MSG_DEBUG,
+-				"   skip - non-OSEN network not allowed");
+-		return false;
+-	}
+-
+ 	if (!wpa_supplicant_match_privacy(bss, ssid)) {
+ 		if (debug_print)
+ 			wpa_dbg(wpa_s, MSG_DEBUG, "   skip - privacy mismatch");
+@@ -1644,7 +1616,6 @@ struct wpa_ssid * wpa_scan_res_match(struct wpa_supplicant *wpa_s,
+ 	u8 wpa_ie_len, rsn_ie_len;
+ 	const u8 *ie;
+ 	struct wpa_ssid *ssid;
+-	int osen;
+ 	const u8 *match_ssid;
+ 	size_t match_ssid_len;
+ 	int bssid_ignore_count;
+@@ -1655,12 +1626,9 @@ struct wpa_ssid * wpa_scan_res_match(struct wpa_supplicant *wpa_s,
+ 	ie = wpa_bss_get_rsne(wpa_s, bss, NULL, false);
+ 	rsn_ie_len = ie ? ie[1] : 0;
+ 
+-	ie = wpa_bss_get_vendor_ie(bss, OSEN_IE_VENDOR_TYPE);
+-	osen = ie != NULL;
+-
+ 	if (debug_print) {
+ 		wpa_dbg(wpa_s, MSG_DEBUG, "%d: " MACSTR
+-			" ssid='%s' wpa_ie_len=%u rsn_ie_len=%u caps=0x%x level=%d freq=%d %s%s%s",
++			" ssid='%s' wpa_ie_len=%u rsn_ie_len=%u caps=0x%x level=%d freq=%d %s%s",
+ 			i, MAC2STR(bss->bssid),
+ 			wpa_ssid_txt(bss->ssid, bss->ssid_len),
+ 			wpa_ie_len, rsn_ie_len, bss->caps, bss->level,
+@@ -1669,8 +1637,7 @@ struct wpa_ssid * wpa_scan_res_match(struct wpa_supplicant *wpa_s,
+ 			" wps" : "",
+ 			(wpa_bss_get_vendor_ie(bss, P2P_IE_VENDOR_TYPE) ||
+ 			 wpa_bss_get_vendor_ie_beacon(bss, P2P_IE_VENDOR_TYPE))
+-			? " p2p" : "",
+-			osen ? " osen=1" : "");
++			? " p2p" : "");
+ 	}
+ 
+ 	bssid_ignore_count = wpa_bssid_ignore_is_listed(wpa_s, bss->bssid);
+@@ -3271,8 +3238,7 @@ static int wpa_supplicant_use_own_rsne_params(struct wpa_supplicant *wpa_s,
+ 	wpa_s->wpa_proto = ie.proto;
+ 	wpa_sm_set_param(wpa_s->wpa, WPA_PARAM_PROTO, wpa_s->wpa_proto);
+ 	wpa_sm_set_param(wpa_s->wpa, WPA_PARAM_RSN_ENABLED,
+-			 !!(wpa_s->wpa_proto &
+-			    (WPA_PROTO_RSN | WPA_PROTO_OSEN)));
++			 !!(wpa_s->wpa_proto & WPA_PROTO_RSN));
+ 
+ 	/* Update AKMP suite from (Re)Association Request frame info */
+ 	sel = ie.key_mgmt;
+@@ -3353,7 +3319,7 @@ static int wpa_supplicant_use_own_rsne_params(struct wpa_supplicant *wpa_s,
+ 	/* Update GTK and IGTK from AP's RSNE */
+ 	found = false;
+ 
+-	if (wpa_s->wpa_proto & (WPA_PROTO_RSN | WPA_PROTO_OSEN)) {
++	if (wpa_s->wpa_proto & WPA_PROTO_RSN) {
+ 		const u8 *bss_rsn;
+ 
+ 		bss_rsn = wpa_bss_get_rsne(wpa_s, bss, ssid,
+diff --git a/wpa_supplicant/hs20_supplicant.c b/wpa_supplicant/hs20_supplicant.c
+index 3ed8813f1..85df90392 100644
+--- a/wpa_supplicant/hs20_supplicant.c
++++ b/wpa_supplicant/hs20_supplicant.c
+@@ -1079,23 +1079,13 @@ void hs20_osu_icon_fetch(struct wpa_supplicant *wpa_s)
+ 	hs20_free_osu_prov(wpa_s);
+ 
+ 	dl_list_for_each(bss, &wpa_s->bss, struct wpa_bss, list) {
+-		struct wpa_ie_data data;
+-		const u8 *ie;
+-
+ 		if (bss->anqp == NULL)
+ 			continue;
+ 		prov_anqp = bss->anqp->hs20_osu_providers_list;
+ 		if (prov_anqp == NULL)
+ 			continue;
+-		ie = wpa_bss_get_rsne(wpa_s, bss, NULL, false);
+-		if (ie && wpa_parse_wpa_ie(ie, 2 + ie[1], &data) == 0 &&
+-		    (data.key_mgmt & WPA_KEY_MGMT_OSEN)) {
+-			osu_ssid2 = bss->ssid;
+-			osu_ssid2_len = bss->ssid_len;
+-		} else {
+-			osu_ssid2 = NULL;
+-			osu_ssid2_len = 0;
+-		}
++		osu_ssid2 = NULL;
++		osu_ssid2_len = 0;
+ 		wpa_printf(MSG_DEBUG, "HS 2.0: Parsing OSU Providers list from "
+ 			   MACSTR, MAC2STR(bss->bssid));
+ 		wpa_hexdump_buf(MSG_DEBUG, "HS 2.0: OSU Providers list",
+diff --git a/wpa_supplicant/sme.c b/wpa_supplicant/sme.c
+index cae65a76a..806e4b1ef 100644
+--- a/wpa_supplicant/sme.c
++++ b/wpa_supplicant/sme.c
+@@ -719,21 +719,6 @@ static void sme_send_authentication(struct wpa_supplicant *wpa_s,
+ 			wpas_connect_work_done(wpa_s);
+ 			return;
+ 		}
+-#ifdef CONFIG_HS20
+-	} else if (wpa_bss_get_vendor_ie(bss, OSEN_IE_VENDOR_TYPE) &&
+-		   (ssid->key_mgmt & WPA_KEY_MGMT_OSEN)) {
+-		/* No PMKSA caching, but otherwise similar to RSN/WPA */
+-		wpa_s->sme.assoc_req_ie_len = sizeof(wpa_s->sme.assoc_req_ie);
+-		if (wpa_supplicant_set_suites(wpa_s, bss, ssid,
+-					      wpa_s->sme.assoc_req_ie,
+-					      &wpa_s->sme.assoc_req_ie_len,
+-					      false)) {
+-			wpa_msg(wpa_s, MSG_WARNING, "SME: Failed to set WPA "
+-				"key management and encryption suites");
+-			wpas_connect_work_done(wpa_s);
+-			return;
+-		}
+-#endif /* CONFIG_HS20 */
+ 	} else if ((ssid->key_mgmt & WPA_KEY_MGMT_IEEE8021X_NO_WPA) &&
+ 		   wpa_key_mgmt_wpa_ieee8021x(ssid->key_mgmt)) {
+ 		/*
+@@ -2713,10 +2698,6 @@ mscs_fail:
+ 		params.wpa_proto = WPA_PROTO_WPA;
+ 		wpa_sm_set_assoc_wpa_ie(wpa_s->wpa, elems.wpa_ie - 2,
+ 					elems.wpa_ie_len + 2);
+-	} else if (elems.osen) {
+-		params.wpa_proto = WPA_PROTO_OSEN;
+-		wpa_sm_set_assoc_wpa_ie(wpa_s->wpa, elems.osen - 2,
+-					elems.osen_len + 2);
+ 	} else
+ 		wpa_sm_set_assoc_wpa_ie(wpa_s->wpa, NULL, 0);
+ 	if (elems.rsnxe)
+diff --git a/wpa_supplicant/wpa_supplicant.c b/wpa_supplicant/wpa_supplicant.c
+index af19f228d..2ad6b5353 100644
+--- a/wpa_supplicant/wpa_supplicant.c
++++ b/wpa_supplicant/wpa_supplicant.c
+@@ -1811,16 +1811,15 @@ int wpa_supplicant_set_suites(struct wpa_supplicant *wpa_s,
+ #ifdef CONFIG_SAE
+ 	enum sae_pwe sae_pwe;
+ #endif /* CONFIG_SAE */
+-	const u8 *bss_wpa, *bss_rsn, *bss_rsnx, *bss_osen;
++	const u8 *bss_wpa, *bss_rsn, *bss_rsnx;
+ 	bool wmm;
+ 
+ 	if (bss) {
+ 		bss_wpa = wpa_bss_get_vendor_ie(bss, WPA_IE_VENDOR_TYPE);
+ 		bss_rsn = wpa_bss_get_rsne(wpa_s, bss, ssid, false);
+ 		bss_rsnx = wpa_bss_get_rsnxe(wpa_s, bss, ssid, false);
+-		bss_osen = wpa_bss_get_vendor_ie(bss, OSEN_IE_VENDOR_TYPE);
+ 	} else {
+-		bss_wpa = bss_rsn = bss_rsnx = bss_osen = NULL;
++		bss_wpa = bss_rsn = bss_rsnx = NULL;
+ 	}
+ 
+ 	if (bss_rsn && (ssid->proto & WPA_PROTO_RSN) &&
+@@ -1836,34 +1835,17 @@ int wpa_supplicant_set_suites(struct wpa_supplicant *wpa_s,
+ 		   (ie.key_mgmt & ssid->key_mgmt)) {
+ 		wpa_dbg(wpa_s, MSG_DEBUG, "WPA: using IEEE 802.11i/D3.0");
+ 		proto = WPA_PROTO_WPA;
+-#ifdef CONFIG_HS20
+-	} else if (bss_osen && (ssid->proto & WPA_PROTO_OSEN) &&
+-		   wpa_parse_wpa_ie(bss_osen, 2 + bss_osen[1], &ie) == 0 &&
+-		   (ie.group_cipher & ssid->group_cipher) &&
+-		   (ie.pairwise_cipher & ssid->pairwise_cipher) &&
+-		   (ie.key_mgmt & ssid->key_mgmt)) {
+-		wpa_dbg(wpa_s, MSG_DEBUG, "HS 2.0: using OSEN");
+-		proto = WPA_PROTO_OSEN;
+-	} else if (bss_rsn && (ssid->proto & WPA_PROTO_OSEN) &&
+-	    wpa_parse_wpa_ie(bss_rsn, 2 + bss_rsn[1], &ie) == 0 &&
+-	    (ie.group_cipher & ssid->group_cipher) &&
+-	    (ie.pairwise_cipher & ssid->pairwise_cipher) &&
+-	    (ie.key_mgmt & ssid->key_mgmt)) {
+-		wpa_dbg(wpa_s, MSG_DEBUG, "RSN: using OSEN (within RSN)");
+-		proto = WPA_PROTO_RSN;
+-#endif /* CONFIG_HS20 */
+ 	} else if (bss) {
+ 		wpa_msg(wpa_s, MSG_WARNING, "WPA: Failed to select WPA/RSN");
+ 		wpa_dbg(wpa_s, MSG_DEBUG,
+ 			"WPA: ssid proto=0x%x pairwise_cipher=0x%x group_cipher=0x%x key_mgmt=0x%x",
+ 			ssid->proto, ssid->pairwise_cipher, ssid->group_cipher,
+ 			ssid->key_mgmt);
+-		wpa_dbg(wpa_s, MSG_DEBUG, "WPA: BSS " MACSTR " ssid='%s'%s%s%s",
++		wpa_dbg(wpa_s, MSG_DEBUG, "WPA: BSS " MACSTR " ssid='%s'%s%s",
+ 			MAC2STR(bss->bssid),
+ 			wpa_ssid_txt(bss->ssid, bss->ssid_len),
+ 			bss_wpa ? " WPA" : "",
+-			bss_rsn ? " RSN" : "",
+-			bss_osen ? " OSEN" : "");
++			bss_rsn ? " RSN" : "");
+ 		if (bss_rsn) {
+ 			wpa_hexdump(MSG_DEBUG, "RSN", bss_rsn, 2 + bss_rsn[1]);
+ 			if (wpa_parse_wpa_ie(bss_rsn, 2 + bss_rsn[1], &ie)) {
+@@ -1890,9 +1872,7 @@ int wpa_supplicant_set_suites(struct wpa_supplicant *wpa_s,
+ 		}
+ 		return -1;
+ 	} else {
+-		if (ssid->proto & WPA_PROTO_OSEN)
+-			proto = WPA_PROTO_OSEN;
+-		else if (ssid->proto & WPA_PROTO_RSN)
++		if (ssid->proto & WPA_PROTO_RSN)
+ 			proto = WPA_PROTO_RSN;
+ 		else
+ 			proto = WPA_PROTO_WPA;
+@@ -1922,7 +1902,7 @@ int wpa_supplicant_set_suites(struct wpa_supplicant *wpa_s,
+ #ifdef CONFIG_OWE
+ 			if ((ssid->key_mgmt & WPA_KEY_MGMT_OWE) &&
+ 			    !ssid->owe_only &&
+-			    !bss_wpa && !bss_rsn && !bss_osen) {
++			    !bss_wpa && !bss_rsn) {
+ 				wpa_supplicant_set_non_wpa_policy(wpa_s, ssid);
+ 				wpa_s->wpa_proto = 0;
+ 				*wpa_ie_len = 0;
+@@ -1946,7 +1926,7 @@ int wpa_supplicant_set_suites(struct wpa_supplicant *wpa_s,
+ 	wpa_s->wpa_proto = proto;
+ 	wpa_sm_set_param(wpa_s->wpa, WPA_PARAM_PROTO, proto);
+ 	wpa_sm_set_param(wpa_s->wpa, WPA_PARAM_RSN_ENABLED,
+-			 !!(ssid->proto & (WPA_PROTO_RSN | WPA_PROTO_OSEN)));
++			 !!(ssid->proto & WPA_PROTO_RSN));
+ 
+ 	if (bss || !wpa_s->ap_ies_from_associnfo) {
+ 		const u8 *rsnoe = NULL, *rsno2e = NULL, *rsnxoe = NULL;
+@@ -2134,11 +2114,6 @@ int wpa_supplicant_set_suites(struct wpa_supplicant *wpa_s,
+ 	} else if (sel & WPA_KEY_MGMT_WPA_NONE) {
+ 		wpa_s->key_mgmt = WPA_KEY_MGMT_WPA_NONE;
+ 		wpa_dbg(wpa_s, MSG_DEBUG, "WPA: using KEY_MGMT WPA-NONE");
+-#ifdef CONFIG_HS20
+-	} else if (sel & WPA_KEY_MGMT_OSEN) {
+-		wpa_s->key_mgmt = WPA_KEY_MGMT_OSEN;
+-		wpa_dbg(wpa_s, MSG_DEBUG, "HS 2.0: using KEY_MGMT OSEN");
+-#endif /* CONFIG_HS20 */
+ #ifdef CONFIG_OWE
+ 	} else if (sel & WPA_KEY_MGMT_OWE) {
+ 		wpa_s->key_mgmt = WPA_KEY_MGMT_OWE;
+@@ -3715,19 +3690,6 @@ static u8 * wpas_populate_assoc_ies(
+ 			os_free(wpa_ie);
+ 			return NULL;
+ 		}
+-#ifdef CONFIG_HS20
+-	} else if (bss && wpa_bss_get_vendor_ie(bss, OSEN_IE_VENDOR_TYPE) &&
+-		   (ssid->key_mgmt & WPA_KEY_MGMT_OSEN)) {
+-		/* No PMKSA caching, but otherwise similar to RSN/WPA */
+-		wpa_ie_len = max_wpa_ie_len;
+-		if (wpa_supplicant_set_suites(wpa_s, bss, ssid,
+-					      wpa_ie, &wpa_ie_len, false)) {
+-			wpa_msg(wpa_s, MSG_WARNING, "WPA: Failed to set WPA "
+-				"key management and encryption suites");
+-			os_free(wpa_ie);
+-			return NULL;
+-		}
+-#endif /* CONFIG_HS20 */
+ 	} else if ((ssid->key_mgmt & WPA_KEY_MGMT_IEEE8021X_NO_WPA) && bss &&
+ 		   wpa_key_mgmt_wpa_ieee8021x(ssid->key_mgmt)) {
+ 		/*
+-- 
+2.43.0
+

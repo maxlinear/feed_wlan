@@ -1,0 +1,44 @@
+From dc766bb57ebe9e852931204cd474388d2c83baf2 Mon Sep 17 00:00:00 2001
+From: Benjamin Berg <benjamin.berg@intel.com>
+Date: Mon, 25 Dec 2023 12:21:06 +0200
+Subject: [PATCH] tests: Optimize process memory reading using join
+
+Appending to a bytes() object is rather inefficient. As such, avoid
+doing so by first creating a list and then joining all buffers together
+at the end only.
+
+Signed-off-by: Benjamin Berg <benjamin.berg@intel.com>
+---
+ tests/hwsim/test_ap_psk.py | 6 +++---
+ 1 file changed, 3 insertions(+), 3 deletions(-)
+
+diff --git a/tests/hwsim/test_ap_psk.py b/tests/hwsim/test_ap_psk.py
+index ab7637257..d175259b5 100644
+--- a/tests/hwsim/test_ap_psk.py
++++ b/tests/hwsim/test_ap_psk.py
+@@ -2625,7 +2625,7 @@ def find_wpas_process(dev):
+     raise Exception("Could not find wpa_supplicant process")
+ 
+ def read_process_memory(pid, key=None):
+-    buf = bytes()
++    buf = []
+     logger.info("Reading process memory (pid=%d)" % pid)
+     with open('/proc/%d/maps' % pid, 'r') as maps, \
+          open('/proc/%d/mem' % pid, 'rb') as mem:
+@@ -2651,11 +2651,11 @@ def read_process_memory(pid, key=None):
+             except OSError as e:
+                 logger.info("Could not read mem: start=%d end=%d: %s" % (start, end, str(e)))
+                 continue
+-            buf += data
++            buf.append(data)
+             if key and key in data:
+                 logger.info("Key found in " + l)
+     logger.info("Total process memory read: %d bytes" % len(buf))
+-    return buf
++    return b''.join(buf)
+ 
+ def verify_not_present(buf, key, fname, keyname):
+     pos = buf.find(key)
+-- 
+2.43.0
+

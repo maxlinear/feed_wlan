@@ -1,0 +1,30 @@
+From c0b180d9400b8099b33146b964a656df4154fdd3 Mon Sep 17 00:00:00 2001
+From: Jouni Malinen <j@w1.fi>
+Date: Sat, 1 Mar 2025 20:12:25 +0200
+Subject: [PATCH] DPP: Add an explicit debug print for failed to build
+ DPPEnvelopedData
+
+This is an operation that can fail if OpenSSL is forced to use the fips
+provider, so it is helpful to get this failure case clearer in the debug
+log.
+
+Signed-off-by: Jouni Malinen <j@w1.fi>
+---
+ src/common/dpp_backup.c | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/src/common/dpp_backup.c b/src/common/dpp_backup.c
+index fb3f776d2..1e92a14fd 100644
+--- a/src/common/dpp_backup.c
++++ b/src/common/dpp_backup.c
+@@ -515,6 +515,7 @@ out:
+ 	wpabuf_free(enc_cont_info);
+ 	return env;
+ fail:
++	wpa_printf(MSG_INFO, "DPP: Failed to build DPPEnvelopedData");
+ 	wpabuf_free(env);
+ 	env = NULL;
+ 	goto out;
+-- 
+2.43.0
+

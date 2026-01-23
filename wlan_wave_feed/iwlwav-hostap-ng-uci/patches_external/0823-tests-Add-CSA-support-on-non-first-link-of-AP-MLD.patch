@@ -1,0 +1,51 @@
+From e900bcb149122135d85a16231680b07b37f77695 Mon Sep 17 00:00:00 2001
+From: Aditya Kumar Singh <quic_adisi@quicinc.com>
+Date: Wed, 7 Aug 2024 09:48:38 +0530
+Subject: [PATCH] tests: Add CSA support on non-first link of AP MLD
+
+Currently MLO CSA test case supports CSA only on the first link.
+However, now it can be extended to other links as well.
+
+Signed-off-by: Aditya Kumar Singh <quic_adisi@quicinc.com>
+---
+ tests/hwsim/test_eht.py | 17 +++++++++++++++--
+ 1 file changed, 15 insertions(+), 2 deletions(-)
+
+diff --git a/tests/hwsim/test_eht.py b/tests/hwsim/test_eht.py
+index 00d6adff7..f3b5d1401 100644
+--- a/tests/hwsim/test_eht.py
++++ b/tests/hwsim/test_eht.py
+@@ -1837,6 +1837,21 @@ def test_eht_mlo_csa(dev, apdev):
+             logger.info("Test traffic after 1st link CSA completes")
+             traffic_test(wpas, hapd0)
+ 
++            logger.info("Perform CSA on 2nd link")
++            mlo_perform_csa(hapd1, "CHAN_SWITCH 5 2412 ht he eht blocktx",
++                            2412, wpas)
++
++
++            logger.info("Test traffic after 2nd link CSA completes")
++            traffic_test(wpas, hapd1)
++
++            logger.info("Perform CSA on 2nd link and bring it back to original channel")
++            mlo_perform_csa(hapd1, "CHAN_SWITCH 5 2437 ht he eht blocktx",
++                            2437, wpas)
++
++            logger.info("Test traffic again after 2nd link CSA completes")
++            traffic_test(wpas, hapd1)
++
+             logger.info("Perform CSA on 1st link and bring it back to original channel")
+             mlo_perform_csa(hapd0, "CHAN_SWITCH 5 2412 ht he eht blocktx",
+                             2412, wpas)
+@@ -1844,8 +1859,6 @@ def test_eht_mlo_csa(dev, apdev):
+             logger.info("Test traffic again after 1st link CSA completes")
+             traffic_test(wpas, hapd0)
+ 
+-            #TODO: CSA on non-first link
+-
+ def create_base_conf_file(iface, channel, prefix='hostapd-', hw_mode='g',
+                           op_class=None):
+     # Create configuration file and add phy characteristics
+-- 
+2.43.0
+

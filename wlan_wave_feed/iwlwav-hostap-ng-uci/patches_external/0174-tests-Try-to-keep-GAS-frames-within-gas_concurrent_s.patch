@@ -1,0 +1,44 @@
+From 435ff085ee532c3aa98fb00df38658e06ebebf30 Mon Sep 17 00:00:00 2001
+From: Jouni Malinen <j@w1.fi>
+Date: Sat, 23 Dec 2023 12:37:06 +0200
+Subject: [PATCH] tests: Try to keep GAS frames within gas_concurrent_scan
+ capture
+
+With UML time-travel, it was possible for a GAS frame to end up in the
+capture file for the next test case and if that next case used tshark to
+count the number of frames (which is done, e.g., in
+gas_anqp_address3_assoc), the following test case could have indicated
+failure even when everything worked correctly.
+
+Signed-off-by: Jouni Malinen <j@w1.fi>
+---
+ tests/hwsim/test_gas.py | 6 +++++-
+ 1 file changed, 5 insertions(+), 1 deletion(-)
+
+diff --git a/tests/hwsim/test_gas.py b/tests/hwsim/test_gas.py
+index f37547f5b..d8b361e10 100644
+--- a/tests/hwsim/test_gas.py
++++ b/tests/hwsim/test_gas.py
+@@ -191,7 +191,7 @@ def test_gas_concurrent_scan(dev, apdev):
+     bssid = apdev[0]['bssid']
+     params = hs20_ap_params()
+     params['hessid'] = bssid
+-    hostapd.add_ap(apdev[0], params)
++    hapd = hostapd.add_ap(apdev[0], params)
+ 
+     # get BSS entry available to allow GAS query
+     dev[0].scan_for_bss(bssid, freq="2412", force_scan=True)
+@@ -224,6 +224,10 @@ def test_gas_concurrent_scan(dev, apdev):
+     if responses != 4:
+         raise Exception("Unexpected number of GAS responses")
+ 
++    # Try to get all GAS frames into the sniffer capture of this test case.
++    hapd.disable()
++    time.sleep(0.1)
++
+ def test_gas_concurrent_connect(dev, apdev):
+     """Generic GAS queries with concurrent connection operation"""
+     skip_with_fips(dev[0])
+-- 
+2.43.0
+

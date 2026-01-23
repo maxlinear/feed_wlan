@@ -1,0 +1,32 @@
+From 93eab9f0faf0e57b2975a0034e31412c36d6a2d4 Mon Sep 17 00:00:00 2001
+From: Jouni Malinen <j@w1.fi>
+Date: Sun, 21 Jan 2024 22:09:07 +0200
+Subject: [PATCH] Mark hostapd_gen_probe_resp() static
+
+This function has been used only within beacon.c and it got accidentally
+converted to a global function.
+
+Fixes: 6b5e00a80e5f ("AP: Use a struct for Probe Response generation in/out params")
+Signed-off-by: Jouni Malinen <j@w1.fi>
+---
+ src/ap/beacon.c | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/src/ap/beacon.c b/src/ap/beacon.c
+index e6a989d07..9fc73e2c3 100644
+--- a/src/ap/beacon.c
++++ b/src/ap/beacon.c
+@@ -889,8 +889,8 @@ static u8 * hostapd_probe_resp_fill_elems(struct hostapd_data *hapd,
+ }
+ 
+ 
+-void hostapd_gen_probe_resp(struct hostapd_data *hapd,
+-			    struct probe_resp_params *params)
++static void hostapd_gen_probe_resp(struct hostapd_data *hapd,
++				   struct probe_resp_params *params)
+ {
+ 	u8 *pos;
+ 	size_t buflen;
+-- 
+2.43.0
+

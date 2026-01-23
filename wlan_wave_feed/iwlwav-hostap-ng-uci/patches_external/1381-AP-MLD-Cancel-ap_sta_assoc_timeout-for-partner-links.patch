@@ -1,0 +1,47 @@
+From 298592db0eed2b293555a3abf040e5f5e8815b6f Mon Sep 17 00:00:00 2001
+From: Chenming Huang <quic_chenhuan@quicinc.com>
+Date: Thu, 13 Feb 2025 09:08:39 +0530
+Subject: [PATCH] AP MLD: Cancel ap_sta_assoc_timeout for partner links
+
+An earlier commit implements a timeout handler to remove unassociated
+sta entries. For AP MLD, when a non-AP MLD is associated, the timeout
+handler needs to be removed in its partner links, too. The check for
+WLAN_STA_ASSOC is supposed to skip such cases in ap_sta_assoc_timeout(),
+but it is better to cancel this timeout altogether from all links.
+
+Fixes: 07ee3e8b0eb4 ("Remove STA entries if association is not completed in 60 seconds")
+Signed-off-by: Chenming Huang <quic_chenhuan@quicinc.com>
+---
+ src/ap/hostapd.c | 16 ++++++++++++++++
+ 1 file changed, 16 insertions(+)
+
+diff --git a/src/ap/hostapd.c b/src/ap/hostapd.c
+index 0227b8512..3c5653a41 100644
+--- a/src/ap/hostapd.c
++++ b/src/ap/hostapd.c
+@@ -4089,6 +4089,22 @@ void hostapd_new_assoc_sta(struct hostapd_data *hapd, struct sta_info *sta,
+ 
+ 	ap_sta_clear_disconnect_timeouts(hapd, sta);
+ 	ap_sta_clear_assoc_timeout(hapd, sta);
++
++#ifdef CONFIG_IEEE80211BE
++	if (ap_sta_is_mld(hapd, sta)) {
++		struct hostapd_data *bss;
++		struct sta_info *lsta;
++
++		for_each_mld_link(bss, hapd) {
++			if (bss == hapd)
++				continue;
++			lsta = ap_get_sta(bss, sta->addr);
++			if (lsta)
++				ap_sta_clear_assoc_timeout(bss, lsta);
++		}
++	}
++#endif /* CONFIG_IEEE80211BE */
++
+ 	sta->post_csa_sa_query = 0;
+ 
+ #ifdef CONFIG_P2P
+-- 
+2.43.0
+

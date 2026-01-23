@@ -1,0 +1,32 @@
+From 0b95d1346f78ab8a1c566414aaa9e0b5bcb5340b Mon Sep 17 00:00:00 2001
+From: Jouni Malinen <quic_jouni@quicinc.com>
+Date: Mon, 22 Jan 2024 19:12:12 +0200
+Subject: [PATCH] OpenSSL: Fix a memory leak on an error path
+
+peerkey from EVP_PKEY_new() needs to be freed on all error paths.
+
+Fixes: b062507670b5 ("OpenSSL: Implement crypto_ecdh routines without EC_KEY for OpenSSL 3.0")
+Signed-off-by: Jouni Malinen <quic_jouni@quicinc.com>
+---
+ src/crypto/crypto_openssl.c | 4 +++-
+ 1 file changed, 3 insertions(+), 1 deletion(-)
+
+diff --git a/src/crypto/crypto_openssl.c b/src/crypto/crypto_openssl.c
+index d10949ce7..30aaef561 100644
+--- a/src/crypto/crypto_openssl.c
++++ b/src/crypto/crypto_openssl.c
+@@ -2854,8 +2854,10 @@ struct wpabuf * crypto_ecdh_set_peerkey(struct crypto_ecdh *ecdh, int inc_y,
+ 
+ 	/* Encode using SECG SEC 1, Sec. 2.3.4 format */
+ 	peer = os_malloc(1 + len);
+-	if (!peer)
++	if (!peer) {
++		EVP_PKEY_free(peerkey);
+ 		return NULL;
++	}
+ 	peer[0] = inc_y ? 0x04 : 0x02;
+ 	os_memcpy(peer + 1, key, len);
+ 
+-- 
+2.43.0
+

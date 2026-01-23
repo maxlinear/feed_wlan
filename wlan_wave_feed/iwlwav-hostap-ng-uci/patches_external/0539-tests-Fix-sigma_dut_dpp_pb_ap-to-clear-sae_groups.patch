@@ -1,0 +1,25 @@
+From ea2c5fe4d119973c3271a1805e78d4db58e3eee4 Mon Sep 17 00:00:00 2001
+From: Jouni Malinen <quic_jouni@quicinc.com>
+Date: Tue, 16 Apr 2024 11:22:41 +0300
+Subject: [PATCH] tests: Fix sigma_dut_dpp_pb_ap to clear sae_groups
+
+Signed-off-by: Jouni Malinen <quic_jouni@quicinc.com>
+---
+ tests/hwsim/test_sigma_dut.py | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/tests/hwsim/test_sigma_dut.py b/tests/hwsim/test_sigma_dut.py
+index bac450268..8541c1f67 100644
+--- a/tests/hwsim/test_sigma_dut.py
++++ b/tests/hwsim/test_sigma_dut.py
+@@ -4171,6 +4171,7 @@ def test_sigma_dut_dpp_pb_ap(dev, apdev, params):
+         dut.cmd_check("ap_set_security,NAME,AP,KEYMGNT,WPA2-SAE,PSK,12345678")
+         dut.cmd_check("ap_config_commit,NAME,AP")
+ 
++        dev[0].set("sae_groups", "")
+         dev[0].set("dpp_config_processing", "2")
+         if "OK" not in dev[0].request("DPP_PUSH_BUTTON"):
+             raise Exception("Failed to press push button on the STA")
+-- 
+2.43.0
+

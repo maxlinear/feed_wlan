@@ -1,0 +1,470 @@
+From 5676449107118103880ec8b76e0f328f233753ca Mon Sep 17 00:00:00 2001
+From: Jouni Malinen <j@w1.fi>
+Date: Sun, 22 Dec 2024 12:20:25 +0200
+Subject: [PATCH] tests: Clean up subprocess.Popen() uses for helper functions
+
+Use communicate() to properly wait for the process to terminate.
+
+Signed-off-by: Jouni Malinen <j@w1.fi>
+---
+ tests/hwsim/fst_test_common.py |  5 ++--
+ tests/hwsim/test_ap_eap.py     | 16 ++++++-------
+ tests/hwsim/test_ap_hs20.py    | 39 +++++++++++++-----------------
+ tests/hwsim/test_ap_psk.py     |  3 ++-
+ tests/hwsim/test_ap_tdls.py    | 18 +++++++-------
+ tests/hwsim/test_ap_vht.py     |  6 +++--
+ tests/hwsim/test_eht.py        |  2 ++
+ tests/hwsim/test_he.py         |  9 ++++---
+ tests/hwsim/test_macsec.py     | 44 ++++++++++++++--------------------
+ tests/hwsim/test_wpas_mesh.py  |  7 +++---
+ tests/hwsim/utils.py           | 11 +++++----
+ 11 files changed, 76 insertions(+), 84 deletions(-)
+
+diff --git a/tests/hwsim/fst_test_common.py b/tests/hwsim/fst_test_common.py
+index 440d65f9f..3a7b0b229 100644
+--- a/tests/hwsim/fst_test_common.py
++++ b/tests/hwsim/fst_test_common.py
+@@ -85,8 +85,7 @@ class HapdRegCtrl:
+ 
+ def fst_clear_regdom():
+     cmd = subprocess.Popen(["iw", "reg", "get"], stdout=subprocess.PIPE)
+-    res = cmd.stdout.read().decode()
+-    cmd.stdout.close()
+-    if "country 00:" not in res:
++    out, err = cmd.communicate()
++    if "country 00:" not in out.decode():
+         subprocess.call(['iw', 'reg', 'set', '00'])
+         time.sleep(0.1)
+diff --git a/tests/hwsim/test_ap_eap.py b/tests/hwsim/test_ap_eap.py
+index 7c47b300a..3666a9278 100644
+--- a/tests/hwsim/test_ap_eap.py
++++ b/tests/hwsim/test_ap_eap.py
+@@ -7100,8 +7100,8 @@ def test_ap_wpa2_eap_sim_db(dev, apdev, params):
+             cmd = subprocess.Popen(['../../hostapd/hlr_auc_gw',
+                                     '-m', fname, data],
+                                    stdout=subprocess.PIPE)
+-            res = cmd.stdout.read().decode().strip()
+-            cmd.stdout.close()
++            out, err = cmd.communicate()
++            res = out.decode().strip()
+             logger.debug("hlr_auc_gw response: " + res)
+             socket.sendto(res.encode(), self.client_address)
+ 
+@@ -7128,8 +7128,8 @@ def test_ap_wpa2_eap_sim_db_sqlite(dev, apdev, params):
+     cmd = subprocess.Popen(['../../hostapd/hlr_auc_gw',
+                             '-D', fname, "FOO"],
+                            stdout=subprocess.PIPE)
+-    res = cmd.stdout.read().decode().strip()
+-    cmd.stdout.close()
++    out, err = cmd.communicate()
++    res = out.decode().strip()
+     logger.debug("hlr_auc_gw response: " + res)
+ 
+     try:
+@@ -7152,8 +7152,8 @@ def test_ap_wpa2_eap_sim_db_sqlite(dev, apdev, params):
+             cmd = subprocess.Popen(['../../hostapd/hlr_auc_gw',
+                                     '-D', fname, data],
+                                    stdout=subprocess.PIPE)
+-            res = cmd.stdout.read().decode().strip()
+-            cmd.stdout.close()
++            out, err = cmd.communicate()
++            res = out.decode().strip()
+             logger.debug("hlr_auc_gw response: " + res)
+             socket.sendto(res.encode(), self.client_address)
+ 
+@@ -7609,8 +7609,8 @@ def test_ap_wpa2_eap_psk_mac_addr_change(dev, apdev):
+ 
+     cmd = subprocess.Popen(['pgrep', '-nf', 'wpa_supplicant.*' + dev[0].ifname],
+                            stdout=subprocess.PIPE)
+-    res = cmd.stdout.read().decode().strip()
+-    cmd.stdout.close()
++    out, err = cmd.communicate()
++    res = out.decode().strip()
+     if res:
+         pid = int(res)
+         logger.info("wpa_supplicant PID %d" % pid)
+diff --git a/tests/hwsim/test_ap_hs20.py b/tests/hwsim/test_ap_hs20.py
+index b53a8373d..a866f15cb 100644
+--- a/tests/hwsim/test_ap_hs20.py
++++ b/tests/hwsim/test_ap_hs20.py
+@@ -4771,16 +4771,15 @@ def send_arp(dev, dst_ll="ff:ff:ff:ff:ff:ff", src_ll=None, opcode=1,
+ 
+ def get_permanent_neighbors(ifname):
+     cmd = subprocess.Popen(['ip', 'nei'], stdout=subprocess.PIPE)
+-    res = cmd.stdout.read().decode()
+-    cmd.stdout.close()
++    out, err = cmd.communicate()
++    res = out.decode()
+     return [line.strip() for line in res.splitlines() if "PERMANENT" in line and ifname in line]
+ 
+ def get_bridge_macs(ifname):
+     cmd = subprocess.Popen(['brctl', 'showmacs', ifname],
+                            stdout=subprocess.PIPE)
+-    res = cmd.stdout.read()
+-    cmd.stdout.close()
+-    return res.decode()
++    out, err = cmd.communicate()
++    return out.decode()
+ 
+ def tshark_get_arp(cap, filter):
+     res = run_tshark(cap, filter,
+@@ -4874,15 +4873,13 @@ def _test_proxyarp_open(dev, apdev, params, ebtables=False):
+     time.sleep(1.1)
+ 
+     brcmd = subprocess.Popen(['brctl', 'show'], stdout=subprocess.PIPE)
+-    res = brcmd.stdout.read().decode()
+-    brcmd.stdout.close()
+-    logger.info("Bridge setup: " + res)
++    out, err = brcmd.communicate()
++    logger.info("Bridge setup: " + out.decode())
+ 
+     brcmd = subprocess.Popen(['brctl', 'showstp', 'ap-br0'],
+                              stdout=subprocess.PIPE)
+-    res = brcmd.stdout.read().decode()
+-    brcmd.stdout.close()
+-    logger.info("Bridge showstp: " + res)
++    out, err = brcmd.communicate()
++    logger.info("Bridge showstp: " + out.decode())
+ 
+     addr0 = dev[0].p2p_interface_addr()
+     addr1 = dev[1].p2p_interface_addr()
+@@ -5073,9 +5070,8 @@ def _test_proxyarp_open(dev, apdev, params, ebtables=False):
+     if ebtables:
+         cmd = subprocess.Popen(['ebtables', '-L', '--Lc'],
+                                stdout=subprocess.PIPE)
+-        res = cmd.stdout.read().decode()
+-        cmd.stdout.close()
+-        logger.info("ebtables results:\n" + res)
++        out, err = cmd.communicate()
++        logger.info("ebtables results:\n" + out.decode())
+ 
+     # Verify that expected ARP messages were seen and no unexpected
+     # ARP messages were seen.
+@@ -5215,15 +5211,13 @@ def _test_proxyarp_open_ipv6(dev, apdev, params, ebtables=False):
+     time.sleep(0.1)
+ 
+     brcmd = subprocess.Popen(['brctl', 'show'], stdout=subprocess.PIPE)
+-    res = brcmd.stdout.read().decode()
+-    brcmd.stdout.close()
+-    logger.info("Bridge setup: " + res)
++    out, err = brcmd.communicate()
++    logger.info("Bridge setup: " + out.decode())
+ 
+     brcmd = subprocess.Popen(['brctl', 'showstp', 'ap-br0'],
+                              stdout=subprocess.PIPE)
+-    res = brcmd.stdout.read().decode()
+-    brcmd.stdout.close()
+-    logger.info("Bridge showstp: " + res)
++    out, err = brcmd.communicate()
++    logger.info("Bridge showstp: " + out.decode())
+ 
+     addr0 = dev[0].p2p_interface_addr()
+     addr1 = dev[1].p2p_interface_addr()
+@@ -5321,9 +5315,8 @@ def _test_proxyarp_open_ipv6(dev, apdev, params, ebtables=False):
+     if ebtables:
+         cmd = subprocess.Popen(['ebtables', '-L', '--Lc'],
+                                stdout=subprocess.PIPE)
+-        res = cmd.stdout.read().decode()
+-        cmd.stdout.close()
+-        logger.info("ebtables results:\n" + res)
++        out, err = cmd.communicate()
++        logger.info("ebtables results:\n" + out.decode())
+ 
+     ns = tshark_get_ns(cap_dev0)
+     logger.info("dev0 seen NS: " + str(ns))
+diff --git a/tests/hwsim/test_ap_psk.py b/tests/hwsim/test_ap_psk.py
+index 45eca0304..84b08d32b 100644
+--- a/tests/hwsim/test_ap_psk.py
++++ b/tests/hwsim/test_ap_psk.py
+@@ -3725,7 +3725,8 @@ def test_ap_wpa2_psk_4addr(dev, apdev):
+         subprocess.check_call(['ip', 'link', 'set', 'dev', br_ifname, 'up'])
+         subprocess.check_call(['brctl', 'addif', br_ifname, ifname])
+         cmd = subprocess.Popen(['brctl', 'show'], stdout=subprocess.PIPE)
+-        res = cmd.stdout.read().decode()
++        out, err = cmd.communicate()
++        res = out.decode()
+     finally:
+         subprocess.call(['brctl', 'delif', br_ifname, ifname])
+         subprocess.call(['ip', 'link', 'set', 'dev', br_ifname, 'down'])
+diff --git a/tests/hwsim/test_ap_tdls.py b/tests/hwsim/test_ap_tdls.py
+index 2b6a440b0..b4ab09fd6 100644
+--- a/tests/hwsim/test_ap_tdls.py
++++ b/tests/hwsim/test_ap_tdls.py
+@@ -443,9 +443,8 @@ def test_ap_open_tdls_vht80(dev, apdev):
+         for i in range(2):
+             cmd = subprocess.Popen(['iw', dev[0].ifname, 'station', 'dump'],
+                                    stdout=subprocess.PIPE)
+-            res = cmd.stdout.read()
+-            cmd.stdout.close()
+-            logger.info("Station dump on dev[%d]:\n%s" % (i, res.decode()))
++            out, err = cmd.communicate()
++            logger.info("Station dump on dev[%d]:\n%s" % (i, out.decode()))
+     except Exception as e:
+         if isinstance(e, Exception) and str(e) == "AP startup failed":
+             if not vht_supported():
+@@ -488,9 +487,8 @@ def test_ap_open_tdls_vht80plus80(dev, apdev):
+         for i in range(2):
+             cmd = subprocess.Popen(['iw', dev[0].ifname, 'station', 'dump'],
+                                    stdout=subprocess.PIPE)
+-            res = cmd.stdout.read()
+-            cmd.stdout.close()
+-            logger.info("Station dump on dev[%d]:\n%s" % (i, res.decode()))
++            out, err = cmd.communicate()
++            logger.info("Station dump on dev[%d]:\n%s" % (i, out.decode()))
+     except Exception as e:
+         if isinstance(e, Exception) and str(e) == "AP startup failed":
+             if not vht_supported():
+@@ -517,7 +515,8 @@ def test_ap_open_tdls_vht160(dev, apdev):
+         ev = hapd.wait_event(["AP-ENABLED"], timeout=2)
+         if not ev:
+             cmd = subprocess.Popen(["iw", "reg", "get"], stdout=subprocess.PIPE)
+-            reg = cmd.stdout.readlines()
++            out, err = cmd.communicate()
++            reg = out.splitlines()
+             for r in reg:
+                 if "5490" in r and "DFS" in r:
+                     raise HwsimSkip("ZA regulatory rule did not have DFS requirement removed")
+@@ -533,9 +532,8 @@ def test_ap_open_tdls_vht160(dev, apdev):
+         for i in range(2):
+             cmd = subprocess.Popen(['iw', dev[0].ifname, 'station', 'dump'],
+                                    stdout=subprocess.PIPE)
+-            res = cmd.stdout.read()
+-            cmd.stdout.close()
+-            logger.info("Station dump on dev[%d]:\n%s" % (i, res.decode()))
++            out, err = cmd.communicate()
++            logger.info("Station dump on dev[%d]:\n%s" % (i, out.decode()))
+     except Exception as e:
+         if isinstance(e, Exception) and str(e) == "AP startup failed":
+             if not vht_supported():
+diff --git a/tests/hwsim/test_ap_vht.py b/tests/hwsim/test_ap_vht.py
+index 5f0efecb4..5ba0227e7 100644
+--- a/tests/hwsim/test_ap_vht.py
++++ b/tests/hwsim/test_ap_vht.py
+@@ -590,7 +590,8 @@ def run_ap_vht160_no_dfs(dev, apdev, channel, ht_capab):
+         ev = hapd.wait_event(["AP-ENABLED"], timeout=2)
+         if not ev:
+             cmd = subprocess.Popen(["iw", "reg", "get"], stdout=subprocess.PIPE)
+-            reg = cmd.stdout.readlines()
++            out, err = cmd.communicate()
++            reg = out.splitlines()
+             for r in reg:
+                 if b"5490" in r and b"DFS" in r:
+                     raise HwsimSkip("ZA regulatory rule did not have DFS requirement removed")
+@@ -632,7 +633,8 @@ def test_ap_vht160_no_ht40(dev, apdev):
+         ev = hapd.wait_event(["AP-ENABLED", "AP-DISABLED"], timeout=2)
+         if not ev:
+             cmd = subprocess.Popen(["iw", "reg", "get"], stdout=subprocess.PIPE)
+-            reg = cmd.stdout.readlines()
++            out, err = cmd.communicate()
++            reg = out.splitlines()
+             for r in reg:
+                 if "5490" in r and "DFS" in r:
+                     raise HwsimSkip("ZA regulatory rule did not have DFS requirement removed")
+diff --git a/tests/hwsim/test_eht.py b/tests/hwsim/test_eht.py
+index 38922535f..25febb305 100644
+--- a/tests/hwsim/test_eht.py
++++ b/tests/hwsim/test_eht.py
+@@ -2388,6 +2388,8 @@ def test_eht_mlo_single_drv(dev, apdev, params):
+                'type', '__ap']
+         proc = subprocess.Popen(cmd, stderr=subprocess.STDOUT,
+                                 stdout=subprocess.PIPE, shell=False)
++        out, err = proc.communicate()
++        logger.debug("iw output: " + out.decode())
+ 
+         # Start hostapd
+         start_ap(params['prefix'], fname1 + " " + fname2)
+diff --git a/tests/hwsim/test_he.py b/tests/hwsim/test_he.py
+index 825e23f0e..917313fee 100644
+--- a/tests/hwsim/test_he.py
++++ b/tests/hwsim/test_he.py
+@@ -118,7 +118,8 @@ def test_he_spr_params(dev, apdev):
+ 
+ def he_supported():
+     cmd = subprocess.Popen(["iw", "reg", "get"], stdout=subprocess.PIPE)
+-    reg = cmd.stdout.read().decode()
++    out, err = cmd.communicate()
++    reg = out.decode()
+     if "@ 80)" in reg or "@ 160)" in reg:
+         return True
+     return False
+@@ -690,7 +691,8 @@ def run_ap_he160_no_dfs(dev, apdev, channel, ht_capab):
+         ev = hapd.wait_event(["AP-ENABLED"], timeout=2)
+         if not ev:
+             cmd = subprocess.Popen(["iw", "reg", "get"], stdout=subprocess.PIPE)
+-            reg = cmd.stdout.readlines()
++            out, err = cmd.communicate()
++            reg = out.splitlines()
+             for r in reg:
+                 if b"5490" in r and b"DFS" in r:
+                     raise HwsimSkip("ZA regulatory rule did not have DFS requirement removed")
+@@ -735,7 +737,8 @@ def test_he160_no_ht40(dev, apdev):
+         ev = hapd.wait_event(["AP-ENABLED", "AP-DISABLED"], timeout=2)
+         if not ev:
+             cmd = subprocess.Popen(["iw", "reg", "get"], stdout=subprocess.PIPE)
+-            reg = cmd.stdout.readlines()
++            out, err = cmd.communicate()
++            reg = out.splitlines()
+             for r in reg:
+                 if "5490" in r and "DFS" in r:
+                     raise HwsimSkip("ZA regulatory rule did not have DFS requirement removed")
+diff --git a/tests/hwsim/test_macsec.py b/tests/hwsim/test_macsec.py
+index d56bca4b0..e76d0cc31 100644
+--- a/tests/hwsim/test_macsec.py
++++ b/tests/hwsim/test_macsec.py
+@@ -187,16 +187,14 @@ def log_ip_macsec():
+     cmd = subprocess.Popen(["ip", "macsec", "show"],
+                            stdout=subprocess.PIPE,
+                            stderr=open('/dev/null', 'w'))
+-    res = cmd.stdout.read().decode()
+-    cmd.stdout.close()
+-    logger.info("ip macsec:\n" + res)
++    out, err = cmd.communicate()
++    logger.info("ip macsec:\n" + out.decode())
+ 
+ def log_ip_link():
+     cmd = subprocess.Popen(["ip", "link", "show"],
+                            stdout=subprocess.PIPE)
+-    res = cmd.stdout.read().decode()
+-    cmd.stdout.close()
+-    logger.info("ip link:\n" + res)
++    out, err = cmd.communicate()
++    logger.info("ip link:\n" + out.decode())
+ 
+ def add_veth():
+     try:
+@@ -509,48 +507,42 @@ def log_ip_macsec_ns():
+     cmd = subprocess.Popen(["ip", "macsec", "show"],
+                            stdout=subprocess.PIPE,
+                            stderr=open('/dev/null', 'w'))
+-    res = cmd.stdout.read().decode()
+-    cmd.stdout.close()
+-    logger.info("ip macsec show:\n" + res)
++    out, err = cmd.communicate()
++    logger.info("ip macsec show:\n" + out.decode())
+ 
+     cmd = subprocess.Popen(["ip", "netns", "exec", "ns0",
+                             "ip", "macsec", "show"],
+                            stdout=subprocess.PIPE,
+                            stderr=open('/dev/null', 'w'))
+-    res = cmd.stdout.read().decode()
+-    cmd.stdout.close()
+-    logger.info("ip macsec show (ns0):\n" + res)
++    out, err = cmd.communicate()
++    logger.info("ip macsec show (ns0):\n" + out.decode())
+ 
+     cmd = subprocess.Popen(["ip", "netns", "exec", "ns1",
+                             "ip", "macsec", "show"],
+                            stdout=subprocess.PIPE,
+                            stderr=open('/dev/null', 'w'))
+-    res = cmd.stdout.read().decode()
+-    cmd.stdout.close()
+-    logger.info("ip macsec show (ns1):\n" + res)
++    out, err = cmd.communicate()
++    logger.info("ip macsec show (ns1):\n" + out.decode())
+ 
+ def log_ip_link_ns():
+     cmd = subprocess.Popen(["ip", "link", "show"],
+                            stdout=subprocess.PIPE)
+-    res = cmd.stdout.read().decode()
+-    cmd.stdout.close()
+-    logger.info("ip link:\n" + res)
++    out, err = cmd.communicate()
++    logger.info("ip link:\n" + out.decode())
+ 
+     cmd = subprocess.Popen(["ip", "netns", "exec", "ns0",
+                             "ip", "link", "show"],
+                            stdout=subprocess.PIPE,
+                            stderr=open('/dev/null', 'w'))
+-    res = cmd.stdout.read().decode()
+-    cmd.stdout.close()
+-    logger.info("ip link show (ns0):\n" + res)
++    out, err = cmd.communicate()
++    logger.info("ip link show (ns0):\n" + out.decode())
+ 
+     cmd = subprocess.Popen(["ip", "netns", "exec", "ns1",
+                             "ip", "link", "show"],
+                            stdout=subprocess.PIPE,
+                            stderr=open('/dev/null', 'w'))
+-    res = cmd.stdout.read().decode()
+-    cmd.stdout.close()
+-    logger.info("ip link show (ns1):\n" + res)
++    out, err = cmd.communicate()
++    logger.info("ip link show (ns1):\n" + out.decode())
+ 
+ def write_conf(conffile, mka_priority=None):
+     with open(conffile, 'w') as f:
+@@ -681,8 +673,8 @@ def run_macsec_psk_ns(dev, apdev, params):
+     c = subprocess.Popen(['ip', 'netns', 'exec', 'ns0',
+                           'ping', '-c', '2', '192.168.248.18'],
+                          stdout=subprocess.PIPE)
+-    res = c.stdout.read().decode()
+-    c.stdout.close()
++    out, err = c.communicate()
++    res = out.decode()
+     logger.info("ping:\n" + res)
+     if "2 packets transmitted, 2 received" not in res:
+         raise Exception("ping did not work")
+diff --git a/tests/hwsim/test_wpas_mesh.py b/tests/hwsim/test_wpas_mesh.py
+index 5406e6e76..b4ae3cd23 100644
+--- a/tests/hwsim/test_wpas_mesh.py
++++ b/tests/hwsim/test_wpas_mesh.py
+@@ -353,7 +353,8 @@ def _test_mesh_open_rssi_threshold(dev, apdev, value, expected):
+ 
+     cmd = subprocess.Popen(["iw", "dev", dev[0].ifname, "get", "mesh_param",
+                             "mesh_rssi_threshold"], stdout=subprocess.PIPE)
+-    mesh_rssi_threshold = int(cmd.stdout.read().decode().split(" ")[0])
++    out, err = cmd.communicate()
++    mesh_rssi_threshold = int(out.decode().split(" ")[0])
+ 
+     dev[0].mesh_group_remove()
+     check_mesh_group_removed(dev[0])
+@@ -1226,9 +1227,9 @@ def _test_mesh_open_vht_160(dev, apdev):
+                 break
+ 
+         cmd = subprocess.Popen(["iw", "reg", "get"], stdout=subprocess.PIPE)
+-        reg = cmd.stdout.read()
++        out, err = cmd.communicate()
+         found = False
+-        for entry in reg.splitlines():
++        for entry in out.splitlines():
+             entry = entry.decode()
+             if "@ 160)" in entry and "DFS" not in entry:
+                 found = True
+diff --git a/tests/hwsim/utils.py b/tests/hwsim/utils.py
+index 7e3608284..23ef1aaf4 100644
+--- a/tests/hwsim/utils.py
++++ b/tests/hwsim/utils.py
+@@ -150,16 +150,16 @@ def check_tls_tod(dev):
+ 
+ def vht_supported():
+     cmd = subprocess.Popen(["iw", "reg", "get"], stdout=subprocess.PIPE)
+-    reg = cmd.stdout.read().decode()
++    out, err = cmd.communicate()
++    reg = out.decode()
+     if "@ 80)" in reg or "@ 160)" in reg:
+         return True
+     return False
+ 
+ def eht_320mhz_supported():
+-    cmd = subprocess.Popen(["iw", "reg", "get"],
+-                           stdout=subprocess.PIPE)
+     cmd = subprocess.Popen(["iw", "reg", "get"], stdout=subprocess.PIPE)
+-    reg = cmd.stdout.read().decode()
++    out, err = cmd.communicate()
++    reg = out.decode()
+     if "@ 320)" in reg:
+         return True
+     return False
+@@ -167,7 +167,8 @@ def eht_320mhz_supported():
+ def he_6ghz_supported(freq=5975):
+     cmd = subprocess.Popen(["iw", "reg", "get"],
+                            stdout=subprocess.PIPE)
+-    reg_rules = cmd.stdout.read().decode().splitlines()
++    out, err = cmd.communicate()
++    reg_rules = out.decode().splitlines()
+     for rule in reg_rules:
+         m = re.search(r"\s*\(\d+\s*-\s*\d+", rule)
+         if not m:
+-- 
+2.43.0
+

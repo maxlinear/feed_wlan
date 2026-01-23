@@ -1,0 +1,115 @@
+From 1f88b3daf09c456eb919dd945d2e7b8c93465c1d Mon Sep 17 00:00:00 2001
+From: Aditya Kumar Singh <quic_adisi@quicinc.com>
+Date: Wed, 6 Mar 2024 12:11:03 +0530
+Subject: [PATCH] nl80211: Add callback function for removing link STAs
+
+Signed-off-by: Aditya Kumar Singh <quic_adisi@quicinc.com>
+---
+ src/ap/ap_drv_ops.h          | 13 +++++++++++++
+ src/drivers/driver.h         |  9 +++++++++
+ src/drivers/driver_nl80211.c | 31 +++++++++++++++++++++++++++++++
+ 3 files changed, 53 insertions(+)
+
+diff --git a/src/ap/ap_drv_ops.h b/src/ap/ap_drv_ops.h
+index e9da64d73..d7e79c840 100644
+--- a/src/ap/ap_drv_ops.h
++++ b/src/ap/ap_drv_ops.h
+@@ -454,6 +454,7 @@ hostapd_drv_register_frame(struct hostapd_data *hapd, u16 type,
+ #endif /* CONFIG_TESTING_OPTIONS */
+ 
+ #ifdef CONFIG_IEEE80211BE
++
+ static inline int hostapd_drv_link_add(struct hostapd_data *hapd,
+ 				       u8 link_id, const u8 *addr)
+ {
+@@ -463,6 +464,18 @@ static inline int hostapd_drv_link_add(struct hostapd_data *hapd,
+ 	return hapd->driver->link_add(hapd->drv_priv, link_id, addr, hapd);
+ 
+ }
++
++static inline int hostapd_drv_link_sta_remove(struct hostapd_data *hapd,
++					      const u8 *addr)
++{
++	if (!hapd->conf->mld_ap || !hapd->driver || !hapd->drv_priv ||
++	    !hapd->driver->link_sta_remove)
++		return -1;
++
++	return hapd->driver->link_sta_remove(hapd->drv_priv, hapd->mld_link_id,
++					     addr);
++}
++
+ #endif /* CONFIG_IEEE80211BE */
+ 
+ #endif /* AP_DRV_OPS */
+diff --git a/src/drivers/driver.h b/src/drivers/driver.h
+index 833dbc895..d67c949b6 100644
+--- a/src/drivers/driver.h
++++ b/src/drivers/driver.h
+@@ -5178,6 +5178,15 @@ struct wpa_driver_ops {
+ 	 */
+ 	bool (*is_drv_shared)(void *priv, void *bss_ctx);
+ 
++	/**
++	 * link_sta_remove - Remove a link STA from an MLD STA
++	 * @priv: Private driver interface data
++	 * @link_id: The link ID which the link STA is using
++	 * @addr: The MLD MAC address of the MLD STA
++	 * Returns: 0 on success, negative value on failure
++	 */
++	int (*link_sta_remove)(void *priv, u8 link_id, const u8 *addr);
++
+ #ifdef CONFIG_TESTING_OPTIONS
+ 	int (*register_frame)(void *priv, u16 type,
+ 			      const u8 *match, size_t match_len,
+diff --git a/src/drivers/driver_nl80211.c b/src/drivers/driver_nl80211.c
+index 7590b30ab..6666313de 100644
+--- a/src/drivers/driver_nl80211.c
++++ b/src/drivers/driver_nl80211.c
+@@ -13916,6 +13916,36 @@ static int nl80211_link_add(void *priv, u8 link_id, const u8 *addr,
+ }
+ 
+ 
++#ifdef CONFIG_IEEE80211BE
++static int wpa_driver_nl80211_link_sta_remove(void *priv, u8 link_id,
++					      const u8 *addr)
++{
++	struct i802_bss *bss = priv;
++	struct wpa_driver_nl80211_data *drv = bss->drv;
++	struct nl_msg *msg;
++	int ret;
++
++	if (!(bss->valid_links & BIT(link_id)))
++		return -ENOLINK;
++
++	if (!(msg = nl80211_bss_msg(bss, 0, NL80211_CMD_REMOVE_LINK_STA)) ||
++	    nla_put(msg, NL80211_ATTR_MLD_ADDR, ETH_ALEN, addr) ||
++	    nla_put_u8(msg, NL80211_ATTR_MLO_LINK_ID, link_id)) {
++		nlmsg_free(msg);
++		return -ENOBUFS;
++	}
++
++	ret = send_and_recv_cmd(drv, msg);
++	wpa_printf(MSG_DEBUG,
++		   "nl80211: link_sta_remove -> REMOVE_LINK_STA on link_id %u from MLD STA "
++		   MACSTR ", from %s --> %d (%s)",
++		   link_id, MAC2STR(addr), bss->ifname, ret, strerror(-ret));
++
++	return ret;
++}
++#endif /* CONFIG_IEEE80211BE */
++
++
+ #ifdef CONFIG_TESTING_OPTIONS
+ 
+ static int testing_nl80211_register_frame(void *priv, u16 type,
+@@ -14113,6 +14143,7 @@ const struct wpa_driver_ops wpa_driver_nl80211_ops = {
+ #ifdef CONFIG_IEEE80211BE
+ 	.link_remove = driver_nl80211_link_remove,
+ 	.is_drv_shared = nl80211_is_drv_shared,
++	.link_sta_remove = wpa_driver_nl80211_link_sta_remove,
+ #endif /* CONFIG_IEEE80211BE */
+ #ifdef CONFIG_TESTING_OPTIONS
+ 	.register_frame = testing_nl80211_register_frame,
+-- 
+2.43.0
+

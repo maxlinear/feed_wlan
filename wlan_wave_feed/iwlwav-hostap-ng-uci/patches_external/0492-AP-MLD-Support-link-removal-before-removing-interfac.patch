@@ -1,0 +1,157 @@
+From d2b62b3fe5000be09f865e9da2b687df68ae0430 Mon Sep 17 00:00:00 2001
+From: Aditya Kumar Singh <quic_adisi@quicinc.com>
+Date: Wed, 6 Mar 2024 12:09:27 +0530
+Subject: [PATCH] AP MLD: Support link removal before removing interface
+
+Previously, whenever if_remove() was called, the whole interface was
+deleted. In an AP MLD, all partner BSS use the same driver private
+context and hence removing the interface when only one of the links goes
+down should be avoided.
+
+Add a helper function to remove a link first whenever if_remove() is
+called. Later while handling it, if the number of active links goes to
+0, if_remove() would be called to clean up the interface.
+
+This helper function will be used later when co-hosted AP MLD support is
+added and as well later during ML reconfiguration support.
+
+Signed-off-by: Aditya Kumar Singh <quic_adisi@quicinc.com>
+---
+ src/ap/ap_drv_ops.c          | 21 +++++++++++++++++++++
+ src/ap/ap_drv_ops.h          |  3 +++
+ src/drivers/driver.h         | 12 ++++++++++++
+ src/drivers/driver_nl80211.c | 36 ++++++++++++++++++++++++++++++++++++
+ 4 files changed, 72 insertions(+)
+
+diff --git a/src/ap/ap_drv_ops.c b/src/ap/ap_drv_ops.c
+index e73835316..d7becb25b 100644
+--- a/src/ap/ap_drv_ops.c
++++ b/src/ap/ap_drv_ops.c
+@@ -572,12 +572,33 @@ int hostapd_if_add(struct hostapd_data *hapd, enum wpa_driver_if_type type,
+ }
+ 
+ 
++#ifdef CONFIG_IEEE80211BE
++int hostapd_if_link_remove(struct hostapd_data *hapd,
++			   enum wpa_driver_if_type type,
++			   const char *ifname, u8 link_id)
++{
++	if (!hapd->driver || !hapd->drv_priv || !hapd->driver->link_remove)
++		return -1;
++
++	return hapd->driver->link_remove(hapd->drv_priv, type, ifname,
++					 hapd->mld_link_id);
++}
++#endif /* CONFIG_IEEE80211BE */
++
++
+ int hostapd_if_remove(struct hostapd_data *hapd, enum wpa_driver_if_type type,
+ 		      const char *ifname)
+ {
+ 	if (hapd->driver == NULL || hapd->drv_priv == NULL ||
+ 	    hapd->driver->if_remove == NULL)
+ 		return -1;
++
++#ifdef CONFIG_IEEE80211BE
++	if (hapd->conf->mld_ap)
++		return hostapd_if_link_remove(hapd, type, ifname,
++					      hapd->mld_link_id);
++#endif /* CONFIG_IEEE80211BE */
++
+ 	return hapd->driver->if_remove(hapd->drv_priv, type, ifname);
+ }
+ 
+diff --git a/src/ap/ap_drv_ops.h b/src/ap/ap_drv_ops.h
+index b3a964479..be1ea439f 100644
+--- a/src/ap/ap_drv_ops.h
++++ b/src/ap/ap_drv_ops.h
+@@ -59,6 +59,9 @@ int hostapd_if_add(struct hostapd_data *hapd, enum wpa_driver_if_type type,
+ 		   const char *bridge, int use_existing);
+ int hostapd_if_remove(struct hostapd_data *hapd, enum wpa_driver_if_type type,
+ 		      const char *ifname);
++int hostapd_if_link_remove(struct hostapd_data *hapd,
++			   enum wpa_driver_if_type type,
++			   const char *ifname, u8 link_id);
+ int hostapd_set_ieee8021x(struct hostapd_data *hapd,
+ 			  struct wpa_bss_params *params);
+ int hostapd_get_seqnum(const char *ifname, struct hostapd_data *hapd,
+diff --git a/src/drivers/driver.h b/src/drivers/driver.h
+index f61bbeea1..61601eb9d 100644
+--- a/src/drivers/driver.h
++++ b/src/drivers/driver.h
+@@ -5153,6 +5153,18 @@ struct wpa_driver_ops {
+ 	 */
+ 	int (*link_add)(void *priv, u8 link_id, const u8 *addr, void *bss_ctx);
+ 
++	/**
++	 * link_remove - Remove a link from the AP MLD interface
++	 * @priv: Private driver interface data
++	 * @type: Interface type
++	 * @ifname: Interface name of the virtual interface from where the link
++	 *	is to be removed.
++	 * @link_id: Valid link ID to remove
++	 * Returns: 0 on success, -1 on failure
++	 */
++	int (*link_remove)(void *priv, enum wpa_driver_if_type type,
++			   const char *ifname, u8 link_id);
++
+ #ifdef CONFIG_TESTING_OPTIONS
+ 	int (*register_frame)(void *priv, u16 type,
+ 			      const u8 *match, size_t match_len,
+diff --git a/src/drivers/driver_nl80211.c b/src/drivers/driver_nl80211.c
+index a9edf66ef..7a68b47ef 100644
+--- a/src/drivers/driver_nl80211.c
++++ b/src/drivers/driver_nl80211.c
+@@ -10714,6 +10714,39 @@ static int driver_nl80211_if_remove(void *priv, enum wpa_driver_if_type type,
+ }
+ 
+ 
++#ifdef CONFIG_IEEE80211BE
++static int driver_nl80211_link_remove(void *priv, enum wpa_driver_if_type type,
++				      const char *ifname, u8 link_id)
++{
++	struct i802_bss *bss = priv;
++	struct wpa_driver_nl80211_data *drv = bss->drv;
++
++	if (type != WPA_IF_AP_BSS ||
++	    !nl80211_link_valid(bss->valid_links, link_id))
++		return -1;
++
++	wpa_printf(MSG_DEBUG,
++		   "nl80211: Teardown AP(%s) link %d (type=%d ifname=%s links=0x%x)",
++		   bss->ifname, link_id, type, ifname, bss->valid_links);
++
++	nl80211_remove_link(bss, link_id);
++
++	bss->ctx = bss->flink->ctx;
++
++	if (drv->first_bss == bss && !bss->valid_links)
++		drv->ctx = bss->ctx;
++
++	if (!bss->valid_links) {
++		wpa_printf(MSG_DEBUG,
++			   "nl80211: No more links remaining, so remove interface");
++		return wpa_driver_nl80211_if_remove(bss, type, ifname);
++	}
++
++	return 0;
++}
++#endif /* CONFIG_IEEE80211BE */
++
++
+ static int driver_nl80211_send_mlme(void *priv, const u8 *data,
+ 				    size_t data_len, int noack,
+ 				    unsigned int freq,
+@@ -14043,6 +14076,9 @@ const struct wpa_driver_ops wpa_driver_nl80211_ops = {
+ #endif /* CONFIG_DPP */
+ 	.get_sta_mlo_info = nl80211_get_sta_mlo_info,
+ 	.link_add = nl80211_link_add,
++#ifdef CONFIG_IEEE80211BE
++	.link_remove = driver_nl80211_link_remove,
++#endif /* CONFIG_IEEE80211BE */
+ #ifdef CONFIG_TESTING_OPTIONS
+ 	.register_frame = testing_nl80211_register_frame,
+ 	.radio_disable = testing_nl80211_radio_disable,
+-- 
+2.43.0
+

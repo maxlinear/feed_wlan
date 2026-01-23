@@ -1,0 +1,83 @@
+From d22401d8955911f62d1fc07f3803b765961b4b7c Mon Sep 17 00:00:00 2001
+From: Davide Caratti <davide.caratti@gmail.com>
+Date: Thu, 30 May 2024 10:46:33 +0200
+Subject: [PATCH] dbus: Fix memory leak in case dbus provides 'tlvs' in invalid
+ P2P SD response
+
+Using D-Bus it is possible to request an invalid SD response where
+"tlvs" is specified and there is an unknown key (e.g. "bar": "foo"). In
+this case, "tlv" is allocated and then never used nor freed. Valgrind
+complains as follows:
+
+ 36 bytes in 1 blocks are definitely lost in loss record 20 of 74
+    at 0x484C214: calloc (vg_replace_malloc.c:1675)
+    by 0x41C673: wpabuf_alloc (wpabuf.c:124)
+    by 0x41C673: wpabuf_alloc_copy (wpabuf.c:162)
+    by 0x54FB94: wpas_dbus_handler_p2p_service_sd_res (dbus_new_handlers_p2p.c:3016)
+    by 0x53B9A2: msg_method_handler (dbus_new_helpers.c:356)
+    by 0x53B9A2: message_handler (dbus_new_helpers.c:412)
+    by 0x4EAB4B8: dbus_connection_dispatch (in /usr/lib64/libdbus-1.so.3.19.13)
+    by 0x5495DF: dispatch_data (dbus_common.c:37)
+    by 0x5495DF: process_watch (dbus_common.c:73)
+    by 0x5495DF: process_watch_read (dbus_common.c:89)
+    by 0x41EE8E: eloop_sock_table_dispatch.part.0 (eloop.c:603)
+    by 0x41FA46: eloop_sock_table_dispatch (eloop.c:597)
+    by 0x41FA46: eloop_run (eloop.c:1233)
+    by 0x56A3EE: wpa_supplicant_run (wpa_supplicant.c:8074)
+    by 0x40DB06: main (main.c:393)
+
+Fix it ensuring that "tlv" is freed both in the error and non-error path
+of wpas_dbus_handler_p2p_service_sd_res(). Also, add a test case in
+test_dbus.py to verify correct behavior.
+
+Signed-off-by: Davide Caratti <davide.caratti@gmail.com>
+---
+ tests/hwsim/test_dbus.py                    | 17 ++++++++++-------
+ wpa_supplicant/dbus/dbus_new_handlers_p2p.c |  2 +-
+ 2 files changed, 11 insertions(+), 8 deletions(-)
+
+diff --git a/tests/hwsim/test_dbus.py b/tests/hwsim/test_dbus.py
+index 28fa7197e..2c59d7fb7 100644
+--- a/tests/hwsim/test_dbus.py
++++ b/tests/hwsim/test_dbus.py
+@@ -3541,13 +3541,16 @@ def test_dbus_p2p_service_discovery(dev, apdev):
+             if "InvalidArgs" not in str(e):
+                 raise Exception("Unexpected error message for invalid ServiceDiscoveryRequest(): " + str(e))
+ 
+-    args = {'foo': 'bar'}
+-    try:
+-        p2p.ServiceDiscoveryResponse(dbus.Dictionary(args, signature='sv'))
+-        raise Exception("Invalid ServiceDiscoveryResponse accepted")
+-    except dbus.exceptions.DBusException as e:
+-        if "InvalidArgs" not in str(e):
+-            raise Exception("Unexpected error message for invalid ServiceDiscoveryResponse(): " + str(e))
++    tests = [{'foo': 'bar'},
++             {'tlvs': dbus.ByteArray(b"\x02\x00\x00\x01"),
++              'bar': 'foo'}]
++    for args in tests:
++        try:
++            p2p.ServiceDiscoveryResponse(dbus.Dictionary(args, signature='sv'))
++            raise Exception("Invalid ServiceDiscoveryResponse accepted")
++        except dbus.exceptions.DBusException as e:
++            if "InvalidArgs" not in str(e):
++                raise Exception("Unexpected error message for invalid ServiceDiscoveryResponse(): " + str(e))
+ 
+ def test_dbus_p2p_service_discovery_query(dev, apdev):
+     """D-Bus P2P service discovery query"""
+diff --git a/wpa_supplicant/dbus/dbus_new_handlers_p2p.c b/wpa_supplicant/dbus/dbus_new_handlers_p2p.c
+index 53495f2c3..d001c0154 100644
+--- a/wpa_supplicant/dbus/dbus_new_handlers_p2p.c
++++ b/wpa_supplicant/dbus/dbus_new_handlers_p2p.c
+@@ -3024,8 +3024,8 @@ DBusMessage * wpas_dbus_handler_p2p_service_sd_res(
+ 		goto error;
+ 
+ 	wpas_p2p_sd_response(wpa_s, freq, addr, (u8) dlg_tok, tlv);
+-	wpabuf_free(tlv);
+ out:
++	wpabuf_free(tlv);
+ 	os_free(peer_object_path);
+ 	return reply;
+ error_clear:
+-- 
+2.43.0
+

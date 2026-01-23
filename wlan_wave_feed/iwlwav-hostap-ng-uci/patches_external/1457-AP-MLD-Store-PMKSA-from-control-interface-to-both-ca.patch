@@ -1,0 +1,49 @@
+From 4645fac93424780582a99daecb97f54789482048 Mon Sep 17 00:00:00 2001
+From: Chenming Huang <quic_chenhuan@quicinc.com>
+Date: Wed, 26 Feb 2025 20:02:26 +0530
+Subject: [PATCH] AP MLD: Store PMKSA from control interface to both caches
+
+When we cannot determine whether the peer is non-AP MLD, store the PMKSA
+into both the MLD-level and per-link caches when operating as an AP MLD.
+
+Signed-off-by: Chenming Huang <quic_chenhuan@quicinc.com>
+---
+ src/ap/ctrl_iface_ap.c | 15 +++++++++++++--
+ 1 file changed, 13 insertions(+), 2 deletions(-)
+
+diff --git a/src/ap/ctrl_iface_ap.c b/src/ap/ctrl_iface_ap.c
+index 88ec28f26..441995bcb 100644
+--- a/src/ap/ctrl_iface_ap.c
++++ b/src/ap/ctrl_iface_ap.c
+@@ -1198,6 +1198,7 @@ int hostapd_ctrl_iface_pmksa_add(struct hostapd_data *hapd, char *cmd)
+ 	size_t pmk_len;
+ 	char *pos, *pos2;
+ 	int akmp = 0, expiration = 0;
++	int ret;
+ 
+ 	/*
+ 	 * Entry format:
+@@ -1233,8 +1234,18 @@ int hostapd_ctrl_iface_pmksa_add(struct hostapd_data *hapd, char *cmd)
+ 	if (sscanf(pos, "%d %d", &expiration, &akmp) != 2)
+ 		return -1;
+ 
+-	return wpa_auth_pmksa_add2(hapd->wpa_auth, spa, pmk, pmk_len,
+-				   pmkid, expiration, akmp, NULL, false);
++	ret = wpa_auth_pmksa_add2(hapd->wpa_auth, spa, pmk, pmk_len,
++				  pmkid, expiration, akmp, NULL, false);
++	if (ret)
++		return ret;
++
++#ifdef CONFIG_IEEE80211BE
++	if (hapd->conf->mld_ap)
++		ret = wpa_auth_pmksa_add2(hapd->wpa_auth, spa, pmk, pmk_len,
++					  pmkid, expiration, akmp, NULL, true);
++#endif /* CONFIG_IEEE80211BE */
++
++	return ret;
+ }
+ 
+ 
+-- 
+2.43.0
+

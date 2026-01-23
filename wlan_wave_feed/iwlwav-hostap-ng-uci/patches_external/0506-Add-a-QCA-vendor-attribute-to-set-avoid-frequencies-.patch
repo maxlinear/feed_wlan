@@ -1,0 +1,46 @@
+From b818a1be14a7908910a83a273c5022abeed100cb Mon Sep 17 00:00:00 2001
+From: Purushottam Kushwaha <quic_pkushwah@quicinc.com>
+Date: Thu, 21 Mar 2024 12:58:38 +0530
+Subject: [PATCH] Add a QCA vendor attribute to set avoid frequencies per
+ netdev
+
+Add a new attribute QCA_WLAN_VENDOR_ATTR_AVOID_FREQUENCY_IFINDEX
+for QCA_NL80211_VENDOR_SUBCMD_AVOID_FREQUENCY_EXT subcommand to
+apply rules for avoid frequencies on a specific netdev. This is a
+32-bit unsigned optional attribute.
+
+Signed-off-by: Purushottam Kushwaha <quic_pkushwah@quicinc.com>
+---
+ src/common/qca-vendor.h | 9 +++++++++
+ 1 file changed, 9 insertions(+)
+
+diff --git a/src/common/qca-vendor.h b/src/common/qca-vendor.h
+index 7f6440b4b..2a4086b76 100644
+--- a/src/common/qca-vendor.h
++++ b/src/common/qca-vendor.h
+@@ -12088,6 +12088,14 @@ enum qca_wlan_vendor_attr_oem_data_params {
+  * %QCA_WLAN_VENDOR_ATTR_AVOID_FREQUENCY_POWER_CAP_DBM or based on
+  * regulatory/SAE limits if %QCA_WLAN_VENDOR_ATTR_AVOID_FREQUENCY_POWER_CAP_DBM
+  * is not provided.
++ *
++ * @QCA_WLAN_VENDOR_ATTR_AVOID_FREQUENCY_IFINDEX: u32 attribute, optional.
++ * This specifies the interface index (netdev) for which the corresponding
++ * configurations are applied. If the interface index is not specified, the
++ * configurations are applied based on
++ * %QCA_WLAN_VENDOR_ATTR_AVOID_FREQUENCY_IFACES_BITMASK.
++ * %QCA_WLAN_VENDOR_ATTR_AVOID_FREQUENCY_IFACES_BITMASK along with this
++ * attribute shall have the matching nl80211_iftype.
+  */
+ enum qca_wlan_vendor_attr_avoid_frequency_ext {
+ 	QCA_WLAN_VENDOR_ATTR_AVOID_FREQUENCY_INVALID = 0,
+@@ -12096,6 +12104,7 @@ enum qca_wlan_vendor_attr_avoid_frequency_ext {
+ 	QCA_WLAN_VENDOR_ATTR_AVOID_FREQUENCY_END = 3,
+ 	QCA_WLAN_VENDOR_ATTR_AVOID_FREQUENCY_POWER_CAP_DBM = 4,
+ 	QCA_WLAN_VENDOR_ATTR_AVOID_FREQUENCY_IFACES_BITMASK = 5,
++	QCA_WLAN_VENDOR_ATTR_AVOID_FREQUENCY_IFINDEX = 6,
+ 
+ 	QCA_WLAN_VENDOR_ATTR_AVOID_FREQUENCY_AFTER_LAST,
+ 	QCA_WLAN_VENDOR_ATTR_AVOID_FREQUENCY_MAX =
+-- 
+2.43.0
+

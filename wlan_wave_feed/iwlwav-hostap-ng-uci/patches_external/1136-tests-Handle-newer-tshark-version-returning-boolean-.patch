@@ -1,0 +1,50 @@
+From bf67d09e587a6ee1add9b10fb59b5c1cbcabba14 Mon Sep 17 00:00:00 2001
+From: Jouni Malinen <j@w1.fi>
+Date: Sat, 14 Dec 2024 12:34:20 +0200
+Subject: [PATCH] tests: Handle newer tshark version returning boolean values
+
+Signed-off-by: Jouni Malinen <j@w1.fi>
+---
+ tests/hwsim/test_ap_open.py | 7 ++++++-
+ tests/hwsim/test_ap_vlan.py | 7 ++++++-
+ 2 files changed, 12 insertions(+), 2 deletions(-)
+
+diff --git a/tests/hwsim/test_ap_open.py b/tests/hwsim/test_ap_open.py
+index 00801b313..ceba146a0 100644
+--- a/tests/hwsim/test_ap_open.py
++++ b/tests/hwsim/test_ap_open.py
+@@ -555,7 +555,12 @@ def test_ap_open_ps_mc_buf(dev, apdev, params):
+                              "wlan.fc.type_subtype == 0x0008",
+                              ["wlan.tim.bmapctl.multicast"])
+             for line in out.splitlines():
+-                buffered_mcast = int(line)
++                if line == "True":
++                    buffered_mcast = 1
++                elif line == "False":
++                    buffered_mcast = 0
++                else:
++                    buffered_mcast = int(line)
+                 if buffered_mcast == 1:
+                     break
+             if buffered_mcast == 1:
+diff --git a/tests/hwsim/test_ap_vlan.py b/tests/hwsim/test_ap_vlan.py
+index 76c3ce93b..f4001bbef 100644
+--- a/tests/hwsim/test_ap_vlan.py
++++ b/tests/hwsim/test_ap_vlan.py
+@@ -644,7 +644,12 @@ def test_ap_vlan_without_station(dev, apdev, p):
+                 raise Exception("second frame not observed")
+             state = 1
+             for l in lines:
+-                is_protected = int(l, 16)
++                if l == "True":
++                    is_protected = 1
++                elif l == "False":
++                    is_protected = 0
++                else:
++                    is_protected = int(l, 16)
+                 if is_protected != 1:
+                     state = 0
+             if state != 1:
+-- 
+2.43.0
+

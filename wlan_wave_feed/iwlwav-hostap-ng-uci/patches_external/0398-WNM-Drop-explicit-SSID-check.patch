@@ -1,0 +1,45 @@
+From 8b51310f4e87ccdd9ab82181ab78dd09ea969c17 Mon Sep 17 00:00:00 2001
+From: Benjamin Berg <benjamin.berg@intel.com>
+Date: Tue, 20 Feb 2024 14:18:21 +0100
+Subject: [PATCH] WNM: Drop explicit SSID check
+
+The call to wpa_scan_res_match already checks that the SSID matches
+current_ssid. Therefore there is no need to do any further checking.
+
+Signed-off-by: Benjamin Berg <benjamin.berg@intel.com>
+---
+ wpa_supplicant/wnm_sta.c | 18 ++++--------------
+ 1 file changed, 4 insertions(+), 14 deletions(-)
+
+diff --git a/wpa_supplicant/wnm_sta.c b/wpa_supplicant/wnm_sta.c
+index 924427fe6..8c011582f 100644
+--- a/wpa_supplicant/wnm_sta.c
++++ b/wpa_supplicant/wnm_sta.c
+@@ -781,20 +781,10 @@ compare_scan_neighbor_results(struct wpa_supplicant *wpa_s, os_time_t age_secs,
+ 			}
+ 		}
+ 
+-		if (bss->ssid_len != target->ssid_len ||
+-		    os_memcmp(bss->ssid, target->ssid, bss->ssid_len) != 0) {
+-			/*
+-			 * TODO: Could consider allowing transition to another
+-			 * ESS if PMF was enabled for the association.
+-			 */
+-			wpa_printf(MSG_DEBUG, "Candidate BSS " MACSTR
+-				   " (pref %d) in different ESS",
+-				   MAC2STR(nei->bssid),
+-				   nei->preference_present ? nei->preference :
+-				   -1);
+-			continue;
+-		}
+-
++		/*
++		 * TODO: Could consider allowing transition to another ESS if
++		 * PMF was enabled for the association.
++		 */
+ 		if (!wpa_scan_res_match(wpa_s, 0, target, wpa_s->current_ssid,
+ 					1, 0)) {
+ 			wpa_printf(MSG_DEBUG, "Candidate BSS " MACSTR
+-- 
+2.43.0
+

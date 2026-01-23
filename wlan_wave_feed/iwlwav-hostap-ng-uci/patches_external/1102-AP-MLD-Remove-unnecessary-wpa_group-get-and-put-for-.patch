@@ -1,0 +1,63 @@
+From a158fecc9ce87a827007fdafe0bf7c5f3887f8c1 Mon Sep 17 00:00:00 2001
+From: Adil Saeed Musthafa <quic_adilm@quicinc.com>
+Date: Thu, 21 Nov 2024 00:02:25 -0800
+Subject: [PATCH] AP MLD: Remove unnecessary wpa_group get and put for ML cases
+
+Remove unnecessary wpa_group_get() and wpa_group_put() calls where the
+arguments are ML wpa_auth and wpa_auth->group, which are bound to be
+no-op since such cases are not icluded in the references counter.
+
+In practice, this reverts the third item listed in the commit message
+for commit 3ea7cf11db4a ("AP MLD: Enhance authenticator state machine").
+
+Signed-off-by: Adil Saeed Musthafa <quic_adilm@quicinc.com>
+---
+ src/ap/wpa_auth.c | 15 +++------------
+ 1 file changed, 3 insertions(+), 12 deletions(-)
+
+diff --git a/src/ap/wpa_auth.c b/src/ap/wpa_auth.c
+index 5de4e09b7..5432e1541 100644
+--- a/src/ap/wpa_auth.c
++++ b/src/ap/wpa_auth.c
+@@ -133,11 +133,8 @@ void wpa_release_link_auth_ref(struct wpa_state_machine *sm,
+ 		return;
+ 
+ 	for_each_sm_auth(sm, link_id) {
+-		if (link_id == release_link_id) {
+-			wpa_group_put(sm->mld_links[link_id].wpa_auth,
+-				      sm->mld_links[link_id].wpa_auth->group);
++		if (link_id == release_link_id)
+ 			sm->mld_links[link_id].wpa_auth = NULL;
+-		}
+ 	}
+ }
+ 
+@@ -1045,11 +1042,8 @@ static void wpa_free_sta_sm(struct wpa_state_machine *sm)
+ 	os_free(sm->rsnxe);
+ 	os_free(sm->rsn_selection);
+ #ifdef CONFIG_IEEE80211BE
+-	for_each_sm_auth(sm, link_id) {
+-		wpa_group_put(sm->mld_links[link_id].wpa_auth,
+-			      sm->mld_links[link_id].wpa_auth->group);
++	for_each_sm_auth(sm, link_id)
+ 		sm->mld_links[link_id].wpa_auth = NULL;
+-	}
+ #endif /* CONFIG_IEEE80211BE */
+ 	wpa_group_put(sm->wpa_auth, sm->group);
+ #ifdef CONFIG_DPP2
+@@ -7462,11 +7456,8 @@ void wpa_auth_set_ml_info(struct wpa_state_machine *sm,
+ 			ctx.wpa_auth = NULL;
+ 			wpa_auth_for_each_auth(sm->wpa_auth,
+ 					       wpa_get_link_sta_auth, &ctx);
+-			if (ctx.wpa_auth) {
++			if (ctx.wpa_auth)
+ 				sm_link->wpa_auth = ctx.wpa_auth;
+-				wpa_group_get(sm_link->wpa_auth,
+-					      sm_link->wpa_auth->group);
+-			}
+ 		} else {
+ 			sm_link->wpa_auth = sm->wpa_auth;
+ 		}
+-- 
+2.43.0
+

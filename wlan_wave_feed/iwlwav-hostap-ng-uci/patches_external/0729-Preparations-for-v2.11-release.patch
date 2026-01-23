@@ -1,0 +1,251 @@
+From d945ddd368085f255e68328f2d3b020ceea359af Mon Sep 17 00:00:00 2001
+From: Jouni Malinen <j@w1.fi>
+Date: Sat, 20 Jul 2024 20:50:21 +0300
+Subject: [PATCH] Preparations for v2.11 release
+
+Update the version number for the build and also add the ChangeLog
+entries for both hostapd and wpa_supplicant to describe main changes
+between v2.10 and v2.11. Update the copyright years for the main
+programs.
+
+Signed-off-by: Jouni Malinen <j@w1.fi>
+---
+ README                          |  2 +-
+ doc/doxygen.conf                |  2 +-
+ hostapd/ChangeLog               | 37 ++++++++++++++++++++++++
+ hostapd/README                  |  2 +-
+ hostapd/hostapd_cli.c           |  2 +-
+ hostapd/main.c                  |  2 +-
+ src/common/version.h            |  2 +-
+ wpa_supplicant/ChangeLog        | 50 +++++++++++++++++++++++++++++++++
+ wpa_supplicant/README           |  2 +-
+ wpa_supplicant/wpa_cli.c        |  2 +-
+ wpa_supplicant/wpa_supplicant.c |  2 +-
+ 11 files changed, 96 insertions(+), 9 deletions(-)
+
+diff --git a/README b/README
+index 1470c4f23..8392bb354 100644
+--- a/README
++++ b/README
+@@ -1,7 +1,7 @@
+ wpa_supplicant and hostapd
+ --------------------------
+ 
+-Copyright (c) 2002-2022, Jouni Malinen <j@w1.fi> and contributors
++Copyright (c) 2002-2024, Jouni Malinen <j@w1.fi> and contributors
+ All Rights Reserved.
+ 
+ These programs are licensed under the BSD license (the one with
+diff --git a/doc/doxygen.conf b/doc/doxygen.conf
+index 54a77ec2f..b73ef9380 100644
+--- a/doc/doxygen.conf
++++ b/doc/doxygen.conf
+@@ -31,7 +31,7 @@ PROJECT_NAME           = "wpa_supplicant / hostapd"
+ # This could be handy for archiving the generated documentation or
+ # if some version control system is used.
+ 
+-PROJECT_NUMBER         = 2.10
++PROJECT_NUMBER         = 2.11
+ 
+ # The OUTPUT_DIRECTORY tag is used to specify the (relative or absolute)
+ # base path where the generated documentation will be put.
+diff --git a/hostapd/ChangeLog b/hostapd/ChangeLog
+index 279298e4d..1c8240d33 100644
+--- a/hostapd/ChangeLog
++++ b/hostapd/ChangeLog
+@@ -1,5 +1,42 @@
+ ChangeLog for hostapd
+ 
++2024-07-20 - v2.11
++	* Wi-Fi Easy Connect
++	  - add support for DPP release 3
++	  - allow Configurator parameters to be provided during config exchange
++	* HE/IEEE 802.11ax/Wi-Fi 6
++	  - various fixes
++	* EHT/IEEE 802.11be/Wi-Fi 7
++	  - add preliminary support
++	* SAE: add support for fetching the password from a RADIUS server
++	* support OpenSSL 3.0 API changes
++	* support background radar detection and CAC with some additional
++	  drivers
++	* support RADIUS ACL/PSK check during 4-way handshake (wpa_psk_radius=3)
++	* EAP-SIM/AKA: support IMSI privacy
++	* improve 4-way handshake operations
++	  - use Secure=1 in message 3 during PTK rekeying
++	* OCV: do not check Frequency Segment 1 Channel Number for 160 MHz cases
++	  to avoid interoperability issues
++	* support new SAE AKM suites with variable length keys
++	* support new AKM for 802.1X/EAP with SHA384
++	* extend PASN support for secure ranging
++	* FT: Use SHA256 to derive PMKID for AKM 00-0F-AC:3 (FT-EAP)
++	  - this is based on additional details being added in the IEEE 802.11
++	    standard
++	  - the new implementation is not backwards compatible
++	* improved ACS to cover additional channel types/bandwidths
++	* extended Multiple BSSID support
++	* fix beacon protection with FT protocol (incorrect BIGTK was provided)
++	* support unsynchronized service discovery (USD)
++	* add preliminary support for RADIUS/TLS
++	* add support for explicit SSID protection in 4-way handshake
++	  (a mitigation for CVE-2023-52424; disabled by default for now, can be
++	  enabled with ssid_protection=1)
++	* fix SAE H2E rejected groups validation to avoid downgrade attacks
++	* use stricter validation for some RADIUS messages
++	* a large number of other fixes, cleanup, and extensions
++
+ 2022-01-16 - v2.10
+ 	* SAE changes
+ 	  - improved protection against side channel attacks
+diff --git a/hostapd/README b/hostapd/README
+index 739c964d4..1a0248fce 100644
+--- a/hostapd/README
++++ b/hostapd/README
+@@ -2,7 +2,7 @@ hostapd - user space IEEE 802.11 AP and IEEE 802.1X/WPA/WPA2/EAP
+ 	  Authenticator and RADIUS authentication server
+ ================================================================
+ 
+-Copyright (c) 2002-2022, Jouni Malinen <j@w1.fi> and contributors
++Copyright (c) 2002-2024, Jouni Malinen <j@w1.fi> and contributors
+ All Rights Reserved.
+ 
+ This program is licensed under the BSD license (the one with
+diff --git a/hostapd/hostapd_cli.c b/hostapd/hostapd_cli.c
+index 09e5deae5..eb8a38350 100644
+--- a/hostapd/hostapd_cli.c
++++ b/hostapd/hostapd_cli.c
+@@ -21,7 +21,7 @@
+ 
+ static const char *const hostapd_cli_version =
+ "hostapd_cli v" VERSION_STR "\n"
+-"Copyright (c) 2004-2022, Jouni Malinen <j@w1.fi> and contributors";
++"Copyright (c) 2004-2024, Jouni Malinen <j@w1.fi> and contributors";
+ 
+ static struct wpa_ctrl *ctrl_conn;
+ static int hostapd_cli_quit = 0;
+diff --git a/hostapd/main.c b/hostapd/main.c
+index 58cc86a08..00e02bb03 100644
+--- a/hostapd/main.c
++++ b/hostapd/main.c
+@@ -555,7 +555,7 @@ static void show_version(void)
+ 		"hostapd v%s\n"
+ 		"User space daemon for IEEE 802.11 AP management,\n"
+ 		"IEEE 802.1X/WPA/WPA2/EAP/RADIUS Authenticator\n"
+-		"Copyright (c) 2002-2022, Jouni Malinen <j@w1.fi> "
++		"Copyright (c) 2002-2024, Jouni Malinen <j@w1.fi> "
+ 		"and contributors\n",
+ 		VERSION_STR);
+ }
+diff --git a/src/common/version.h b/src/common/version.h
+index 4409e1ca6..5b7359849 100644
+--- a/src/common/version.h
++++ b/src/common/version.h
+@@ -9,6 +9,6 @@
+ #define GIT_VERSION_STR_POSTFIX ""
+ #endif /* GIT_VERSION_STR_POSTFIX */
+ 
+-#define VERSION_STR "2.11-devel" VERSION_STR_POSTFIX GIT_VERSION_STR_POSTFIX
++#define VERSION_STR "2.11" VERSION_STR_POSTFIX GIT_VERSION_STR_POSTFIX
+ 
+ #endif /* VERSION_H */
+diff --git a/wpa_supplicant/ChangeLog b/wpa_supplicant/ChangeLog
+index efcc6cd9c..3f4162eb0 100644
+--- a/wpa_supplicant/ChangeLog
++++ b/wpa_supplicant/ChangeLog
+@@ -1,5 +1,55 @@
+ ChangeLog for wpa_supplicant
+ 
++2024-07-20 - v2.11
++	* Wi-Fi Easy Connect
++	  - add support for DPP release 3
++	  - allow Configurator parameters to be provided during config exchange
++	* MACsec
++	  - add support for GCM-AES-256 cipher suite
++	  - remove incorrect EAP Session-Id length constraint
++	  - add hardware offload support for additional drivers
++	* HE/IEEE 802.11ax/Wi-Fi 6
++	  - support BSS color updates
++	  - various fixes
++	* EHT/IEEE 802.11be/Wi-Fi 7
++	  - add preliminary support
++	* support OpenSSL 3.0 API changes
++	* improve EAP-TLS support for TLSv1.3
++	* EAP-SIM/AKA: support IMSI privacy
++	* improve mitigation against DoS attacks when PMF is used
++	* improve 4-way handshake operations
++	  - discard unencrypted EAPOL frames in additional cases
++	  - use Secure=1 in message 2 during PTK rekeying
++	* OCV: do not check Frequency Segment 1 Channel Number for 160 MHz cases
++	  to avoid interoperability issues
++	* support new SAE AKM suites with variable length keys
++	* support new AKM for 802.1X/EAP with SHA384
++	* improve cross-AKM roaming with driver-based SME/BSS selection
++	* PASN
++	  - extend support for secure ranging
++	  - allow PASN implementation to be used with external programs for
++	    Wi-Fi Aware
++	* FT: Use SHA256 to derive PMKID for AKM 00-0F-AC:3 (FT-EAP)
++	  - this is based on additional details being added in the IEEE 802.11
++	    standard
++	  - the new implementation is not backwards compatible, but PMKSA
++	    caching with FT-EAP was, and still is, disabled by default
++	* support a pregenerated MAC (mac_addr=3) as an alternative mechanism
++	  for using per-network random MAC addresses
++	* EAP-PEAP: require Phase 2 authentication by default (phase2_auth=1)
++	  to improve security for still unfortunately common invalid
++	  configurations that do not set ca_cert
++	* extend SCS support for QoS Characteristics
++	* extend MSCS support
++	* support unsynchronized service discovery (USD)
++	* add support for explicit SSID protection in 4-way handshake
++	  (a mitigation for CVE-2023-52424; disabled by default for now, can be
++	  enabled with ssid_protection=1)
++	  - in addition, verify SSID after key setup when beacon protection is
++	    used
++	* fix SAE H2E rejected groups validation to avoid downgrade attacks
++	* a large number of other fixes, cleanup, and extensions
++
+ 2022-01-16 - v2.10
+ 	* SAE changes
+ 	  - improved protection against side channel attacks
+diff --git a/wpa_supplicant/README b/wpa_supplicant/README
+index f8da7818b..49e971e21 100644
+--- a/wpa_supplicant/README
++++ b/wpa_supplicant/README
+@@ -1,7 +1,7 @@
+ wpa_supplicant
+ ==============
+ 
+-Copyright (c) 2003-2022, Jouni Malinen <j@w1.fi> and contributors
++Copyright (c) 2003-2024, Jouni Malinen <j@w1.fi> and contributors
+ All Rights Reserved.
+ 
+ This program is licensed under the BSD license (the one with
+diff --git a/wpa_supplicant/wpa_cli.c b/wpa_supplicant/wpa_cli.c
+index 7d4cb4564..af00e7910 100644
+--- a/wpa_supplicant/wpa_cli.c
++++ b/wpa_supplicant/wpa_cli.c
+@@ -29,7 +29,7 @@
+ 
+ static const char *const wpa_cli_version =
+ "wpa_cli v" VERSION_STR "\n"
+-"Copyright (c) 2004-2022, Jouni Malinen <j@w1.fi> and contributors";
++"Copyright (c) 2004-2024, Jouni Malinen <j@w1.fi> and contributors";
+ 
+ #define VENDOR_ELEM_FRAME_ID \
+ 	"  0: Probe Req (P2P), 1: Probe Resp (P2P) , 2: Probe Resp (GO), " \
+diff --git a/wpa_supplicant/wpa_supplicant.c b/wpa_supplicant/wpa_supplicant.c
+index 4fe15e4a3..037bfa378 100644
+--- a/wpa_supplicant/wpa_supplicant.c
++++ b/wpa_supplicant/wpa_supplicant.c
+@@ -73,7 +73,7 @@
+ 
+ const char *const wpa_supplicant_version =
+ "wpa_supplicant v" VERSION_STR "\n"
+-"Copyright (c) 2003-2022, Jouni Malinen <j@w1.fi> and contributors";
++"Copyright (c) 2003-2024, Jouni Malinen <j@w1.fi> and contributors";
+ 
+ const char *const wpa_supplicant_license =
+ "This software may be distributed under the terms of the BSD license.\n"
+-- 
+2.43.0
+

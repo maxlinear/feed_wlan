@@ -1,0 +1,136 @@
+From 5834062c23397a613d574d83ea9917453b3cdac3 Mon Sep 17 00:00:00 2001
+From: Balamurugan Ramar <quic_bramar@quicinc.com>
+Date: Wed, 28 Aug 2024 16:56:36 +0530
+Subject: [PATCH] AP MLD: Allow link ID to be specified for Action frame TX
+ operations
+
+The Action frame sent by hostapd currently lacks a link ID, causing the
+driver to independently determine the link ID based on available data.
+This can sometimes result in the driver selecting an unintended link for
+the Action frame transmission. To address this, add support to allow
+hostapd to send the link ID along with Action frames to the driver.
+
+This commit introduces only the function arguments to allow the link ID
+to be provided.  A subsequent commit will fill the link ID based on the
+required conditions.
+
+Signed-off-by: Balamurugan Ramar <quic_bramar@quicinc.com>
+Signed-off-by: Aditya Kumar Singh <quic_adisi@quicinc.com>
+---
+ src/ap/ap_drv_ops.c             |  2 +-
+ src/drivers/driver.h            |  8 ++++++--
+ src/drivers/driver_nl80211.c    | 17 +++++++++--------
+ wpa_supplicant/wpa_supplicant.c |  2 +-
+ 4 files changed, 17 insertions(+), 12 deletions(-)
+
+diff --git a/src/ap/ap_drv_ops.c b/src/ap/ap_drv_ops.c
+index 7b571bdb0..dc1f7480c 100644
+--- a/src/ap/ap_drv_ops.c
++++ b/src/ap/ap_drv_ops.c
+@@ -969,7 +969,7 @@ static int hapd_drv_send_action(struct hostapd_data *hapd, unsigned int freq,
+ 	}
+ 
+ 	return hapd->driver->send_action(hapd->drv_priv, freq, wait, dst,
+-					 own_addr, bssid, data, len, 0);
++					 own_addr, bssid, data, len, 0, -1);
+ }
+ 
+ 
+diff --git a/src/drivers/driver.h b/src/drivers/driver.h
+index 7ec5fb1e1..3f650c557 100644
+--- a/src/drivers/driver.h
++++ b/src/drivers/driver.h
+@@ -4034,7 +4034,10 @@ struct wpa_driver_ops {
+ 	 * @bssid: BSSID (Address 3)
+ 	 * @data: Frame body
+ 	 * @data_len: data length in octets
+-	 @ @no_cck: Whether CCK rates must not be used to transmit this frame
++	 * @no_cck: Whether CCK rates must not be used to transmit this frame
++	 * @link_id: Link ID of the specified link; -1 for non-MLO cases and for
++	 *	frames that target the MLD instead of a specific link in MLO
++	 *	cases
+ 	 * Returns: 0 on success, -1 on failure
+ 	 *
+ 	 * This command can be used to request the driver to transmit an action
+@@ -4055,7 +4058,8 @@ struct wpa_driver_ops {
+ 	 */
+ 	int (*send_action)(void *priv, unsigned int freq, unsigned int wait,
+ 			   const u8 *dst, const u8 *src, const u8 *bssid,
+-			   const u8 *data, size_t data_len, int no_cck);
++			   const u8 *data, size_t data_len, int no_cck,
++			   int link_id);
+ 
+ 	/**
+ 	 * send_action_cancel_wait - Cancel action frame TX wait
+diff --git a/src/drivers/driver_nl80211.c b/src/drivers/driver_nl80211.c
+index 715f60df1..4141bc578 100644
+--- a/src/drivers/driver_nl80211.c
++++ b/src/drivers/driver_nl80211.c
+@@ -9240,7 +9240,7 @@ static int wpa_driver_nl80211_send_action(struct i802_bss *bss,
+ 					  const u8 *dst, const u8 *src,
+ 					  const u8 *bssid,
+ 					  const u8 *data, size_t data_len,
+-					  int no_cck)
++					  int no_cck, int link_id)
+ {
+ 	struct wpa_driver_nl80211_data *drv = bss->drv;
+ 	int ret = -1;
+@@ -9257,9 +9257,9 @@ static int wpa_driver_nl80211_send_action(struct i802_bss *bss,
+ 
+ 	wpa_printf(MSG_DEBUG,
+ 		   "nl80211: Send Action frame (ifindex=%d, freq=%u MHz wait=%d ms no_cck=%d offchanok=%d dst="
+-		   MACSTR " src=" MACSTR " bssid=" MACSTR ")",
++		   MACSTR " src=" MACSTR " bssid=" MACSTR ", link_id=%d)",
+ 		   drv->ifindex, freq, wait_time, no_cck, offchanok,
+-		   MAC2STR(dst), MAC2STR(src), MAC2STR(bssid));
++		   MAC2STR(dst), MAC2STR(src), MAC2STR(bssid), link_id);
+ 
+ 	buf = os_zalloc(24 + data_len);
+ 	if (buf == NULL)
+@@ -9308,12 +9308,12 @@ static int wpa_driver_nl80211_send_action(struct i802_bss *bss,
+ 	     !drv->use_monitor))
+ 		ret = wpa_driver_nl80211_send_mlme(bss, buf, 24 + data_len,
+ 						   0, freq, no_cck, offchanok,
+-						   wait_time, NULL, 0, 0, -1);
++						   wait_time, NULL, 0, 0,
++						   link_id);
+ 	else
+ 		ret = nl80211_send_frame_cmd(bss, freq, wait_time, buf,
+ 					     24 + data_len, 1, no_cck, 0,
+-					     offchanok, NULL, 0,
+-					     NL80211_DRV_LINK_ID_NA);
++					     offchanok, NULL, 0, link_id);
+ 
+ 	os_free(buf);
+ 	return ret;
+@@ -11023,11 +11023,12 @@ static int driver_nl80211_send_action(void *priv, unsigned int freq,
+ 				      const u8 *dst, const u8 *src,
+ 				      const u8 *bssid,
+ 				      const u8 *data, size_t data_len,
+-				      int no_cck)
++				      int no_cck, int link_id)
+ {
+ 	struct i802_bss *bss = priv;
+ 	return wpa_driver_nl80211_send_action(bss, freq, wait_time, dst, src,
+-					      bssid, data, data_len, no_cck);
++					      bssid, data, data_len, no_cck,
++					      link_id);
+ }
+ 
+ 
+diff --git a/wpa_supplicant/wpa_supplicant.c b/wpa_supplicant/wpa_supplicant.c
+index 031268a41..bca231139 100644
+--- a/wpa_supplicant/wpa_supplicant.c
++++ b/wpa_supplicant/wpa_supplicant.c
+@@ -9644,7 +9644,7 @@ int wpa_drv_send_action(struct wpa_supplicant *wpa_s, unsigned int freq,
+ 	}
+ 
+ 	return wpa_s->driver->send_action(wpa_s->drv_priv, freq, wait, dst, src,
+-					  bssid, data, data_len, no_cck);
++					  bssid, data, data_len, no_cck, -1);
+ }
+ 
+ 
+-- 
+2.43.0
+

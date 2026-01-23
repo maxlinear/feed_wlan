@@ -1,0 +1,45 @@
+From a86709b52ec6c589293b1913fd51ca10ac54e3f5 Mon Sep 17 00:00:00 2001
+From: Jouni Malinen <j@w1.fi>
+Date: Sat, 20 Jan 2024 20:53:21 +0200
+Subject: [PATCH] tests: Write more info and statistics in parallel-vm.log
+
+This is helpful in tracking how the total test execution time changes.
+
+Signed-off-by: Jouni Malinen <j@w1.fi>
+---
+ tests/hwsim/vm/parallel-vm.py | 12 +++++++++++-
+ 1 file changed, 11 insertions(+), 1 deletion(-)
+
+diff --git a/tests/hwsim/vm/parallel-vm.py b/tests/hwsim/vm/parallel-vm.py
+index f642390a6..1ce25b177 100755
+--- a/tests/hwsim/vm/parallel-vm.py
++++ b/tests/hwsim/vm/parallel-vm.py
+@@ -413,7 +413,8 @@ def main():
+ 
+     debug_level = logging.INFO
+     rerun_failures = True
+-    timestamp = int(time.time())
++    start_time = time.time()
++    timestamp = int(start_time)
+ 
+     scriptsdir = os.path.dirname(os.path.realpath(sys.argv[0]))
+ 
+@@ -694,6 +695,15 @@ def main():
+         print("file://%s/index.html" % logdir)
+         logger.info("Code coverage report: file://%s/index.html" % logdir)
+ 
++    end_time = time.time()
++    try:
++        cmd = subprocess.Popen(['git', 'describe'], stdout=subprocess.PIPE)
++        ver = cmd.stdout.read().decode().strip()
++    except:
++        ver = "unknown"
++        pass
++    logger.info("Tests run: {}  Tests failed: {}  Total time: {}  Version: {}".format(total_started, total_failed, end_time - start_time, ver))
++
+     if double_failed or (failed and not rerun_failures):
+         logger.info("Test run complete - failures found")
+         sys.exit(2)
+-- 
+2.43.0
+

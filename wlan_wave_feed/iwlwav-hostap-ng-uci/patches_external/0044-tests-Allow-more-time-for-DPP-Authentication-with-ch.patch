@@ -1,0 +1,27 @@
+From fe26b7559f998f5e4f4677d5b54700d348140f9f Mon Sep 17 00:00:00 2001
+From: Jouni Malinen <j@w1.fi>
+Date: Sun, 10 Dec 2023 18:43:19 +0200
+Subject: [PATCH] tests: Allow more time for DPP Authentication with chirping
+ iteration
+
+Signed-off-by: Jouni Malinen <j@w1.fi>
+---
+ tests/hwsim/test_dpp.py | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/tests/hwsim/test_dpp.py b/tests/hwsim/test_dpp.py
+index 767b43b99..cfa1f9304 100644
+--- a/tests/hwsim/test_dpp.py
++++ b/tests/hwsim/test_dpp.py
+@@ -6853,7 +6853,7 @@ def test_dpp_chirp_configurator_inits(dev, apdev):
+             raise Exception("Presence Announcement not sent")
+ 
+     dev[1].dpp_auth_init(uri=uri, conf="sta-dpp", configurator=conf_id)
+-    wait_auth_success(dev[0], dev[1], dev[1], dev[0])
++    wait_auth_success(dev[0], dev[1], dev[1], dev[0], timeout=10)
+ 
+ def test_dpp_chirp_ap(dev, apdev):
+     """DPP chirp by an AP"""
+-- 
+2.43.0
+

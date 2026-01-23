@@ -1,0 +1,30 @@
+From b91113e05f7f6b94ded721b0f2c62ff19c10d12a Mon Sep 17 00:00:00 2001
+From: Vinayak Yadawad <vinayak.yadawad@broadcom.com>
+Date: Fri, 22 Dec 2023 11:15:40 +0530
+Subject: [PATCH] Support all PSK AKMs in case of AP mode PSK offload
+
+Previously only the SHA-1 -based AKM was supported. Extend that to cover
+all PSK AKMs so that the PSK configuration to the driver happens for all
+the possible cases during AP start.
+
+Signed-off-by: Vinayak Yadawad <vinayak.yadawad@broadcom.com>
+---
+ src/drivers/driver_nl80211.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/src/drivers/driver_nl80211.c b/src/drivers/driver_nl80211.c
+index 21146778a..a3bb2d525 100644
+--- a/src/drivers/driver_nl80211.c
++++ b/src/drivers/driver_nl80211.c
+@@ -5123,7 +5123,7 @@ static int wpa_driver_nl80211_set_ap(void *priv,
+ 			 suites))
+ 		goto fail;
+ 
+-	if ((params->key_mgmt_suites & WPA_KEY_MGMT_PSK) &&
++	if (wpa_key_mgmt_wpa_psk_no_sae(params->key_mgmt_suites) &&
+ 	    (drv->capa.flags2 & WPA_DRIVER_FLAGS2_4WAY_HANDSHAKE_AP_PSK) &&
+ 	    params->psk_len &&
+ 	    nla_put(msg, NL80211_ATTR_PMK, params->psk_len, params->psk))
+-- 
+2.43.0
+

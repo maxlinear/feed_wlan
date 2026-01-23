@@ -1,0 +1,65 @@
+From 738ff9beef0e03c84a3064ee497dd18af4b5bb1d Mon Sep 17 00:00:00 2001
+From: Jouni Malinen <quic_jouni@quicinc.com>
+Date: Tue, 17 Dec 2024 20:02:03 +0200
+Subject: [PATCH] tests: Run test cases that read process memory in the
+ beginning
+
+Those test cases seem to have some resource issues (i.e., taking
+unexpectedly large amount of memory) with newer software versions
+(showed up when upgrading from Ubuntu 22.04 to 24.04; maybe due to newer
+python3 version?). This might be related to memory fragmentation and
+allocated memory from hostapd/wpa_supplicant not getting fully freed in
+a sense of minimizing the read process memory. Running the key lifetime
+test cases in the beginning of each VM seems to avoid resource issues,
+so reorder the test cases to do that.
+
+Signed-off-by: Jouni Malinen <quic_jouni@quicinc.com>
+---
+ tests/hwsim/vm/parallel-vm.py | 24 ++++++++++++++++++++++++
+ 1 file changed, 24 insertions(+)
+
+diff --git a/tests/hwsim/vm/parallel-vm.py b/tests/hwsim/vm/parallel-vm.py
+index 1ce25b177..1d3871264 100755
+--- a/tests/hwsim/vm/parallel-vm.py
++++ b/tests/hwsim/vm/parallel-vm.py
+@@ -86,6 +86,21 @@ long_tests = ["ap_roam_open",
+               "p2p_go_move_scm_peer_does_not_support",
+               "p2p_go_move_scm_multi"]
+ 
++# Test cases that depend on dumping full process memory
++memory_read_tests = ["ap_wpa2_eap_fast_pac_lifetime",
++                     "wpa2_eap_ttls_pap_key_lifetime_in_memory",
++                     "wpa2_eap_peap_gtc_key_lifetime_in_memory",
++                     "ft_psk_key_lifetime_in_memory",
++                     "wpa2_psk_key_lifetime_in_memory",
++                     "ap_wpa2_tdls_long_lifetime",
++                     "ap_wpa2_tdls_wrong_lifetime_resp",
++                     "erp_key_lifetime_in_memory",
++                     "sae_key_lifetime_in_memory",
++                     "sae_okc_pmk_lifetime",
++                     "sae_pmk_lifetime",
++                     "wpas_ap_lifetime_in_memory",
++                     "wpas_ap_lifetime_in_memory2"]
++
+ def get_failed(vm):
+     failed = []
+     for i in range(num_servers):
+@@ -504,6 +519,15 @@ def main():
+             if l in tests:
+                 tests.remove(l)
+                 tests.insert(0, l)
++
++        # Test cases that read full wpa_supplicant or hostapd process memory
++        # can apparently cause resources issues at least with newer python3
++        # versions, so run them first before possible memory fragmentation has
++        # made this need more resources.
++        for l in memory_read_tests:
++            if l in tests:
++                tests.remove(l)
++                tests.insert(0, l)
+     if args.short:
+         tests = [t for t in tests if t not in long_tests]
+ 
+-- 
+2.43.0
+

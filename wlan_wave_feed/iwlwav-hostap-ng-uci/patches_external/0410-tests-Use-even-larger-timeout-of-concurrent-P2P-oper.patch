@@ -1,0 +1,38 @@
+From 6889380177ea39630288c56f69cdc6bb77fb6c9c Mon Sep 17 00:00:00 2001
+From: Jouni Malinen <j@w1.fi>
+Date: Sun, 3 Mar 2024 19:09:10 +0200
+Subject: [PATCH] tests: Use even larger timeout of concurrent P2P operations
+
+It looks like the 30 second timeout, i.e., 25 second to discover and
+receive GO Negotiation Request, was not sufficient for all cases.
+
+Signed-off-by: Jouni Malinen <j@w1.fi>
+---
+ tests/hwsim/test_p2p_concurrency.py | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/tests/hwsim/test_p2p_concurrency.py b/tests/hwsim/test_p2p_concurrency.py
+index a7287679c..63a2c1da5 100644
+--- a/tests/hwsim/test_p2p_concurrency.py
++++ b/tests/hwsim/test_p2p_concurrency.py
+@@ -222,7 +222,7 @@ def test_concurrent_grpform_while_connecting2(dev, apdev):
+ 
+     [i_res, r_res] = go_neg_pbc(i_dev=dev[0], i_intent=15, i_freq=2412,
+                                 r_dev=dev[1], r_intent=0, r_freq=2412,
+-                                timeout=30)
++                                timeout=50)
+     check_grpform_results(i_res, r_res)
+     remove_group(dev[0], dev[1])
+ 
+@@ -242,7 +242,7 @@ def test_concurrent_grpform_while_connecting3(dev, apdev):
+ 
+     [i_res, r_res] = go_neg_pbc(i_dev=dev[1], i_intent=15, i_freq=2412,
+                                 r_dev=dev[0], r_intent=0, r_freq=2412,
+-                                timeout=30)
++                                timeout=50)
+     check_grpform_results(i_res, r_res)
+     remove_group(dev[0], dev[1])
+ 
+-- 
+2.43.0
+

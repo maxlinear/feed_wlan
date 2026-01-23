@@ -1,0 +1,30 @@
+From e141b33a66cc4b5b9e2cfd526d65dc55f7a5bb0f Mon Sep 17 00:00:00 2001
+From: Jouni Malinen <quic_jouni@quicinc.com>
+Date: Mon, 22 Apr 2024 23:14:08 +0300
+Subject: [PATCH] tests: Fix a race condition in mesh_link_probe
+
+Wait for both peers to be connected before checking MESH_LINK_PROBE
+behavior. Without this, it was possible for a MESH_LINK_PROBE command to
+be issues before the specific peer had been added and that would result
+in the nl80211 command failing.
+
+Signed-off-by: Jouni Malinen <quic_jouni@quicinc.com>
+---
+ tests/hwsim/test_wpas_mesh.py | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/tests/hwsim/test_wpas_mesh.py b/tests/hwsim/test_wpas_mesh.py
+index 5d2124005..d3d8c93cd 100644
+--- a/tests/hwsim/test_wpas_mesh.py
++++ b/tests/hwsim/test_wpas_mesh.py
+@@ -2562,6 +2562,7 @@ def test_mesh_link_probe(dev, apdev, params):
+         check_mesh_group_added(dev[i])
+     for i in range(3):
+         check_mesh_peer_connected(dev[i])
++        check_mesh_peer_connected(dev[i])
+ 
+     res = dev[0].request("MESH_LINK_PROBE " + addr1)
+     if "FAIL" in res:
+-- 
+2.43.0
+

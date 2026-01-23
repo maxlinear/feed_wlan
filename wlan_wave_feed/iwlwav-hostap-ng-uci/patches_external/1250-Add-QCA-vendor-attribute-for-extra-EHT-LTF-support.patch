@@ -1,0 +1,35 @@
+From 001a728fe0d1cda06c550c7b6fcb293b2af86ed4 Mon Sep 17 00:00:00 2001
+From: Gururaj Pandurangi <quic_panduran@quicinc.com>
+Date: Mon, 6 Jan 2025 17:16:24 -0800
+Subject: [PATCH] Add QCA vendor attribute for extra EHT-LTF support
+
+Add vendor attribute for EHT testbed STA to configure the extra EHT-LTF
+in the EHT capabilities of an Association Request frame.
+
+Signed-off-by: Jouni Malinen <quic_jouni@quicinc.com>
+---
+ src/common/qca-vendor.h | 8 ++++++++
+ 1 file changed, 8 insertions(+)
+
+diff --git a/src/common/qca-vendor.h b/src/common/qca-vendor.h
+index 352203b87..c72ac7de3 100644
+--- a/src/common/qca-vendor.h
++++ b/src/common/qca-vendor.h
+@@ -10593,6 +10593,14 @@ enum qca_wlan_vendor_attr_wifi_test_config {
+ 	 */
+ 	QCA_WLAN_VENDOR_ATTR_WIFI_TEST_CONFIG_EHT_TRIG_SU_BFORMING_FEEDBACK = 76,
+ 
++	/* 8-bit unsigned value to configure the extra EHT-LTFs support in the
++	 * EHT capabilities of an Association Request frame.
++	 * 1-enable, 0-disable
++	 *
++	 * This attribute is used for testing purposes.
++	 */
++	QCA_WLAN_VENDOR_ATTR_WIFI_TEST_CONFIG_EHT_EXTRA_LTF = 77,
++
+ 	/* keep last */
+ 	QCA_WLAN_VENDOR_ATTR_WIFI_TEST_CONFIG_AFTER_LAST,
+ 	QCA_WLAN_VENDOR_ATTR_WIFI_TEST_CONFIG_MAX =
+-- 
+2.43.0
+

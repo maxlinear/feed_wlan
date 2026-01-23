@@ -1,0 +1,26 @@
+From ba5bf4a344effc5a35f83372195b3aa26ce29a94 Mon Sep 17 00:00:00 2001
+From: Jouni Malinen <quic_jouni@quicinc.com>
+Date: Wed, 30 Oct 2024 00:08:21 +0200
+Subject: [PATCH] P2P2: Fix a typo in function documentation
+
+Signed-off-by: Jouni Malinen <quic_jouni@quicinc.com>
+---
+ wpa_supplicant/p2p_supplicant.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/wpa_supplicant/p2p_supplicant.c b/wpa_supplicant/p2p_supplicant.c
+index ffd102248..1f9887d7d 100644
+--- a/wpa_supplicant/p2p_supplicant.c
++++ b/wpa_supplicant/p2p_supplicant.c
+@@ -6455,7 +6455,7 @@ static int wpas_p2p_check_6ghz(struct wpa_supplicant *wpa_s,
+  * @allow_6ghz: Allow P2P connection on 6 GHz channels
+  * @p2p2: Whether device is in P2P R2 mode
+  * @bootstrap: Requested bootstrap method for pairing in P2P2
+- * @password: Password for pairing setup or NULL for oppurtunistic method
++ * @password: Password for pairing setup or NULL for opportunistic method
+  *	in P2P2
+  * Returns: 0 or new PIN (if pin was %NULL) on success, -1 on unspecified
+  *	failure, -2 on failure due to channel not currently available,
+-- 
+2.43.0
+

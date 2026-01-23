@@ -1,0 +1,29 @@
+From 0b5d370c00cedff0b0689fd1d73bab5975043ea5 Mon Sep 17 00:00:00 2001
+From: Jouni Malinen <quic_jouni@quicinc.com>
+Date: Wed, 14 Feb 2024 00:59:15 +0200
+Subject: [PATCH] DPP: Fix DPP Action frame check for EVENT_RX_MGMT events
+
+This was missing a check for the Category field and could have matched
+other Action frames than Public Action frames.
+
+Fixes: 9c2b8204e662 ("DPP: Integration for hostapd")
+Signed-off-by: Jouni Malinen <quic_jouni@quicinc.com>
+---
+ src/ap/drv_callbacks.c | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/src/ap/drv_callbacks.c b/src/ap/drv_callbacks.c
+index 26c2c591a..504e0f8bf 100644
+--- a/src/ap/drv_callbacks.c
++++ b/src/ap/drv_callbacks.c
+@@ -1606,6 +1606,7 @@ static void hostapd_action_rx(struct hostapd_data *hapd,
+ #endif /* CONFIG_FST */
+ #ifdef CONFIG_DPP
+ 	if (plen >= 2 + 4 &&
++	    mgmt->u.action.category == WLAN_ACTION_PUBLIC &&
+ 	    mgmt->u.action.u.vs_public_action.action ==
+ 	    WLAN_PA_VENDOR_SPECIFIC &&
+ 	    WPA_GET_BE24(mgmt->u.action.u.vs_public_action.oui) ==
+-- 
+2.43.0
+

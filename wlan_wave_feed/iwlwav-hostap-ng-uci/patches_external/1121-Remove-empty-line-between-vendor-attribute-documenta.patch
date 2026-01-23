@@ -1,0 +1,29 @@
+From 7ff2ee8cd09f1d2dd4b54329639b9ba70170b723 Mon Sep 17 00:00:00 2001
+From: Jouni Malinen <quic_jouni@quicinc.com>
+Date: Thu, 5 Dec 2024 11:23:14 +0200
+Subject: [PATCH] Remove empty line between vendor attribute documentation and
+ definition
+
+There was not supposed to be an empty line between an enum and the
+comment that documents it.
+
+Signed-off-by: Jouni Malinen <quic_jouni@quicinc.com>
+---
+ src/common/qca-vendor.h | 1 -
+ 1 file changed, 1 deletion(-)
+
+diff --git a/src/common/qca-vendor.h b/src/common/qca-vendor.h
+index 6ba72a98d..3bf3e2ff7 100644
+--- a/src/common/qca-vendor.h
++++ b/src/common/qca-vendor.h
+@@ -11131,7 +11131,6 @@ enum qca_wlan_twt_session_implicit {
+  * This parameter is used for
+  * 1. TWT SET Response
+  */
+-
+ enum qca_wlan_vendor_attr_twt_setup {
+ 	QCA_WLAN_VENDOR_ATTR_TWT_SETUP_INVALID = 0,
+ 	QCA_WLAN_VENDOR_ATTR_TWT_SETUP_BCAST = 1,
+-- 
+2.43.0
+

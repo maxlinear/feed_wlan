@@ -1,0 +1,46 @@
+From 373378f892151cc7d27b386098d6afb195fb76a6 Mon Sep 17 00:00:00 2001
+From: Jouni Malinen <j@w1.fi>
+Date: Sat, 1 Mar 2025 20:44:06 +0200
+Subject: [PATCH] EAP-pwd: Do not include MS_FUNCS in CONFIG_FIPS=y builds
+
+MS_FUNCS needs MD4 and that is not available with CONFIG_FIPS=y.
+
+Signed-off-by: Jouni Malinen <j@w1.fi>
+---
+ wpa_supplicant/Android.mk | 2 ++
+ wpa_supplicant/Makefile   | 2 ++
+ 2 files changed, 4 insertions(+)
+
+diff --git a/wpa_supplicant/Android.mk b/wpa_supplicant/Android.mk
+index 82388bc6e..cb07e7364 100644
+--- a/wpa_supplicant/Android.mk
++++ b/wpa_supplicant/Android.mk
+@@ -773,8 +773,10 @@ OBJS += src/eap_peer/eap_pwd.c src/eap_common/eap_pwd_common.c
+ CONFIG_IEEE8021X_EAPOL=y
+ NEED_ECC=y
+ NEED_DRAGONFLY=y
++ifndef CONFIG_FIPS
+ MS_FUNCS=y
+ endif
++endif
+ 
+ ifdef CONFIG_EAP_EKE
+ # EAP-EKE
+diff --git a/wpa_supplicant/Makefile b/wpa_supplicant/Makefile
+index bf9875e6d..fd7d7a0bd 100644
+--- a/wpa_supplicant/Makefile
++++ b/wpa_supplicant/Makefile
+@@ -828,8 +828,10 @@ OBJS += ../src/eap_peer/eap_pwd.o ../src/eap_common/eap_pwd_common.o
+ CONFIG_IEEE8021X_EAPOL=y
+ NEED_ECC=y
+ NEED_DRAGONFLY=y
++ifndef CONFIG_FIPS
+ MS_FUNCS=y
+ endif
++endif
+ 
+ ifdef CONFIG_EAP_EKE
+ # EAP-EKE
+-- 
+2.43.0
+

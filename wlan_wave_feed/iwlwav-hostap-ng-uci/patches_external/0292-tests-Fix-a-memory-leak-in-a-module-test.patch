@@ -1,0 +1,25 @@
+From c1790027895955cc9a2a7e5b4887ae332162ed3a Mon Sep 17 00:00:00 2001
+From: Jouni Malinen <quic_jouni@quicinc.com>
+Date: Mon, 22 Jan 2024 18:25:55 +0200
+Subject: [PATCH] tests: Fix a memory leak in a module test
+
+Signed-off-by: Jouni Malinen <quic_jouni@quicinc.com>
+---
+ src/crypto/crypto_module_tests.c | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/src/crypto/crypto_module_tests.c b/src/crypto/crypto_module_tests.c
+index 4147f414e..ffeddbadd 100644
+--- a/src/crypto/crypto_module_tests.c
++++ b/src/crypto/crypto_module_tests.c
+@@ -2446,6 +2446,7 @@ fail:
+ 	wpabuf_free(res_pt);
+ 	wpabuf_free(res_ct);
+ 	crypto_ec_key_deinit(own_priv);
++	crypto_ec_key_deinit(peer_pub);
+ 	return res;
+ }
+ 
+-- 
+2.43.0
+

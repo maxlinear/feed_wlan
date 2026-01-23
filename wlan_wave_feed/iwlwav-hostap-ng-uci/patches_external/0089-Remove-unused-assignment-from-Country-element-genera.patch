@@ -1,0 +1,33 @@
+From da8a38fecb959a54e76dafd9ef9c6a6e391ef9c6 Mon Sep 17 00:00:00 2001
+From: Jouni Malinen <j@w1.fi>
+Date: Sun, 17 Dec 2023 12:17:18 +0200
+Subject: [PATCH] Remove unused assignment from Country element generation
+
+This looks confusing and can cause warnings from static analyzers.
+
+Signed-off-by: Jouni Malinen <j@w1.fi>
+---
+ src/ap/beacon.c | 4 +---
+ 1 file changed, 1 insertion(+), 3 deletions(-)
+
+diff --git a/src/ap/beacon.c b/src/ap/beacon.c
+index 935ffd25e..3588030fb 100644
+--- a/src/ap/beacon.c
++++ b/src/ap/beacon.c
+@@ -239,12 +239,10 @@ static u8 * hostapd_fill_subband_triplets(struct hostapd_data *hapd, u8 *pos,
+ 			continue; /* can use same entry */
+ 		}
+ 
+-		if (start && prev) {
++		if (start && prev)
+ 			pos = hostapd_eid_country_add(hapd, pos, end,
+ 						      chan_spacing,
+ 						      start, prev);
+-			start = NULL;
+-		}
+ 
+ 		/* Start new group */
+ 		start = prev = chan;
+-- 
+2.43.0
+

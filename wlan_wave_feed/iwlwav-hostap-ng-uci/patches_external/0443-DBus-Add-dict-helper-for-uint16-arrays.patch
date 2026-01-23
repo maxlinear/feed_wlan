@@ -1,0 +1,113 @@
+From 5eb409c4bc79b822ae02083b3e3abcb6ab0f4895 Mon Sep 17 00:00:00 2001
+From: Damien Dejean <damiendejean@chromium.org>
+Date: Tue, 20 Feb 2024 12:11:40 +0000
+Subject: [PATCH] DBus: Add dict helper for uint16 arrays
+
+Extend dict helper to support uint16 arrays.
+
+Signed-off-by: Damien Dejean <damiendejean@chromium.org>
+---
+ wpa_supplicant/dbus/dbus_dict_helpers.c | 60 +++++++++++++++++++++++++
+ wpa_supplicant/dbus/dbus_dict_helpers.h |  1 +
+ 2 files changed, 61 insertions(+)
+
+diff --git a/wpa_supplicant/dbus/dbus_dict_helpers.c b/wpa_supplicant/dbus/dbus_dict_helpers.c
+index fdf7b1258..27003eb44 100644
+--- a/wpa_supplicant/dbus/dbus_dict_helpers.c
++++ b/wpa_supplicant/dbus/dbus_dict_helpers.c
+@@ -706,6 +706,59 @@ done:
+ }
+ 
+ 
++#define UINT16_ARRAY_CHUNK_SIZE 18
++#define UINT16_ARRAY_ITEM_SIZE (sizeof(dbus_uint16_t))
++
++static dbus_bool_t _wpa_dbus_dict_entry_get_uint16_array(
++	DBusMessageIter *iter, struct wpa_dbus_dict_entry *entry)
++{
++	dbus_uint32_t count = 0;
++	dbus_uint16_t *buffer, *nbuffer;
++
++	entry->uint16array_value = NULL;
++	entry->array_type = DBUS_TYPE_UINT16;
++
++	buffer = os_calloc(UINT16_ARRAY_CHUNK_SIZE, UINT16_ARRAY_ITEM_SIZE);
++	if (!buffer)
++		return FALSE;
++
++	entry->array_len = 0;
++	while (dbus_message_iter_get_arg_type(iter) == DBUS_TYPE_UINT16) {
++		dbus_uint16_t value;
++
++		if ((count % UINT16_ARRAY_CHUNK_SIZE) == 0 && count != 0) {
++			nbuffer = os_realloc_array(
++				buffer, count + UINT16_ARRAY_CHUNK_SIZE,
++				UINT16_ARRAY_ITEM_SIZE);
++			if (!nbuffer) {
++				os_free(buffer);
++				wpa_printf(MSG_ERROR,
++					   "dbus: %s out of memory trying to retrieve the uint16 array",
++					   __func__);
++				return FALSE;
++			}
++			buffer = nbuffer;
++		}
++
++		dbus_message_iter_get_basic(iter, &value);
++		buffer[count] = value;
++		entry->array_len = ++count;
++		dbus_message_iter_next(iter);
++	}
++	entry->uint16array_value = buffer;
++	wpa_hexdump_key(MSG_MSGDUMP, "dbus: uint16 array contents",
++			entry->bytearray_value, entry->array_len);
++
++	/* Zero-length arrays are valid. */
++	if (entry->array_len == 0) {
++		os_free(entry->uint16array_value);
++		entry->uint16array_value = NULL;
++	}
++
++	return TRUE;
++}
++
++
+ #define STR_ARRAY_CHUNK_SIZE 8
+ #define STR_ARRAY_ITEM_SIZE (sizeof(char *))
+ 
+@@ -873,6 +926,10 @@ static dbus_bool_t _wpa_dbus_dict_entry_get_array(
+ 		success = _wpa_dbus_dict_entry_get_byte_array(&iter_array,
+ 							      entry);
+ 		break;
++	case DBUS_TYPE_UINT16:
++		success = _wpa_dbus_dict_entry_get_uint16_array(&iter_array,
++								entry);
++		break;
+ 	case DBUS_TYPE_STRING:
+ 		success = _wpa_dbus_dict_entry_get_string_array(&iter_array,
+ 								array_type,
+@@ -1081,6 +1138,9 @@ void wpa_dbus_dict_entry_clear(struct wpa_dbus_dict_entry *entry)
+ 		case DBUS_TYPE_BYTE:
+ 			os_free(entry->bytearray_value);
+ 			break;
++		case DBUS_TYPE_UINT16:
++			os_free(entry->uint16array_value);
++			break;
+ 		case DBUS_TYPE_STRING:
+ 			if (!entry->strarray_value)
+ 				break;
+diff --git a/wpa_supplicant/dbus/dbus_dict_helpers.h b/wpa_supplicant/dbus/dbus_dict_helpers.h
+index cc9e26fa9..1d33689a8 100644
+--- a/wpa_supplicant/dbus/dbus_dict_helpers.h
++++ b/wpa_supplicant/dbus/dbus_dict_helpers.h
+@@ -139,6 +139,7 @@ struct wpa_dbus_dict_entry {
+ 		dbus_uint64_t uint64_value;
+ 		double double_value;
+ 		char *bytearray_value;
++		dbus_uint16_t *uint16array_value;
+ 		char **strarray_value;
+ 		struct wpabuf **binarray_value;
+ 	};
+-- 
+2.43.0
+

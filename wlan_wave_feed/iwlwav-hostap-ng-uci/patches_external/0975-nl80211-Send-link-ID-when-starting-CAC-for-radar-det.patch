@@ -1,0 +1,64 @@
+From 2657e97c5234e3211bbb6cecc91c863d680e1efc Mon Sep 17 00:00:00 2001
+From: Aditya Kumar Singh <quic_adisi@quicinc.com>
+Date: Fri, 6 Sep 2024 18:53:56 +0530
+Subject: [PATCH] nl80211: Send link ID when starting CAC for radar detection
+
+For MLO, link ID needs to be sent along with the nl80211 command to
+start CAC for radar detection. Pass the link ID if operating as an AP
+MLD.
+
+Signed-off-by: Aditya Kumar Singh <quic_adisi@quicinc.com>
+---
+ src/ap/ap_drv_ops.c          |  6 ++++++
+ src/drivers/driver_nl80211.c | 16 +++++++++++++++-
+ 2 files changed, 21 insertions(+), 1 deletion(-)
+
+diff --git a/src/ap/ap_drv_ops.c b/src/ap/ap_drv_ops.c
+index f82bfd077..7b571bdb0 100644
+--- a/src/ap/ap_drv_ops.c
++++ b/src/ap/ap_drv_ops.c
+@@ -1040,6 +1040,12 @@ int hostapd_start_dfs_cac(struct hostapd_iface *iface,
+ 	}
+ 	data.radar_background = radar_background;
+ 
++	data.link_id = -1;
++#ifdef CONFIG_IEEE80211BE
++	if (hapd->conf->mld_ap)
++		data.link_id = hapd->mld_link_id;
++#endif /* CONFIG_IEEE80211BE */
++
+ 	res = hapd->driver->start_dfs_cac(hapd->drv_priv, &data);
+ 	if (!res) {
+ 		if (radar_background)
+diff --git a/src/drivers/driver_nl80211.c b/src/drivers/driver_nl80211.c
+index 1356d325d..715f60df1 100644
+--- a/src/drivers/driver_nl80211.c
++++ b/src/drivers/driver_nl80211.c
+@@ -10599,9 +10599,23 @@ static int nl80211_start_radar_detection(void *priv,
+ 		return -1;
+ 	}
+ 
++	if (nl80211_link_valid(bss->valid_links, freq->link_id)) {
++		wpa_printf(MSG_DEBUG,
++			   "nl80211: Radar detection (CAC) on link_id=%d",
++			   freq->link_id);
++
++		if (nla_put_u8(msg, NL80211_ATTR_MLO_LINK_ID, freq->link_id)) {
++			nlmsg_free(msg);
++			return -1;
++		}
++	}
++
+ 	ret = send_and_recv_cmd(drv, msg);
+-	if (ret == 0)
++	if (ret == 0) {
++		nl80211_link_set_freq(bss, freq->link_id, freq->freq);
+ 		return 0;
++	}
++
+ 	wpa_printf(MSG_DEBUG, "nl80211: Failed to start radar detection: "
+ 		   "%d (%s)", ret, strerror(-ret));
+ 	return -1;
+-- 
+2.43.0
+

@@ -1,0 +1,31 @@
+From 0c147e622dbbc30f30a0a9e34077190d0cf4d83e Mon Sep 17 00:00:00 2001
+From: Shivani Baranwal <quic_shivbara@quicinc.com>
+Date: Thu, 14 Nov 2024 14:07:34 +0530
+Subject: [PATCH] NAN USD: Do not start pause state for P2P2 on Subscribe
+ message RX
+
+P2P2 uses USD with an active subscriber and solicited publisher without
+FSD.
+
+Signed-off-by: Shivani Baranwal <quic_shivbara@quicinc.com>
+---
+ src/common/nan_de.c | 3 ++-
+ 1 file changed, 2 insertions(+), 1 deletion(-)
+
+diff --git a/src/common/nan_de.c b/src/common/nan_de.c
+index 077948949..c38fd9ba6 100644
+--- a/src/common/nan_de.c
++++ b/src/common/nan_de.c
+@@ -1026,7 +1026,8 @@ static void nan_de_rx_subscribe(struct nan_de *de, struct nan_de_service *srv,
+ 		  de->nmi, a3, buf);
+ 	wpabuf_free(buf);
+ 
+-	nan_de_pause_state(srv, peer_addr, instance_id);
++	if (!srv->is_p2p)
++		nan_de_pause_state(srv, peer_addr, instance_id);
+ 
+ offload:
+ 	if (!srv->publish.disable_events && de->cb.replied)
+-- 
+2.43.0
+

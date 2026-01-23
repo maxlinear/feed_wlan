@@ -1,0 +1,36 @@
+From feef00c9980b289a0532db0fd2e14e13d304f27d Mon Sep 17 00:00:00 2001
+From: Jouni Malinen <j@w1.fi>
+Date: Sat, 22 Feb 2025 11:45:29 +0200
+Subject: [PATCH] tests: Avoid failure in IBSS testing due to old scan results
+
+ibss_open_fixed_bssid could leave behind old BSS entries that would
+survive to the next test case. ibss_vht_80p80 would fail to establish
+the IBSS on the expected channel in such cases. Explicitly flush the BSS
+entries from kernel to avoid this.
+
+Signed-off-by: Jouni Malinen <j@w1.fi>
+---
+ tests/hwsim/test_ibss.py | 4 ++++
+ 1 file changed, 4 insertions(+)
+
+diff --git a/tests/hwsim/test_ibss.py b/tests/hwsim/test_ibss.py
+index f2b3e7006..be4ad7a7c 100644
+--- a/tests/hwsim/test_ibss.py
++++ b/tests/hwsim/test_ibss.py
+@@ -355,9 +355,13 @@ def test_ibss_open_fixed_bssid(dev):
+             raise Exception("STA0 BSSID " + bssid0 + " differs from fixed BSSID " + bssid)
+         if bssid1 != bssid:
+             raise Exception("STA0 BSSID " + bssid0 + " differs from fixed BSSID " + bssid)
++        dev[0].request("DISCONNECT")
++        dev[1].request("DISCONNECT")
+     finally:
+         dev[0].request("AP_SCAN 1")
+         dev[1].request("AP_SCAN 1")
++        dev[0].flush_scan_cache()
++        dev[1].flush_scan_cache()
+ 
+ def test_ibss_open_retry(dev):
+     """IBSS open (no security) with cfg80211 retry workaround"""
+-- 
+2.43.0
+

@@ -1,0 +1,36 @@
+From 628f286102a59c001dd1394ce429df04d3e328b7 Mon Sep 17 00:00:00 2001
+From: Jintao Lin <jintaolin@chromium.org>
+Date: Thu, 4 Jan 2024 22:05:39 +0000
+Subject: [PATCH] trace: Fix compilation issue due to using an undefined symbol
+
+Fix commit 5545d995b3 which could use undefined symbol
+testing_fail_alloc() in os_malloc() if CONFIG_WPA_TRACE=y is used
+without CONFIG_WPA_TRACE_BFD=y.
+
+Fixes: 5545d995b3d5 ("trace: Share common implementation for TEST_FAIL and TEST_ALLOC_FAIL")
+Signed-off-by: Jintao Lin <jintaolin@chromium.org>
+---
+ src/utils/os_unix.c | 7 +++++++
+ 1 file changed, 7 insertions(+)
+
+diff --git a/src/utils/os_unix.c b/src/utils/os_unix.c
+index d103ae832..d5870669a 100644
+--- a/src/utils/os_unix.c
++++ b/src/utils/os_unix.c
+@@ -709,6 +709,13 @@ int testing_get_fail_pattern(bool is_alloc, char *buf, size_t buflen)
+ #endif /* WPA_TRACE_BFD */
+ }
+ 
++#else /* defined(WPA_TRACE_BFD) && defined(CONFIG_TESTING_OPTIONS) */
++
++static inline int testing_test_fail(const char *tag, bool is_alloc)
++{
++	return 0;
++}
++
+ #endif
+ 
+ void * os_malloc(size_t size)
+-- 
+2.43.0
+

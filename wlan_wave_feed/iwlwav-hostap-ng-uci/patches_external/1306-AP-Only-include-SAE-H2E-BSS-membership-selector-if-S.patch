@@ -1,0 +1,63 @@
+From 2d2c42a47ddd44a8038bf8e8b7d598bad44d9656 Mon Sep 17 00:00:00 2001
+From: Benjamin Berg <benjamin.berg@intel.com>
+Date: Wed, 8 Jan 2025 10:10:29 +0100
+Subject: [PATCH] AP: Only include SAE H2E BSS membership selector if SAE is
+ required
+
+Including a BSS membership selector mandates the STA not to try to
+connect in case it does not implement the indicated feature. However, in
+the case of SAE H2E this may not be a hard requirement if the STA is
+permitted to use a non-SAE AKM as well.
+
+Signed-off-by: Benjamin Berg <benjamin.berg@intel.com>
+Reviewed-by: Andrei Otcheretianski <andrei.otcheretianski@intel.com>
+---
+ src/ap/ieee802_11.c | 4 ++--
+ src/common/defs.h   | 9 +++++++++
+ 2 files changed, 11 insertions(+), 2 deletions(-)
+
+diff --git a/src/ap/ieee802_11.c b/src/ap/ieee802_11.c
+index bcc355671..ec1437c1e 100644
+--- a/src/ap/ieee802_11.c
++++ b/src/ap/ieee802_11.c
+@@ -139,7 +139,7 @@ u8 * hostapd_eid_supp_rates(struct hostapd_data *hapd, u8 *eid)
+ 	h2e_required = (hapd->conf->sae_pwe == SAE_PWE_HASH_TO_ELEMENT ||
+ 			hostapd_sae_pw_id_in_use(hapd->conf) == 2) &&
+ 		hapd->conf->sae_pwe != SAE_PWE_FORCE_HUNT_AND_PECK &&
+-		wpa_key_mgmt_sae(hapd->conf->wpa_key_mgmt);
++		wpa_key_mgmt_only_sae(hapd->conf->wpa_key_mgmt);
+ 	if (h2e_required)
+ 		num++;
+ 	if (num > 8) {
+@@ -206,7 +206,7 @@ u8 * hostapd_eid_ext_supp_rates(struct hostapd_data *hapd, u8 *eid)
+ 	h2e_required = (hapd->conf->sae_pwe == SAE_PWE_HASH_TO_ELEMENT ||
+ 			hostapd_sae_pw_id_in_use(hapd->conf) == 2) &&
+ 		hapd->conf->sae_pwe != SAE_PWE_FORCE_HUNT_AND_PECK &&
+-		wpa_key_mgmt_sae(hapd->conf->wpa_key_mgmt);
++		wpa_key_mgmt_only_sae(hapd->conf->wpa_key_mgmt);
+ 	if (h2e_required)
+ 		num++;
+ 	if (num <= 8)
+diff --git a/src/common/defs.h b/src/common/defs.h
+index f58977039..650e66d1c 100644
+--- a/src/common/defs.h
++++ b/src/common/defs.h
+@@ -129,6 +129,15 @@ static inline int wpa_key_mgmt_sae_ext_key(int akm)
+ 			 WPA_KEY_MGMT_FT_SAE_EXT_KEY));
+ }
+ 
++static inline int wpa_key_mgmt_only_sae(int akm)
++{
++	return wpa_key_mgmt_sae(akm) &&
++		!(akm & ~(WPA_KEY_MGMT_SAE |
++			  WPA_KEY_MGMT_SAE_EXT_KEY |
++			  WPA_KEY_MGMT_FT_SAE |
++			  WPA_KEY_MGMT_FT_SAE_EXT_KEY));
++}
++
+ static inline int wpa_key_mgmt_fils(int akm)
+ {
+ 	return !!(akm & (WPA_KEY_MGMT_FILS_SHA256 |
+-- 
+2.43.0
+

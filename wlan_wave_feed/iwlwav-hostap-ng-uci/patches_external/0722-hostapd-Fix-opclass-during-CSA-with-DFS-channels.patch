@@ -1,0 +1,50 @@
+From 816e22bba152ba26fdbc13be56ef507340ef3aad Mon Sep 17 00:00:00 2001
+From: "marek@mazekey.pl" <marek@mazekey.pl>
+Date: Tue, 23 Apr 2024 11:08:08 +0200
+Subject: [PATCH] hostapd: Fix opclass during CSA with DFS channels
+
+During CSA with DFS channels, disable, enable interface is a part of the
+algorithm. When interface was enabled old operating class before switch
+and new channel were used causing mismatch in
+configured_fixed_chan_to_freq() function.
+
+Example of log when switch from channel 157 to 108 was triggered:
+"Could not convert op_class 124 channel 108 to operating frequency"
+
+Fixes: bb781c763 ("AP: Populate iface->freq before starting AP")
+Signed-off-by: Marek Kwaczynski <marek@mazekey.pl>
+---
+ src/ap/hostapd.c | 10 ++++++++++
+ 1 file changed, 10 insertions(+)
+
+diff --git a/src/ap/hostapd.c b/src/ap/hostapd.c
+index a0c57b081..84a943ef5 100644
+--- a/src/ap/hostapd.c
++++ b/src/ap/hostapd.c
+@@ -4507,6 +4507,7 @@ hostapd_switch_channel_fallback(struct hostapd_iface *iface,
+ {
+ 	u8 seg0_idx = 0, seg1_idx = 0;
+ 	enum oper_chan_width bw = CONF_OPER_CHWIDTH_USE_HT;
++	u8 op_class, chan = 0;
+ 
+ 	wpa_printf(MSG_DEBUG, "Restarting all CSA-related BSSes");
+ 
+@@ -4546,6 +4547,15 @@ hostapd_switch_channel_fallback(struct hostapd_iface *iface,
+ 	iface->freq = freq_params->freq;
+ 	iface->conf->channel = freq_params->channel;
+ 	iface->conf->secondary_channel = freq_params->sec_channel_offset;
++	if (ieee80211_freq_to_channel_ext(freq_params->freq,
++					  freq_params->sec_channel_offset, bw,
++					  &op_class, &chan) ==
++	    NUM_HOSTAPD_MODES ||
++	    chan != freq_params->channel)
++		wpa_printf(MSG_INFO, "CSA: Channel mismatch: %d -> %d",
++			   freq_params->channel, chan);
++
++	iface->conf->op_class = op_class;
+ 	hostapd_set_oper_centr_freq_seg0_idx(iface->conf, seg0_idx);
+ 	hostapd_set_oper_centr_freq_seg1_idx(iface->conf, seg1_idx);
+ 	hostapd_set_oper_chwidth(iface->conf, bw);
+-- 
+2.43.0
+

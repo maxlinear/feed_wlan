@@ -1,0 +1,29 @@
+From 4cd9ab6f224978a8fdf2f5684dc1294f1dd684df Mon Sep 17 00:00:00 2001
+From: Gal Savion <gsavion@maxlinear.com>
+Date: Mon, 10 Jun 2024 18:15:32 +0300
+Subject: [PATCH] WLANRTSYS-81864 update .gitignore file
+
+Update .gitignore file in order to hide working files that no need to track in git.
+---
+ .gitignore | 6 ++++++
+ 1 file changed, 6 insertions(+)
+
+diff --git a/.gitignore b/.gitignore
+index 00e23862a..34a4b174c 100644
+--- a/.gitignore
++++ b/.gitignore
+@@ -1,5 +1,11 @@
++# ignored files/dirs - please sort this file lexicographically
++**/parallel-vm.log
+ *.pyc
+ *~
++.vscode/
++build*/
++src/*/build.wpa_supplicant
++tags
+ tests/hwsim/logs
+ tests/remote/logs
+ wpaspy/build
+-- 
+2.43.0
+

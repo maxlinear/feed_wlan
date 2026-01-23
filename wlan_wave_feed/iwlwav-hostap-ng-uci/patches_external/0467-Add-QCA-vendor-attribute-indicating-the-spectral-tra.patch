@@ -1,0 +1,54 @@
+From 8f9da72d2e183890bedf60181aa54cc720a8d0a9 Mon Sep 17 00:00:00 2001
+From: Nagasai Bharat Gatkeshwar Sainoji <quic_nbharatg@quicinc.com>
+Date: Thu, 29 Feb 2024 21:17:58 +0530
+Subject: [PATCH] Add QCA vendor attribute indicating the spectral transport
+ mode
+
+Add a vendor attribute QCA_WLAN_VENDOR_ATTR_SPECTRAL_DATA_TRANSPORT_MODE
+to indicate the current spectral data transport mechanism to be used to
+get spectral scan samples from the driver to userspace.
+
+Signed-off-by: Jouni Malinen <quic_jouni@quicinc.com>
+---
+ src/common/qca-vendor.h | 20 ++++++++++++++++++++
+ 1 file changed, 20 insertions(+)
+
+diff --git a/src/common/qca-vendor.h b/src/common/qca-vendor.h
+index 0856cf2ff..05fe09837 100644
+--- a/src/common/qca-vendor.h
++++ b/src/common/qca-vendor.h
+@@ -7763,6 +7763,12 @@ enum qca_wlan_vendor_attr_spectral_scan {
+ 	QCA_WLAN_VENDOR_ATTR_SPECTRAL_SCAN_CONFIG_FFT_RECAPTURE = 31,
+ 	/* Attribute used for padding for 64-bit alignment */
+ 	QCA_WLAN_VENDOR_ATTR_SPECTRAL_SCAN_CONFIG_PAD = 32,
++	/* Spectral data transport mode. u32 attribute. It uses values
++	 * defined in enum qca_wlan_vendor_spectral_data_transport_mode.
++	 * This is an optional attribute. If this attribute is not populated,
++	 * the driver should configure the default transport mode to netlink.
++	 */
++	QCA_WLAN_VENDOR_ATTR_SPECTRAL_DATA_TRANSPORT_MODE = 33,
+ 
+ 	QCA_WLAN_VENDOR_ATTR_SPECTRAL_SCAN_CONFIG_AFTER_LAST,
+ 	QCA_WLAN_VENDOR_ATTR_SPECTRAL_SCAN_CONFIG_MAX =
+@@ -16951,4 +16957,18 @@ enum qca_wlan_vendor_attr_adjust_tx_power {
+ 	QCA_WLAN_VENDOR_ATTR_ADJUST_TX_POWER_AFTER_LAST - 1,
+ };
+ 
++/**
++ * enum qca_wlan_vendor_spectral_data_transport_mode - Attribute
++ * values for QCA_WLAN_VENDOR_ATTR_SPECTRAL_DATA_TRANSPORT_MODE.
++ *
++ * @QCA_WLAN_VENDOR_SPECTRAL_DATA_TRANSPORT_NETLINK: Use netlink to
++ * send spectral data to userspace applications.
++ * @QCA_WLAN_VENDOR_SPECTRAL_DATA_TRANSPORT_RELAY: Use relay interface
++ * to send spectral data to userspace applications.
++ */
++enum qca_wlan_vendor_spectral_data_transport_mode {
++	QCA_WLAN_VENDOR_SPECTRAL_DATA_TRANSPORT_NETLINK = 0,
++	QCA_WLAN_VENDOR_SPECTRAL_DATA_TRANSPORT_RELAY = 1,
++};
++
+ #endif /* QCA_VENDOR_H */
+-- 
+2.43.0
+

@@ -1,0 +1,31 @@
+From 9db8ed4b9ee7b12858ad21c851dcf21342f0ccc4 Mon Sep 17 00:00:00 2001
+From: Benjamin Lin <benjamin-jw.lin@mediatek.com>
+Date: Wed, 19 Feb 2025 09:26:32 +0800
+Subject: [PATCH] SCS: Convert endianness of MAC Capabilities Information
+ before use
+
+mac_cap in ieee80211_eht_capabilities is little-endian, hence requiring
+endianness conversion before its usage.
+
+Fixes: 33da386553b7 ("SCS: Add support for QoS Characteristics in SCS request")
+Signed-off-by: Benjamin Lin <benjamin-jw.lin@mediatek.com>
+---
+ wpa_supplicant/robust_av.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/wpa_supplicant/robust_av.c b/wpa_supplicant/robust_av.c
+index a3edf3bee..b4d46e3f6 100644
+--- a/wpa_supplicant/robust_av.c
++++ b/wpa_supplicant/robust_av.c
+@@ -540,7 +540,7 @@ int wpas_send_scs_req(struct wpa_supplicant *wpa_s)
+ 	if (wpa_s->connection_eht && eht_ie &&
+ 	    eht_ie[1] >= 1 + IEEE80211_EHT_CAPAB_MIN_LEN) {
+ 		eht = (const struct ieee80211_eht_capabilities *) &eht_ie[3];
+-		if (eht->mac_cap & EHT_MACCAP_SCS_TRAFFIC_DESC)
++		if (le_to_host16(eht->mac_cap) & EHT_MACCAP_SCS_TRAFFIC_DESC)
+ 			allow_scs_traffic_desc = true;
+ 	}
+ 
+-- 
+2.43.0
+

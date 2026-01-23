@@ -1,0 +1,41 @@
+From 0d3db4fe5939cb12960d4be0d4ff7a30e9c88ad0 Mon Sep 17 00:00:00 2001
+From: Matthew Wang <matthewmwang@chromium.org>
+Date: Tue, 17 Sep 2024 16:33:40 +0000
+Subject: [PATCH] Fix nan_usd linker error
+
+nan_usd requires offchannel. Require NEED_OFFCHANNEL=y when
+CONFIG_NAN_USD is set.
+
+Signed-off-by: Matthew Wang <matthewmwang@chromium.org>
+---
+ wpa_supplicant/Android.mk | 1 +
+ wpa_supplicant/Makefile   | 1 +
+ 2 files changed, 2 insertions(+)
+
+diff --git a/wpa_supplicant/Android.mk b/wpa_supplicant/Android.mk
+index 3aadcb2bb..0dd40bc56 100644
+--- a/wpa_supplicant/Android.mk
++++ b/wpa_supplicant/Android.mk
+@@ -286,6 +286,7 @@ endif
+ ifdef CONFIG_NAN_USD
+ OBJS += src/common/nan_de.c
+ OBJS += nan_usd.c
++NEED_OFFCHANNEL=y
+ L_CFLAGS += -DCONFIG_NAN_USD
+ endif
+ 
+diff --git a/wpa_supplicant/Makefile b/wpa_supplicant/Makefile
+index 743c8acd6..c2d889bc1 100644
+--- a/wpa_supplicant/Makefile
++++ b/wpa_supplicant/Makefile
+@@ -320,6 +320,7 @@ endif
+ ifdef CONFIG_NAN_USD
+ OBJS += ../src/common/nan_de.o
+ OBJS += nan_usd.o
++NEED_OFFCHANNEL=y
+ CFLAGS += -DCONFIG_NAN_USD
+ endif
+ 
+-- 
+2.43.0
+

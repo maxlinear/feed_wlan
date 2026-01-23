@@ -1,0 +1,84 @@
+From 844b50ff7e3dedc85f6f58e07c989a15d038bd96 Mon Sep 17 00:00:00 2001
+From: Jouni Malinen <j@w1.fi>
+Date: Mon, 23 Dec 2024 00:55:09 +0200
+Subject: [PATCH] tests: Split hostapd_oom_wpa2_eap_connect into multiple test
+ cases
+
+This test case could take a long time to execute and it can be easily
+split into a set of test cases that each cover a smaller range of
+iterations (50 each for now). This is more robust and more efficient for
+parallel VMs.
+
+Signed-off-by: Jouni Malinen <j@w1.fi>
+---
+ tests/hwsim/test_hostapd_oom.py | 29 ++++++++++++++++++++++++++---
+ tests/hwsim/vm/parallel-vm.py   |  6 +++++-
+ 2 files changed, 31 insertions(+), 4 deletions(-)
+
+diff --git a/tests/hwsim/test_hostapd_oom.py b/tests/hwsim/test_hostapd_oom.py
+index 169ae015f..ad66e3a60 100644
+--- a/tests/hwsim/test_hostapd_oom.py
++++ b/tests/hwsim/test_hostapd_oom.py
+@@ -126,8 +126,31 @@ def test_hostapd_oom_wpa2_psk_connect(dev, apdev):
+     dev[0].request("SCAN_INTERVAL 5")
+ 
+ @long_duration_test
+-def test_hostapd_oom_wpa2_eap_connect(dev, apdev):
+-    """hostapd failing during WPA2-EAP mode connection due to OOM"""
++def test_hostapd_oom_wpa2_eap_connect_1(dev, apdev):
++    """hostapd failing during WPA2-EAP mode connection due to OOM (1-50)"""
++    run_hostapd_oom_wpa2_eap_connect(dev, apdev, 1, 50)
++
++@long_duration_test
++def test_hostapd_oom_wpa2_eap_connect_2(dev, apdev):
++    """hostapd failing during WPA2-EAP mode connection due to OOM (51-100)"""
++    run_hostapd_oom_wpa2_eap_connect(dev, apdev, 51, 100)
++
++@long_duration_test
++def test_hostapd_oom_wpa2_eap_connect_3(dev, apdev):
++    """hostapd failing during WPA2-EAP mode connection due to OOM (101-150)"""
++    run_hostapd_oom_wpa2_eap_connect(dev, apdev, 101, 150)
++
++@long_duration_test
++def test_hostapd_oom_wpa2_eap_connect_4(dev, apdev):
++    """hostapd failing during WPA2-EAP mode connection due to OOM (151-200)"""
++    run_hostapd_oom_wpa2_eap_connect(dev, apdev, 151, 200)
++
++@long_duration_test
++def test_hostapd_oom_wpa2_eap_connect_5(dev, apdev):
++    """hostapd failing during WPA2-EAP mode connection due to OOM (201-999)"""
++    run_hostapd_oom_wpa2_eap_connect(dev, apdev, 201, 999)
++
++def run_hostapd_oom_wpa2_eap_connect(dev, apdev, start, end):
+     params = hostapd.wpa2_eap_params(ssid="test-wpa2-eap")
+     params['acct_server_addr'] = "127.0.0.1"
+     params['acct_server_port'] = "1813"
+@@ -136,7 +159,7 @@ def test_hostapd_oom_wpa2_eap_connect(dev, apdev):
+ 
+     dev[0].request("SCAN_INTERVAL 1")
+     count = 0
+-    for i in range(1, 1000):
++    for i in range(start, end + 1):
+         logger.info("Iteration %d" % i)
+         if "OK" not in hapd.request("TEST_ALLOC_FAIL %d:main" % i):
+             raise HwsimSkip("TEST_ALLOC_FAIL not supported")
+diff --git a/tests/hwsim/vm/parallel-vm.py b/tests/hwsim/vm/parallel-vm.py
+index 89fad635b..c79385e24 100755
+--- a/tests/hwsim/vm/parallel-vm.py
++++ b/tests/hwsim/vm/parallel-vm.py
+@@ -24,7 +24,11 @@ logger = logging.getLogger()
+ 
+ # Test cases that take significantly longer time to execute than average.
+ long_tests = ["ap_roam_open",
+-              "hostapd_oom_wpa2_eap_connect",
++              "hostapd_oom_wpa2_eap_connect_1",
++              "hostapd_oom_wpa2_eap_connect_2",
++              "hostapd_oom_wpa2_eap_connect_3",
++              "hostapd_oom_wpa2_eap_connect_4",
++              "hostapd_oom_wpa2_eap_connect_5",
+               "ap_wpa2_eap_eke_many",
+               "wpas_mesh_password_mismatch_retry",
+               "wpas_mesh_password_mismatch",
+-- 
+2.43.0
+

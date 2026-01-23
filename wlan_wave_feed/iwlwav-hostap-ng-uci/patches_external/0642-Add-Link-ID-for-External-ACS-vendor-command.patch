@@ -1,0 +1,38 @@
+From c6e55fb96b9f63cb921fc8ef2411ff23570136e5 Mon Sep 17 00:00:00 2001
+From: Diya Sati <quic_dsati@quicinc.com>
+Date: Tue, 11 Jun 2024 12:16:03 +0530
+Subject: [PATCH] Add Link ID for External ACS vendor command
+
+The Link Id attribute is required for external ACS context to identify
+the link on which the command is received for an AP MLD.
+
+Signed-off-by: Diya Sati <quic_dsati@quicinc.com>
+---
+ src/common/qca-vendor.h | 4 ++++
+ 1 file changed, 4 insertions(+)
+
+diff --git a/src/common/qca-vendor.h b/src/common/qca-vendor.h
+index 8ca5eadfd..d91777d81 100644
+--- a/src/common/qca-vendor.h
++++ b/src/common/qca-vendor.h
+@@ -7512,6 +7512,9 @@ enum qca_wlan_vendor_attr_external_acs_event {
+  * for EHT (IEEE 802.11be). Encoding for this attribute follows the
+  * convention used in the Disabled Subchannel Bitmap field of the EHT Operation
+  * element.
++ * @QCA_WLAN_VENDOR_ATTR_EXTERNAL_ACS_LINK_ID: Mandatory on AP MLD (u8).
++ * Used with command to configure external ACS operation for a specific link
++ * affiliated to an AP MLD.
+  */
+ enum qca_wlan_vendor_attr_external_acs_channels {
+ 	QCA_WLAN_VENDOR_ATTR_EXTERNAL_ACS_CHANNEL_INVALID = 0,
+@@ -7548,6 +7551,7 @@ enum qca_wlan_vendor_attr_external_acs_channels {
+ 	QCA_WLAN_VENDOR_ATTR_EXTERNAL_ACS_FREQUENCY_CENTER_SEG0 = 12,
+ 	QCA_WLAN_VENDOR_ATTR_EXTERNAL_ACS_FREQUENCY_CENTER_SEG1 = 13,
+ 	QCA_WLAN_VENDOR_ATTR_EXTERNAL_ACS_PUNCTURE_BITMAP = 14,
++	QCA_WLAN_VENDOR_ATTR_EXTERNAL_ACS_LINK_ID = 15,
+ 
+ 	/* keep last */
+ 	QCA_WLAN_VENDOR_ATTR_EXTERNAL_ACS_CHANNEL_LAST,
+-- 
+2.43.0
+

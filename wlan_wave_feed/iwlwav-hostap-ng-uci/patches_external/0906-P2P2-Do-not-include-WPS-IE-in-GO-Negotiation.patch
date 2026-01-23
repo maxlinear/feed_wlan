@@ -1,0 +1,38 @@
+From 456c3a0237c73a9c853884b24999f3f4ff69ebb5 Mon Sep 17 00:00:00 2001
+From: Shivani Baranwal <quic_shivbara@quicinc.com>
+Date: Mon, 5 Aug 2024 02:33:48 +0530
+Subject: [PATCH] P2P2: Do not include WPS IE in GO Negotiation
+
+Do not include WPS IE when going through GO Negotiation with a P2P2
+peer.
+
+Signed-off-by: Shivani Baranwal <quic_shivbara@quicinc.com>
+---
+ src/p2p/p2p_go_neg.c | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/src/p2p/p2p_go_neg.c b/src/p2p/p2p_go_neg.c
+index 970bb3938..67dc98ff7 100644
+--- a/src/p2p/p2p_go_neg.c
++++ b/src/p2p/p2p_go_neg.c
+@@ -216,7 +216,7 @@ static struct wpabuf * p2p_build_go_neg_req(struct p2p_data *p2p,
+ 	pw_id = p2p_wps_method_pw_id(peer->wps_method);
+ 	if (peer->oob_pw_id)
+ 		pw_id = peer->oob_pw_id;
+-	if (p2p_build_wps_ie(p2p, buf, pw_id, 0) < 0) {
++	if (!peer->p2p2 && p2p_build_wps_ie(p2p, buf, pw_id, 0) < 0) {
+ 		p2p_dbg(p2p, "Failed to build WPS IE for GO Negotiation Request");
+ 		wpabuf_free(subelems);
+ 		wpabuf_free(buf);
+@@ -406,7 +406,7 @@ static struct wpabuf * p2p_build_go_neg_resp(struct p2p_data *p2p,
+ 	pw_id = p2p_wps_method_pw_id(peer ? peer->wps_method : WPS_NOT_READY);
+ 	if (peer && peer->oob_pw_id)
+ 		pw_id = peer->oob_pw_id;
+-	if (p2p_build_wps_ie(p2p, buf, pw_id, 0) < 0) {
++	if (peer && !peer->p2p2 && p2p_build_wps_ie(p2p, buf, pw_id, 0) < 0) {
+ 		p2p_dbg(p2p, "Failed to build WPS IE for GO Negotiation Response");
+ 		wpabuf_free(subelems);
+ 		wpabuf_free(buf);
+-- 
+2.43.0
+

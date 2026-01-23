@@ -1,0 +1,185 @@
+From 420afbdbdff720a64e223d50ce1e96a65d632166 Mon Sep 17 00:00:00 2001
+From: Manoj Sekar <quic_sekar@quicinc.com>
+Date: Mon, 26 Feb 2024 18:18:21 +0530
+Subject: [PATCH] Multi-AP: Allow supported profile to be configured
+
+Allow both hostapd and wpa_supplicant to be configured with the
+supported Multi-AP profile. The configured value will be advertised in
+the Multi-AP element.
+
+Signed-off-by: Manoj Sekar <quic_sekar@quicinc.com>
+---
+ hostapd/config_file.c              | 10 ++++++++++
+ hostapd/hostapd.conf               |  6 ++++++
+ src/ap/ap_config.c                 |  2 ++
+ src/ap/ap_config.h                 |  1 +
+ src/ap/ieee802_11.c                |  2 ++
+ wpa_supplicant/config.c            |  2 ++
+ wpa_supplicant/config_file.c       |  1 +
+ wpa_supplicant/config_ssid.h       |  5 +++++
+ wpa_supplicant/sme.c               |  1 +
+ wpa_supplicant/wpa_supplicant.c    |  1 +
+ wpa_supplicant/wpa_supplicant.conf |  6 ++++++
+ 11 files changed, 37 insertions(+)
+
+diff --git a/hostapd/config_file.c b/hostapd/config_file.c
+index d30f2fe9f..668317300 100644
+--- a/hostapd/config_file.c
++++ b/hostapd/config_file.c
+@@ -4802,6 +4802,16 @@ static int hostapd_config_fill(struct hostapd_config *conf,
+ 		}
+ 
+ 		bss->multi_ap = val;
++	} else if (os_strcmp(buf, "multi_ap_profile") == 0) {
++		int val = atoi(pos);
++
++		if (val < MULTI_AP_PROFILE_1 || val > MULTI_AP_PROFILE_MAX) {
++			wpa_printf(MSG_ERROR,
++				   "Line %d: Invalid multi_ap_profile '%s'",
++				   line, buf);
++			return -1;
++		}
++		bss->multi_ap_profile = val;
+ 	} else if (os_strcmp(buf, "rssi_reject_assoc_rssi") == 0) {
+ 		conf->rssi_reject_assoc_rssi = atoi(pos);
+ 	} else if (os_strcmp(buf, "rssi_reject_assoc_timeout") == 0) {
+diff --git a/hostapd/hostapd.conf b/hostapd/hostapd.conf
+index f8b4f9c65..8d3d32838 100644
+--- a/hostapd/hostapd.conf
++++ b/hostapd/hostapd.conf
+@@ -2565,6 +2565,12 @@ own_ip_addr=127.0.0.1
+ #multi_ap_backhaul_wpa_psk=0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
+ #multi_ap_backhaul_wpa_passphrase=secret passphrase
+ 
++# Multi-AP Profile
++# Indicate the supported Multi-AP profile (default: 2)
++# 1 = Supports Multi-AP profile 1 as defined in Wi-Fi EasyMesh specification
++# 2 = Supports Multi-AP profile 2 as defined in Wi-Fi EasyMesh specification
++#multi_ap_profile=2
++
+ # WPS UPnP interface
+ # If set, support for external Registrars is enabled.
+ #upnp_iface=br0
+diff --git a/src/ap/ap_config.c b/src/ap/ap_config.c
+index a28ebbb5d..1a18df617 100644
+--- a/src/ap/ap_config.c
++++ b/src/ap/ap_config.c
+@@ -163,6 +163,8 @@ void hostapd_config_defaults_bss(struct hostapd_bss_config *bss)
+ 	/* Default to strict CRL checking. */
+ 	bss->check_crl_strict = 1;
+ 
++	bss->multi_ap_profile = MULTI_AP_PROFILE_2;
++
+ #ifdef CONFIG_TESTING_OPTIONS
+ 	bss->sae_commit_status = -1;
+ 	bss->test_assoc_comeback_type = -1;
+diff --git a/src/ap/ap_config.h b/src/ap/ap_config.h
+index de02ddafd..bbc63dc3f 100644
+--- a/src/ap/ap_config.h
++++ b/src/ap/ap_config.h
+@@ -800,6 +800,7 @@ struct hostapd_bss_config {
+ #define BACKHAUL_BSS 1
+ #define FRONTHAUL_BSS 2
+ 	int multi_ap; /* bitmap of BACKHAUL_BSS, FRONTHAUL_BSS */
++	int multi_ap_profile;
+ 
+ #ifdef CONFIG_AIRTIME_POLICY
+ 	unsigned int airtime_weight;
+diff --git a/src/ap/ieee802_11.c b/src/ap/ieee802_11.c
+index 463d904e3..f5de27446 100644
+--- a/src/ap/ieee802_11.c
++++ b/src/ap/ieee802_11.c
+@@ -100,6 +100,8 @@ static u8 * hostapd_eid_multi_ap(struct hostapd_data *hapd, u8 *eid, size_t len)
+ 	if (hapd->conf->multi_ap & FRONTHAUL_BSS)
+ 		multi_ap.capability |= MULTI_AP_FRONTHAUL_BSS;
+ 
++	multi_ap.profile = hapd->conf->multi_ap_profile;
++
+ 	return eid + add_multi_ap_ie(eid, len, &multi_ap);
+ }
+ 
+diff --git a/wpa_supplicant/config.c b/wpa_supplicant/config.c
+index b4d483082..2c756136c 100644
+--- a/wpa_supplicant/config.c
++++ b/wpa_supplicant/config.c
+@@ -2747,6 +2747,8 @@ static const struct parse_data ssid_fields[] = {
+ 	{ INT_RANGE(owe_ptk_workaround, 0, 1) },
+ 	{ INT_RANGE(multi_ap_backhaul_sta, 0, 1) },
+ 	{ INT_RANGE(ft_eap_pmksa_caching, 0, 1) },
++	{ INT_RANGE(multi_ap_profile, MULTI_AP_PROFILE_1,
++		    MULTI_AP_PROFILE_MAX) },
+ 	{ INT_RANGE(beacon_prot, 0, 1) },
+ 	{ INT_RANGE(transition_disable, 0, 255) },
+ 	{ INT_RANGE(sae_pk, 0, 2) },
+diff --git a/wpa_supplicant/config_file.c b/wpa_supplicant/config_file.c
+index ac1414ae2..1a2c0c9be 100644
+--- a/wpa_supplicant/config_file.c
++++ b/wpa_supplicant/config_file.c
+@@ -850,6 +850,7 @@ static void wpa_config_write_network(FILE *f, struct wpa_ssid *ssid)
+ 	INT(owe_ptk_workaround);
+ 	INT(multi_ap_backhaul_sta);
+ 	INT(ft_eap_pmksa_caching);
++	INT(multi_ap_profile);
+ 	INT(beacon_prot);
+ 	INT(transition_disable);
+ 	INT(sae_pk);
+diff --git a/wpa_supplicant/config_ssid.h b/wpa_supplicant/config_ssid.h
+index ff045380e..e40650c27 100644
+--- a/wpa_supplicant/config_ssid.h
++++ b/wpa_supplicant/config_ssid.h
+@@ -1187,6 +1187,11 @@ struct wpa_ssid {
+ 	 */
+ 	int ft_eap_pmksa_caching;
+ 
++	/**
++	 * multi_ap_profile - Supported Multi-AP profile
++	 */
++	int multi_ap_profile;
++
+ 	/**
+ 	 * beacon_prot - Whether Beacon protection is enabled
+ 	 *
+diff --git a/wpa_supplicant/sme.c b/wpa_supplicant/sme.c
+index b67eb3418..887dde5c7 100644
+--- a/wpa_supplicant/sme.c
++++ b/wpa_supplicant/sme.c
+@@ -2411,6 +2411,7 @@ mscs_fail:
+ 		struct multi_ap_params multi_ap = { 0 };
+ 
+ 		multi_ap.capability = MULTI_AP_BACKHAUL_STA;
++		multi_ap.profile = ssid->multi_ap_profile;
+ 
+ 		multi_ap_ie_len = add_multi_ap_ie(
+ 			wpa_s->sme.assoc_req_ie + wpa_s->sme.assoc_req_ie_len,
+diff --git a/wpa_supplicant/wpa_supplicant.c b/wpa_supplicant/wpa_supplicant.c
+index e9fea83e4..d52ce1efd 100644
+--- a/wpa_supplicant/wpa_supplicant.c
++++ b/wpa_supplicant/wpa_supplicant.c
+@@ -3812,6 +3812,7 @@ mscs_end:
+ 		struct multi_ap_params multi_ap = { 0 };
+ 
+ 		multi_ap.capability = MULTI_AP_BACKHAUL_STA;
++		multi_ap.profile = ssid->multi_ap_profile;
+ 
+ 		multi_ap_ie_len = add_multi_ap_ie(wpa_ie + wpa_ie_len,
+ 						  max_wpa_ie_len - wpa_ie_len,
+diff --git a/wpa_supplicant/wpa_supplicant.conf b/wpa_supplicant/wpa_supplicant.conf
+index 743f2a323..2e36845f1 100644
+--- a/wpa_supplicant/wpa_supplicant.conf
++++ b/wpa_supplicant/wpa_supplicant.conf
+@@ -1709,6 +1709,12 @@ fast_reauth=1
+ # support Multi-AP, and sets 4-address mode if it does. Thus, the netdev can be
+ # added to a bridge to allow forwarding frames over this backhaul link.
+ 
++# Multi-AP Profile
++# Indicate the supported Multi-AP profile
++# 1 = Supports Multi-AP profile 1 as defined in Wi-Fi EasyMesh specification
++# 2 = Supports Multi-AP profile 2 as defined in Wi-Fi EasyMesh specification
++#multi_ap_profile=2
++
+ ##### Fast Session Transfer (FST) support #####################################
+ #
+ # The options in this section are only available when the build configuration
+-- 
+2.43.0
+

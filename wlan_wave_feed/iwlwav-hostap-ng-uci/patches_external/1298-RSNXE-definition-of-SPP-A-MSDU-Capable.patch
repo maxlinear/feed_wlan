@@ -1,0 +1,28 @@
+From f8d02941b094aa22f5e37abfcc2448e6415b673a Mon Sep 17 00:00:00 2001
+From: Daniel Gabay <daniel.gabay@intel.com>
+Date: Tue, 7 Jan 2025 14:51:42 +0200
+Subject: [PATCH] RSNXE definition of SPP A-MSDU Capable
+
+This is based on IEEE P802.11-REVme/D7.0, Table 9-373 (Extended RSN
+Capabilities field).
+
+Signed-off-by: Daniel Gabay <daniel.gabay@intel.com>
+---
+ src/common/ieee802_11_defs.h | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/src/common/ieee802_11_defs.h b/src/common/ieee802_11_defs.h
+index 602954bb2..f9e6f2bb3 100644
+--- a/src/common/ieee802_11_defs.h
++++ b/src/common/ieee802_11_defs.h
+@@ -620,6 +620,7 @@
+ #define WLAN_RSNX_CAPAB_SECURE_LTF 8
+ #define WLAN_RSNX_CAPAB_SECURE_RTT 9
+ #define WLAN_RSNX_CAPAB_URNM_MFPR_X20 10
++#define WLAN_RSNX_CAPAB_SPP_A_MSDU 14
+ #define WLAN_RSNX_CAPAB_URNM_MFPR 15
+ #define WLAN_RSNX_CAPAB_KEK_IN_PASN 18
+ #define WLAN_RSNX_CAPAB_SSID_PROTECTION 21
+-- 
+2.43.0
+

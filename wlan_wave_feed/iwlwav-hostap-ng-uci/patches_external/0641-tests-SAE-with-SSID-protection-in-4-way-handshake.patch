@@ -1,0 +1,53 @@
+From b54ccd4129000474f01ce4025313eeebb2f9f6a6 Mon Sep 17 00:00:00 2001
+From: Jouni Malinen <quic_jouni@quicinc.com>
+Date: Wed, 19 Jun 2024 01:11:40 +0300
+Subject: [PATCH] tests: SAE with SSID protection in 4-way handshake
+
+Signed-off-by: Jouni Malinen <quic_jouni@quicinc.com>
+---
+ tests/hwsim/test_sae.py      | 19 +++++++++++++++++++
+ tests/hwsim/wpasupplicant.py |  1 +
+ 2 files changed, 20 insertions(+)
+
+diff --git a/tests/hwsim/test_sae.py b/tests/hwsim/test_sae.py
+index aceb92751..d2c6243d2 100644
+--- a/tests/hwsim/test_sae.py
++++ b/tests/hwsim/test_sae.py
+@@ -3086,3 +3086,22 @@ def test_sae_password_file(dev, apdev):
+                        key_mgmt="SAE", scan_freq="2412")
+     finally:
+         os.unlink(fn)
++
++def test_sae_ssid_protection(dev, apdev):
++    """SAE with SSID protection in 4-way handshake"""
++    check_sae_capab(dev[0])
++    params = hostapd.wpa2_params(ssid="test-sae",
++                                 passphrase="12345678")
++    params['wpa_key_mgmt'] = 'SAE'
++    params['ssid_protection'] = '1'
++    hapd = hostapd.add_ap(apdev[0], params)
++
++    dev[0].set("sae_groups", "")
++    dev[0].connect("test-sae", psk="12345678", key_mgmt="SAE",
++                   ssid_protection="1",
++                   scan_freq="2412", wait_connect=False)
++    ev = dev[0].wait_event(["RSN: SSID matched expected value"], timeout=10)
++    if ev is None:
++        raise Exception("SSID protection event not seen")
++    dev[0].wait_connected()
++    hapd.wait_sta()
+diff --git a/tests/hwsim/wpasupplicant.py b/tests/hwsim/wpasupplicant.py
+index 1b3fd0948..d5f2b409f 100644
+--- a/tests/hwsim/wpasupplicant.py
++++ b/tests/hwsim/wpasupplicant.py
+@@ -1116,6 +1116,7 @@ class WpaSupplicant:
+                       "mac_value",
+                       "wpa_deny_ptk0_rekey",
+                       "max_idle",
++                      "ssid_protection",
+                       "enable_4addr_mode"]
+         for field in not_quoted:
+             if field in kwargs and kwargs[field]:
+-- 
+2.43.0
+

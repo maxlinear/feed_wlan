@@ -1,0 +1,185 @@
+From a2f634be8d222f3655931813f8d6dfaecc6d938d Mon Sep 17 00:00:00 2001
+From: Shivani Baranwal <quic_shivbara@quicinc.com>
+Date: Wed, 3 Jul 2024 22:11:26 +0530
+Subject: [PATCH] P2P2: Provisioning step on GO when a client joins
+
+Add the PMKSA on the P2P2 GO when a new P2P2 Client joins the group
+instead of going through the WPS step. This commit is adding just the
+mechanism to add the PMKSA and the actual use for this is in a separate
+commit.
+
+Signed-off-by: Shivani Baranwal <quic_shivbara@quicinc.com>
+---
+ src/p2p/p2p.c                   | 16 +++++++++++--
+ src/p2p/p2p.h                   | 26 ++++++++++++++++++++
+ src/p2p/p2p_i.h                 |  8 +++++++
+ wpa_supplicant/p2p_supplicant.c | 42 +++++++++++++++++++++++++++++++++
+ 4 files changed, 90 insertions(+), 2 deletions(-)
+
+diff --git a/src/p2p/p2p.c b/src/p2p/p2p.c
+index e009a1502..dcbbb0736 100644
+--- a/src/p2p/p2p.c
++++ b/src/p2p/p2p.c
+@@ -1868,6 +1868,12 @@ int p2p_go_params(struct p2p_data *p2p, struct p2p_go_neg_results *params)
+ }
+ 
+ 
++void p2p_set_go_role(struct p2p_data *p2p, bool val)
++{
++	p2p->go_role = val;
++}
++
++
+ void p2p_go_complete(struct p2p_data *p2p, struct p2p_device *peer)
+ {
+ 	struct p2p_go_neg_results res;
+@@ -1971,8 +1977,14 @@ void p2p_go_complete(struct p2p_data *p2p, struct p2p_device *peer)
+ 	}
+ #endif /* CONFIG_PASN */
+ 
+-	p2p_set_state(p2p, P2P_PROVISIONING);
+-	p2p->cfg->go_neg_completed(p2p->cfg->cb_ctx, &res);
++	if (p2p->go_role && peer->p2p2) {
++		p2p->cfg->set_go_security_config(p2p->cfg->cb_ctx, &res);
++		p2p->go_role = false;
++	} else {
++		p2p_set_state(p2p, P2P_PROVISIONING);
++		p2p->cfg->go_neg_completed(p2p->cfg->cb_ctx, &res);
++	}
++
+ 	forced_memzero(&res, sizeof(res));
+ }
+ 
+diff --git a/src/p2p/p2p.h b/src/p2p/p2p.h
+index 327119cd9..cce681347 100644
+--- a/src/p2p/p2p.h
++++ b/src/p2p/p2p.h
+@@ -948,6 +948,20 @@ struct p2p_config {
+ 	 */
+ 	void (*go_neg_completed)(void *ctx, struct p2p_go_neg_results *res);
+ 
++	/**
++	 * set_go_security_config - Set security configuration for P2P GO
++	 * @ctx: Callback context from cb_ctx
++	 * @res: GO Negotiation results
++	 *
++	 * This callback is used to set PMK/passphrase derived during PASN
++	 * authentication with a P2P client. This will fetch an active P2P group
++	 * owner instance and configure PMKSA in case of password based PASN, or
++	 * configures the passphrase and derive PT in case of unauthenticated
++	 * PASN.
++	 */
++	void (*set_go_security_config)(void *ctx,
++				       struct p2p_go_neg_results *res);
++
+ 	/**
+ 	 * sd_request - Callback on Service Discovery Request
+ 	 * @ctx: Callback context from cb_ctx
+@@ -2172,6 +2186,18 @@ size_t p2p_scan_ie_buf_len(struct p2p_data *p2p);
+  */
+ int p2p_go_params(struct p2p_data *p2p, struct p2p_go_neg_results *params);
+ 
++/**
++ * p2p_set_go_role - Set the current role of P2P device
++ * @p2p: P2P module context from p2p_init()
++ * @val: 1 if P2P GO, 0 to reset the role variable
++ *
++ * This role is configured as P2P GO when authorizing a P2P Client to join the
++ * group. Once PASN authentication with GO negotiation with predefined GO intent
++ * values (15 for P2P GO) is completed, the role helps to configure PMK derived
++ * during the PASN authentication.
++ */
++void p2p_set_go_role(struct p2p_data *p2p, bool val);
++
+ /**
+  * p2p_get_group_capab - Get Group Capability from P2P IE data
+  * @p2p_ie: P2P IE(s) contents
+diff --git a/src/p2p/p2p_i.h b/src/p2p/p2p_i.h
+index c56231c5a..f33263b56 100644
+--- a/src/p2p/p2p_i.h
++++ b/src/p2p/p2p_i.h
+@@ -670,6 +670,14 @@ struct p2p_data {
+ 	 * conclusion of a successful pairing. */
+ 	char dev_sae_password[100];
+ 	char peer_sae_password[100];
++
++	/* Variable used to know the role of the device in a given instance.
++	 * go_role variable is set while authorizing a P2P Client for PASN
++	 * authentication with predefined GO intent value for GO (15 for
++	 * P2P-GO). Once the authentication is completed and security
++	 * configuration is done, this variable is reset to false.
++	 */
++	bool go_role;
+ };
+ 
+ /**
+diff --git a/wpa_supplicant/p2p_supplicant.c b/wpa_supplicant/p2p_supplicant.c
+index 1f9887d7d..bbed564e5 100644
+--- a/wpa_supplicant/p2p_supplicant.c
++++ b/wpa_supplicant/p2p_supplicant.c
+@@ -2697,6 +2697,46 @@ bool wpas_p2p_retry_limit_exceeded(struct wpa_supplicant *wpa_s)
+ }
+ 
+ 
++static void wpas_set_go_security_config(void *ctx,
++					struct p2p_go_neg_results *params)
++{
++	struct wpa_supplicant *wpa_s = ctx;
++	struct wpa_supplicant *tmp, *ifs = NULL;
++	struct hostapd_data *hapd;
++
++	if (!params->p2p2)
++		return;
++
++	dl_list_for_each(tmp, &wpa_s->radio->ifaces, struct wpa_supplicant,
++			 radio_list) {
++		struct wpa_ssid *ssid = tmp->current_ssid;
++
++		if (ssid && ssid->mode == WPAS_MODE_P2P_GO &&
++		    ssid->ssid && ssid->ssid_len == params->ssid_len &&
++		    os_memcmp(ssid->ssid, params->ssid, params->ssid_len) == 0)
++		{
++			ifs = tmp;
++			break;
++		}
++	}
++
++	if (!ifs || !ifs->ap_iface)
++		return;
++
++	hapd = ifs->ap_iface->bss[0];
++	hapd->conf->wps_state = 0;
++
++	if (params->akmp == WPA_KEY_MGMT_SAE) {
++		wpa_printf(MSG_DEBUG, "P2P: Adding PMK for peer: " MACSTR,
++			   MAC2STR(params->peer_device_addr));
++		wpa_auth_pmksa_add_sae(hapd->wpa_auth,
++				       params->peer_device_addr,
++				       params->pmk, params->pmk_len,
++				       params->pmkid, WPA_KEY_MGMT_SAE);
++	}
++}
++
++
+ static void wpas_go_neg_completed(void *ctx, struct p2p_go_neg_results *res)
+ {
+ 	struct wpa_supplicant *wpa_s = ctx;
+@@ -5347,6 +5387,7 @@ int wpas_p2p_init(struct wpa_global *global, struct wpa_supplicant *wpa_s)
+ 	p2p.send_action = wpas_send_action;
+ 	p2p.send_action_done = wpas_send_action_done;
+ 	p2p.go_neg_completed = wpas_go_neg_completed;
++	p2p.set_go_security_config = wpas_set_go_security_config;
+ 	p2p.go_neg_req_rx = wpas_go_neg_req_rx;
+ 	p2p.dev_found = wpas_dev_found;
+ 	p2p.dev_lost = wpas_dev_lost;
+@@ -6497,6 +6538,7 @@ int wpas_p2p_connect(struct wpa_supplicant *wpa_s, const u8 *peer_addr,
+ 	os_free(wpa_s->global->add_psk);
+ 	wpa_s->global->add_psk = NULL;
+ 
++	p2p_set_go_role(wpa_s->global->p2p, false);
+ 	wpa_s->global->p2p_fail_on_wps_complete = 0;
+ 	wpa_s->global->pending_p2ps_group = 0;
+ 	wpa_s->global->pending_p2ps_group_freq = 0;
+-- 
+2.43.0
+

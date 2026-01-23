@@ -1,0 +1,48 @@
+From 11f26fed64ea65b2d19f6e2535726acf59dea03b Mon Sep 17 00:00:00 2001
+From: Benjamin Berg <benjamin@sipsolutions.net>
+Date: Tue, 20 Feb 2024 14:18:13 +0100
+Subject: [PATCH] Use for_each_link() where possible
+
+This takes care of the places that the spatch did not catch already.
+
+Signed-off-by: Benjamin Berg <benjamin.berg@intel.com>
+---
+ wpa_supplicant/events.c | 10 ++--------
+ 1 file changed, 2 insertions(+), 8 deletions(-)
+
+diff --git a/wpa_supplicant/events.c b/wpa_supplicant/events.c
+index 42cde3c8a..cdc17b3c9 100644
+--- a/wpa_supplicant/events.c
++++ b/wpa_supplicant/events.c
+@@ -4034,12 +4034,9 @@ static int wpa_sm_set_ml_info(struct wpa_supplicant *wpa_s)
+ 	wpa_mlo.valid_links = drv_mlo.valid_links;
+ 	wpa_mlo.req_links = drv_mlo.req_links;
+ 
+-	for (i = 0; i < MAX_NUM_MLD_LINKS; i++) {
++	for_each_link(drv_mlo.req_links, i) {
+ 		struct wpa_bss *bss;
+ 
+-		if (!(drv_mlo.req_links & BIT(i)))
+-			continue;
+-
+ 		bss = wpa_supplicant_get_new_bss(wpa_s, drv_mlo.links[i].bssid);
+ 		if (!bss) {
+ 			wpa_supplicant_update_scan_results(wpa_s);
+@@ -5863,13 +5860,10 @@ static void wpas_tid_link_map(struct wpa_supplicant *wpa_s,
+ 	pos += res;
+ 
+ 	if (!info->default_map) {
+-		for (i = 0; i < MAX_NUM_MLD_LINKS && end > pos; i++) {
++		for_each_link(info->valid_links, i) {
+ 			char uplink_map_str[9];
+ 			char downlink_map_str[9];
+ 
+-			if (!(info->valid_links & BIT(i)))
+-				continue;
+-
+ 			bitmap_to_str(info->t2lmap[i].uplink, uplink_map_str);
+ 			bitmap_to_str(info->t2lmap[i].downlink,
+ 				      downlink_map_str);
+-- 
+2.43.0
+

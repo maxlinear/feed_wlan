@@ -1,0 +1,31 @@
+From 9d80d5d71d684e78279e81be20c46f9aa18c6ebd Mon Sep 17 00:00:00 2001
+From: Jouni Malinen <j@w1.fi>
+Date: Fri, 27 Dec 2024 00:19:33 +0200
+Subject: [PATCH] Handle CONFIG_NO_WPA for wpa_sm_has_ptk_installed()
+
+There was no empty wrapper for wpa_sm_has_ptk_installed() for the
+CONFIG_NO_WPA=y builds. The previously renamed wpa_sm_has_ptk() wrapper
+was still in place even though it is not used anymore, so rename it to
+cover this newer need.
+
+Signed-off-by: Jouni Malinen <j@w1.fi>
+---
+ src/rsn_supp/wpa.h | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/src/rsn_supp/wpa.h b/src/rsn_supp/wpa.h
+index 116e616aa..9783feef2 100644
+--- a/src/rsn_supp/wpa.h
++++ b/src/rsn_supp/wpa.h
+@@ -476,7 +476,7 @@ wpa_sm_pmksa_cache_get(struct wpa_sm *sm, const u8 *aa, const u8 *pmkid,
+ 	return NULL;
+ }
+ 
+-static inline int wpa_sm_has_ptk(struct wpa_sm *sm)
++static inline int wpa_sm_has_ptk_installed(struct wpa_sm *sm)
+ {
+ 	return 0;
+ }
+-- 
+2.43.0
+

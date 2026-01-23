@@ -1,0 +1,53 @@
+From f4a9cb96d68bb6ea05b7278ae6a0affc4cf9f593 Mon Sep 17 00:00:00 2001
+From: Avraham Stern <avraham.stern@intel.com>
+Date: Mon, 29 Apr 2024 13:51:52 +0200
+Subject: [PATCH] MBO: Always accept BTM request with disassociation imminent
+ bit set
+
+According to Multiband Operation specification (r17, section 3.5.2),
+a BSS Transition Management Request with the disassociation imminent
+bit set should always be accepted.
+
+This is enforced in case the request did not include a candidate list.
+However, in case a candidate list was included but none of the APs in
+the candidate list was found in the scan results, the request is
+rejected.
+
+Fix that by always accepting a request with the disassociation imminent
+bit set even if no roaming candidate was found.
+
+Signed-off-by: Avraham Stern <avraham.stern@intel.com>
+Signed-off-by: Benjamin Berg <benjamin.berg@intel.com>
+---
+ wpa_supplicant/wnm_sta.c | 12 ++++++++++--
+ 1 file changed, 10 insertions(+), 2 deletions(-)
+
+diff --git a/wpa_supplicant/wnm_sta.c b/wpa_supplicant/wnm_sta.c
+index 798e7f588..52d8fb40f 100644
+--- a/wpa_supplicant/wnm_sta.c
++++ b/wpa_supplicant/wnm_sta.c
+@@ -1221,11 +1221,19 @@ int wnm_scan_process(struct wpa_supplicant *wpa_s, bool pre_scan_check)
+ 	return 1;
+ 
+ send_bss_resp_fail:
+-	/* Send reject response for all the failures */
++	if (wpa_s->wnm_reply) {
++		/* If disassoc imminent is set, we must not reject */
++		if (wpa_s->wnm_mode &
++		    (WNM_BSS_TM_REQ_DISASSOC_IMMINENT |
++		     WNM_BSS_TM_REQ_ESS_DISASSOC_IMMINENT)) {
++			wpa_printf(MSG_DEBUG,
++				   "WNM: Accept BTM request because disassociation imminent bit is set");
++			status = WNM_BSS_TM_ACCEPT;
++		}
+ 
+-	if (wpa_s->wnm_reply)
+ 		wnm_send_bss_transition_mgmt_resp(wpa_s, status, reason,
+ 						  0, NULL);
++	}
+ 
+ 	wnm_btm_reset(wpa_s);
+ 
+-- 
+2.43.0
+

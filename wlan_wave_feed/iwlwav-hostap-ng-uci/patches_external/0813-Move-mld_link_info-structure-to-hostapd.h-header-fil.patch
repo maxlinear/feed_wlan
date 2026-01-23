@@ -1,0 +1,75 @@
+From 8f07e9699b999f43f76fcbf5d7454daada81b4ef Mon Sep 17 00:00:00 2001
+From: Sriram R <quic_srirrama@quicinc.com>
+Date: Wed, 7 Aug 2024 12:11:40 +0530
+Subject: [PATCH] Move mld_link_info structure to hostapd.h header file
+
+At present, the mld_link_info structure is nested within the mld_info
+structure. However, a future modification will require mld_link_info to
+be outside of mld_info. To address this, move the mld_link_info
+structure to hostapd.h so that it can be accessed both in the current
+context and in the location needed for the upcoming change.
+
+No functional changes.
+
+Signed-off-by: Sriram R <quic_srirrama@quicinc.com>
+Signed-off-by: Aditya Kumar Singh <quic_adisi@quicinc.com>
+---
+ src/ap/hostapd.h  | 15 +++++++++++++++
+ src/ap/sta_info.h | 15 +--------------
+ 2 files changed, 16 insertions(+), 14 deletions(-)
+
+diff --git a/src/ap/hostapd.h b/src/ap/hostapd.h
+index e5ca81236..4dc1067cc 100644
+--- a/src/ap/hostapd.h
++++ b/src/ap/hostapd.h
+@@ -167,6 +167,21 @@ struct hostapd_sae_commit_queue {
+ 	u8 msg[];
+ };
+ 
++struct mld_link_info {
++	u8 valid:1;
++	u8 nstr_bitmap_len:2;
++	u8 local_addr[ETH_ALEN];
++	u8 peer_addr[ETH_ALEN];
++
++	u8 nstr_bitmap[2];
++
++	u16 capability;
++
++	u16 status;
++	u16 resp_sta_profile_len;
++	u8 *resp_sta_profile;
++};
++
+ /**
+  * struct hostapd_data - hostapd per-BSS data structure
+  */
+diff --git a/src/ap/sta_info.h b/src/ap/sta_info.h
+index 84629358c..5b01c1e6f 100644
+--- a/src/ap/sta_info.h
++++ b/src/ap/sta_info.h
+@@ -81,20 +81,7 @@ struct mld_info {
+ 		u16 mld_capa;
+ 	} common_info;
+ 
+-	struct mld_link_info {
+-		u8 valid:1;
+-		u8 nstr_bitmap_len:2;
+-		u8 local_addr[ETH_ALEN];
+-		u8 peer_addr[ETH_ALEN];
+-
+-		u8 nstr_bitmap[2];
+-
+-		u16 capability;
+-
+-		u16 status;
+-		u16 resp_sta_profile_len;
+-		u8 *resp_sta_profile;
+-	} links[MAX_NUM_MLD_LINKS];
++	struct mld_link_info links[MAX_NUM_MLD_LINKS];
+ };
+ 
+ struct sta_info {
+-- 
+2.43.0
+

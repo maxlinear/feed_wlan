@@ -1,0 +1,204 @@
+From 03e89de47b6c734edcaa95f8d55081cae8084a55 Mon Sep 17 00:00:00 2001
+From: Chenming Huang <quic_chenhuan@quicinc.com>
+Date: Tue, 21 Nov 2023 11:42:29 +0530
+Subject: [PATCH] AP MLD: Process link info when handling new STA event with
+ driver SME
+
+When association is handled in hostapd, a non-AP MLD's info is stored in
+all valid links. This should be the same when SME is offloaded to the
+driver.
+
+Also skip some operations that are already done by the driver
+when SME is offloaded.
+
+Signed-off-by: Chenming Huang <quic_chenhuan@quicinc.com>
+---
+ src/ap/drv_callbacks.c | 10 ++++++
+ src/ap/ieee802_11.c    | 79 +++++++++++++++++++++++++-----------------
+ src/ap/ieee802_11.h    |  5 +++
+ 3 files changed, 62 insertions(+), 32 deletions(-)
+
+diff --git a/src/ap/drv_callbacks.c b/src/ap/drv_callbacks.c
+index 2ff77f0ba..92e679b86 100644
+--- a/src/ap/drv_callbacks.c
++++ b/src/ap/drv_callbacks.c
+@@ -856,6 +856,16 @@ skip_wpa_check:
+ 	}
+ #endif /* CONFIG_IEEE80211R_AP || CONFIG_FILS */
+ 
++#ifdef CONFIG_IEEE80211BE
++	if (hostapd_process_assoc_ml_info(hapd, sta, req_ies, req_ies_len,
++					  !!reassoc, WLAN_STATUS_SUCCESS,
++					  true)) {
++		status = WLAN_STATUS_UNSPECIFIED_FAILURE;
++		reason = WLAN_REASON_UNSPECIFIED;
++		goto fail;
++	}
++#endif /* CONFIG_IEEE80211BE */
++
+ 	new_assoc = (sta->flags & WLAN_STA_ASSOC) == 0;
+ 	sta->flags |= WLAN_STA_AUTH | WLAN_STA_ASSOC;
+ 	sta->flags &= ~WLAN_STA_WNM_SLEEP_MODE;
+diff --git a/src/ap/ieee802_11.c b/src/ap/ieee802_11.c
+index 975fdc12c..bf8a33166 100644
+--- a/src/ap/ieee802_11.c
++++ b/src/ap/ieee802_11.c
+@@ -4381,11 +4381,11 @@ out:
+ }
+ 
+ 
+-static void ieee80211_ml_process_link(struct hostapd_data *hapd,
+-				      struct sta_info *origin_sta,
+-				      struct mld_link_info *link,
+-				      const u8 *ies, size_t ies_len,
+-				      bool reassoc)
++static int ieee80211_ml_process_link(struct hostapd_data *hapd,
++				     struct sta_info *origin_sta,
++				     struct mld_link_info *link,
++				     const u8 *ies, size_t ies_len,
++				     bool reassoc, bool offload)
+ {
+ 	struct ieee802_11_elems elems;
+ 	struct wpabuf *mlbuf = NULL;
+@@ -4448,20 +4448,22 @@ static void ieee80211_ml_process_link(struct hostapd_data *hapd,
+ 		li->resp_sta_profile_len = 0;
+ 	}
+ 
+-	/*
+-	 * Get the AID from the station on which the association was performed,
+-	 * and mark it as used.
+-	 */
+-	sta->aid = origin_sta->aid;
+-	if (sta->aid == 0) {
+-		wpa_printf(MSG_DEBUG, "MLD: link: No AID assigned");
+-		status = WLAN_STATUS_UNSPECIFIED_FAILURE;
+-		goto out;
++	if (!offload) {
++		/*
++		 * Get the AID from the station on which the association was
++		 * performed, and mark it as used.
++		 */
++		sta->aid = origin_sta->aid;
++		if (sta->aid == 0) {
++			wpa_printf(MSG_DEBUG, "MLD: link: No AID assigned");
++			status = WLAN_STATUS_UNSPECIFIED_FAILURE;
++			goto out;
++		}
++		hapd->sta_aid[(sta->aid - 1) / 32] |= BIT((sta->aid - 1) % 32);
++		sta->listen_interval = origin_sta->listen_interval;
++		if (update_ht_state(hapd, sta) > 0)
++			ieee802_11_update_beacons(hapd->iface);
+ 	}
+-	hapd->sta_aid[(sta->aid - 1) / 32] |= BIT((sta->aid - 1) % 32);
+-	sta->listen_interval = origin_sta->listen_interval;
+-	if (update_ht_state(hapd, sta) > 0)
+-		ieee802_11_update_beacons(hapd->iface);
+ 
+ 	/* RSN Authenticator should always be the one on the original station */
+ 	wpa_auth_sta_deinit(sta->wpa_sm);
+@@ -4487,17 +4489,23 @@ static void ieee80211_ml_process_link(struct hostapd_data *hapd,
+ 
+ 	/* TODO: What other processing is required? */
+ 
+-	if (add_associated_sta(hapd, sta, reassoc))
++	if (!offload && add_associated_sta(hapd, sta, reassoc))
+ 		status = WLAN_STATUS_AP_UNABLE_TO_HANDLE_NEW_STA;
+ out:
+ 	wpabuf_free(mlbuf);
+ 	link->status = status;
+ 
++	if (!offload)
++		ieee80211_ml_build_assoc_resp(hapd, link);
++
+ 	wpa_printf(MSG_DEBUG, "MLD: link: status=%u", status);
+-	if (sta && status != WLAN_STATUS_SUCCESS)
+-		ap_free_sta(hapd, sta);
++	if (status != WLAN_STATUS_SUCCESS) {
++		if (sta)
++			ap_free_sta(hapd, sta);
++		return -1;
++	}
+ 
+-	ieee80211_ml_build_assoc_resp(hapd, link);
++	return 0;
+ }
+ 
+ 
+@@ -4516,16 +4524,17 @@ bool hostapd_is_mld_ap(struct hostapd_data *hapd)
+ #endif /* CONFIG_IEEE80211BE */
+ 
+ 
+-static void hostapd_process_assoc_ml_info(struct hostapd_data *hapd,
+-					  struct sta_info *sta,
+-					  const u8 *ies, size_t ies_len,
+-					  bool reassoc, int tx_link_status)
++int hostapd_process_assoc_ml_info(struct hostapd_data *hapd,
++				  struct sta_info *sta,
++				  const u8 *ies, size_t ies_len,
++				  bool reassoc, int tx_link_status,
++				  bool offload)
+ {
+ #ifdef CONFIG_IEEE80211BE
+ 	unsigned int i, j;
+ 
+ 	if (!hostapd_is_mld_ap(hapd))
+-		return;
++		return 0;
+ 
+ 	/*
+ 	 * This is not really needed, but make the interaction with the RSN
+@@ -4561,17 +4570,23 @@ static void hostapd_process_assoc_ml_info(struct hostapd_data *hapd,
+ 				   "MLD: No link match for link_id=%u", i);
+ 
+ 			link->status = WLAN_STATUS_UNSPECIFIED_FAILURE;
+-			ieee80211_ml_build_assoc_resp(hapd, link);
++			if (!offload)
++				ieee80211_ml_build_assoc_resp(hapd, link);
+ 		} else if (tx_link_status != WLAN_STATUS_SUCCESS) {
+ 			/* TX link rejected the connection */
+ 			link->status = WLAN_STATUS_DENIED_TX_LINK_NOT_ACCEPTED;
+-			ieee80211_ml_build_assoc_resp(hapd, link);
++			if (!offload)
++				ieee80211_ml_build_assoc_resp(hapd, link);
+ 		} else {
+-			ieee80211_ml_process_link(iface->bss[0], sta, link,
+-						  ies, ies_len, reassoc);
++			if (ieee80211_ml_process_link(iface->bss[0], sta, link,
++						      ies, ies_len, reassoc,
++						      offload))
++				return -1;
+ 		}
+ 	}
+ #endif /* CONFIG_IEEE80211BE */
++
++	return 0;
+ }
+ 
+ 
+@@ -5588,7 +5603,7 @@ static void handle_assoc(struct hostapd_data *hapd,
+ 	 */
+ 	if (sta)
+ 		hostapd_process_assoc_ml_info(hapd, sta, pos, left, reassoc,
+-					      resp);
++					      resp, false);
+ 
+ 	if (resp == WLAN_STATUS_SUCCESS && sta &&
+ 	    add_associated_sta(hapd, sta, reassoc))
+diff --git a/src/ap/ieee802_11.h b/src/ap/ieee802_11.h
+index ba973b06b..5fd380a95 100644
+--- a/src/ap/ieee802_11.h
++++ b/src/ap/ieee802_11.h
+@@ -258,5 +258,10 @@ const char * sae_get_password(struct hostapd_data *hapd,
+ struct sta_info * hostapd_ml_get_assoc_sta(struct hostapd_data *hapd,
+ 					   struct sta_info *sta,
+ 					   struct hostapd_data **assoc_hapd);
++int hostapd_process_assoc_ml_info(struct hostapd_data *hapd,
++				  struct sta_info *sta,
++				  const u8 *ies, size_t ies_len,
++				  bool reassoc, int tx_link_status,
++				  bool offload);
+ 
+ #endif /* IEEE802_11_H */
+-- 
+2.43.0
+

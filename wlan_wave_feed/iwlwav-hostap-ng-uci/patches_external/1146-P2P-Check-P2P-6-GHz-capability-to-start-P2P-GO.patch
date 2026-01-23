@@ -1,0 +1,34 @@
+From 45f626113164c244d7f869638c5dcf0b6a2a7540 Mon Sep 17 00:00:00 2001
+From: Shivani Baranwal <quic_shivbara@quicinc.com>
+Date: Tue, 10 Dec 2024 15:21:37 +0530
+Subject: [PATCH] P2P: Check P2P 6 GHz capability to start P2P GO
+
+Currently, when no forced channel frequency is included with the start
+an autonomous P2P GO command, a 6 GHz channel might get selected if it
+is a shared radio frequency irrespective of P2P 6 GHz capability. In
+these cases we need to check whether P2P 6 GHz capability is supported
+before proceeding with P2P GO start on a 6 GHz channel.
+
+Signed-off-by: Shivani Baranwal <quic_shivbara@quicinc.com>
+---
+ wpa_supplicant/p2p_supplicant.c | 4 ++++
+ 1 file changed, 4 insertions(+)
+
+diff --git a/wpa_supplicant/p2p_supplicant.c b/wpa_supplicant/p2p_supplicant.c
+index a6edbae96..0329a5f49 100644
+--- a/wpa_supplicant/p2p_supplicant.c
++++ b/wpa_supplicant/p2p_supplicant.c
+@@ -7246,6 +7246,10 @@ static int wpas_p2p_supported_freq_go(struct wpa_supplicant *wpa_s,
+ 				      const struct p2p_channels *channels,
+ 				      int freq)
+ {
++	if (is_6ghz_freq(freq) &&
++	    !is_p2p_6ghz_capable(wpa_s->global->p2p))
++		return 0;
++
+ 	if (!wpas_p2p_disallowed_freq(wpa_s->global, freq) &&
+ 	    p2p_supported_freq_go(wpa_s->global->p2p, freq) &&
+ 	    freq_included(wpa_s, channels, freq))
+-- 
+2.43.0
+

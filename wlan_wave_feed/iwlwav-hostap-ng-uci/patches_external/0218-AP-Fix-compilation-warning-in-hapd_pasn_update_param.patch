@@ -1,0 +1,31 @@
+From 8e8964cdbd2c2b7b1534eb47fe383b33b1f90f22 Mon Sep 17 00:00:00 2001
+From: Andrei Otcheretianski <andrei.otcheretianski@intel.com>
+Date: Wed, 10 Jan 2024 14:02:48 +0200
+Subject: [PATCH] AP: Fix compilation warning in hapd_pasn_update_params()
+
+If CONFIG_FILS isn't set, the compiler complains about unused variables.
+Fix it.
+
+Signed-off-by: Andrei Otcheretianski <andrei.otcheretianski@intel.com>
+---
+ src/ap/ieee802_11.c | 2 ++
+ 1 file changed, 2 insertions(+)
+
+diff --git a/src/ap/ieee802_11.c b/src/ap/ieee802_11.c
+index 30a6394c5..c448ce0a9 100644
+--- a/src/ap/ieee802_11.c
++++ b/src/ap/ieee802_11.c
+@@ -2647,8 +2647,10 @@ static void hapd_pasn_update_params(struct hostapd_data *hapd,
+ 	struct pasn_data *pasn = sta->pasn;
+ 	struct ieee802_11_elems elems;
+ 	struct wpa_ie_data rsn_data;
++#ifdef CONFIG_FILS
+ 	struct wpa_pasn_params_data pasn_params;
+ 	struct wpabuf *wrapped_data = NULL;
++#endif /* CONFIG_FILS */
+ 
+ 	if (ieee802_11_parse_elems(mgmt->u.auth.variable,
+ 				   len - offsetof(struct ieee80211_mgmt,
+-- 
+2.43.0
+

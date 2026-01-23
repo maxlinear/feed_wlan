@@ -1,0 +1,72 @@
+From fa1add541f8c51c403f7a20029eb03c524d84c44 Mon Sep 17 00:00:00 2001
+From: Aditya Kumar Singh <quic_adisi@quicinc.com>
+Date: Tue, 27 Aug 2024 10:57:49 +0530
+Subject: [PATCH] tests: Mesh EHT 320 test case
+
+Add a simple mesh test case for EHT 6 GHz/320 MHz operation.
+
+And now since 9 is a possible value for max_oper_chwidth, modify test
+case wpas_config_range_check as well.
+
+Signed-off-by: Aditya Kumar Singh <quic_adisi@quicinc.com>
+---
+ tests/hwsim/test_wpas_config.py |  2 +-
+ tests/hwsim/test_wpas_mesh.py   | 32 ++++++++++++++++++++++++++++++++
+ 2 files changed, 33 insertions(+), 1 deletion(-)
+
+diff --git a/tests/hwsim/test_wpas_config.py b/tests/hwsim/test_wpas_config.py
+index 17f5563fa..c9e8f7c4d 100644
+--- a/tests/hwsim/test_wpas_config.py
++++ b/tests/hwsim/test_wpas_config.py
+@@ -774,7 +774,7 @@ def test_wpas_config_range_check(dev, apdev):
+              ("vht", -1, 2),
+              ("he", -1, 2),
+              ("ht40", -2, 2),
+-             ("max_oper_chwidth", -2, 4),
++             ("max_oper_chwidth", -2, 10),
+              ("mode", -1, 6),
+              ("no_auto_peer", -1, 2),
+              ("mesh_fwding", -1, 2),
+diff --git a/tests/hwsim/test_wpas_mesh.py b/tests/hwsim/test_wpas_mesh.py
+index 62ddba8c3..5406e6e76 100644
+--- a/tests/hwsim/test_wpas_mesh.py
++++ b/tests/hwsim/test_wpas_mesh.py
+@@ -2613,3 +2613,35 @@ def test_wpas_mesh_sae_inject(dev, apdev):
+         time.sleep(10)
+     finally:
+         stop_monitor(apdev[1]["ifname"])
++
++def test_wpas_mesh_secure_6ghz_320(dev, apdev):
++    """wpa_supplicant secure 6 GHz mesh network connectivity in 320 MHz"""
++    check_mesh_support(dev[0], secure=True)
++    check_mesh_support(dev[1], secure=True)
++
++    try:
++        # CA enables 320 MHz channels without NO-IR restriction
++        set_reg(dev, 'CA')
++
++        dev[0].set("sae_groups", "")
++        id = add_mesh_secure_net(dev[0])
++        dev[0].set_network(id, "frequency", "5975")
++        dev[0].set_network(id, "max_oper_chwidth", "9")
++        dev[0].mesh_group_add(id)
++
++        dev[1].set("sae_groups", "")
++        id = add_mesh_secure_net(dev[1])
++        dev[1].set_network(id, "frequency", "5975")
++        dev[1].set_network(id, "max_oper_chwidth", "9")
++        dev[1].mesh_group_add(id)
++
++        check_mesh_joined_connected(dev, connectivity=True)
++
++        state = dev[0].get_status_field("wpa_state")
++        if state != "COMPLETED":
++            raise Exception("Unexpected wpa_state on dev0: " + state)
++        state = dev[1].get_status_field("wpa_state")
++        if state != "COMPLETED":
++            raise Exception("Unexpected wpa_state on dev1: " + state)
++    finally:
++        clear_reg_setting(dev)
+-- 
+2.43.0
+

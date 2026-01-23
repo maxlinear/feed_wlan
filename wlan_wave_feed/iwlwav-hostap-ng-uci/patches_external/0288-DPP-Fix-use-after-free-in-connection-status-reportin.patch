@@ -1,0 +1,70 @@
+From 32940c7a449548d781f489ac3a834d519b30a323 Mon Sep 17 00:00:00 2001
+From: Jouni Malinen <quic_jouni@quicinc.com>
+Date: Mon, 22 Jan 2024 13:11:17 +0200
+Subject: [PATCH] DPP: Fix use-after-free in connection status reporting when
+ using TCP
+
+The current connection (struct dpp_connection) might get removed during
+the dpp_tcp_send_msg() call, so the code setting the
+on_tcp_tx_complete_remove flag needs to check whether that happened to
+avoid a potential use-after-free.
+
+Fixes: 33cb47cf0191 ("DPP: Fix connection result reporting when using TCP")
+Signed-off-by: Jouni Malinen <quic_jouni@quicinc.com>
+---
+ src/common/dpp_tcp.c | 18 ++++++++++++++----
+ 1 file changed, 14 insertions(+), 4 deletions(-)
+
+diff --git a/src/common/dpp_tcp.c b/src/common/dpp_tcp.c
+index d28a41e48..2fad3e1d7 100644
+--- a/src/common/dpp_tcp.c
++++ b/src/common/dpp_tcp.c
+@@ -2601,7 +2601,8 @@ bool dpp_tcp_conn_status_requested(struct dpp_global *dpp)
+ }
+ 
+ 
+-static void dpp_tcp_send_conn_status_msg(struct dpp_connection *conn,
++static void dpp_tcp_send_conn_status_msg(struct dpp_global *dpp,
++					 struct dpp_connection *conn,
+ 					 enum dpp_status_error result,
+ 					 const u8 *ssid, size_t ssid_len,
+ 					 const char *channel_list)
+@@ -2609,6 +2610,7 @@ static void dpp_tcp_send_conn_status_msg(struct dpp_connection *conn,
+ 	struct dpp_authentication *auth = conn->auth;
+ 	int res;
+ 	struct wpabuf *msg;
++	struct dpp_connection *c;
+ 
+ 	auth->conn_status_requested = 0;
+ 
+@@ -2627,8 +2629,16 @@ static void dpp_tcp_send_conn_status_msg(struct dpp_connection *conn,
+ 		return;
+ 	}
+ 
+-	/* This exchange will be terminated in the TX status handler */
+-	conn->on_tcp_tx_complete_remove = 1;
++	/* conn might have been removed during the dpp_tcp_send_msg() call, so
++	 * need to check that it is still present before modifying it. */
++	dl_list_for_each(c, &dpp->tcp_init, struct dpp_connection, list) {
++		if (conn == c) {
++			/* This exchange will be terminated in the TX status
++			 * handler */
++			conn->on_tcp_tx_complete_remove = 1;
++			break;
++		}
++	}
+ }
+ 
+ 
+@@ -2641,7 +2651,7 @@ void dpp_tcp_send_conn_status(struct dpp_global *dpp,
+ 
+ 	dl_list_for_each(conn, &dpp->tcp_init, struct dpp_connection, list) {
+ 		if (conn->auth && conn->auth->conn_status_requested) {
+-			dpp_tcp_send_conn_status_msg(conn, result, ssid,
++			dpp_tcp_send_conn_status_msg(dpp, conn, result, ssid,
+ 						     ssid_len, channel_list);
+ 			break;
+ 		}
+-- 
+2.43.0
+

@@ -1,0 +1,79 @@
+From be8f31acbfd2d228412edb89e959322ae75c5891 Mon Sep 17 00:00:00 2001
+From: Jouni Malinen <quic_jouni@quicinc.com>
+Date: Tue, 29 Oct 2024 13:07:30 +0200
+Subject: [PATCH] PASN: Mark PMK and PMKID const in functions adding PMKSA
+ entries
+
+This allows callers of these functions to mark PMK/PMKID const to keep
+things more consistent.
+
+Signed-off-by: Jouni Malinen <quic_jouni@quicinc.com>
+---
+ src/pasn/pasn_common.h    | 10 ++++++----
+ src/pasn/pasn_initiator.c |  5 +++--
+ src/pasn/pasn_responder.c |  5 +++--
+ 3 files changed, 12 insertions(+), 8 deletions(-)
+
+diff --git a/src/pasn/pasn_common.h b/src/pasn/pasn_common.h
+index 449746f0f..e514349c9 100644
+--- a/src/pasn/pasn_common.h
++++ b/src/pasn/pasn_common.h
+@@ -215,8 +215,9 @@ int pasn_set_pt(struct pasn_data *pasn, struct sae_pt *pt);
+ struct rsn_pmksa_cache * pasn_initiator_pmksa_cache_init(void);
+ void pasn_initiator_pmksa_cache_deinit(struct rsn_pmksa_cache *pmksa);
+ int pasn_initiator_pmksa_cache_add(struct rsn_pmksa_cache *pmksa,
+-				   const u8 *own_addr, const u8 *bssid, u8 *pmk,
+-				   size_t pmk_len, u8 *pmkid);
++				   const u8 *own_addr, const u8 *bssid,
++				   const u8 *pmk, size_t pmk_len,
++				   const u8 *pmkid);
+ int pasn_initiator_pmksa_cache_get(struct rsn_pmksa_cache *pmksa,
+ 				   const u8 *bssid, u8 *pmkid, u8 *pmk,
+ 				   size_t *pmk_len);
+@@ -237,8 +238,9 @@ int pasn_set_extra_ies(struct pasn_data *pasn, const u8 *extra_ies,
+ struct rsn_pmksa_cache * pasn_responder_pmksa_cache_init(void);
+ void pasn_responder_pmksa_cache_deinit(struct rsn_pmksa_cache *pmksa);
+ int pasn_responder_pmksa_cache_add(struct rsn_pmksa_cache *pmksa,
+-				   const u8 *own_addr, const u8 *bssid, u8 *pmk,
+-				   size_t pmk_len, u8 *pmkid);
++				   const u8 *own_addr, const u8 *bssid,
++				   const u8 *pmk, size_t pmk_len,
++				   const u8 *pmkid);
+ int pasn_responder_pmksa_cache_get(struct rsn_pmksa_cache *pmksa,
+ 				   const u8 *bssid, u8 *pmkid, u8 *pmk,
+ 				   size_t *pmk_len);
+diff --git a/src/pasn/pasn_initiator.c b/src/pasn/pasn_initiator.c
+index b0b901916..035ae8144 100644
+--- a/src/pasn/pasn_initiator.c
++++ b/src/pasn/pasn_initiator.c
+@@ -39,8 +39,9 @@ void pasn_initiator_pmksa_cache_deinit(struct rsn_pmksa_cache *pmksa)
+ 
+ 
+ int pasn_initiator_pmksa_cache_add(struct rsn_pmksa_cache *pmksa,
+-				   const u8 *own_addr, const u8 *bssid, u8 *pmk,
+-				   size_t pmk_len, u8 *pmkid)
++				   const u8 *own_addr, const u8 *bssid,
++				   const u8 *pmk,
++				   size_t pmk_len, const u8 *pmkid)
+ {
+ 	if (pmksa_cache_add(pmksa, pmk, pmk_len, pmkid, NULL, 0, bssid,
+ 			    own_addr, NULL, WPA_KEY_MGMT_SAE, 0))
+diff --git a/src/pasn/pasn_responder.c b/src/pasn/pasn_responder.c
+index 8e2049289..9ded253ee 100644
+--- a/src/pasn/pasn_responder.c
++++ b/src/pasn/pasn_responder.c
+@@ -39,8 +39,9 @@ void pasn_responder_pmksa_cache_deinit(struct rsn_pmksa_cache *pmksa)
+ 
+ 
+ int pasn_responder_pmksa_cache_add(struct rsn_pmksa_cache *pmksa,
+-				   const u8 *own_addr, const u8 *bssid, u8 *pmk,
+-				   size_t pmk_len, u8 *pmkid)
++				   const u8 *own_addr, const u8 *bssid,
++				   const u8 *pmk, size_t pmk_len,
++				   const u8 *pmkid)
+ {
+ 	if (pmksa_cache_auth_add(pmksa, pmk, pmk_len, pmkid, NULL, 0, own_addr,
+ 				 bssid, 0, NULL, WPA_KEY_MGMT_SAE))
+-- 
+2.43.0
+

@@ -1,0 +1,98 @@
+From 085e5fa07a1cb3a17eabb019b94430503ce66a89 Mon Sep 17 00:00:00 2001
+From: Rameshkumar Sundaram <quic_ramess@quicinc.com>
+Date: Tue, 11 Feb 2025 22:57:07 +0530
+Subject: [PATCH] MBSSID: Correctly compute the Extended Supported Rates
+ element length
+
+A hardcoded value of 8 bytes was used as the length for the Extended
+Supported Rates element. This approach can cause issues if any changes
+are made to the function without updating the length accordingly.
+Determine the length properly instead of hardcoding and incorporate it
+into the Multiple BSSID element length calculation.
+
+And since this will now happen while calculating length, there is no
+need to call hostapd_eid_ext_supp_rates() in
+ieee802_11_build_ap_params_mbssid().
+
+Signed-off-by: Rameshkumar Sundaram <quic_ramess@quicinc.com>
+Signed-off-by: Aditya Kumar Singh <quic_adisi@quicinc.com>
+---
+ src/ap/beacon.c     |  9 ---------
+ src/ap/ieee802_11.c | 17 +++++++++++------
+ 2 files changed, 11 insertions(+), 15 deletions(-)
+
+diff --git a/src/ap/beacon.c b/src/ap/beacon.c
+index 95235aee4..71f7bc3c7 100644
+--- a/src/ap/beacon.c
++++ b/src/ap/beacon.c
+@@ -598,7 +598,6 @@ ieee802_11_build_ap_params_mbssid(struct hostapd_data *hapd,
+ 	size_t len, rnr_len = 0;
+ 	u8 elem_count = 0, *elem = NULL, **elem_offset = NULL, *end;
+ 	u8 rnr_elem_count = 0, *rnr_elem = NULL, **rnr_elem_offset = NULL;
+-	size_t i;
+ 
+ 	if (!iface->mbssid_max_interfaces ||
+ 	    iface->num_bss > iface->mbssid_max_interfaces ||
+@@ -606,14 +605,6 @@ ieee802_11_build_ap_params_mbssid(struct hostapd_data *hapd,
+ 	     !iface->ema_max_periodicity))
+ 		goto fail;
+ 
+-	/* Make sure bss->xrates_supported is set for all BSSs to know whether
+-	 * it need to be non-inherited. */
+-	for (i = 0; i < iface->num_bss; i++) {
+-		u8 buf[100];
+-
+-		hostapd_eid_ext_supp_rates(iface->bss[i], buf);
+-	}
+-
+ 	tx_bss = hostapd_mbssid_get_tx_bss(hapd);
+ 	len = hostapd_eid_mbssid_len(tx_bss, WLAN_FC_STYPE_BEACON, &elem_count,
+ 				     NULL, 0, &rnr_len);
+diff --git a/src/ap/ieee802_11.c b/src/ap/ieee802_11.c
+index 61dbfe43f..2d90e2406 100644
+--- a/src/ap/ieee802_11.c
++++ b/src/ap/ieee802_11.c
+@@ -8262,8 +8262,8 @@ static size_t hostapd_eid_mbssid_elem_len(struct hostapd_data *hapd,
+ 					  size_t known_bss_len)
+ {
+ 	struct hostapd_data *tx_bss = hostapd_mbssid_get_tx_bss(hapd);
+-	size_t len, i;
+-	u8 ext_capa[20];
++	size_t len, i, tx_xrate_len;
++	u8 ext_capa[20], buf[100];
+ 
+ 	/* Element ID: 1 octet
+ 	 * Length: 1 octet
+@@ -8276,10 +8276,12 @@ static size_t hostapd_eid_mbssid_elem_len(struct hostapd_data *hapd,
+ 	 */
+ 	len = 1;
+ 
++	tx_xrate_len = hostapd_eid_ext_supp_rates(tx_bss, buf) - buf;
++
+ 	for (i = *bss_index; i < hapd->iface->num_bss; i++) {
+ 		struct hostapd_data *bss = hapd->iface->bss[i];
+ 		const u8 *auth, *rsn = NULL, *rsnx = NULL;
+-		size_t nontx_profile_len, auth_len;
++		size_t nontx_profile_len, auth_len, xrate_len;
+ 		u8 ie_count = 0;
+ 
+ 		if (!bss || !bss->conf || !bss->started ||
+@@ -8317,9 +8319,12 @@ static size_t hostapd_eid_mbssid_elem_len(struct hostapd_data *hapd,
+ 			ie_count++;
+ 		if (!rsnx && hostapd_wpa_ie(tx_bss, WLAN_EID_RSNX))
+ 			ie_count++;
+-		if (bss->conf->xrates_supported)
+-			nontx_profile_len += 8;
+-		else if (hapd->conf->xrates_supported)
++
++		xrate_len = hostapd_eid_ext_supp_rates(bss, buf) - buf;
++
++		if (xrate_len)
++			nontx_profile_len += xrate_len;
++		else if (tx_xrate_len)
+ 			ie_count++;
+ 		if (ie_count)
+ 			nontx_profile_len += 4 + ie_count + 1;
+-- 
+2.43.0
+

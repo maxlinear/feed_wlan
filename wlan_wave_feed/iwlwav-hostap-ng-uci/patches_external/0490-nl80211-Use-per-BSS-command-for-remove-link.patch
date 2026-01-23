@@ -1,0 +1,29 @@
+From a576180cd8430a69bfa3559de3b5ff74e12a1d7f Mon Sep 17 00:00:00 2001
+From: Aditya Kumar Singh <quic_adisi@quicinc.com>
+Date: Wed, 6 Mar 2024 12:08:58 +0530
+Subject: [PATCH] nl80211: Use per-BSS command for remove link
+
+Construct the nl80211 remove link command using the per-BSS approach
+instead of per-driver (drv->first_bss).
+
+Signed-off-by: Aditya Kumar Singh <quic_adisi@quicinc.com>
+---
+ src/drivers/driver_nl80211.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/src/drivers/driver_nl80211.c b/src/drivers/driver_nl80211.c
+index 7d743e3c8..e4695d0b2 100644
+--- a/src/drivers/driver_nl80211.c
++++ b/src/drivers/driver_nl80211.c
+@@ -9465,7 +9465,7 @@ static int nl80211_remove_link(struct i802_bss *bss, int link_id)
+ 	}
+ 
+ 	/* Remove the link from the kernel */
+-	msg = nl80211_drv_msg(drv, 0, NL80211_CMD_REMOVE_LINK);
++	msg = nl80211_bss_msg(bss, 0, NL80211_CMD_REMOVE_LINK);
+ 	if (!msg ||
+ 	    nla_put_u8(msg, NL80211_ATTR_MLO_LINK_ID, link_id)) {
+ 		nlmsg_free(msg);
+-- 
+2.43.0
+

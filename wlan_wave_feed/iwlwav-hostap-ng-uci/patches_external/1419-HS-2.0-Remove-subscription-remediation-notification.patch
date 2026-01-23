@@ -1,0 +1,974 @@
+From ecf62b4d1b410c566a800966e04d4ac800c2165b Mon Sep 17 00:00:00 2001
+From: Jouni Malinen <quic_jouni@quicinc.com>
+Date: Sat, 22 Feb 2025 21:51:50 +0200
+Subject: [PATCH] HS 2.0: Remove subscription remediation notification
+
+This was removed from Passpoint spec v3.4 so there is no need to
+maintain this implementation anymore.
+
+Signed-off-by: Jouni Malinen <quic_jouni@quicinc.com>
+---
+ hostapd/config_file.c            |   8 --
+ hostapd/ctrl_iface.c             |  29 +---
+ src/ap/ap_config.c               |   2 -
+ src/ap/ap_config.h               |   4 -
+ src/ap/authsrv.c                 |   4 -
+ src/ap/eap_user_db.c             |   2 -
+ src/ap/hs20.c                    |  51 -------
+ src/ap/ieee802_1x.c              |  67 +--------
+ src/ap/sta_info.c                |   1 -
+ src/ap/sta_info.h                |   3 -
+ src/common/ieee802_11_defs.h     |   1 -
+ src/common/wpa_ctrl.h            |   1 -
+ src/eap_server/eap.h             |   1 -
+ src/eapol_auth/eapol_auth_sm.c   |  16 +--
+ src/eapol_auth/eapol_auth_sm.h   |   2 +-
+ src/eapol_auth/eapol_auth_sm_i.h |   2 -
+ src/radius/radius.h              |   1 -
+ src/radius/radius_server.c       | 239 -------------------------------
+ src/radius/radius_server.h       |   4 -
+ wpa_supplicant/hs20_supplicant.c |  11 --
+ wpa_supplicant/hs20_supplicant.h |   2 -
+ wpa_supplicant/wnm_sta.c         |  39 -----
+ wpa_supplicant/wpa_cli.c         |   2 -
+ 23 files changed, 13 insertions(+), 479 deletions(-)
+
+diff --git a/hostapd/config_file.c b/hostapd/config_file.c
+index f035e5b41..a3cc57ac6 100644
+--- a/hostapd/config_file.c
++++ b/hostapd/config_file.c
+@@ -4192,11 +4192,6 @@ static int hostapd_config_fill(struct hostapd_config *conf,
+ 		os_free(bss->hs20_operating_class);
+ 		bss->hs20_operating_class = oper_class;
+ 		bss->hs20_operating_class_len = oper_class_len;
+-	} else if (os_strcmp(buf, "subscr_remediation_url") == 0) {
+-		os_free(bss->subscr_remediation_url);
+-		bss->subscr_remediation_url = os_strdup(pos);
+-	} else if (os_strcmp(buf, "subscr_remediation_method") == 0) {
+-		bss->subscr_remediation_method = atoi(pos);
+ 	} else if (os_strcmp(buf, "hs20_t_c_filename") == 0) {
+ 		os_free(bss->t_c_filename);
+ 		bss->t_c_filename = os_strdup(pos);
+@@ -4205,9 +4200,6 @@ static int hostapd_config_fill(struct hostapd_config *conf,
+ 	} else if (os_strcmp(buf, "hs20_t_c_server_url") == 0) {
+ 		os_free(bss->t_c_server_url);
+ 		bss->t_c_server_url = os_strdup(pos);
+-	} else if (os_strcmp(buf, "hs20_sim_provisioning_url") == 0) {
+-		os_free(bss->hs20_sim_provisioning_url);
+-		bss->hs20_sim_provisioning_url = os_strdup(pos);
+ #endif /* CONFIG_HS20 */
+ #ifdef CONFIG_MBO
+ 	} else if (os_strcmp(buf, "mbo") == 0) {
+diff --git a/hostapd/ctrl_iface.c b/hostapd/ctrl_iface.c
+index e282faacc..7e7b6939b 100644
+--- a/hostapd/ctrl_iface.c
++++ b/hostapd/ctrl_iface.c
+@@ -596,31 +596,8 @@ static int hostapd_ctrl_iface_wps_get_status(struct hostapd_data *hapd,
+ 
+ #endif /* CONFIG_WPS */
+ 
+-#ifdef CONFIG_HS20
+-
+-static int hostapd_ctrl_iface_hs20_wnm_notif(struct hostapd_data *hapd,
+-					     const char *cmd)
+-{
+-	u8 addr[ETH_ALEN];
+-	const char *url;
+-
+-	if (hwaddr_aton(cmd, addr))
+-		return -1;
+-	url = cmd + 17;
+-	if (*url == '\0') {
+-		url = NULL;
+-	} else {
+-		if (*url != ' ')
+-			return -1;
+-		url++;
+-		if (*url == '\0')
+-			url = NULL;
+-	}
+-
+-	return hs20_send_wnm_notification(hapd, addr, 1, url);
+-}
+-
+ 
++#ifdef CONFIG_HS20
+ static int hostapd_ctrl_iface_hs20_deauth_req(struct hostapd_data *hapd,
+ 					      const char *cmd)
+ {
+@@ -669,7 +646,6 @@ static int hostapd_ctrl_iface_hs20_deauth_req(struct hostapd_data *hapd,
+ 	wpabuf_free(req);
+ 	return ret;
+ }
+-
+ #endif /* CONFIG_HS20 */
+ 
+ 
+@@ -4215,9 +4191,6 @@ static int hostapd_ctrl_iface_receive_process(struct hostapd_data *hapd,
+ 			reply_len = -1;
+ #endif /* CONFIG_INTERWORKING */
+ #ifdef CONFIG_HS20
+-	} else if (os_strncmp(buf, "HS20_WNM_NOTIF ", 15) == 0) {
+-		if (hostapd_ctrl_iface_hs20_wnm_notif(hapd, buf + 15))
+-			reply_len = -1;
+ 	} else if (os_strncmp(buf, "HS20_DEAUTH_REQ ", 16) == 0) {
+ 		if (hostapd_ctrl_iface_hs20_deauth_req(hapd, buf + 16))
+ 			reply_len = -1;
+diff --git a/src/ap/ap_config.c b/src/ap/ap_config.c
+index c388b84b7..52808c59b 100644
+--- a/src/ap/ap_config.c
++++ b/src/ap/ap_config.c
+@@ -931,8 +931,6 @@ void hostapd_config_free_bss(struct hostapd_bss_config *conf)
+ 	os_free(conf->hs20_wan_metrics);
+ 	os_free(conf->hs20_connection_capability);
+ 	os_free(conf->hs20_operating_class);
+-	os_free(conf->subscr_remediation_url);
+-	os_free(conf->hs20_sim_provisioning_url);
+ 	os_free(conf->t_c_filename);
+ 	os_free(conf->t_c_server_url);
+ #endif /* CONFIG_HS20 */
+diff --git a/src/ap/ap_config.h b/src/ap/ap_config.h
+index 32337e187..4a760eede 100644
+--- a/src/ap/ap_config.h
++++ b/src/ap/ap_config.h
+@@ -188,7 +188,6 @@ struct hostapd_eap_user {
+ 	unsigned int wildcard_prefix:1;
+ 	unsigned int password_hash:1; /* whether password is hashed with
+ 				       * nt_password_hash() */
+-	unsigned int remediation:1;
+ 	unsigned int macacl:1;
+ 	int ttls_auth; /* EAP_TTLS_AUTH_* bitfield */
+ 	struct hostapd_radius_attr *accept_attr;
+@@ -639,9 +638,6 @@ struct hostapd_bss_config {
+ 	u8 *hs20_operating_class;
+ 	u8 hs20_operating_class_len;
+ 	unsigned int hs20_deauth_req_timeout;
+-	char *subscr_remediation_url;
+-	u8 subscr_remediation_method;
+-	char *hs20_sim_provisioning_url;
+ 	char *t_c_filename;
+ 	u32 t_c_timestamp;
+ 	char *t_c_server_url;
+diff --git a/src/ap/authsrv.c b/src/ap/authsrv.c
+index 630cef6f5..27c9f3f58 100644
+--- a/src/ap/authsrv.c
++++ b/src/ap/authsrv.c
+@@ -89,7 +89,6 @@ static int hostapd_radius_get_eap_user(void *ctx, const u8 *identity,
+ 	user->force_version = eap_user->force_version;
+ 	user->macacl = eap_user->macacl;
+ 	user->ttls_auth = eap_user->ttls_auth;
+-	user->remediation = eap_user->remediation;
+ 	user->accept_attr = eap_user->accept_attr;
+ 	user->t_c_timestamp = eap_user->t_c_timestamp;
+ 	rv = 0;
+@@ -136,9 +135,6 @@ static int hostapd_setup_radius_srv(struct hostapd_data *hapd)
+ 	srv.dump_msk_file = conf->dump_msk_file;
+ #endif /* CONFIG_RADIUS_TEST */
+ #ifdef CONFIG_HS20
+-	srv.subscr_remediation_url = conf->subscr_remediation_url;
+-	srv.subscr_remediation_method = conf->subscr_remediation_method;
+-	srv.hs20_sim_provisioning_url = conf->hs20_sim_provisioning_url;
+ 	srv.t_c_server_url = conf->t_c_server_url;
+ #endif /* CONFIG_HS20 */
+ 	srv.erp_domain = conf->erp_domain;
+diff --git a/src/ap/eap_user_db.c b/src/ap/eap_user_db.c
+index a510ee3e2..c0e903040 100644
+--- a/src/ap/eap_user_db.c
++++ b/src/ap/eap_user_db.c
+@@ -89,8 +89,6 @@ static int get_user_cb(void *ctx, int argc, char *argv[], char *col[])
+ 			user->next = (void *) 1;
+ 		} else if (os_strcmp(col[i], "methods") == 0 && argv[i]) {
+ 			set_user_methods(user, argv[i]);
+-		} else if (os_strcmp(col[i], "remediation") == 0 && argv[i]) {
+-			user->remediation = strlen(argv[i]) > 0;
+ 		} else if (os_strcmp(col[i], "t_c_timestamp") == 0 && argv[i]) {
+ 			user->t_c_timestamp = strtol(argv[i], NULL, 10);
+ 		}
+diff --git a/src/ap/hs20.c b/src/ap/hs20.c
+index 83af4d32b..4ae3b6b49 100644
+--- a/src/ap/hs20.c
++++ b/src/ap/hs20.c
+@@ -44,57 +44,6 @@ u8 * hostapd_eid_hs20_indication(struct hostapd_data *hapd, u8 *eid)
+ }
+ 
+ 
+-int hs20_send_wnm_notification(struct hostapd_data *hapd, const u8 *addr,
+-			       u8 osu_method, const char *url)
+-{
+-	struct wpabuf *buf;
+-	size_t len = 0;
+-	int ret;
+-
+-	/* TODO: should refuse to send notification if the STA is not associated
+-	 * or if the STA did not indicate support for WNM-Notification */
+-
+-	if (url) {
+-		len = 1 + os_strlen(url);
+-		if (5 + len > 255) {
+-			wpa_printf(MSG_INFO, "HS 2.0: Too long URL for "
+-				   "WNM-Notification: '%s'", url);
+-			return -1;
+-		}
+-	}
+-
+-	buf = wpabuf_alloc(4 + 7 + len);
+-	if (buf == NULL)
+-		return -1;
+-
+-	wpabuf_put_u8(buf, WLAN_ACTION_WNM);
+-	wpabuf_put_u8(buf, WNM_NOTIFICATION_REQ);
+-	wpabuf_put_u8(buf, 1); /* Dialog token */
+-	wpabuf_put_u8(buf, 1); /* Type - 1 reserved for WFA */
+-
+-	/* Subscription Remediation subelement */
+-	wpabuf_put_u8(buf, WLAN_EID_VENDOR_SPECIFIC);
+-	wpabuf_put_u8(buf, 5 + len);
+-	wpabuf_put_be24(buf, OUI_WFA);
+-	wpabuf_put_u8(buf, HS20_WNM_SUB_REM_NEEDED);
+-	if (url) {
+-		wpabuf_put_u8(buf, len - 1);
+-		wpabuf_put_data(buf, url, len - 1);
+-		wpabuf_put_u8(buf, osu_method);
+-	} else {
+-		/* Server URL and Server Method fields not included */
+-		wpabuf_put_u8(buf, 0);
+-	}
+-
+-	ret = hostapd_drv_send_action(hapd, hapd->iface->freq, 0, addr,
+-				      wpabuf_head(buf), wpabuf_len(buf));
+-
+-	wpabuf_free(buf);
+-
+-	return ret;
+-}
+-
+-
+ int hs20_send_wnm_notification_deauth_req(struct hostapd_data *hapd,
+ 					  const u8 *addr,
+ 					  const struct wpabuf *payload)
+diff --git a/src/ap/ieee802_1x.c b/src/ap/ieee802_1x.c
+index 1da1d2321..e5dc7cb49 100644
+--- a/src/ap/ieee802_1x.c
++++ b/src/ap/ieee802_1x.c
+@@ -45,7 +45,7 @@ static void ieee802_1x_wnm_notif_send(void *eloop_ctx, void *timeout_ctx);
+ #endif /* CONFIG_HS20 */
+ static bool ieee802_1x_finished(struct hostapd_data *hapd,
+ 				struct sta_info *sta, int success,
+-				int remediation, bool logoff);
++				bool logoff);
+ 
+ 
+ static void ieee802_1x_send(struct hostapd_data *hapd, struct sta_info *sta,
+@@ -1489,10 +1489,6 @@ void ieee802_1x_free_station(struct hostapd_data *hapd, struct sta_info *sta)
+ {
+ 	struct eapol_state_machine *sm = sta->eapol_sm;
+ 
+-#ifdef CONFIG_HS20
+-	eloop_cancel_timeout(ieee802_1x_wnm_notif_send, hapd, sta);
+-#endif /* CONFIG_HS20 */
+-
+ 	if (sta->pending_eapol_rx) {
+ 		wpabuf_free(sta->pending_eapol_rx->buf);
+ 		os_free(sta->pending_eapol_rx);
+@@ -1768,32 +1764,6 @@ static void ieee802_1x_update_sta_cui(struct hostapd_data *hapd,
+ 
+ #ifdef CONFIG_HS20
+ 
+-static void ieee802_1x_hs20_sub_rem(struct sta_info *sta, u8 *pos, size_t len)
+-{
+-	sta->remediation = 1;
+-	os_free(sta->remediation_url);
+-	if (len > 2) {
+-		sta->remediation_url = os_malloc(len);
+-		if (!sta->remediation_url)
+-			return;
+-		sta->remediation_method = pos[0];
+-		os_memcpy(sta->remediation_url, pos + 1, len - 1);
+-		sta->remediation_url[len - 1] = '\0';
+-		wpa_printf(MSG_DEBUG,
+-			   "HS 2.0: Subscription remediation needed for "
+-			   MACSTR " - server method %u URL %s",
+-			   MAC2STR(sta->addr), sta->remediation_method,
+-			   sta->remediation_url);
+-	} else {
+-		sta->remediation_url = NULL;
+-		wpa_printf(MSG_DEBUG,
+-			   "HS 2.0: Subscription remediation needed for "
+-			   MACSTR, MAC2STR(sta->addr));
+-	}
+-	/* TODO: assign the STA into remediation VLAN or add filtering */
+-}
+-
+-
+ static void ieee802_1x_hs20_deauth_req(struct hostapd_data *hapd,
+ 				       struct sta_info *sta, const u8 *pos,
+ 				       size_t len)
+@@ -1909,7 +1879,6 @@ static void ieee802_1x_check_hs20(struct hostapd_data *hapd,
+ 	size_t len;
+ 
+ 	buf = NULL;
+-	sta->remediation = 0;
+ 	sta->hs20_deauth_requested = 0;
+ 	sta->hs20_deauth_on_ack = 0;
+ 
+@@ -1934,9 +1903,6 @@ static void ieee802_1x_check_hs20(struct hostapd_data *hapd,
+ 			continue; /* invalid WFA VSA */
+ 
+ 		switch (type) {
+-		case RADIUS_VENDOR_ATTR_WFA_HS20_SUBSCR_REMEDIATION:
+-			ieee802_1x_hs20_sub_rem(sta, pos, sublen);
+-			break;
+ 		case RADIUS_VENDOR_ATTR_WFA_HS20_DEAUTH_REQ:
+ 			ieee802_1x_hs20_deauth_req(hapd, sta, pos, sublen);
+ 			break;
+@@ -2365,7 +2331,7 @@ static void ieee802_1x_aaa_send(void *ctx, void *sta_ctx,
+ 
+ 
+ static bool _ieee802_1x_finished(void *ctx, void *sta_ctx, int success,
+-				 int preauth, int remediation, bool logoff)
++				 int preauth, bool logoff)
+ {
+ 	struct hostapd_data *hapd = ctx;
+ 	struct sta_info *sta = sta_ctx;
+@@ -2375,7 +2341,7 @@ static bool _ieee802_1x_finished(void *ctx, void *sta_ctx, int success,
+ 		return false;
+ 	}
+ 
+-	return ieee802_1x_finished(hapd, sta, success, remediation, logoff);
++	return ieee802_1x_finished(hapd, sta, success, logoff);
+ }
+ 
+ 
+@@ -2417,7 +2383,6 @@ static int ieee802_1x_get_eap_user(void *ctx, const u8 *identity,
+ 	user->force_version = eap_user->force_version;
+ 	user->macacl = eap_user->macacl;
+ 	user->ttls_auth = eap_user->ttls_auth;
+-	user->remediation = eap_user->remediation;
+ 	rv = 0;
+ 
+ out:
+@@ -3059,17 +3024,6 @@ static void ieee802_1x_wnm_notif_send(void *eloop_ctx, void *timeout_ctx)
+ 	struct hostapd_data *hapd = eloop_ctx;
+ 	struct sta_info *sta = timeout_ctx;
+ 
+-	if (sta->remediation) {
+-		wpa_printf(MSG_DEBUG, "HS 2.0: Send WNM-Notification to "
+-			   MACSTR " to indicate Subscription Remediation",
+-			   MAC2STR(sta->addr));
+-		hs20_send_wnm_notification(hapd, sta->addr,
+-					   sta->remediation_method,
+-					   sta->remediation_url);
+-		os_free(sta->remediation_url);
+-		sta->remediation_url = NULL;
+-	}
+-
+ 	if (sta->hs20_deauth_req) {
+ 		wpa_printf(MSG_DEBUG, "HS 2.0: Send WNM-Notification to "
+ 			   MACSTR " to indicate imminent deauthentication",
+@@ -3092,7 +3046,7 @@ static void ieee802_1x_wnm_notif_send(void *eloop_ctx, void *timeout_ctx)
+ 
+ static bool ieee802_1x_finished(struct hostapd_data *hapd,
+ 				struct sta_info *sta, int success,
+-				int remediation, bool logoff)
++				bool logoff)
+ {
+ 	const u8 *key;
+ 	size_t len;
+@@ -3102,16 +3056,7 @@ static bool ieee802_1x_finished(struct hostapd_data *hapd,
+ 	struct os_reltime now, remaining;
+ 
+ #ifdef CONFIG_HS20
+-	if (remediation && !sta->remediation) {
+-		sta->remediation = 1;
+-		os_free(sta->remediation_url);
+-		sta->remediation_url =
+-			os_strdup(hapd->conf->subscr_remediation_url);
+-		sta->remediation_method = 1; /* SOAP-XML SPP */
+-	}
+-
+-	if (success && (sta->remediation || sta->hs20_deauth_req ||
+-			sta->hs20_t_c_filtering)) {
++	if (success && (sta->hs20_deauth_req || sta->hs20_t_c_filtering)) {
+ 		wpa_printf(MSG_DEBUG, "HS 2.0: Schedule WNM-Notification to "
+ 			   MACSTR " in 100 ms", MAC2STR(sta->addr));
+ 		eloop_cancel_timeout(ieee802_1x_wnm_notif_send, hapd, sta);
+@@ -3132,7 +3077,7 @@ static bool ieee802_1x_finished(struct hostapd_data *hapd,
+ 	} else {
+ 		session_timeout = dot11RSNAConfigPMKLifetime;
+ 	}
+-	if (success && key && len >= PMK_LEN && !sta->remediation &&
++	if (success && key && len >= PMK_LEN &&
+ 	    !sta->hs20_deauth_requested &&
+ 	    wpa_auth_pmksa_add(sta->wpa_sm, key, len, session_timeout,
+ 			       sta->eapol_sm) == 0) {
+diff --git a/src/ap/sta_info.c b/src/ap/sta_info.c
+index 6b78d8377..b2fd51b31 100644
+--- a/src/ap/sta_info.c
++++ b/src/ap/sta_info.c
+@@ -419,7 +419,6 @@ void ap_free_sta(struct hostapd_data *hapd, struct sta_info *sta)
+ 	hostapd_free_psk_list(sta->psk);
+ 	os_free(sta->identity);
+ 	os_free(sta->radius_cui);
+-	os_free(sta->remediation_url);
+ 	os_free(sta->t_c_url);
+ 	wpabuf_free(sta->hs20_deauth_req);
+ 	os_free(sta->hs20_session_info_url);
+diff --git a/src/ap/sta_info.h b/src/ap/sta_info.h
+index 827b21e45..1730742a9 100644
+--- a/src/ap/sta_info.h
++++ b/src/ap/sta_info.h
+@@ -132,7 +132,6 @@ struct sta_info {
+ 	unsigned int ht_20mhz_set:1;
+ 	unsigned int no_p2p_set:1;
+ 	unsigned int qos_map_enabled:1;
+-	unsigned int remediation:1;
+ 	unsigned int hs20_deauth_requested:1;
+ 	unsigned int hs20_deauth_on_ack:1;
+ 	unsigned int session_timeout_set:1;
+@@ -218,8 +217,6 @@ struct sta_info {
+ 	struct wpabuf *hs20_ie; /* HS 2.0 IE from (Re)Association Request */
+ 	/* Hotspot 2.0 Roaming Consortium from (Re)Association Request */
+ 	struct wpabuf *roaming_consortium;
+-	u8 remediation_method;
+-	char *remediation_url; /* HS 2.0 Subscription Remediation Server URL */
+ 	char *t_c_url; /* HS 2.0 Terms and Conditions Server URL */
+ 	struct wpabuf *hs20_deauth_req;
+ 	char *hs20_session_info_url;
+diff --git a/src/common/ieee802_11_defs.h b/src/common/ieee802_11_defs.h
+index f0b113b05..a2a0cfbb6 100644
+--- a/src/common/ieee802_11_defs.h
++++ b/src/common/ieee802_11_defs.h
+@@ -1626,7 +1626,6 @@ enum wmm_ac {
+ #endif /* HS20_VERSION */
+ 
+ /* WNM-Notification WFA vendors specific subtypes */
+-#define HS20_WNM_SUB_REM_NEEDED 0
+ #define HS20_WNM_DEAUTH_IMMINENT_NOTICE 1
+ #define WFA_WNM_NOTIF_SUBELEM_NON_PREF_CHAN_REPORT 2
+ #define WFA_WNM_NOTIF_SUBELEM_CELL_DATA_CAPA 3
+diff --git a/src/common/wpa_ctrl.h b/src/common/wpa_ctrl.h
+index 40628e81d..90c67490d 100644
+--- a/src/common/wpa_ctrl.h
++++ b/src/common/wpa_ctrl.h
+@@ -343,7 +343,6 @@ extern "C" {
+ /* parameters: <Venue Number> <Venue URL> */
+ #define RX_VENUE_URL "RX-VENUE-URL "
+ 
+-#define HS20_SUBSCRIPTION_REMEDIATION "HS20-SUBSCRIPTION-REMEDIATION "
+ #define HS20_DEAUTH_IMMINENT_NOTICE "HS20-DEAUTH-IMMINENT-NOTICE "
+ #define HS20_T_C_ACCEPTANCE "HS20-T-C-ACCEPTANCE "
+ 
+diff --git a/src/eap_server/eap.h b/src/eap_server/eap.h
+index 0a987e64d..dd02b0cdb 100644
+--- a/src/eap_server/eap.h
++++ b/src/eap_server/eap.h
+@@ -35,7 +35,6 @@ struct eap_user {
+ 	size_t salt_len;
+ 	int phase2;
+ 	int force_version;
+-	unsigned int remediation:1;
+ 	unsigned int macacl:1;
+ 	int ttls_auth; /* bitfield of
+ 			* EAP_TTLS_AUTH_{PAP,CHAP,MSCHAP,MSCHAPV2} */
+diff --git a/src/eapol_auth/eapol_auth_sm.c b/src/eapol_auth/eapol_auth_sm.c
+index e1b82ebe3..af962eefe 100644
+--- a/src/eapol_auth/eapol_auth_sm.c
++++ b/src/eapol_auth/eapol_auth_sm.c
+@@ -237,7 +237,7 @@ SM_STATE(AUTH_PAE, DISCONNECTED)
+ 	if (!from_initialize && !pre_auth_logoff) {
+ 		if (sm->eapol->cb.finished(sm->eapol->conf.ctx, sm->sta, 0,
+ 					   sm->flags & EAPOL_SM_PREAUTH,
+-					   sm->remediation, logoff)) {
++					   logoff)) {
+ 			wpa_printf(MSG_DEBUG,
+ 				   "EAPOL: Do not restart since lower layers will disconnect the port after EAPOL-Logoff");
+ 			sm->stopped = true;
+@@ -298,8 +298,7 @@ SM_STATE(AUTH_PAE, HELD)
+ 				   eap_server_get_name(0, sm->eap_type_supp));
+ 	}
+ 	sm->eapol->cb.finished(sm->eapol->conf.ctx, sm->sta, 0,
+-			       sm->flags & EAPOL_SM_PREAUTH, sm->remediation,
+-			       false);
++			       sm->flags & EAPOL_SM_PREAUTH, false);
+ }
+ 
+ 
+@@ -327,8 +326,7 @@ SM_STATE(AUTH_PAE, AUTHENTICATED)
+ 	if (sm->authSuccess)
+ 		sm->authenticated++;
+ 	sm->eapol->cb.finished(sm->eapol->conf.ctx, sm->sta, 1,
+-			       sm->flags & EAPOL_SM_PREAUTH, sm->remediation,
+-			       false);
++			       sm->flags & EAPOL_SM_PREAUTH, false);
+ }
+ 
+ 
+@@ -1029,13 +1027,9 @@ static int eapol_sm_get_eap_user(void *ctx, const u8 *identity,
+ 				 struct eap_user *user)
+ {
+ 	struct eapol_state_machine *sm = ctx;
+-	int ret;
+ 
+-	ret = sm->eapol->cb.get_eap_user(sm->eapol->conf.ctx, identity,
+-					 identity_len, phase2, user);
+-	if (user->remediation)
+-		sm->remediation = 1;
+-	return ret;
++	return sm->eapol->cb.get_eap_user(sm->eapol->conf.ctx, identity,
++					  identity_len, phase2, user);
+ }
+ 
+ 
+diff --git a/src/eapol_auth/eapol_auth_sm.h b/src/eapol_auth/eapol_auth_sm.h
+index 7296a3aca..83f5c5d0b 100644
+--- a/src/eapol_auth/eapol_auth_sm.h
++++ b/src/eapol_auth/eapol_auth_sm.h
+@@ -47,7 +47,7 @@ struct eapol_auth_cb {
+ 	void (*aaa_send)(void *ctx, void *sta_ctx, const u8 *data,
+ 			 size_t datalen);
+ 	bool (*finished)(void *ctx, void *sta_ctx, int success, int preauth,
+-			 int remediation, bool logoff);
++			 bool logoff);
+ 	int (*get_eap_user)(void *ctx, const u8 *identity, size_t identity_len,
+ 			    int phase2, struct eap_user *user);
+ 	int (*sta_entry_alive)(void *ctx, const u8 *addr);
+diff --git a/src/eapol_auth/eapol_auth_sm_i.h b/src/eapol_auth/eapol_auth_sm_i.h
+index a0cef0f8e..c970e73dd 100644
+--- a/src/eapol_auth/eapol_auth_sm_i.h
++++ b/src/eapol_auth/eapol_auth_sm_i.h
+@@ -168,8 +168,6 @@ struct eapol_state_machine {
+ 
+ 	void *sta; /* station context pointer to use in callbacks */
+ 
+-	int remediation;
+-
+ 	u64 acct_multi_session_id;
+ 
+ 	unsigned int authenticated; /* The number of times authentication has
+diff --git a/src/radius/radius.h b/src/radius/radius.h
+index 05fddbaf2..278e9e087 100644
+--- a/src/radius/radius.h
++++ b/src/radius/radius.h
+@@ -221,7 +221,6 @@ enum {
+ #define RADIUS_VENDOR_ID_WFA 40808
+ 
+ enum {
+-	RADIUS_VENDOR_ATTR_WFA_HS20_SUBSCR_REMEDIATION = 1,
+ 	RADIUS_VENDOR_ATTR_WFA_HS20_AP_VERSION = 2,
+ 	RADIUS_VENDOR_ATTR_WFA_HS20_STA_VERSION = 3,
+ 	RADIUS_VENDOR_ATTR_WFA_HS20_DEAUTH_REQ = 4,
+diff --git a/src/radius/radius_server.c b/src/radius/radius_server.c
+index fa3691548..715b6d928 100644
+--- a/src/radius/radius_server.c
++++ b/src/radius/radius_server.c
+@@ -86,7 +86,6 @@ struct radius_session {
+ 	struct radius_msg *last_reply;
+ 	u8 last_authenticator[16];
+ 
+-	unsigned int remediation:1;
+ 	unsigned int macacl:1;
+ 	unsigned int t_c_filtering:1;
+ 
+@@ -215,10 +214,6 @@ struct radius_server_data {
+ 	char *dump_msk_file;
+ #endif /* CONFIG_RADIUS_TEST */
+ 
+-	char *subscr_remediation_url;
+-	u8 subscr_remediation_method;
+-	char *hs20_sim_provisioning_url;
+-
+ 	char *t_c_server_url;
+ 
+ #ifdef CONFIG_SQLITE
+@@ -243,44 +238,6 @@ static void radius_server_session_timeout(void *eloop_ctx, void *timeout_ctx);
+ static void radius_server_session_remove_timeout(void *eloop_ctx,
+ 						 void *timeout_ctx);
+ 
+-#ifdef CONFIG_SQLITE
+-#ifdef CONFIG_HS20
+-
+-static int db_table_exists(sqlite3 *db, const char *name)
+-{
+-	char cmd[128];
+-
+-	os_snprintf(cmd, sizeof(cmd), "SELECT 1 FROM %s;", name);
+-	return sqlite3_exec(db, cmd, NULL, NULL, NULL) == SQLITE_OK;
+-}
+-
+-
+-static int db_table_create_sim_provisioning(sqlite3 *db)
+-{
+-	char *err = NULL;
+-	const char *sql =
+-		"CREATE TABLE sim_provisioning("
+-		" mobile_identifier_hash TEXT PRIMARY KEY,"
+-		" imsi TEXT,"
+-		" mac_addr TEXT,"
+-		" eap_method TEXT,"
+-		" timestamp TEXT"
+-		");";
+-
+-	RADIUS_DEBUG("Adding database table for SIM provisioning information");
+-	if (sqlite3_exec(db, sql, NULL, NULL, &err) != SQLITE_OK) {
+-		RADIUS_ERROR("SQLite error: %s", err);
+-		sqlite3_free(err);
+-		return -1;
+-	}
+-
+-	return 0;
+-}
+-
+-#endif /* CONFIG_HS20 */
+-#endif /* CONFIG_SQLITE */
+-
+-
+ void srv_log(struct radius_session *sess, const char *fmt, ...)
+ PRINTF_FORMAT(2, 3);
+ 
+@@ -780,117 +737,6 @@ static void db_update_last_msk(struct radius_session *sess, const char *msk)
+ }
+ 
+ 
+-#ifdef CONFIG_HS20
+-
+-static int radius_server_is_sim_method(struct radius_session *sess)
+-{
+-	const char *name;
+-
+-	name = eap_get_method(sess->eap);
+-	return name &&
+-		(os_strcmp(name, "SIM") == 0 ||
+-		 os_strcmp(name, "AKA") == 0 ||
+-		 os_strcmp(name, "AKA'") == 0);
+-}
+-
+-
+-static int radius_server_hs20_missing_sim_pps(struct radius_msg *request)
+-{
+-	u8 *buf, *pos, *end, type, sublen;
+-	size_t len;
+-
+-	buf = NULL;
+-	for (;;) {
+-		if (radius_msg_get_attr_ptr(request,
+-					    RADIUS_ATTR_VENDOR_SPECIFIC,
+-					    &buf, &len, buf) < 0)
+-			return 0;
+-		if (len < 6)
+-			continue;
+-		pos = buf;
+-		end = buf + len;
+-		if (WPA_GET_BE32(pos) != RADIUS_VENDOR_ID_WFA)
+-			continue;
+-		pos += 4;
+-
+-		type = *pos++;
+-		sublen = *pos++;
+-		if (sublen < 2)
+-			continue; /* invalid length */
+-		sublen -= 2; /* skip header */
+-		if (pos + sublen > end)
+-			continue; /* invalid WFA VSA */
+-
+-		if (type != RADIUS_VENDOR_ATTR_WFA_HS20_STA_VERSION)
+-			continue;
+-
+-		RADIUS_DUMP("HS2.0 mobile device version", pos, sublen);
+-		if (sublen < 1 + 2)
+-			continue;
+-		if (pos[0] == 0)
+-			continue; /* Release 1 STA does not support provisioning
+-
+-				   */
+-		/* UpdateIdentifier 0 indicates no PPS MO */
+-		return WPA_GET_BE16(pos + 1) == 0;
+-	}
+-}
+-
+-
+-#define HS20_MOBILE_ID_HASH_LEN 16
+-
+-static int radius_server_sim_provisioning_session(struct radius_session *sess,
+-						  const u8 *hash)
+-{
+-#ifdef CONFIG_SQLITE
+-	char *sql;
+-	char addr_txt[ETH_ALEN * 3];
+-	char hash_txt[2 * HS20_MOBILE_ID_HASH_LEN + 1];
+-	struct os_time now;
+-	int res;
+-	const char *imsi, *eap_method;
+-
+-	if (!sess->server->db ||
+-	    (!db_table_exists(sess->server->db, "sim_provisioning") &&
+-	     db_table_create_sim_provisioning(sess->server->db) < 0))
+-		return -1;
+-
+-	imsi = eap_get_imsi(sess->eap);
+-	if (!imsi)
+-		return -1;
+-
+-	eap_method = eap_get_method(sess->eap);
+-	if (!eap_method)
+-		return -1;
+-
+-	os_snprintf(addr_txt, sizeof(addr_txt), MACSTR,
+-		    MAC2STR(sess->mac_addr));
+-	wpa_snprintf_hex(hash_txt, sizeof(hash_txt), hash,
+-			 HS20_MOBILE_ID_HASH_LEN);
+-
+-	os_get_time(&now);
+-	sql = sqlite3_mprintf("INSERT INTO sim_provisioning(mobile_identifier_hash,imsi,mac_addr,eap_method,timestamp) VALUES (%Q,%Q,%Q,%Q,%u)",
+-			      hash_txt, imsi, addr_txt, eap_method, now.sec);
+-	if (!sql)
+-		return -1;
+-
+-	if (sqlite3_exec(sess->server->db, sql, NULL, NULL, NULL) !=
+-	    SQLITE_OK) {
+-		RADIUS_ERROR("Failed to add SIM provisioning entry into sqlite database: %s",
+-			     sqlite3_errmsg(sess->server->db));
+-		res = -1;
+-	} else {
+-		res = 0;
+-	}
+-	sqlite3_free(sql);
+-	return res;
+-#endif /* CONFIG_SQLITE */
+-	return -1;
+-}
+-
+-#endif /* CONFIG_HS20 */
+-
+-
+ static struct radius_msg *
+ radius_server_encapsulate_eap(struct radius_server_data *data,
+ 			      struct radius_client *client,
+@@ -992,74 +838,6 @@ radius_server_encapsulate_eap(struct radius_server_data *data,
+ 	}
+ 
+ #ifdef CONFIG_HS20
+-	if (code == RADIUS_CODE_ACCESS_ACCEPT && sess->remediation &&
+-	    data->subscr_remediation_url) {
+-		u8 *buf;
+-		size_t url_len = os_strlen(data->subscr_remediation_url);
+-		buf = os_malloc(1 + url_len);
+-		if (buf == NULL) {
+-			radius_msg_free(msg);
+-			return NULL;
+-		}
+-		buf[0] = data->subscr_remediation_method;
+-		os_memcpy(&buf[1], data->subscr_remediation_url, url_len);
+-		if (!radius_msg_add_wfa(
+-			    msg, RADIUS_VENDOR_ATTR_WFA_HS20_SUBSCR_REMEDIATION,
+-			    buf, 1 + url_len)) {
+-			RADIUS_DEBUG("Failed to add WFA-HS20-SubscrRem");
+-		}
+-		os_free(buf);
+-	} else if (code == RADIUS_CODE_ACCESS_ACCEPT && sess->remediation) {
+-		u8 buf[1];
+-		if (!radius_msg_add_wfa(
+-			    msg, RADIUS_VENDOR_ATTR_WFA_HS20_SUBSCR_REMEDIATION,
+-			    buf, 0)) {
+-			RADIUS_DEBUG("Failed to add WFA-HS20-SubscrRem");
+-		}
+-	} else if (code == RADIUS_CODE_ACCESS_ACCEPT &&
+-		   data->hs20_sim_provisioning_url &&
+-		   radius_server_is_sim_method(sess) &&
+-		   radius_server_hs20_missing_sim_pps(request)) {
+-		u8 *buf, *pos, hash[HS20_MOBILE_ID_HASH_LEN];
+-		size_t prefix_len, url_len;
+-
+-		RADIUS_DEBUG("Device needs HS 2.0 SIM provisioning");
+-
+-		if (os_get_random(hash, HS20_MOBILE_ID_HASH_LEN) < 0) {
+-			radius_msg_free(msg);
+-			return NULL;
+-		}
+-		RADIUS_DUMP("hotspot2dot0-mobile-identifier-hash",
+-			    hash, HS20_MOBILE_ID_HASH_LEN);
+-
+-		if (radius_server_sim_provisioning_session(sess, hash) < 0) {
+-			radius_msg_free(msg);
+-			return NULL;
+-		}
+-
+-		prefix_len = os_strlen(data->hs20_sim_provisioning_url);
+-		url_len = prefix_len + 2 * HS20_MOBILE_ID_HASH_LEN;
+-		buf = os_malloc(1 + url_len + 1);
+-		if (!buf) {
+-			radius_msg_free(msg);
+-			return NULL;
+-		}
+-		pos = buf;
+-		*pos++ = data->subscr_remediation_method;
+-		os_memcpy(pos, data->hs20_sim_provisioning_url, prefix_len);
+-		pos += prefix_len;
+-		wpa_snprintf_hex((char *) pos, 2 * HS20_MOBILE_ID_HASH_LEN + 1,
+-				 hash, HS20_MOBILE_ID_HASH_LEN);
+-		RADIUS_DEBUG("HS 2.0 subscription remediation URL: %s",
+-			     (char *) &buf[1]);
+-		if (!radius_msg_add_wfa(
+-			    msg, RADIUS_VENDOR_ATTR_WFA_HS20_SUBSCR_REMEDIATION,
+-			    buf, 1 + url_len)) {
+-			RADIUS_DEBUG("Failed to add WFA-HS20-SubscrRem");
+-		}
+-		os_free(buf);
+-	}
+-
+ 	if (code == RADIUS_CODE_ACCESS_ACCEPT && sess->t_c_filtering) {
+ 		u8 buf[4] = { 0x01, 0x00, 0x00, 0x00 }; /* E=1 */
+ 		const char *url = data->t_c_server_url, *pos;
+@@ -2231,20 +2009,6 @@ radius_server_init(struct radius_server_conf *conf)
+ 	}
+ 	data->erp_domain = conf->erp_domain;
+ 
+-	if (conf->subscr_remediation_url) {
+-		data->subscr_remediation_url =
+-			os_strdup(conf->subscr_remediation_url);
+-		if (!data->subscr_remediation_url)
+-			goto fail;
+-	}
+-	data->subscr_remediation_method = conf->subscr_remediation_method;
+-	if (conf->hs20_sim_provisioning_url) {
+-		data->hs20_sim_provisioning_url =
+-			os_strdup(conf->hs20_sim_provisioning_url);
+-		if (!data->hs20_sim_provisioning_url)
+-			goto fail;
+-	}
+-
+ 	if (conf->t_c_server_url) {
+ 		data->t_c_server_url = os_strdup(conf->t_c_server_url);
+ 		if (!data->t_c_server_url)
+@@ -2359,8 +2123,6 @@ void radius_server_deinit(struct radius_server_data *data)
+ #ifdef CONFIG_RADIUS_TEST
+ 	os_free(data->dump_msk_file);
+ #endif /* CONFIG_RADIUS_TEST */
+-	os_free(data->subscr_remediation_url);
+-	os_free(data->hs20_sim_provisioning_url);
+ 	os_free(data->t_c_server_url);
+ 
+ #ifdef CONFIG_SQLITE
+@@ -2528,7 +2290,6 @@ static int radius_server_get_eap_user(void *ctx, const u8 *identity,
+ 				 phase2, user);
+ 	if (ret == 0 && user) {
+ 		sess->accept_attr = user->accept_attr;
+-		sess->remediation = user->remediation;
+ 		sess->macacl = user->macacl;
+ 		sess->t_c_timestamp = user->t_c_timestamp;
+ 	}
+diff --git a/src/radius/radius_server.h b/src/radius/radius_server.h
+index 43192e585..2a6f56796 100644
+--- a/src/radius/radius_server.h
++++ b/src/radius/radius_server.h
+@@ -96,10 +96,6 @@ struct radius_server_conf {
+ 	const char *dump_msk_file;
+ #endif /* CONFIG_RADIUS_TEST */
+ 
+-	char *subscr_remediation_url;
+-	u8 subscr_remediation_method;
+-	char *hs20_sim_provisioning_url;
+-
+ 	char *t_c_server_url;
+ 
+ 	struct eap_config *eap_cfg;
+diff --git a/wpa_supplicant/hs20_supplicant.c b/wpa_supplicant/hs20_supplicant.c
+index 63797b272..627935474 100644
+--- a/wpa_supplicant/hs20_supplicant.c
++++ b/wpa_supplicant/hs20_supplicant.c
+@@ -343,17 +343,6 @@ void hs20_parse_rx_hs20_anqp_resp(struct wpa_supplicant *wpa_s,
+ }
+ 
+ 
+-void hs20_rx_subscription_remediation(struct wpa_supplicant *wpa_s,
+-				      const char *url, u8 osu_method)
+-{
+-	if (url)
+-		wpa_msg(wpa_s, MSG_INFO, HS20_SUBSCRIPTION_REMEDIATION "%u %s",
+-			osu_method, url);
+-	else
+-		wpa_msg(wpa_s, MSG_INFO, HS20_SUBSCRIPTION_REMEDIATION);
+-}
+-
+-
+ void hs20_rx_deauth_imminent_notice(struct wpa_supplicant *wpa_s, u8 code,
+ 				    u16 reauth_delay, const char *url)
+ {
+diff --git a/wpa_supplicant/hs20_supplicant.h b/wpa_supplicant/hs20_supplicant.h
+index 85bd7bde4..ce12bfb0e 100644
+--- a/wpa_supplicant/hs20_supplicant.h
++++ b/wpa_supplicant/hs20_supplicant.h
+@@ -26,8 +26,6 @@ int is_hs20_network(struct wpa_supplicant *wpa_s, struct wpa_ssid *ssid,
+ 		    struct wpa_bss *bss);
+ int hs20_get_pps_mo_id(struct wpa_supplicant *wpa_s, struct wpa_ssid *ssid);
+ 
+-void hs20_rx_subscription_remediation(struct wpa_supplicant *wpa_s,
+-				      const char *url, u8 osu_method);
+ void hs20_rx_deauth_imminent_notice(struct wpa_supplicant *wpa_s, u8 code,
+ 				    u16 reauth_delay, const char *url);
+ void hs20_rx_t_c_acceptance(struct wpa_supplicant *wpa_s, const char *url);
+diff --git a/wpa_supplicant/wnm_sta.c b/wpa_supplicant/wnm_sta.c
+index 187da1133..41385c302 100644
+--- a/wpa_supplicant/wnm_sta.c
++++ b/wpa_supplicant/wnm_sta.c
+@@ -1685,45 +1685,6 @@ static void ieee802_11_rx_wnm_notif_req_wfa(struct wpa_supplicant *wpa_s,
+ 			   WPA_GET_BE24(pos), pos[3]);
+ 
+ #ifdef CONFIG_HS20
+-		if (ie == WLAN_EID_VENDOR_SPECIFIC && ie_len >= 5 &&
+-		    WPA_GET_BE24(pos) == OUI_WFA &&
+-		    pos[3] == HS20_WNM_SUB_REM_NEEDED) {
+-			/* Subscription Remediation subelement */
+-			const u8 *ie_end;
+-			u8 url_len;
+-			char *url;
+-			u8 osu_method;
+-
+-			wpa_printf(MSG_DEBUG, "WNM: Subscription Remediation "
+-				   "subelement");
+-			ie_end = pos + ie_len;
+-			pos += 4;
+-			url_len = *pos++;
+-			if (url_len == 0) {
+-				wpa_printf(MSG_DEBUG, "WNM: No Server URL included");
+-				url = NULL;
+-				osu_method = 1;
+-			} else {
+-				if (url_len + 1 > ie_end - pos) {
+-					wpa_printf(MSG_DEBUG, "WNM: Not enough room for Server URL (len=%u) and Server Method (left %d)",
+-						   url_len,
+-						   (int) (ie_end - pos));
+-					break;
+-				}
+-				url = os_malloc(url_len + 1);
+-				if (url == NULL)
+-					break;
+-				os_memcpy(url, pos, url_len);
+-				url[url_len] = '\0';
+-				osu_method = pos[url_len];
+-			}
+-			hs20_rx_subscription_remediation(wpa_s, url,
+-							 osu_method);
+-			os_free(url);
+-			pos = next;
+-			continue;
+-		}
+-
+ 		if (ie == WLAN_EID_VENDOR_SPECIFIC && ie_len >= 8 &&
+ 		    WPA_GET_BE24(pos) == OUI_WFA &&
+ 		    pos[3] == HS20_WNM_DEAUTH_IMMINENT_NOTICE) {
+diff --git a/wpa_supplicant/wpa_cli.c b/wpa_supplicant/wpa_cli.c
+index d1ad5554b..2ab291712 100644
+--- a/wpa_supplicant/wpa_cli.c
++++ b/wpa_supplicant/wpa_cli.c
+@@ -4456,8 +4456,6 @@ static void wpa_cli_action_process(const char *msg)
+ 		wpa_cli_exec(action_file, ifname, pos);
+ 	} else if (str_starts(pos, ESS_DISASSOC_IMMINENT)) {
+ 		wpa_cli_exec(action_file, ifname, pos);
+-	} else if (str_starts(pos, HS20_SUBSCRIPTION_REMEDIATION)) {
+-		wpa_cli_exec(action_file, ifname, pos);
+ 	} else if (str_starts(pos, HS20_DEAUTH_IMMINENT_NOTICE)) {
+ 		wpa_cli_exec(action_file, ifname, pos);
+ 	} else if (str_starts(pos, HS20_T_C_ACCEPTANCE)) {
+-- 
+2.43.0
+

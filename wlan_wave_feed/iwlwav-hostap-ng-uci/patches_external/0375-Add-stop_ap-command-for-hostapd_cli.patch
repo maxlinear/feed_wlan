@@ -1,0 +1,40 @@
+From a01972a065cc57c14838d7838e611f72984a176a Mon Sep 17 00:00:00 2001
+From: Chenming Huang <quic_chenhuan@quicinc.com>
+Date: Tue, 5 Dec 2023 13:10:38 +0530
+Subject: [PATCH] Add "stop_ap" command for hostapd_cli
+
+Signed-off-by: Chenming Huang <quic_chenhuan@quicinc.com>
+---
+ hostapd/hostapd_cli.c | 9 +++++++++
+ 1 file changed, 9 insertions(+)
+
+diff --git a/hostapd/hostapd_cli.c b/hostapd/hostapd_cli.c
+index 8fb6119c8..118991b91 100644
+--- a/hostapd/hostapd_cli.c
++++ b/hostapd/hostapd_cli.c
+@@ -1270,6 +1270,13 @@ static int hostapd_cli_cmd_update_beacon(struct wpa_ctrl *ctrl, int argc,
+ }
+ 
+ 
++static int hostapd_cli_cmd_stop_ap(struct wpa_ctrl *ctrl, int argc,
++				   char *argv[])
++{
++	return wpa_ctrl_command(ctrl, "STOP_AP");
++}
++
++
+ static int hostapd_cli_cmd_vendor(struct wpa_ctrl *ctrl, int argc, char *argv[])
+ {
+ 	char cmd[256];
+@@ -1759,6 +1766,8 @@ static const struct hostapd_cli_cmd hostapd_cli_commands[] = {
+ 	  "= disable AP MLD to which the interface is affiliated" },
+ 	{ "update_beacon", hostapd_cli_cmd_update_beacon, NULL,
+ 	  "= update Beacon frame contents\n"},
++	{ "stop_ap", hostapd_cli_cmd_stop_ap, NULL,
++	  "= stop AP\n"},
+ 	{ "erp_flush", hostapd_cli_cmd_erp_flush, NULL,
+ 	  "= drop all ERP keys"},
+ 	{ "log_level", hostapd_cli_cmd_log_level, NULL,
+-- 
+2.43.0
+

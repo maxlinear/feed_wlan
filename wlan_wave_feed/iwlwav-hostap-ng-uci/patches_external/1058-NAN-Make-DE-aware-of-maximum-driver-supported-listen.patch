@@ -1,0 +1,87 @@
+From 296141fe96534720306ac14b1735a0b79de55a26 Mon Sep 17 00:00:00 2001
+From: Jouni Malinen <quic_jouni@quicinc.com>
+Date: Mon, 4 Nov 2024 22:42:44 +0200
+Subject: [PATCH] NAN: Make DE aware of maximum driver supported listen time
+
+This can be used to optimize listen operations to be as long as the
+driver supports instead of having to use a small enough value to work
+with all drivers.
+
+Signed-off-by: Jouni Malinen <quic_jouni@quicinc.com>
+---
+ src/ap/nan_usd_ap.c      | 2 +-
+ src/common/nan_de.c      | 3 +++
+ src/common/nan_de.h      | 1 +
+ wpa_supplicant/nan_usd.c | 3 ++-
+ 4 files changed, 7 insertions(+), 2 deletions(-)
+
+diff --git a/src/ap/nan_usd_ap.c b/src/ap/nan_usd_ap.c
+index 56ef6a4d8..4623f678d 100644
+--- a/src/ap/nan_usd_ap.c
++++ b/src/ap/nan_usd_ap.c
+@@ -160,7 +160,7 @@ int hostapd_nan_usd_init(struct hostapd_data *hapd)
+ 	cb.subscribe_terminated = hostapd_nan_de_subscribe_terminated;
+ 	cb.receive = hostapd_nan_de_receive;
+ 
+-	hapd->nan_de = nan_de_init(hapd->own_addr, false, true, &cb);
++	hapd->nan_de = nan_de_init(hapd->own_addr, false, true, 0, &cb);
+ 	if (!hapd->nan_de)
+ 		return -1;
+ 	return 0;
+diff --git a/src/common/nan_de.c b/src/common/nan_de.c
+index 85240648e..045d66e24 100644
+--- a/src/common/nan_de.c
++++ b/src/common/nan_de.c
+@@ -64,6 +64,7 @@ struct nan_de {
+ 	u8 nmi[ETH_ALEN];
+ 	bool offload;
+ 	bool ap;
++	unsigned int max_listen;
+ 	struct nan_callbacks cb;
+ 
+ 	struct nan_de_service *service[NAN_DE_MAX_SERVICE];
+@@ -85,6 +86,7 @@ bool nan_de_is_nan_network_id(const u8 *addr)
+ 
+ 
+ struct nan_de * nan_de_init(const u8 *nmi, bool offload, bool ap,
++			    unsigned int max_listen,
+ 			    const struct nan_callbacks *cb)
+ {
+ 	struct nan_de *de;
+@@ -96,6 +98,7 @@ struct nan_de * nan_de_init(const u8 *nmi, bool offload, bool ap,
+ 	os_memcpy(de->nmi, nmi, ETH_ALEN);
+ 	de->offload = offload;
+ 	de->ap = ap;
++	de->max_listen = max_listen ? max_listen : 1000;
+ 	os_memcpy(&de->cb, cb, sizeof(*cb));
+ 
+ 	return de;
+diff --git a/src/common/nan_de.h b/src/common/nan_de.h
+index 3f9670a47..188556912 100644
+--- a/src/common/nan_de.h
++++ b/src/common/nan_de.h
+@@ -61,6 +61,7 @@ struct nan_callbacks {
+ 
+ bool nan_de_is_nan_network_id(const u8 *addr);
+ struct nan_de * nan_de_init(const u8 *nmi, bool offload, bool ap,
++			    unsigned int max_listen,
+ 			    const struct nan_callbacks *cb);
+ void nan_de_flush(struct nan_de *de);
+ void nan_de_deinit(struct nan_de *de);
+diff --git a/wpa_supplicant/nan_usd.c b/wpa_supplicant/nan_usd.c
+index 98c44c039..577c8ac2f 100644
+--- a/wpa_supplicant/nan_usd.c
++++ b/wpa_supplicant/nan_usd.c
+@@ -321,7 +321,8 @@ int wpas_nan_usd_init(struct wpa_supplicant *wpa_s)
+ 	cb.process_p2p_usd_elems = wpas_nan_process_p2p_usd_elems;
+ #endif /* CONFIG_P2P */
+ 
+-	wpa_s->nan_de = nan_de_init(wpa_s->own_addr, offload, false, &cb);
++	wpa_s->nan_de = nan_de_init(wpa_s->own_addr, offload, false,
++				    wpa_s->max_remain_on_chan, &cb);
+ 	if (!wpa_s->nan_de)
+ 		return -1;
+ 	return 0;
+-- 
+2.43.0
+

@@ -1,0 +1,31 @@
+From ac15b79fe5f88d8ff0f046bac32de6b8467c683d Mon Sep 17 00:00:00 2001
+From: Benjamin Berg <benjamin.berg@intel.com>
+Date: Fri, 14 Jun 2024 10:13:44 +0200
+Subject: [PATCH] PMKSA: Guard against NULL KCK for memcpy()
+
+If the kck_len is 0 then the pointer may be NULL. If that happens UBSAN
+complains about the NULL pointer as memcpy() has the arguments declared
+to never be NULL even if the copied number of bytes were zero.
+
+Signed-off-by: Benjamin Berg <benjamin.berg@intel.com>
+---
+ src/rsn_supp/pmksa_cache.c | 3 ++-
+ 1 file changed, 2 insertions(+), 1 deletion(-)
+
+diff --git a/src/rsn_supp/pmksa_cache.c b/src/rsn_supp/pmksa_cache.c
+index f90dcd9b0..5bfcbd27e 100644
+--- a/src/rsn_supp/pmksa_cache.c
++++ b/src/rsn_supp/pmksa_cache.c
+@@ -253,7 +253,8 @@ pmksa_cache_add(struct rsn_pmksa_cache *pmksa, const u8 *pmk, size_t pmk_len,
+ 		return NULL;
+ 	os_memcpy(entry->pmk, pmk, pmk_len);
+ 	entry->pmk_len = pmk_len;
+-	os_memcpy(entry->kck, kck, kck_len);
++	if (kck_len > 0)
++		os_memcpy(entry->kck, kck, kck_len);
+ 	entry->kck_len = kck_len;
+ 	if (pmkid)
+ 		os_memcpy(entry->pmkid, pmkid, PMKID_LEN);
+-- 
+2.43.0
+

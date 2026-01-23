@@ -1,0 +1,43 @@
+From f873abd0d9a9c6abfe690c7b4ba06318dba45f24 Mon Sep 17 00:00:00 2001
+From: Jouni Malinen <quic_jouni@quicinc.com>
+Date: Mon, 22 Jan 2024 18:27:24 +0200
+Subject: [PATCH] tests: Allow valgrind suppressions to be used
+
+This makes valgrind reports somewhat cleaner when external libraries
+have memory leaks that are not straighforward to fix. In addition,
+increase the number of functions to include backtraces since the default
+was not large enough to cover some cases.
+
+Signed-off-by: Jouni Malinen <quic_jouni@quicinc.com>
+---
+ tests/hwsim/start.sh | 11 ++++++++---
+ 1 file changed, 8 insertions(+), 3 deletions(-)
+
+diff --git a/tests/hwsim/start.sh b/tests/hwsim/start.sh
+index 79fc05f9b..dc5500170 100755
+--- a/tests/hwsim/start.sh
++++ b/tests/hwsim/start.sh
+@@ -80,12 +80,17 @@ fi
+ 
+ if [ "$1" = "valgrind" ]; then
+     VALGRIND=y
+-    VALGRIND_WPAS="valgrind --log-file=$LOGDIR/valgrind-wlan%d --leak-check=full"
+-    VALGRIND_HAPD="valgrind --log-file=$LOGDIR/valgrind-hostapd --leak-check=full"
++    if [ -r "$DIR/valgrind.suppressions" ]; then
++	VALGRIND_SUPP=" --gen-suppressions=all --suppressions=$DIR/valgrind.suppressions"
++    else
++	VALGRIND_SUPP=""
++    fi
++    VALGRIND_WPAS="valgrind --log-file=$LOGDIR/valgrind-wlan%d --leak-check=full --num-callers=20$VALGRIND_SUPP"
++    VALGRIND_HAPD="valgrind --log-file=$LOGDIR/valgrind-hostapd --leak-check=full --num-callers=20$VALGRIND_SUPP"
+     chmod -f a+rx $WPAS
+     chmod -f a+rx $HAPD
+     chmod -f a+rx $HAPD_AS
+-    HAPD_AS="valgrind --log-file=$LOGDIR/valgrind-auth-serv --leak-check=full $HAPD_AS"
++    HAPD_AS="valgrind --log-file=$LOGDIR/valgrind-auth-serv --leak-check=full --num-callers=20$VALGRIND_SUPP $HAPD_AS"
+     shift
+ else
+     unset VALGRIND
+-- 
+2.43.0
+

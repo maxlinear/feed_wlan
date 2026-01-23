@@ -1,0 +1,52 @@
+From c3d305d9395b9f6287800a2bdde91b440a985a35 Mon Sep 17 00:00:00 2001
+From: Veerendranath Jakkam <quic_vjakkam@quicinc.com>
+Date: Thu, 4 Jul 2024 12:09:43 +0530
+Subject: [PATCH] FT: Fix FTE MIC calculation with fragmented FTE
+
+Currently wpa_ft_parse_ies() is setting FTE information to wpa_buf
+pointer data which is generated after defragmentation. This data will
+not contain FTE and Fragment element(s) headers.
+
+IEEE P802.11be/D5.0 describes the MIC to be calculated on the
+concatenation of FTE and corresponding Fragment element(s) which
+implies the element headers are included for each element in the
+fragmented case.
+
+Fix this by correctly populating FTE information when FTE is
+fragmented.
+
+Fixes: 43b5f11d9 ("Defragmentation of FTE")
+Signed-off-by: Veerendranath Jakkam <quic_vjakkam@quicinc.com>
+---
+ src/common/wpa_common.c | 8 +++++---
+ 1 file changed, 5 insertions(+), 3 deletions(-)
+
+diff --git a/src/common/wpa_common.c b/src/common/wpa_common.c
+index 94ce43dde..1cfdd9ad7 100644
+--- a/src/common/wpa_common.c
++++ b/src/common/wpa_common.c
+@@ -1031,9 +1031,6 @@ static int wpa_ft_parse_ftie(const u8 *ie, size_t ie_len,
+ 	const u8 *end, *pos;
+ 	u8 link_id;
+ 
+-	parse->ftie = ie;
+-	parse->ftie_len = ie_len;
+-
+ 	pos = opt;
+ 	end = ie + ie_len;
+ 	wpa_hexdump(MSG_DEBUG, "FT: Parse FTE subelements", pos, end - pos);
+@@ -1339,6 +1336,11 @@ int wpa_ft_parse_ies(const u8 *ies, size_t ies_len, struct wpa_ft_ies *parse,
+ 		}
+ 		if (res < 0)
+ 			goto fail;
++
++		/* FTE might be fragmented. If it is, the separate Fragment
++		 * elements are included in MIC calculation as full elements. */
++		parse->ftie = fte;
++		parse->ftie_len = fte_len;
+ 	}
+ 
+ 	if (prot_ie_count == 0)
+-- 
+2.43.0
+

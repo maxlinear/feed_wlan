@@ -1,0 +1,29 @@
+From 9fdbc5901fc93be4dde151715cbdb77444c67d21 Mon Sep 17 00:00:00 2001
+From: "Lo,Chin-Ran" <chin-ran.lo@nxp.com>
+Date: Wed, 30 Oct 2024 10:59:57 +0100
+Subject: [PATCH] dbus: NAN USD: Actually use freq_list parameter in NANPublish
+
+Set the freq_list array from dbus to the member of params to take
+effect.
+
+Fixes: 85cd98976d0e ("dbus: Methods for NAN USD")
+Signed-off-by: Lo,Chin-Ran <chin-ran.lo@nxp.com>
+---
+ wpa_supplicant/dbus/dbus_new_handlers.c | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/wpa_supplicant/dbus/dbus_new_handlers.c b/wpa_supplicant/dbus/dbus_new_handlers.c
+index 9c2bb773f..2fad8dd59 100644
+--- a/wpa_supplicant/dbus/dbus_new_handlers.c
++++ b/wpa_supplicant/dbus/dbus_new_handlers.c
+@@ -6602,6 +6602,7 @@ DBusMessage * wpas_dbus_handler_nan_publish(DBusMessage *message,
+ 			for (i = 0; i < entry.array_len; i++)
+ 				int_array_add_unique(
+ 					&freq_list, entry.uint16array_value[i]);
++			params.freq_list = freq_list;
+ 		} else {
+ 			wpa_printf(MSG_DEBUG,
+ 				   "dbus: NANPublish - unsupported dict entry '%s'",
+-- 
+2.43.0
+

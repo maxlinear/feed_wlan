@@ -1,0 +1,44 @@
+From 93a3c59ad9c40d0e1eaeae1c07373680d5baf535 Mon Sep 17 00:00:00 2001
+From: "gasmibal@gmail.com" <gasmibal@gmail.com>
+Date: Sun, 28 Apr 2024 21:47:21 +0200
+Subject: [PATCH] Multi-AP: Honor wds_sta even with multi_ap
+
+When multi_ap is active, hostapd creates an AP-VLAN interface for 4addr
+stations, even though wds_sta is not configured.
+
+A check should be added to determine if wds_sta is active before
+re-enabling the WDS mode by creating an AP-VLAN for 4addr stations.
+
+Signed-off-by: Baligh Gasmi <gasmibal@gmail.com>
+---
+ src/ap/ieee802_11.c | 1 +
+ src/ap/sta_info.c   | 1 +
+ 2 files changed, 2 insertions(+)
+
+diff --git a/src/ap/ieee802_11.c b/src/ap/ieee802_11.c
+index efcc27a50..6c516bc8a 100644
+--- a/src/ap/ieee802_11.c
++++ b/src/ap/ieee802_11.c
+@@ -6647,6 +6647,7 @@ static void handle_assoc_cb(struct hostapd_data *hapd,
+ 	if ((sta->flags & WLAN_STA_WDS) ||
+ 	    (sta->flags & WLAN_STA_MULTI_AP &&
+ 	     (hapd->conf->multi_ap & BACKHAUL_BSS) &&
++	     hapd->conf->wds_sta &&
+ 	     !(sta->flags & WLAN_STA_WPS))) {
+ 		int ret;
+ 		char ifname_wds[IFNAMSIZ + 1];
+diff --git a/src/ap/sta_info.c b/src/ap/sta_info.c
+index 24ba86b11..13613dbab 100644
+--- a/src/ap/sta_info.c
++++ b/src/ap/sta_info.c
+@@ -235,6 +235,7 @@ void ap_free_sta(struct hostapd_data *hapd, struct sta_info *sta)
+ 	if ((sta->flags & WLAN_STA_WDS) ||
+ 	    (sta->flags & WLAN_STA_MULTI_AP &&
+ 	     (hapd->conf->multi_ap & BACKHAUL_BSS) &&
++	     hapd->conf->wds_sta &&
+ 	     !(sta->flags & WLAN_STA_WPS)))
+ 		hostapd_set_wds_sta(hapd, NULL, sta->addr, sta->aid, 0);
+ 
+-- 
+2.43.0
+

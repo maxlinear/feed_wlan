@@ -1,0 +1,267 @@
+From e62c2dc09d84104a726b7663d7ca8c8b4bdc9f6b Mon Sep 17 00:00:00 2001
+From: Jouni Malinen <quic_jouni@quicinc.com>
+Date: Sat, 25 Jan 2025 19:32:50 +0200
+Subject: [PATCH] AP: Known STA Identification to skip association comeback
+ mechanism
+
+Allow AP to skip association comeback mechanism and SA Query procedure
+if a currently associated STA tries to (re)association again by
+including a valid Known STA Identification element in the
+(Re)Association Request frame. This capability is disabled by default
+and can be enabled with known_sta_identification=1.
+
+Signed-off-by: Jouni Malinen <quic_jouni@quicinc.com>
+---
+ hostapd/config_file.c        |  6 ++++
+ hostapd/hostapd.conf         | 10 +++++++
+ src/ap/ap_config.h           |  1 +
+ src/ap/ieee802_11.c          | 57 ++++++++++++++++++++++++++++++++++--
+ src/ap/ieee802_11_shared.c   |  3 ++
+ src/ap/sta_info.h            |  2 ++
+ src/ap/wpa_auth.c            | 46 +++++++++++++++++++++++++++++
+ src/ap/wpa_auth.h            |  4 +++
+ src/common/ieee802_11_defs.h |  1 +
+ 9 files changed, 128 insertions(+), 2 deletions(-)
+
+diff --git a/hostapd/config_file.c b/hostapd/config_file.c
+index 12d1d9fb0..e9eaef7e5 100644
+--- a/hostapd/config_file.c
++++ b/hostapd/config_file.c
+@@ -5130,6 +5130,12 @@ static int hostapd_config_fill(struct hostapd_config *conf,
+ 		if (val < 0 || val > 1)
+ 			return 1;
+ 		bss->ssid_protection = val;
++	} else if (os_strcmp(buf, "known_sta_identification") == 0) {
++		int val = atoi(pos);
++
++		if (val < 0 || val > 1)
++			return 1;
++		bss->known_sta_identification = val;
+ 	} else if (os_strcmp(buf, "channel_usage") == 0) {
+ 		conf->channel_usage = atoi(pos);
+ 	} else if (os_strcmp(buf, "peer_to_peer_twt") == 0) {
+diff --git a/hostapd/hostapd.conf b/hostapd/hostapd.conf
+index b1e8ac5bb..aa56562bd 100644
+--- a/hostapd/hostapd.conf
++++ b/hostapd/hostapd.conf
+@@ -2310,6 +2310,16 @@ own_ip_addr=127.0.0.1
+ #
+ #ssid_protection=0
+ 
++# Known STA Identification
++# IEEE Std 802.11-2024 adds a mechanism that allows the SA Query procedure on
++# (re)association to the previously used AP to be skipped when that AP still
++# has a valid security association. This can speed up cases where a STA needs to
++# reassociate back to the same AP to update some association parameters.
++#
++# 0 = Do not process Known STA Identification (default)
++# 1 = Allow Known STA Identification to be used to skip SA Query procedure
++#known_sta_identification=0
++
+ # RSNE/RSNXE override
+ #
+ # These parameters can be used to configure RSN parameters for STAs that support
+diff --git a/src/ap/ap_config.h b/src/ap/ap_config.h
+index 2f9ed3af8..97768f8e1 100644
+--- a/src/ap/ap_config.h
++++ b/src/ap/ap_config.h
+@@ -975,6 +975,7 @@ struct hostapd_bss_config {
+ 	bool xrates_supported;
+ 
+ 	bool ssid_protection;
++	bool known_sta_identification;
+ 
+ #ifdef CONFIG_IEEE80211BE
+ 	/* The AP is part of an AP MLD */
+diff --git a/src/ap/ieee802_11.c b/src/ap/ieee802_11.c
+index a9ed6eb0f..dc920fa15 100644
+--- a/src/ap/ieee802_11.c
++++ b/src/ap/ieee802_11.c
+@@ -3961,8 +3961,58 @@ end:
+ #endif /* CONFIG_OWE */
+ 
+ 
++static bool hapd_is_known_sta(struct hostapd_data *hapd, struct sta_info *sta,
++			      const u8 *ies, size_t ies_len)
++{
++	const u8 *ie, *pos, *end, *timestamp_pos, *mic;
++	u64 timestamp;
++	u8 mic_len;
++
++	if (!hapd->conf->known_sta_identification)
++		return false;
++
++	ie = get_ie_ext(ies, ies_len, WLAN_EID_EXT_KNOWN_STA_IDENTIFICATION);
++	if (!ie)
++		return false;
++
++	pos = ie + 3;
++	end = &ie[2 + ie[1]];
++	if (end - pos < 8 + 1)
++		return false; /* truncated element */
++	timestamp_pos = pos;
++	timestamp = WPA_GET_LE64(pos);
++	pos += 8;
++	mic_len = *pos++;
++	if (mic_len > end - pos)
++		return false; /* truncated element */
++	mic = pos;
++
++	wpa_printf(MSG_DEBUG, "RSN: STA " MACSTR
++		   " included Known STA Identification element: Timestamp=0x%llx mic_len=%u",
++		   MAC2STR(sta->addr), (unsigned long long) timestamp, mic_len);
++
++	if (timestamp <= sta->last_known_sta_id_timestamp) {
++		wpa_printf(MSG_DEBUG,
++			   "RSN: Ignore reused or old Known STA Identification");
++		return false;
++	}
++
++	if (!wpa_auth_sm_known_sta_identification(sta->wpa_sm, timestamp_pos,
++						  mic, mic_len)) {
++		wpa_printf(MSG_DEBUG,
++			   "RSN: Ignore Known STA Identification with invalid MIC or due to KCK not available");
++		return false;
++	}
++
++	wpa_printf(MSG_DEBUG, "RSN: Valid Known STA Identification");
++	sta->last_known_sta_id_timestamp = timestamp;
++
++	return true;
++}
++
++
+ static bool check_sa_query(struct hostapd_data *hapd, struct sta_info *sta,
+-			   int reassoc)
++			   int reassoc, const u8 *ies, size_t ies_len)
+ {
+ 	if ((sta->flags &
+ 	     (WLAN_STA_ASSOC | WLAN_STA_MFP | WLAN_STA_AUTHORIZED)) !=
+@@ -3974,6 +4024,9 @@ static bool check_sa_query(struct hostapd_data *hapd, struct sta_info *sta,
+ 
+ 	if (!sta->sa_query_timed_out &&
+ 	    (!reassoc || sta->auth_alg != WLAN_AUTH_FT)) {
++		if (hapd_is_known_sta(hapd, sta, ies, ies_len))
++			return false;
++
+ 		/*
+ 		 * STA has already been associated with MFP and SA Query timeout
+ 		 * has not been reached. Reject the association attempt
+@@ -5617,7 +5670,7 @@ static void handle_assoc(struct hostapd_data *hapd,
+ 	}
+ #endif /* CONFIG_MBO */
+ 
+-	if (hapd->conf->wpa && check_sa_query(hapd, sta, reassoc)) {
++	if (hapd->conf->wpa && check_sa_query(hapd, sta, reassoc, pos, left)) {
+ 		resp = WLAN_STATUS_ASSOC_REJECTED_TEMPORARILY;
+ 		goto fail;
+ 	}
+diff --git a/src/ap/ieee802_11_shared.c b/src/ap/ieee802_11_shared.c
+index 5e67216de..9a64a523a 100644
+--- a/src/ap/ieee802_11_shared.c
++++ b/src/ap/ieee802_11_shared.c
+@@ -479,6 +479,9 @@ static void hostapd_ext_capab_byte(struct hostapd_data *hapd, u8 *pos, int idx,
+ 	case 12: /* Bits 96-103 */
+ 		if (hapd->iconf->peer_to_peer_twt)
+ 			*pos |= 0x10; /* Bit 100 - Peer to Peer TWT */
++		if (hapd->conf->known_sta_identification)
++			*pos |= 0x40; /* Bit 102 - Known STA Identification
++				       * Enabled */
+ 		break;
+ 	case 13: /* Bits 104-111 */
+ 		if (hapd->iconf->channel_usage)
+diff --git a/src/ap/sta_info.h b/src/ap/sta_info.h
+index d22e86d45..86aa6e942 100644
+--- a/src/ap/sta_info.h
++++ b/src/ap/sta_info.h
+@@ -322,6 +322,8 @@ struct sta_info {
+ 
+ 	u16 max_idle_period; /* if nonzero, the granted BSS max idle period in
+ 			      * units of 1000 TUs */
++
++	u64 last_known_sta_id_timestamp;
+ };
+ 
+ 
+diff --git a/src/ap/wpa_auth.c b/src/ap/wpa_auth.c
+index b224ee8e2..5ccce3a12 100644
+--- a/src/ap/wpa_auth.c
++++ b/src/ap/wpa_auth.c
+@@ -7501,3 +7501,49 @@ void wpa_auth_set_ml_info(struct wpa_state_machine *sm,
+ 	}
+ #endif /* CONFIG_IEEE80211BE */
+ }
++
++
++bool wpa_auth_sm_known_sta_identification(struct wpa_state_machine *sm,
++					  const u8 *timestamp,
++					  const u8 *mic, size_t mic_len)
++{
++	size_t exp_mic_len;
++	u8 exp_mic[WPA_EAPOL_KEY_MIC_MAX_LEN];
++	int ver;
++
++	if (!sm)
++		return false;
++
++	if (!sm->PTK_valid || !mic_len || sm->PTK.kck_len == 0) {
++		wpa_printf(MSG_DEBUG,
++			   "RSN: No KCK to verify Known STA Identification");
++		return false;
++	}
++
++	exp_mic_len = wpa_mic_len(sm->wpa_key_mgmt, sm->pmk_len);
++	if (mic_len != exp_mic_len) {
++		wpa_printf(MSG_DEBUG,
++			   "RSN: MIC length mismatch in Known STA Identification (received %zu, expected %zu)",
++			   mic_len, exp_mic_len);
++		return false;
++	}
++
++	if (wpa_use_akm_defined(sm->wpa_key_mgmt))
++		ver = WPA_KEY_INFO_TYPE_AKM_DEFINED;
++	else if (wpa_use_cmac(sm->wpa_key_mgmt))
++		ver = WPA_KEY_INFO_TYPE_AES_128_CMAC;
++	else if (sm->pairwise != WPA_CIPHER_TKIP)
++		ver = WPA_KEY_INFO_TYPE_HMAC_SHA1_AES;
++	else
++		ver = WPA_KEY_INFO_TYPE_HMAC_MD5_RC4;
++
++	if (wpa_eapol_key_mic(sm->PTK.kck, sm->PTK.kck_len, sm->wpa_key_mgmt,
++			      ver, timestamp, 8, exp_mic) ||
++	    os_memcmp_const(mic, exp_mic, exp_mic_len) != 0) {
++		wpa_printf(MSG_DEBUG,
++			   "RSN: Invalid MIC in Known STA Identification");
++		return false;
++	}
++
++	return true;
++}
+diff --git a/src/ap/wpa_auth.h b/src/ap/wpa_auth.h
+index a1786b3ee..977aa1265 100644
+--- a/src/ap/wpa_auth.h
++++ b/src/ap/wpa_auth.h
+@@ -693,4 +693,8 @@ static inline bool wpa_auth_pmf_enabled(struct wpa_auth_config *conf)
+ 		conf->rsn_override_mfp_2 != NO_MGMT_FRAME_PROTECTION;
+ }
+ 
++bool wpa_auth_sm_known_sta_identification(struct wpa_state_machine *sm,
++					  const u8 *timestamp,
++					  const u8 *mic, size_t mic_len);
++
+ #endif /* WPA_AUTH_H */
+diff --git a/src/common/ieee802_11_defs.h b/src/common/ieee802_11_defs.h
+index 75dc37862..37601fcb4 100644
+--- a/src/common/ieee802_11_defs.h
++++ b/src/common/ieee802_11_defs.h
+@@ -526,6 +526,7 @@
+ #define WLAN_EID_EXT_QOS_CHARACTERISTICS 113
+ #define WLAN_EID_EXT_AKM_SUITE_SELECTOR 114
+ #define WLAN_EID_EXT_BANDWIDTH_INDICATION 135
++#define WLAN_EID_EXT_KNOWN_STA_IDENTIFICATION 136
+ #define WLAN_EID_EXT_PASN_ENCRYPTED_DATA 140
+ 
+ /* Extended Capabilities field */
+-- 
+2.43.0
+

@@ -1,0 +1,45 @@
+From c6a8db47c34b3cfe78f0dc0111b944f91193c772 Mon Sep 17 00:00:00 2001
+From: Jouni Malinen <quic_jouni@quicinc.com>
+Date: Fri, 23 Aug 2024 10:09:10 +0300
+Subject: [PATCH] tests: RSNXE extensibility
+
+Signed-off-by: Jouni Malinen <quic_jouni@quicinc.com>
+---
+ tests/hwsim/test_sae.py | 24 ++++++++++++++++++++++++
+ 1 file changed, 24 insertions(+)
+
+diff --git a/tests/hwsim/test_sae.py b/tests/hwsim/test_sae.py
+index 679db0e2d..b412438b1 100644
+--- a/tests/hwsim/test_sae.py
++++ b/tests/hwsim/test_sae.py
+@@ -3285,3 +3285,27 @@ def test_sae_eapol_key_reserved_random(dev, apdev):
+     dev[0].set("sae_groups", "")
+     dev[0].connect("test-sae", psk="12345678", key_mgmt="SAE",
+                    scan_freq="2412")
++
++def test_sae_long_rsnxe(dev, apdev):
++    """RSNXE extensibility"""
++    check_sae_capab(dev[0])
++
++    rsnxe = "F4FF2F0000000000000000000000000000FF" + 239*"EE"
++
++    params = hostapd.wpa3_params(ssid="sae-pwe", password="12345678")
++    params['sae_pwe'] = "1"
++    params['rsnxe_override'] = rsnxe
++    hapd = hostapd.add_ap(apdev[0], params)
++
++    dev[0].set("sae_groups", "")
++    dev[0].set("rsnxe_override_assoc", rsnxe)
++    dev[0].set("rsnxe_override_eapol", rsnxe)
++    try:
++        dev[0].set("sae_pwe", "2")
++        dev[0].connect("sae-pwe", psk="12345678", key_mgmt="SAE",
++                       scan_freq="2412", ieee80211w="2")
++        if dev[0].get_status_field("sae_h2e") != "1":
++            raise Exception("SAE H2E was not used")
++    finally:
++        dev[0].set("sae_groups", "")
++        dev[0].set("sae_pwe", "0")
+-- 
+2.43.0
+

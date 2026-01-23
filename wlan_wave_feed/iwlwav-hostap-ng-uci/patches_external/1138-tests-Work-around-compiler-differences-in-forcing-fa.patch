@@ -1,0 +1,40 @@
+From 62d192929691c42b016f574676a3eefd7aea6c2e Mon Sep 17 00:00:00 2001
+From: Jouni Malinen <quic_jouni@quicinc.com>
+Date: Tue, 17 Dec 2024 19:46:43 +0200
+Subject: [PATCH] tests: Work around compiler differences in forcing failures
+
+Something in the compiler update when moving from Ubuntu 22.04 to 24.04
+made these test cases unable to trigger one of the failure sequences.
+Modify the failure pattern to avoid this.
+
+Signed-off-by: Jouni Malinen <quic_jouni@quicinc.com>
+---
+ tests/hwsim/test_eap_proto.py | 5 +++--
+ 1 file changed, 3 insertions(+), 2 deletions(-)
+
+diff --git a/tests/hwsim/test_eap_proto.py b/tests/hwsim/test_eap_proto.py
+index 66f26889a..651a631f5 100644
+--- a/tests/hwsim/test_eap_proto.py
++++ b/tests/hwsim/test_eap_proto.py
+@@ -827,7 +827,8 @@ def test_eap_proto_sake_errors(dev, apdev):
+              (1, "eap_sake_compute_mic;eap_sake_process_challenge"),
+              (1, "eap_sake_build_msg;eap_sake_process_confirm"),
+              (1, "eap_sake_compute_mic;eap_sake_process_confirm"),
+-             (2, "eap_sake_compute_mic;=eap_sake_process_confirm"),
++             (2, "eap_sake_compute_mic"),
++             (3, "eap_sake_compute_mic"),
+              (1, "eap_sake_getKey"),
+              (1, "eap_sake_get_emsk"),
+              (1, "eap_sake_get_session_id")]
+@@ -5550,7 +5551,7 @@ def test_eap_proto_sim_errors(dev, apdev):
+         dev[0].request("REMOVE_NETWORK all")
+         dev[0].dump_monitor()
+ 
+-    tests = [(1, "eap_sim_verify_mac;eap_sim_process_challenge"),
++    tests = [(1, "eap_sim_verify_mac"),
+              (1, "eap_sim_parse_encr;eap_sim_process_challenge"),
+              (1, "eap_sim_msg_init;eap_sim_response_start"),
+              (1, "wpabuf_alloc;eap_sim_msg_init;eap_sim_response_start"),
+-- 
+2.43.0
+

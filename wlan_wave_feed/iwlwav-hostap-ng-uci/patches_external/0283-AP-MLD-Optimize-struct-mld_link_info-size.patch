@@ -1,0 +1,79 @@
+From aa1aa289cd54c004b446b25f7abc1bf64ecf59d6 Mon Sep 17 00:00:00 2001
+From: Jouni Malinen <j@w1.fi>
+Date: Sun, 21 Jan 2024 22:24:08 +0200
+Subject: [PATCH] AP MLD: Optimize struct mld_link_info size
+
+Use smaller variables when possible and reorder the variables to avoid
+unnecessary padding. This drops struct mld_link_info size from 64 to 48
+bytes and removes 240 bytes from struct sta_info.
+
+Signed-off-by: Jouni Malinen <j@w1.fi>
+---
+ src/ap/beacon.c         | 2 +-
+ src/ap/ieee802_11_eht.c | 4 ++--
+ src/ap/sta_info.h       | 6 +++---
+ 3 files changed, 6 insertions(+), 6 deletions(-)
+
+diff --git a/src/ap/beacon.c b/src/ap/beacon.c
+index 9fc73e2c3..e50f0a0c9 100644
+--- a/src/ap/beacon.c
++++ b/src/ap/beacon.c
+@@ -1028,7 +1028,7 @@ static void hostapd_fill_probe_resp_ml_params(struct hostapd_data *hapd,
+ 		os_memcpy(link_info->local_addr, link->own_addr, ETH_ALEN);
+ 
+ 		wpa_printf(MSG_DEBUG,
+-			   "MLD: ML probe response includes link sta info for %d: %zu bytes (estimate %zu)",
++			   "MLD: ML probe response includes link sta info for %d: %u bytes (estimate %zu)",
+ 			   mld_link_id, link_info->resp_sta_profile_len,
+ 			   buflen);
+ 	}
+diff --git a/src/ap/ieee802_11_eht.c b/src/ap/ieee802_11_eht.c
+index c703017af..b599e1043 100644
+--- a/src/ap/ieee802_11_eht.c
++++ b/src/ap/ieee802_11_eht.c
+@@ -1255,7 +1255,7 @@ u16 hostapd_process_ml_assoc_req(struct hostapd_data *hapd,
+ 		goto out;
+ 	}
+ 
+-	info->links[hapd->mld_link_id].valid = true;
++	info->links[hapd->mld_link_id].valid = 1;
+ 
+ 	/* Parse the link info field */
+ 	ml_len -= sizeof(*ml) + common_info_len;
+@@ -1382,7 +1382,7 @@ u16 hostapd_process_ml_assoc_req(struct hostapd_data *hapd,
+ 		ml_len -= sub_elem_len;
+ 
+ 		wpa_printf(MSG_DEBUG, "MLD: link ctrl=0x%x, " MACSTR
+-			   ", nstr bitmap len=%lu",
++			   ", nstr bitmap len=%u",
+ 			   control, MAC2STR(link_info->peer_addr),
+ 			   link_info->nstr_bitmap_len);
+ 
+diff --git a/src/ap/sta_info.h b/src/ap/sta_info.h
+index f459f6278..b136ff7bf 100644
+--- a/src/ap/sta_info.h
++++ b/src/ap/sta_info.h
+@@ -82,17 +82,17 @@ struct mld_info {
+ 	} common_info;
+ 
+ 	struct mld_link_info {
+-		u8 valid;
++		u8 valid:1;
++		u8 nstr_bitmap_len:2;
+ 		u8 local_addr[ETH_ALEN];
+ 		u8 peer_addr[ETH_ALEN];
+ 
+-		size_t nstr_bitmap_len;
+ 		u8 nstr_bitmap[2];
+ 
+ 		u16 capability;
+ 
+ 		u16 status;
+-		size_t resp_sta_profile_len;
++		u16 resp_sta_profile_len;
+ 		u8 *resp_sta_profile;
+ 
+ 		const u8 *rsne, *rsnxe;
+-- 
+2.43.0
+

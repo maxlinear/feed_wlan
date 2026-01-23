@@ -1,0 +1,28 @@
+From 63982fd094c953cb610e24f0fe64ca343c85dd54 Mon Sep 17 00:00:00 2001
+From: Aditya Kumar Singh <quic_adisi@quicinc.com>
+Date: Wed, 6 Mar 2024 12:09:58 +0530
+Subject: [PATCH] nl80211: Print the MLD capabilities in debug
+
+Signed-off-by: Aditya Kumar Singh <quic_adisi@quicinc.com>
+---
+ src/drivers/driver_nl80211_capa.c | 4 ++++
+ 1 file changed, 4 insertions(+)
+
+diff --git a/src/drivers/driver_nl80211_capa.c b/src/drivers/driver_nl80211_capa.c
+index 3bcd66c24..65389d206 100644
+--- a/src/drivers/driver_nl80211_capa.c
++++ b/src/drivers/driver_nl80211_capa.c
+@@ -889,6 +889,10 @@ static void wiphy_info_extended_capab(struct wpa_driver_nl80211_data *drv,
+ 				nla_get_u16(tb1[NL80211_ATTR_MLD_CAPA_AND_OPS]);
+ 		}
+ 
++		wpa_printf(MSG_DEBUG,
++			   "nl80211: EML Capability: 0x%x MLD Capability: 0x%x",
++			   capa->eml_capa, capa->mld_capa_and_ops);
++
+ 		drv->num_iface_capa++;
+ 		if (drv->num_iface_capa == NL80211_IFTYPE_MAX)
+ 			break;
+-- 
+2.43.0
+

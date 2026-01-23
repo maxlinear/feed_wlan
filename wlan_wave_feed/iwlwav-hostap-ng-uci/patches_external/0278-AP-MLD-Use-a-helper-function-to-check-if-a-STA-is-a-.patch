@@ -1,0 +1,340 @@
+From 6bda0aca8bfe638c01aef1115f4d716b6e97c9d4 Mon Sep 17 00:00:00 2001
+From: Jouni Malinen <j@w1.fi>
+Date: Sun, 21 Jan 2024 18:45:28 +0200
+Subject: [PATCH] AP MLD: Use a helper function to check if a STA is a non-AP
+ MLD
+
+This makes it easier to change the struct sta_info design for MLD by
+reducing the number of direct references.
+
+Signed-off-by: Jouni Malinen <j@w1.fi>
+---
+ src/ap/ap_drv_ops.c        |  8 ++++----
+ src/ap/drv_callbacks.c     |  2 +-
+ src/ap/hostapd.c           |  2 +-
+ src/ap/ieee802_11.c        | 19 +++++++++----------
+ src/ap/ieee802_11_eht.c    |  9 +++++----
+ src/ap/ieee802_11_shared.c |  6 +++---
+ src/ap/sta_info.c          |  6 +++---
+ src/ap/sta_info.h          | 11 +++++++++++
+ src/ap/wnm_ap.c            |  4 ++--
+ src/ap/wpa_auth_glue.c     |  3 ++-
+ 10 files changed, 41 insertions(+), 29 deletions(-)
+
+diff --git a/src/ap/ap_drv_ops.c b/src/ap/ap_drv_ops.c
+index 3dec6eca6..856340cb0 100644
+--- a/src/ap/ap_drv_ops.c
++++ b/src/ap/ap_drv_ops.c
+@@ -269,7 +269,7 @@ static bool hostapd_sta_is_link_sta(struct hostapd_data *hapd,
+ 				    struct sta_info *sta)
+ {
+ #ifdef CONFIG_IEEE80211BE
+-	if (hapd->conf->mld_ap && sta->mld_info.mld_sta &&
++	if (ap_sta_is_mld(hapd, sta) &&
+ 	    sta->mld_assoc_link_id != hapd->mld_link_id)
+ 		return true;
+ #endif /* CONFIG_IEEE80211BE */
+@@ -839,7 +839,7 @@ int hostapd_drv_sta_deauth(struct hostapd_data *hapd,
+ 		struct sta_info *sta = ap_get_sta(hapd, addr);
+ 
+ 		link_id = hapd->mld_link_id;
+-		if (sta && sta->mld_info.mld_sta)
++		if (ap_sta_is_mld(hapd, sta))
+ 			own_addr = hapd->mld_addr;
+ 	}
+ #endif /* CONFIG_IEEE80211BE */
+@@ -860,7 +860,7 @@ int hostapd_drv_sta_disassoc(struct hostapd_data *hapd,
+ 	if (hapd->conf->mld_ap) {
+ 		struct sta_info *sta = ap_get_sta(hapd, addr);
+ 
+-		if (sta && sta->mld_info.mld_sta)
++		if (ap_sta_is_mld(hapd, sta))
+ 			own_addr = hapd->mld_addr;
+ 	}
+ #endif /* CONFIG_IEEE80211BE */
+@@ -918,7 +918,7 @@ static int hapd_drv_send_action(struct hostapd_data *hapd, unsigned int freq,
+ 	} else if (hapd->conf->mld_ap) {
+ 		sta = ap_get_sta(hapd, dst);
+ 
+-		if (sta && sta->mld_info.mld_sta) {
++		if (ap_sta_is_mld(hapd, sta)) {
+ 			own_addr = hapd->mld_addr;
+ 			bssid = own_addr;
+ 		}
+diff --git a/src/ap/drv_callbacks.c b/src/ap/drv_callbacks.c
+index 15baa7bbe..5ceb084a1 100644
+--- a/src/ap/drv_callbacks.c
++++ b/src/ap/drv_callbacks.c
+@@ -513,7 +513,7 @@ int hostapd_notif_assoc(struct hostapd_data *hapd, const u8 *addr,
+ 			return -1;
+ 		}
+ #ifdef CONFIG_IEEE80211BE
+-		if (sta->mld_info.mld_sta) {
++		if (ap_sta_is_mld(hapd, sta)) {
+ 			wpa_printf(MSG_DEBUG,
+ 				   "MLD: Set ML info in RSN Authenticator");
+ 			wpa_auth_set_ml_info(sta->wpa_sm, hapd->mld_addr,
+diff --git a/src/ap/hostapd.c b/src/ap/hostapd.c
+index c2cb8afda..dfea07570 100644
+--- a/src/ap/hostapd.c
++++ b/src/ap/hostapd.c
+@@ -3599,7 +3599,7 @@ void hostapd_new_assoc_sta(struct hostapd_data *hapd, struct sta_info *sta,
+ 	}
+ 
+ #ifdef CONFIG_IEEE80211BE
+-	if (hapd->conf->mld_ap && sta->mld_info.mld_sta &&
++	if (ap_sta_is_mld(hapd, sta) &&
+ 	    sta->mld_assoc_link_id != hapd->mld_link_id)
+ 		return;
+ #endif /* CONFIG_IEEE80211BE */
+diff --git a/src/ap/ieee802_11.c b/src/ap/ieee802_11.c
+index 2c57eb635..c1299c90d 100644
+--- a/src/ap/ieee802_11.c
++++ b/src/ap/ieee802_11.c
+@@ -407,7 +407,7 @@ static int send_auth_reply(struct hostapd_data *hapd, struct sta_info *sta,
+ 	 * the MLD MAC address. Thus, use the MLD address instead of translating
+ 	 * the addresses.
+ 	 */
+-	if (hapd->conf->mld_ap && sta && sta->mld_info.mld_sta) {
++	if (ap_sta_is_mld(hapd, sta)) {
+ 		sa = hapd->mld_addr;
+ 
+ 		ml_resp = hostapd_ml_auth_resp(hapd);
+@@ -608,7 +608,7 @@ static struct wpabuf * auth_build_sae_commit(struct hostapd_data *hapd,
+ 	const u8 *own_addr = hapd->own_addr;
+ 
+ #ifdef CONFIG_IEEE80211BE
+-	if (hapd->conf->mld_ap && sta->mld_info.mld_sta)
++	if (ap_sta_is_mld(hapd, sta))
+ 		own_addr = hapd->mld_addr;
+ #endif /* CONFIG_IEEE80211BE */
+ 
+@@ -877,7 +877,7 @@ static void sae_sme_send_external_auth_status(struct hostapd_data *hapd,
+ 	params.status = status;
+ 
+ #ifdef CONFIG_IEEE80211BE
+-	if (sta->mld_info.mld_sta)
++	if (ap_sta_is_mld(hapd, sta))
+ 		params.bssid =
+ 			sta->mld_info.links[sta->mld_assoc_link_id].peer_addr;
+ #endif /* CONFIG_IEEE80211BE */
+@@ -3246,7 +3246,7 @@ static void handle_auth(struct hostapd_data *hapd,
+ 	  * the MLD MAC address. It is the responsibility of the driver to
+ 	  * handle the translations.
+ 	  */
+-	if (hapd->conf->mld_ap && sta && sta->mld_info.mld_sta) {
++	if (ap_sta_is_mld(hapd, sta)) {
+ 		dst = sta->addr;
+ 		bssid = hapd->mld_addr;
+ 	}
+@@ -3737,7 +3737,7 @@ u16 owe_process_rsn_ie(struct hostapd_data *hapd,
+ 		goto end;
+ 	}
+ #ifdef CONFIG_IEEE80211BE
+-	if (sta->mld_info.mld_sta)
++	if (ap_sta_is_mld(hapd, sta))
+ 		wpa_auth_set_ml_info(sta->wpa_sm, hapd->mld_addr,
+ 				     sta->mld_assoc_link_id, &sta->mld_info);
+ #endif /* CONFIG_IEEE80211BE */
+@@ -4019,7 +4019,7 @@ static int __check_assoc_ies(struct hostapd_data *hapd, struct sta_info *sta,
+ 			}
+ 
+ #ifdef CONFIG_IEEE80211BE
+-			if (info->mld_sta) {
++			if (ap_sta_is_mld(hapd, sta)) {
+ 				wpa_printf(MSG_DEBUG,
+ 					   "MLD: Set ML info in RSN Authenticator");
+ 				wpa_auth_set_ml_info(sta->wpa_sm,
+@@ -4608,7 +4608,7 @@ static int add_associated_sta(struct hostapd_data *hapd,
+ 	bool mld_link_sta = false;
+ 
+ #ifdef CONFIG_IEEE80211BE
+-	if (hapd->conf->mld_ap && sta->mld_info.mld_sta) {
++	if (ap_sta_is_mld(hapd, sta)) {
+ 		u8 mld_link_id = hapd->mld_link_id;
+ 
+ 		mld_link_sta = sta->mld_assoc_link_id != mld_link_id;
+@@ -4769,8 +4769,7 @@ static u16 send_assoc_resp(struct hostapd_data *hapd, struct sta_info *sta,
+ 	 * Once a non-AP MLD is added to the driver, the addressing should use
+ 	 * MLD MAC address.
+ 	 */
+-	if (hapd->conf->mld_ap && sta && sta->mld_info.mld_sta &&
+-	    allow_mld_addr_trans)
++	if (ap_sta_is_mld(hapd, sta) && allow_mld_addr_trans)
+ 		sa = hapd->mld_addr;
+ #endif /* CONFIG_IEEE80211BE */
+ 
+@@ -6440,7 +6439,7 @@ static void handle_assoc_cb(struct hostapd_data *hapd,
+ 	}
+ 
+ #ifdef CONFIG_IEEE80211BE
+-	if (hapd->conf->mld_ap && sta->mld_info.mld_sta &&
++	if (ap_sta_is_mld(hapd, sta) &&
+ 	    hapd->mld_link_id != sta->mld_assoc_link_id) {
+ 		/* See ieee80211_ml_link_sta_assoc_cb() for the MLD case */
+ 		wpa_printf(MSG_DEBUG,
+diff --git a/src/ap/ieee802_11_eht.c b/src/ap/ieee802_11_eht.c
+index f1cfd18a9..8dbf66a9c 100644
+--- a/src/ap/ieee802_11_eht.c
++++ b/src/ap/ieee802_11_eht.c
+@@ -779,7 +779,7 @@ u8 * hostapd_eid_eht_ml_beacon(struct hostapd_data *hapd,
+ u8 * hostapd_eid_eht_ml_assoc(struct hostapd_data *hapd, struct sta_info *info,
+ 			      u8 *eid)
+ {
+-	if (!info || !info->mld_info.mld_sta)
++	if (!ap_sta_is_mld(hapd, info))
+ 		return eid;
+ 
+ 	eid = hostapd_eid_eht_basic_ml_common(hapd, eid, &info->mld_info,
+@@ -1012,11 +1012,12 @@ const u8 * hostapd_process_ml_auth(struct hostapd_data *hapd,
+ 
+ 
+ static int hostapd_mld_validate_assoc_info(struct hostapd_data *hapd,
+-					   struct mld_info *info)
++					   struct sta_info *sta)
+ {
+ 	u8 i, link_id;
++	struct mld_info *info = &sta->mld_info;
+ 
+-	if (!info->mld_sta) {
++	if (!ap_sta_is_mld(hapd, sta)) {
+ 		wpa_printf(MSG_DEBUG, "MLD: Not a non-AP MLD");
+ 		return 0;
+ 	}
+@@ -1390,7 +1391,7 @@ u16 hostapd_process_ml_assoc_req(struct hostapd_data *hapd,
+ 		goto out;
+ 	}
+ 
+-	ret = hostapd_mld_validate_assoc_info(hapd, info);
++	ret = hostapd_mld_validate_assoc_info(hapd, sta);
+ out:
+ 	wpabuf_free(mlbuf);
+ 	if (ret) {
+diff --git a/src/ap/ieee802_11_shared.c b/src/ap/ieee802_11_shared.c
+index 0cd6f9503..0c38483a9 100644
+--- a/src/ap/ieee802_11_shared.c
++++ b/src/ap/ieee802_11_shared.c
+@@ -120,7 +120,7 @@ void ieee802_11_send_sa_query_req(struct hostapd_data *hapd,
+ 	}
+ 
+ #ifdef CONFIG_IEEE80211BE
+-	if (hapd->conf->mld_ap && sta && sta->mld_info.mld_sta)
++	if (ap_sta_is_mld(hapd, sta))
+ 		own_addr = hapd->mld_addr;
+ #endif /* CONFIG_IEEE80211BE */
+ 
+@@ -218,7 +218,7 @@ static void ieee802_11_send_sa_query_resp(struct hostapd_data *hapd,
+ 		   MACSTR, MAC2STR(sa));
+ 
+ #ifdef CONFIG_IEEE80211BE
+-	if (hapd->conf->mld_ap && sta->mld_info.mld_sta)
++	if (ap_sta_is_mld(hapd, sta))
+ 		own_addr = hapd->mld_addr;
+ #endif /* CONFIG_IEEE80211BE */
+ 
+@@ -1169,7 +1169,7 @@ struct sta_info * hostapd_ml_get_assoc_sta(struct hostapd_data *hapd,
+ 	struct hostapd_data *other_hapd = NULL;
+ 	struct sta_info *tmp_sta;
+ 
+-	if (!sta->mld_info.mld_sta)
++	if (!ap_sta_is_mld(hapd, sta))
+ 		return NULL;
+ 
+ 	*assoc_hapd = hapd;
+diff --git a/src/ap/sta_info.c b/src/ap/sta_info.c
+index 0da24fc41..3003b201d 100644
+--- a/src/ap/sta_info.c
++++ b/src/ap/sta_info.c
+@@ -303,7 +303,7 @@ void ap_free_sta(struct hostapd_data *hapd, struct sta_info *sta)
+ 	ieee802_1x_free_station(hapd, sta);
+ 
+ #ifdef CONFIG_IEEE80211BE
+-	if (!hapd->conf->mld_ap || !sta->mld_info.mld_sta ||
++	if (!ap_sta_is_mld(hapd, sta) ||
+ 	    hapd->mld_link_id == sta->mld_assoc_link_id)
+ 		wpa_auth_sta_deinit(sta->wpa_sm);
+ #else
+@@ -1400,7 +1400,7 @@ bool ap_sta_set_authorized_flag(struct hostapd_data *hapd, struct sta_info *sta,
+ 		int mld_assoc_link_id = -1;
+ 
+ #ifdef CONFIG_IEEE80211BE
+-		if (hapd->conf->mld_ap && sta->mld_info.mld_sta) {
++		if (ap_sta_is_mld(hapd, sta)) {
+ 			if (sta->mld_assoc_link_id == hapd->mld_link_id)
+ 				mld_assoc_link_id = sta->mld_assoc_link_id;
+ 			else
+@@ -1757,7 +1757,7 @@ int ap_sta_re_add(struct hostapd_data *hapd, struct sta_info *sta)
+ 	 */
+ 
+ #ifdef CONFIG_IEEE80211BE
+-	if (hapd->conf->mld_ap && sta->mld_info.mld_sta) {
++	if (ap_sta_is_mld(hapd, sta)) {
+ 		u8 mld_link_id = hapd->mld_link_id;
+ 
+ 		mld_link_sta = sta->mld_assoc_link_id != mld_link_id;
+diff --git a/src/ap/sta_info.h b/src/ap/sta_info.h
+index 64a1308dd..ef6073481 100644
+--- a/src/ap/sta_info.h
++++ b/src/ap/sta_info.h
+@@ -17,6 +17,7 @@
+ #include "common/sae.h"
+ #include "crypto/sha384.h"
+ #include "pasn/pasn_common.h"
++#include "hostapd.h"
+ 
+ /* STA flags */
+ #define WLAN_STA_AUTH BIT(0)
+@@ -419,4 +420,14 @@ int ap_sta_re_add(struct hostapd_data *hapd, struct sta_info *sta);
+ 
+ void ap_free_sta_pasn(struct hostapd_data *hapd, struct sta_info *sta);
+ 
++static inline bool ap_sta_is_mld(struct hostapd_data *hapd,
++				 struct sta_info *sta)
++{
++#ifdef CONFIG_IEEE80211BE
++	return hapd->conf->mld_ap && sta && sta->mld_info.mld_sta;
++#else /* CONFIG_IEEE80211BE */
++	return false;
++#endif /* CONFIG_IEEE80211BE */
++}
++
+ #endif /* STA_INFO_H */
+diff --git a/src/ap/wnm_ap.c b/src/ap/wnm_ap.c
+index b5ce1d5ee..b77e21bd1 100644
+--- a/src/ap/wnm_ap.c
++++ b/src/ap/wnm_ap.c
+@@ -50,7 +50,7 @@ static const u8 * wnm_ap_get_own_addr(struct hostapd_data *hapd,
+ 	const u8 *own_addr = hapd->own_addr;
+ 
+ #ifdef CONFIG_IEEE80211BE
+-	if (hapd->conf->mld_ap && (!sta || sta->mld_info.mld_sta))
++	if (hapd->conf->mld_ap && (!sta || ap_sta_is_mld(hapd, sta)))
+ 		own_addr = hapd->mld_addr;
+ #endif /* CONFIG_IEEE80211BE */
+ 
+@@ -1030,7 +1030,7 @@ int wnm_send_bss_tm_req(struct hostapd_data *hapd, struct sta_info *sta,
+ 
+ 	if (disassoc_timer) {
+ #ifdef CONFIG_IEEE80211BE
+-		if (hapd->conf->mld_ap && sta->mld_info.mld_sta) {
++		if (ap_sta_is_mld(hapd, sta)) {
+ 			int i;
+ 			unsigned int links = 0;
+ 
+diff --git a/src/ap/wpa_auth_glue.c b/src/ap/wpa_auth_glue.c
+index 5737ab8dc..9ce58f246 100644
+--- a/src/ap/wpa_auth_glue.c
++++ b/src/ap/wpa_auth_glue.c
+@@ -560,7 +560,8 @@ int hostapd_wpa_auth_send_eapol(void *ctx, const u8 *addr,
+ 	if (sta) {
+ 		flags = hostapd_sta_flags_to_drv(sta->flags);
+ #ifdef CONFIG_IEEE80211BE
+-		if (sta->mld_info.mld_sta && (sta->flags & WLAN_STA_AUTHORIZED))
++		if (ap_sta_is_mld(hapd, sta) &&
++		    (sta->flags & WLAN_STA_AUTHORIZED))
+ 			link_id = -1;
+ #endif /* CONFIG_IEEE80211BE */
+ 	}
+-- 
+2.43.0
+

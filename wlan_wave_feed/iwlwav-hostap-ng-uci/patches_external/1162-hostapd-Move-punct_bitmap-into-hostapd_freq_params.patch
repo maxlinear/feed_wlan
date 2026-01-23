@@ -1,0 +1,183 @@
+From 5a0572a499fce0c9fa44a15f48a2b036dffc1c54 Mon Sep 17 00:00:00 2001
+From: Allen Ye <allen.ye@mediatek.com>
+Date: Thu, 5 Sep 2024 13:55:29 +0800
+Subject: [PATCH] hostapd: Move punct_bitmap into hostapd_freq_params
+
+Move punct_bitmap into hostapd_freq_params to allow hostapd_data structure
+to access the new puncturing bitmap during a channel switch.
+
+Co-developed-by: Money Wang <money.wang@mediatek.com>
+Signed-off-by: Allen Ye <allen.ye@mediatek.com>
+---
+ hostapd/ctrl_iface.c            |  2 +-
+ src/ap/ctrl_iface_ap.c          | 12 +-----------
+ src/ap/hostapd.c                | 14 ++++----------
+ src/common/hw_features_common.c |  1 +
+ src/drivers/driver.h            | 10 ++++++++--
+ src/drivers/driver_nl80211.c    |  6 +++---
+ 6 files changed, 18 insertions(+), 27 deletions(-)
+
+diff --git a/hostapd/ctrl_iface.c b/hostapd/ctrl_iface.c
+index 1fcefb355..50704a675 100644
+--- a/hostapd/ctrl_iface.c
++++ b/hostapd/ctrl_iface.c
+@@ -2703,7 +2703,7 @@ static int hostapd_ctrl_iface_chan_switch(struct hostapd_iface *iface,
+ 	}
+ 
+ 	ret = hostapd_ctrl_check_freq_params(&settings.freq_params,
+-					     settings.punct_bitmap);
++					     settings.freq_params.punct_bitmap);
+ 	if (ret) {
+ 		wpa_printf(MSG_INFO,
+ 			   "chanswitch: invalid frequency settings provided");
+diff --git a/src/ap/ctrl_iface_ap.c b/src/ap/ctrl_iface_ap.c
+index 2284e92b7..4a51e6333 100644
+--- a/src/ap/ctrl_iface_ap.c
++++ b/src/ap/ctrl_iface_ap.c
+@@ -1154,20 +1154,11 @@ int hostapd_parse_csa_settings(const char *pos,
+ 		} \
+ 	} while (0)
+ 
+-#define SET_CSA_SETTING_EXT(str) \
+-	do { \
+-		const char *pos2 = os_strstr(pos, " " #str "="); \
+-		if (pos2) { \
+-			pos2 += sizeof(" " #str "=") - 1; \
+-			settings->str = atoi(pos2); \
+-		} \
+-	} while (0)
+-
+ 	SET_CSA_SETTING(center_freq1);
+ 	SET_CSA_SETTING(center_freq2);
+ 	SET_CSA_SETTING(bandwidth);
+ 	SET_CSA_SETTING(sec_channel_offset);
+-	SET_CSA_SETTING_EXT(punct_bitmap);
++	SET_CSA_SETTING(punct_bitmap);
+ 	settings->freq_params.ht_enabled = !!os_strstr(pos, " ht");
+ 	settings->freq_params.vht_enabled = !!os_strstr(pos, " vht");
+ 	settings->freq_params.eht_enabled = !!os_strstr(pos, " eht");
+@@ -1175,7 +1166,6 @@ int hostapd_parse_csa_settings(const char *pos,
+ 		settings->freq_params.eht_enabled;
+ 	settings->block_tx = !!os_strstr(pos, " blocktx");
+ #undef SET_CSA_SETTING
+-#undef SET_CSA_SETTING_EXT
+ 
+ 	return 0;
+ }
+diff --git a/src/ap/hostapd.c b/src/ap/hostapd.c
+index 92478c29a..8e350f087 100644
+--- a/src/ap/hostapd.c
++++ b/src/ap/hostapd.c
+@@ -4402,6 +4402,10 @@ static int hostapd_change_config_freq(struct hostapd_data *hapd,
+ 	hostapd_set_oper_centr_freq_seg0_idx(conf, seg0);
+ 	hostapd_set_oper_centr_freq_seg1_idx(conf, seg1);
+ 
++#ifdef CONFIG_IEEE80211BE
++	conf->punct_bitmap = params->punct_bitmap;
++#endif /* CONFIG_IEEE80211BE */
++
+ 	/* TODO: maybe call here hostapd_config_check here? */
+ 
+ 	return 0;
+@@ -4414,9 +4418,6 @@ static int hostapd_fill_csa_settings(struct hostapd_data *hapd,
+ 	struct hostapd_iface *iface = hapd->iface;
+ 	struct hostapd_freq_params old_freq;
+ 	int ret;
+-#ifdef CONFIG_IEEE80211BE
+-	u16 old_punct_bitmap;
+-#endif /* CONFIG_IEEE80211BE */
+ 	u8 chan, bandwidth;
+ 
+ 	os_memset(&old_freq, 0, sizeof(old_freq));
+@@ -4465,16 +4466,9 @@ static int hostapd_fill_csa_settings(struct hostapd_data *hapd,
+ 	if (ret)
+ 		return ret;
+ 
+-#ifdef CONFIG_IEEE80211BE
+-	old_punct_bitmap = iface->conf->punct_bitmap;
+-	iface->conf->punct_bitmap = settings->punct_bitmap;
+-#endif /* CONFIG_IEEE80211BE */
+ 	ret = hostapd_build_beacon_data(hapd, &settings->beacon_after);
+ 
+ 	/* change back the configuration */
+-#ifdef CONFIG_IEEE80211BE
+-	iface->conf->punct_bitmap = old_punct_bitmap;
+-#endif /* CONFIG_IEEE80211BE */
+ 	hostapd_change_config_freq(iface->bss[0], iface->conf,
+ 				   &old_freq, NULL);
+ 
+diff --git a/src/common/hw_features_common.c b/src/common/hw_features_common.c
+index 2a541d5e9..78a68aa87 100644
+--- a/src/common/hw_features_common.c
++++ b/src/common/hw_features_common.c
+@@ -505,6 +505,7 @@ int hostapd_set_freq_params(struct hostapd_freq_params *data,
+ 	data->sec_channel_offset = sec_channel_offset;
+ 	data->center_freq1 = freq + sec_channel_offset * 10;
+ 	data->center_freq2 = 0;
++	data->punct_bitmap = punct_bitmap;
+ 	if (oper_chwidth == CONF_OPER_CHWIDTH_80MHZ)
+ 		data->bandwidth = 80;
+ 	else if (oper_chwidth == CONF_OPER_CHWIDTH_160MHZ ||
+diff --git a/src/drivers/driver.h b/src/drivers/driver.h
+index 6db740223..fea7a7398 100644
+--- a/src/drivers/driver.h
++++ b/src/drivers/driver.h
+@@ -891,6 +891,14 @@ struct hostapd_freq_params {
+ 	 */
+ 	bool eht_enabled;
+ 
++	/**
++	 * punct_bitmap - Preamble puncturing bitmap
++	 * Each bit corresponds to a 20 MHz subchannel, the lowest bit for the
++	 * channel with the lowest frequency. A bit set to 1 indicates that the
++	 * subchannel is punctured, otherwise active.
++	 */
++	u16 punct_bitmap;
++
+ 	/**
+ 	 * link_id: If >=0 indicates the link of the AP MLD to configure
+ 	 */
+@@ -2766,7 +2774,6 @@ struct beacon_data {
+  * @beacon_after: Next beacon/probe resp/asooc resp info
+  * @counter_offset_beacon: Offset to the count field in beacon's tail
+  * @counter_offset_presp: Offset to the count field in probe resp.
+- * @punct_bitmap - Preamble puncturing bitmap
+  * @link_id: Link ID to determine the link for MLD; -1 for non-MLD
+  * @ubpr: Unsolicited broadcast Probe Response frame data
+  */
+@@ -2781,7 +2788,6 @@ struct csa_settings {
+ 	u16 counter_offset_beacon[2];
+ 	u16 counter_offset_presp[2];
+ 
+-	u16 punct_bitmap;
+ 	int link_id;
+ 
+ 	struct unsol_bcast_probe_resp ubpr;
+diff --git a/src/drivers/driver_nl80211.c b/src/drivers/driver_nl80211.c
+index 647bb6e34..eb83c8eb6 100644
+--- a/src/drivers/driver_nl80211.c
++++ b/src/drivers/driver_nl80211.c
+@@ -11477,7 +11477,7 @@ static int nl80211_switch_channel(void *priv, struct csa_settings *settings)
+ 		   settings->freq_params.bandwidth,
+ 		   settings->freq_params.center_freq1,
+ 		   settings->freq_params.center_freq2,
+-		   settings->punct_bitmap,
++		   settings->freq_params.punct_bitmap,
+ 		   settings->link_id,
+ 		   settings->freq_params.ht_enabled ? " ht" : "",
+ 		   settings->freq_params.vht_enabled ? " vht" : "",
+@@ -11550,9 +11550,9 @@ static int nl80211_switch_channel(void *priv, struct csa_settings *settings)
+ 	    (ret = nl80211_put_freq_params(msg, &settings->freq_params)) ||
+ 	    (settings->block_tx &&
+ 	     nla_put_flag(msg, NL80211_ATTR_CH_SWITCH_BLOCK_TX)) ||
+-	    (settings->punct_bitmap &&
++	    (settings->freq_params.punct_bitmap &&
+ 	     nla_put_u32(msg, NL80211_ATTR_PUNCT_BITMAP,
+-			 settings->punct_bitmap)) ||
++			 settings->freq_params.punct_bitmap)) ||
+ 	    (settings->link_id != NL80211_DRV_LINK_ID_NA &&
+ 	     nla_put_u8(msg, NL80211_ATTR_MLO_LINK_ID, settings->link_id)))
+ 		goto error;
+-- 
+2.43.0
+

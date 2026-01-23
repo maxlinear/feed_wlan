@@ -1,0 +1,29 @@
+From 0b5d11165358c049a5b21a1662204bb9523ef6c4 Mon Sep 17 00:00:00 2001
+From: Chaitanya Tata <chaitanya.mgit@gmail.com>
+Date: Tue, 28 Nov 2023 00:51:01 +0530
+Subject: [PATCH] Fix MBO build with GAS dependency
+
+On the default configuration if MBO only is enabled then build breaks as GAS
+is not selected, if other features that auto-enable GAS are selected
+then it works.
+
+Signed-off-by: Chaitanya Tata <Chaitanya.Tata@nordicsemi.no>
+---
+ wpa_supplicant/Makefile | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/wpa_supplicant/Makefile b/wpa_supplicant/Makefile
+index d7d2cceba..46e20f44a 100644
+--- a/wpa_supplicant/Makefile
++++ b/wpa_supplicant/Makefile
+@@ -1071,6 +1071,7 @@ endif
+ ifdef CONFIG_MBO
+ OBJS += mbo.o
+ CFLAGS += -DCONFIG_MBO
++NEED_GAS=y
+ endif
+ 
+ ifdef NEED_RSN_AUTHENTICATOR
+-- 
+2.43.0
+

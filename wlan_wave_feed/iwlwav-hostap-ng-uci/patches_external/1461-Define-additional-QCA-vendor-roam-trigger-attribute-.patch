@@ -1,0 +1,44 @@
+From c073f61c4eac3165c678cca92405d65bf65f51da Mon Sep 17 00:00:00 2001
+From: Kashish Awasthi <quic_kawasthi@quicinc.com>
+Date: Tue, 18 Feb 2025 15:06:57 +0530
+Subject: [PATCH] Define additional QCA vendor roam trigger attribute values
+
+Add new roam trigger vendor attribute values to configure the roaming
+parameters dynamically. QCA_ROAM_TRIGGER_REASON_WTC, trigger roam on
+wireless-to-cellular BSS transition request.
+QCA_ROAM_TRIGGER_REASON_BT_ACTIVITY, trigger roam on Bluetooth
+connection, when station is on the 2.4 GHz band.
+
+Signed-off-by: Kashish Awasthi <quic_kawasthi@quicinc.com>
+---
+ src/common/qca-vendor.h | 7 +++++++
+ 1 file changed, 7 insertions(+)
+
+diff --git a/src/common/qca-vendor.h b/src/common/qca-vendor.h
+index 29d746838..99ba6becc 100644
+--- a/src/common/qca-vendor.h
++++ b/src/common/qca-vendor.h
+@@ -5948,6 +5948,11 @@ enum qca_roam_scan_scheme {
+  * @QCA_ROAM_TRIGGER_REASON_EXTERNAL_SCAN: Set if the roam has to be triggered
+  *	based on the scan results obtained from an external scan (not triggered
+  *	to aim roaming).
++ * @QCA_ROAM_TRIGGER_REASON_WTC: Set if the roam has to be triggered
++ *	due to Wireless to Cellular BSS Transition Management (BTM) request.
++ * @QCA_ROAM_TRIGGER_REASON_BT_ACTIVITY: Set if the roam has to be triggered
++ *	due to Bluetooth connection is established when the station is connected
++ *	in the 2.4 GHz band.
+  *
+  * Set the corresponding roam trigger reason bit to consider it for roam
+  * trigger.
+@@ -5968,6 +5973,8 @@ enum qca_vendor_roam_triggers {
+ 	QCA_ROAM_TRIGGER_REASON_IDLE		= 1 << 10,
+ 	QCA_ROAM_TRIGGER_REASON_TX_FAILURES	= 1 << 11,
+ 	QCA_ROAM_TRIGGER_REASON_EXTERNAL_SCAN	= 1 << 12,
++	QCA_ROAM_TRIGGER_REASON_WTC	        = 1 << 13,
++	QCA_ROAM_TRIGGER_REASON_BT_ACTIVITY	= 1 << 14,
+ };
+ 
+ /*
+-- 
+2.43.0
+

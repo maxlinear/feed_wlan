@@ -1,0 +1,132 @@
+From 3e2758b19a75c6e93feca0e48b7884c69480ca3d Mon Sep 17 00:00:00 2001
+From: Aditya Kumar Singh <quic_adisi@quicinc.com>
+Date: Wed, 24 Jul 2024 12:38:14 +0530
+Subject: [PATCH] hostapd: Avoid channel selection across underlying hardware
+ index
+
+Currently, channel is selected from the current hw_mode. However, not
+all channels under current hw_mode might be available for the current
+operating underlying hardware.
+
+Add logic to check if the selected channel falls under the current
+operating hardware index and only if so, continue with the selected
+channel.
+
+Co-developed-by: Harshitha Prem <quic_hprem@quicinc.com>
+Signed-off-by: Harshitha Prem <quic_hprem@quicinc.com>
+Signed-off-by: Aditya Kumar Singh <quic_adisi@quicinc.com>
+---
+ hostapd/ctrl_iface.c            | 34 +++++++++++++++++++++++++++++++++
+ src/ap/dfs.c                    |  7 +++++++
+ src/common/hw_features_common.c | 15 +++++++++++++++
+ src/common/hw_features_common.h |  2 ++
+ 4 files changed, 58 insertions(+)
+
+diff --git a/hostapd/ctrl_iface.c b/hostapd/ctrl_iface.c
+index 62ec23941..85eb35675 100644
+--- a/hostapd/ctrl_iface.c
++++ b/hostapd/ctrl_iface.c
+@@ -2454,6 +2454,31 @@ static int hostapd_ctrl_register_frame(struct hostapd_data *hapd,
+ 
+ 
+ #ifdef NEED_AP_MLME
++
++static bool
++hostapd_ctrl_is_freq_in_cmode(struct hostapd_hw_modes *mode,
++			      struct hostapd_multi_hw_info *current_hw_info,
++			      int freq)
++{
++	struct hostapd_channel_data *chan;
++	int i;
++
++	for (i = 0; i < mode->num_channels; i++) {
++		chan = &mode->channels[i];
++
++		if (chan->flag & HOSTAPD_CHAN_DISABLED)
++			continue;
++
++		if (!chan_in_current_hw_info(current_hw_info, chan))
++			continue;
++
++		if (chan->freq == freq)
++			return true;
++	}
++	return false;
++}
++
++
+ static int hostapd_ctrl_check_freq_params(struct hostapd_freq_params *params,
+ 					  u16 punct_bitmap)
+ {
+@@ -2668,6 +2693,15 @@ static int hostapd_ctrl_iface_chan_switch(struct hostapd_iface *iface,
+ 		settings.link_id = iface->bss[0]->mld_link_id;
+ #endif /* CONFIG_IEEE80211BE */
+ 
++	if (iface->num_hw_features > 1 &&
++	    !hostapd_ctrl_is_freq_in_cmode(iface->current_mode,
++					   iface->current_hw_info,
++					   settings.freq_params.freq)) {
++		wpa_printf(MSG_INFO,
++			   "chanswitch: Invalid frequency settings provided for multi band phy");
++		return -1;
++	}
++
+ 	ret = hostapd_ctrl_check_freq_params(&settings.freq_params,
+ 					     settings.punct_bitmap);
+ 	if (ret) {
+diff --git a/src/ap/dfs.c b/src/ap/dfs.c
+index af9dc16f5..0cac194b2 100644
+--- a/src/ap/dfs.c
++++ b/src/ap/dfs.c
+@@ -253,6 +253,13 @@ static int dfs_find_channel(struct hostapd_iface *iface,
+ 	for (i = 0; i < mode->num_channels; i++) {
+ 		chan = &mode->channels[i];
+ 
++		if (!chan_in_current_hw_info(iface->current_hw_info, chan)) {
++			wpa_printf(MSG_DEBUG,
++				   "DFS: channel %d (%d) is not under current hardware index",
++				   chan->freq, chan->chan);
++			continue;
++		}
++
+ 		/* Skip HT40/VHT incompatible channels */
+ 		if (iface->conf->ieee80211n &&
+ 		    iface->conf->secondary_channel &&
+diff --git a/src/common/hw_features_common.c b/src/common/hw_features_common.c
+index 2c47bf812..bffb44078 100644
+--- a/src/common/hw_features_common.c
++++ b/src/common/hw_features_common.c
+@@ -1033,3 +1033,18 @@ bool is_punct_bitmap_valid(u16 bw, u16 pri_ch_bit_pos, u16 punct_bitmap)
+ 
+ 	return false;
+ }
++
++
++bool chan_in_current_hw_info(struct hostapd_multi_hw_info *current_hw_info,
++			     struct hostapd_channel_data *chan)
++{
++	/* Assuming that if current_hw_info is not set full
++	 * iface->current_mode->channels[] can be used to scan for channels,
++	 * hence we return true.
++	 */
++	if (!current_hw_info)
++		return true;
++
++	return current_hw_info->start_freq <= chan->freq &&
++		current_hw_info->end_freq >= chan->freq;
++}
+diff --git a/src/common/hw_features_common.h b/src/common/hw_features_common.h
+index e791c33f1..80e33adf2 100644
+--- a/src/common/hw_features_common.h
++++ b/src/common/hw_features_common.h
+@@ -58,5 +58,7 @@ int chan_bw_allowed(const struct hostapd_channel_data *chan, u32 bw,
+ 		    int ht40_plus, int pri);
+ int chan_pri_allowed(const struct hostapd_channel_data *chan);
+ bool is_punct_bitmap_valid(u16 bw, u16 pri_ch_bit_pos, u16 punct_bitmap);
++bool chan_in_current_hw_info(struct hostapd_multi_hw_info *current_hw_info,
++			     struct hostapd_channel_data *chan);
+ 
+ #endif /* HW_FEATURES_COMMON_H */
+-- 
+2.43.0
+

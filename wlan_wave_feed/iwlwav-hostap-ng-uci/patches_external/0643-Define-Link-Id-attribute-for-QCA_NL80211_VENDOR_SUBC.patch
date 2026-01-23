@@ -1,0 +1,35 @@
+From 2097de2a6af76d1dd1db147a780e71eaeb0eae22 Mon Sep 17 00:00:00 2001
+From: Nidhi Jain <quic_nidhjain@quicinc.com>
+Date: Thu, 6 Jun 2024 12:17:05 +0530
+Subject: [PATCH] Define Link Id attribute for QCA_NL80211_VENDOR_SUBCMD_PASN
+
+The Link Id attribute is required for QCA_NL80211_VENDOR_SUBCMD_PASN to
+identify the link on which the command is received for an MLD.
+
+Signed-off-by: Nidhi Jain <quic_nidhjain@quicinc.com>
+---
+ src/common/qca-vendor.h | 3 +++
+ 1 file changed, 3 insertions(+)
+
+diff --git a/src/common/qca-vendor.h b/src/common/qca-vendor.h
+index d91777d81..48b6c4a2b 100644
+--- a/src/common/qca-vendor.h
++++ b/src/common/qca-vendor.h
+@@ -14695,11 +14695,14 @@ enum qca_wlan_vendor_attr_pasn_peer {
+  *	details for each peer and used in both an event and a command response.
+  *	The nested attributes used inside QCA_WLAN_VENDOR_ATTR_PASN_PEERS are
+  *	defined in enum qca_wlan_vendor_attr_pasn_peer.
++ * @QCA_WLAN_VENDOR_ATTR_PASN_LINK_ID: u8 attribute used to identify a
++ *	specific link affiliated to an MLD.
+  */
+ enum qca_wlan_vendor_attr_pasn {
+ 	QCA_WLAN_VENDOR_ATTR_PASN_INVALID = 0,
+ 	QCA_WLAN_VENDOR_ATTR_PASN_ACTION = 1,
+ 	QCA_WLAN_VENDOR_ATTR_PASN_PEERS = 2,
++	QCA_WLAN_VENDOR_ATTR_PASN_LINK_ID = 3,
+ 
+ 	/* keep last */
+ 	QCA_WLAN_VENDOR_ATTR_PASN_AFTER_LAST,
+-- 
+2.43.0
+

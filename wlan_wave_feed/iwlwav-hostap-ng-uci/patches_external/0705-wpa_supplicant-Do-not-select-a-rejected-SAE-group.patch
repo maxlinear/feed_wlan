@@ -1,0 +1,31 @@
+From fcf799c0dd46011519ee441432298ac21e3e5b0e Mon Sep 17 00:00:00 2001
+From: Andrei Otcheretianski <andrei.otcheretianski@intel.com>
+Date: Wed, 8 May 2024 16:42:12 +0300
+Subject: [PATCH] wpa_supplicant: Do not select a rejected SAE group
+
+Make sure that sme_set_sae_group() doesn't select a group that was
+previously rejected during this instance of SAE authentication.
+
+Signed-off-by: Andrei Otcheretianski <andrei.otcheretianski@intel.com>
+---
+ wpa_supplicant/sme.c | 4 +++-
+ 1 file changed, 3 insertions(+), 1 deletion(-)
+
+diff --git a/wpa_supplicant/sme.c b/wpa_supplicant/sme.c
+index 2abc3eab8..1b05de066 100644
+--- a/wpa_supplicant/sme.c
++++ b/wpa_supplicant/sme.c
+@@ -71,7 +71,9 @@ static int sme_set_sae_group(struct wpa_supplicant *wpa_s, bool external)
+ 		int group = groups[wpa_s->sme.sae_group_index];
+ 		if (group <= 0)
+ 			break;
+-		if (sae_set_group(&wpa_s->sme.sae, group) == 0) {
++		if (!int_array_includes(wpa_s->sme.sae_rejected_groups,
++					group) &&
++		    sae_set_group(&wpa_s->sme.sae, group) == 0) {
+ 			wpa_dbg(wpa_s, MSG_DEBUG, "SME: Selected SAE group %d",
+ 				wpa_s->sme.sae.group);
+ 			wpa_s->sme.sae.akmp = external ?
+-- 
+2.43.0
+

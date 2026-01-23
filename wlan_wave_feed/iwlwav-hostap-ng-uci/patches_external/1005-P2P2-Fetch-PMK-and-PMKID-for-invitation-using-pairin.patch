@@ -1,0 +1,208 @@
+From ff02a87c1931aa3a5c946124c3cbb02433c6cd6b Mon Sep 17 00:00:00 2001
+From: Shivani Baranwal <quic_shivbara@quicinc.com>
+Date: Tue, 2 Jul 2024 00:41:48 +0530
+Subject: [PATCH] P2P2: Fetch PMK and PMKID for invitation using pairing
+ verification
+
+Signed-off-by: Shivani Baranwal <quic_shivbara@quicinc.com>
+---
+ src/p2p/p2p.c                   |  7 ++++---
+ src/p2p/p2p.h                   |  7 +++++--
+ src/p2p/p2p_i.h                 |  2 +-
+ src/p2p/p2p_invitation.c        | 36 ++++++++++++++++++++++++++++++---
+ tests/fuzzing/p2p/p2p.c         | 11 ++++++++++
+ wpa_supplicant/p2p_supplicant.c |  6 ++++--
+ 6 files changed, 58 insertions(+), 11 deletions(-)
+
+diff --git a/src/p2p/p2p.c b/src/p2p/p2p.c
+index b65833689..a8d771bf6 100644
+--- a/src/p2p/p2p.c
++++ b/src/p2p/p2p.c
+@@ -3979,7 +3979,7 @@ void p2p_send_action_cb(struct p2p_data *p2p, unsigned int freq, const u8 *dst,
+ 		p2p_invitation_req_cb(p2p, success);
+ 		break;
+ 	case P2P_PENDING_INVITATION_RESPONSE:
+-		p2p_invitation_resp_cb(p2p, success);
++		p2p_invitation_resp_cb(p2p, dst, success);
+ 		break;
+ 	case P2P_PENDING_DEV_DISC_REQUEST:
+ 		p2p_dev_disc_req_cb(p2p, success);
+@@ -4279,7 +4279,7 @@ static void p2p_timeout_invite_listen(struct p2p_data *p2p)
+ 				p2p->cfg->invitation_result(
+ 					p2p->cfg->cb_ctx, -1, NULL, NULL,
+ 					p2p->invite_peer->info.p2p_device_addr,
+-					0, 0);
++					0, 0, NULL, NULL, 0);
+ 		}
+ 		p2p_set_state(p2p, P2P_IDLE);
+ 	}
+@@ -6459,7 +6459,8 @@ static int p2p_pasn_handle_action_wrapper(struct p2p_data *p2p,
+ 			p2p_handle_go_neg_conf(p2p, mgmt->sa, data + 1,
+ 					       data_len - 1, true);
+ 		else
+-			p2p_invitation_resp_cb(p2p, P2P_SEND_ACTION_SUCCESS);
++			p2p_invitation_resp_cb(p2p, mgmt->sa,
++					       P2P_SEND_ACTION_SUCCESS);
+ 	}
+ 	p2p_parse_free(&msg);
+ 	return 0;
+diff --git a/src/p2p/p2p.h b/src/p2p/p2p.h
+index 18bcca0d2..ecc3e191c 100644
+--- a/src/p2p/p2p.h
++++ b/src/p2p/p2p.h
+@@ -1102,7 +1102,8 @@ struct p2p_config {
+ 	void (*invitation_received)(void *ctx, const u8 *sa, const u8 *bssid,
+ 				    const u8 *ssid, size_t ssid_len,
+ 				    const u8 *go_dev_addr, u8 status,
+-				    int op_freq);
++				    int op_freq, const u8 *pmkid, const u8 *pmk,
++				    size_t pmk_len);
+ 
+ 	/**
+ 	 * invitation_result - Callback on Invitation result
+@@ -1123,7 +1124,9 @@ struct p2p_config {
+ 	 */
+ 	void (*invitation_result)(void *ctx, int status, const u8 *bssid,
+ 				  const struct p2p_channels *channels,
+-				  const u8 *addr, int freq, int peer_oper_freq);
++				  const u8 *addr, int freq, int peer_oper_freq,
++				  const u8 *pmkid, const u8 *pmk,
++				  size_t pmk_len);
+ 
+ 	/**
+ 	 * go_connected - Check whether we are connected to a GO
+diff --git a/src/p2p/p2p_i.h b/src/p2p/p2p_i.h
+index 2008a3084..b54ac3395 100644
+--- a/src/p2p/p2p_i.h
++++ b/src/p2p/p2p_i.h
+@@ -990,7 +990,7 @@ void p2p_process_invitation_resp(struct p2p_data *p2p, const u8 *sa,
+ int p2p_invite_send(struct p2p_data *p2p, struct p2p_device *dev,
+ 		    const u8 *go_dev_addr, int dev_pw_id);
+ void p2p_invitation_req_cb(struct p2p_data *p2p, int success);
+-void p2p_invitation_resp_cb(struct p2p_data *p2p, int success);
++void p2p_invitation_resp_cb(struct p2p_data *p2p, const u8 *dst, int success);
+ 
+ /* p2p_dev_disc.c */
+ void p2p_process_dev_disc_req(struct p2p_data *p2p, const u8 *sa,
+diff --git a/src/p2p/p2p_invitation.c b/src/p2p/p2p_invitation.c
+index 35a43f4f8..5dcd06a28 100644
+--- a/src/p2p/p2p_invitation.c
++++ b/src/p2p/p2p_invitation.c
+@@ -11,6 +11,10 @@
+ #include "common.h"
+ #include "common/ieee802_11_defs.h"
+ #include "common/wpa_ctrl.h"
++#include "common/sae.h"
++#include "crypto/sha384.h"
++#include "common/wpa_common.h"
++#include "pasn/pasn_common.h"
+ #include "p2p_i.h"
+ #include "p2p.h"
+ 
+@@ -568,7 +572,8 @@ void p2p_process_invitation_resp(struct p2p_data *p2p, const u8 *sa,
+ 
+ 		p2p->cfg->invitation_result(p2p->cfg->cb_ctx, *msg.status,
+ 					    msg.group_bssid, channels, sa,
+-					    freq, peer_oper_freq);
++					    freq, peer_oper_freq, NULL, NULL,
++					    0);
+ 	}
+ 
+ 	p2p_parse_free(&msg);
+@@ -647,8 +652,26 @@ void p2p_invitation_req_cb(struct p2p_data *p2p, int success)
+ }
+ 
+ 
+-void p2p_invitation_resp_cb(struct p2p_data *p2p, int success)
++void p2p_invitation_resp_cb(struct p2p_data *p2p, const u8 *peer, int success)
+ {
++	size_t pmk_len = 0;
++	const u8 *pmkid = NULL, *pmk = NULL;
++
++#ifdef CONFIG_PASN
++	u8 _pmkid[PMKID_LEN];
++	u8 _pmk[PMK_LEN_MAX];
++	struct p2p_device *dev;
++
++	dev = p2p_get_device(p2p, peer);
++	if (dev && dev->pasn) {
++		pasn_responder_pmksa_cache_get(dev->pasn->pmksa,
++					       dev->pasn->peer_addr, _pmkid,
++					       _pmk, &pmk_len);
++		pmkid = _pmkid;
++		pmk = _pmk;
++	}
++#endif /* CONFIG_PASN */
++
+ 	p2p_dbg(p2p, "Invitation Response TX callback: success=%d", success);
+ 	p2p->cfg->send_action_done(p2p->cfg->cb_ctx);
+ 
+@@ -662,8 +685,15 @@ void p2p_invitation_resp_cb(struct p2p_data *p2p, int success)
+ 					      p2p->inv_ssid, p2p->inv_ssid_len,
+ 					      p2p->inv_go_dev_addr,
+ 					      p2p->inv_status,
+-					      p2p->inv_op_freq);
++					      p2p->inv_op_freq, pmkid, pmk,
++					      pmk_len);
+ 	}
++
++#ifdef CONFIG_PASN
++	/* Reset PMK and PMKID from stack */
++	forced_memzero(_pmkid, sizeof(_pmkid));
++	forced_memzero(_pmk, sizeof(_pmk));
++#endif /* CONFIG_PASN */
+ }
+ 
+ 
+diff --git a/tests/fuzzing/p2p/p2p.c b/tests/fuzzing/p2p/p2p.c
+index fc83c3561..4b1c98be7 100644
+--- a/tests/fuzzing/p2p/p2p.c
++++ b/tests/fuzzing/p2p/p2p.c
+@@ -12,9 +12,20 @@
+ #include "utils/eloop.h"
+ #include "common/ieee802_11_defs.h"
+ #include "p2p/p2p.h"
++#include "ap/hostapd.h"
++#include "ap/ieee802_1x.h"
++#include "ap/pmksa_cache_auth.h"
+ #include "../fuzzer-common.h"
+ 
+ 
++int pasn_responder_pmksa_cache_get(struct rsn_pmksa_cache *pmksa,
++				   const u8 *bssid, u8 *pmkid, u8 *pmk,
++				   size_t *pmk_len)
++{
++	return -1;
++}
++
++
+ static void debug_print(void *ctx, int level, const char *msg)
+ {
+ 	wpa_printf(level, "P2P: %s", msg);
+diff --git a/wpa_supplicant/p2p_supplicant.c b/wpa_supplicant/p2p_supplicant.c
+index f524fa025..1371ad567 100644
+--- a/wpa_supplicant/p2p_supplicant.c
++++ b/wpa_supplicant/p2p_supplicant.c
+@@ -3567,7 +3567,8 @@ accept_inv:
+ static void wpas_invitation_received(void *ctx, const u8 *sa, const u8 *bssid,
+ 				     const u8 *ssid, size_t ssid_len,
+ 				     const u8 *go_dev_addr, u8 status,
+-				     int op_freq)
++				     int op_freq, const u8 *pmkid,
++				     const u8 *pmk, size_t pmk_len)
+ {
+ 	struct wpa_supplicant *wpa_s = ctx;
+ 	struct wpa_ssid *s;
+@@ -3725,7 +3726,8 @@ static void wpas_remove_persistent_client(struct wpa_supplicant *wpa_s,
+ static void wpas_invitation_result(void *ctx, int status, const u8 *bssid,
+ 				   const struct p2p_channels *channels,
+ 				   const u8 *peer, int neg_freq,
+-				   int peer_oper_freq)
++				   int peer_oper_freq, const u8 *pmkid,
++				   const u8 *pmk, size_t pmk_len)
+ {
+ 	struct wpa_supplicant *wpa_s = ctx;
+ 	struct wpa_ssid *ssid;
+-- 
+2.43.0
+

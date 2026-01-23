@@ -1,0 +1,39 @@
+From 2814dbd6dbfc982fe7a2f888523de2b0f293ee3a Mon Sep 17 00:00:00 2001
+From: Jouni Malinen <j@w1.fi>
+Date: Mon, 22 Jan 2024 00:37:31 +0200
+Subject: [PATCH] OpenSSL: Fix a memory leak in crypto_ec_key_parse_priv()
+
+The OpenSSL 3.x version of crypto_ec_key_parse_priv using
+OSSL_DECODER_CTX missed the call to free the context. Fix it to avoid a
+memory leak.
+
+Fixes: 4f4479ef9e1c ("OpenSSL: crypto_ec_key_parse_{priv,pub}() without EC_KEY API")
+Signed-off-by: Jouni Malinen <j@w1.fi>
+---
+ src/crypto/crypto_openssl.c | 6 +++++-
+ 1 file changed, 5 insertions(+), 1 deletion(-)
+
+diff --git a/src/crypto/crypto_openssl.c b/src/crypto/crypto_openssl.c
+index 1334f0b71..d10949ce7 100644
+--- a/src/crypto/crypto_openssl.c
++++ b/src/crypto/crypto_openssl.c
+@@ -3010,11 +3010,15 @@ struct crypto_ec_key * crypto_ec_key_parse_priv(const u8 *der, size_t der_len)
+ 		NULL, NULL);
+ 	if (!ctx ||
+ 	    OSSL_DECODER_from_data(ctx, &der, &der_len) != 1) {
+-		wpa_printf(MSG_INFO, "OpenSSL: Decoding EC private key (DER) failed: %s",
++		wpa_printf(MSG_INFO,
++			   "OpenSSL: Decoding EC private key (DER) failed: %s",
+ 			   ERR_error_string(ERR_get_error(), NULL));
++		if (ctx)
++			OSSL_DECODER_CTX_free(ctx);
+ 		goto fail;
+ 	}
+ 
++	OSSL_DECODER_CTX_free(ctx);
+ 	return (struct crypto_ec_key *) pkey;
+ fail:
+ 	crypto_ec_key_deinit((struct crypto_ec_key *) pkey);
+-- 
+2.43.0
+

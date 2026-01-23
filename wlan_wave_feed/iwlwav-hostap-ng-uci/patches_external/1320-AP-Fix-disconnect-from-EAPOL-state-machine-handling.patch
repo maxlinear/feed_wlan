@@ -1,0 +1,80 @@
+From d37045e859860a10c37a69f6d7de84c928799d6a Mon Sep 17 00:00:00 2001
+From: Jouni Malinen <j@w1.fi>
+Date: Sun, 2 Feb 2025 11:54:46 +0200
+Subject: [PATCH] AP: Fix disconnect from EAPOL state machine handling
+
+An earlier change to extend ap_sta_disconnect() to cover MLD cases ended
+up calling ieee802_1x_free_station() from the step function in the EAPOL
+authenticator state machine in case of EAP timeout and by doing so,
+ended up leaving the EAPOL state machine operations continuing to be run
+on freed memory.
+
+Fix this by leaving the EAPOL state machine allocated when going through
+all the other ap_sta_disconnect() steps so that the possible ongoing
+operations can be finished safely before freeing memory. Actual freeing
+of the state machine happens when freeing the full STA entry in the same
+way that was used previously.
+
+Fixes: 01677c47fb13 ("AP: Support disconnect with MLD")
+Signed-off-by: Jouni Malinen <j@w1.fi>
+---
+ src/ap/sta_info.c | 15 ++++++++++-----
+ 1 file changed, 10 insertions(+), 5 deletions(-)
+
+diff --git a/src/ap/sta_info.c b/src/ap/sta_info.c
+index 7aeb55f70..6b78d8377 100644
+--- a/src/ap/sta_info.c
++++ b/src/ap/sta_info.c
+@@ -947,7 +947,8 @@ static void ap_sta_disassoc_cb_timeout(void *eloop_ctx, void *timeout_ctx)
+ 
+ 
+ static void ap_sta_disconnect_common(struct hostapd_data *hapd,
+-				     struct sta_info *sta, unsigned int timeout)
++				     struct sta_info *sta, unsigned int timeout,
++				     bool free_1x)
+ {
+ 	sta->last_seq_ctrl = WLAN_INVALID_MGMT_SEQ;
+ 
+@@ -961,7 +962,8 @@ static void ap_sta_disconnect_common(struct hostapd_data *hapd,
+ 	eloop_cancel_timeout(ap_handle_timer, hapd, sta);
+ 	eloop_register_timeout(timeout, 0, ap_handle_timer, hapd, sta);
+ 	accounting_sta_stop(hapd, sta);
+-	ieee802_1x_free_station(hapd, sta);
++	if (free_1x)
++		ieee802_1x_free_station(hapd, sta);
+ #ifdef CONFIG_IEEE80211BE
+ 	if (!hapd->conf->mld_ap ||
+ 	    hapd->mld_link_id == sta->mld_assoc_link_id) {
+@@ -1005,7 +1007,8 @@ static void ap_sta_handle_disassociate(struct hostapd_data *hapd,
+ 		sta->timeout_next = STA_DEAUTH;
+ 	}
+ 
+-	ap_sta_disconnect_common(hapd, sta, AP_MAX_INACTIVITY_AFTER_DISASSOC);
++	ap_sta_disconnect_common(hapd, sta, AP_MAX_INACTIVITY_AFTER_DISASSOC,
++				 true);
+ 	ap_sta_disassociate_common(hapd, sta, reason);
+ }
+ 
+@@ -1043,7 +1046,8 @@ static void ap_sta_handle_deauthenticate(struct hostapd_data *hapd,
+ 	sta->flags &= ~(WLAN_STA_AUTH | WLAN_STA_ASSOC | WLAN_STA_ASSOC_REQ_OK);
+ 
+ 	sta->timeout_next = STA_REMOVE;
+-	ap_sta_disconnect_common(hapd, sta, AP_MAX_INACTIVITY_AFTER_DEAUTH);
++	ap_sta_disconnect_common(hapd, sta, AP_MAX_INACTIVITY_AFTER_DEAUTH,
++				 true);
+ 	ap_sta_deauthenticate_common(hapd, sta, reason);
+ }
+ 
+@@ -1059,7 +1063,8 @@ static void ap_sta_handle_disconnect(struct hostapd_data *hapd,
+ 	ieee802_1x_notify_port_enabled(sta->eapol_sm, 0);
+ 	sta->timeout_next = STA_REMOVE;
+ 
+-	ap_sta_disconnect_common(hapd, sta, AP_MAX_INACTIVITY_AFTER_DEAUTH);
++	ap_sta_disconnect_common(hapd, sta, AP_MAX_INACTIVITY_AFTER_DEAUTH,
++				 false);
+ 	ap_sta_deauthenticate_common(hapd, sta, reason);
+ }
+ 
+-- 
+2.43.0
+

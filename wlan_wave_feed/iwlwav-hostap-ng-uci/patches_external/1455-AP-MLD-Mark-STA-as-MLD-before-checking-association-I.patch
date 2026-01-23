@@ -1,0 +1,45 @@
+From a56d2bd979a1bad7de713955b8cb75da0dcea780 Mon Sep 17 00:00:00 2001
+From: Chenming Huang <quic_chenhuan@quicinc.com>
+Date: Wed, 26 Feb 2025 20:02:24 +0530
+Subject: [PATCH] AP MLD: Mark STA as MLD before checking association IEs
+
+In __check_assoc_ies(), ap_sta_is_mld() is already being used to
+determine whether a peer is an MLD or not. However, when calling
+__check_assoc_ies() from ieee80211_ml_process_link(),
+ap_sta_set_mld() is not yet called. So inside __check_assoc_ies()
+the sta entry is treated as non-MLD, which leads to wrongly
+fetching PMKSA entry from regular pmksa entry list instead of
+ml_pmksa. That results in a connection failure.
+
+Move ap_sta_set_mld() to be used earlier since we already know it is an
+MLD peer at that point.
+
+Signed-off-by: Chenming Huang <quic_chenhuan@quicinc.com>
+---
+ src/ap/ieee802_11.c | 3 +--
+ 1 file changed, 1 insertion(+), 2 deletions(-)
+
+diff --git a/src/ap/ieee802_11.c b/src/ap/ieee802_11.c
+index 172a9a12a..523e0a322 100644
+--- a/src/ap/ieee802_11.c
++++ b/src/ap/ieee802_11.c
+@@ -4816,6 +4816,7 @@ static int ieee80211_ml_process_link(struct hostapd_data *hapd,
+ 
+ 	sta->flags |= origin_sta->flags | WLAN_STA_ASSOC_REQ_OK;
+ 	sta->mld_assoc_link_id = origin_sta->mld_assoc_link_id;
++	ap_sta_set_mld(sta, true);
+ 
+ 	status = __check_assoc_ies(hapd, sta, NULL, 0, &elems, reassoc, true);
+ 	if (status != WLAN_STATUS_SUCCESS) {
+@@ -4823,8 +4824,6 @@ static int ieee80211_ml_process_link(struct hostapd_data *hapd,
+ 		goto out;
+ 	}
+ 
+-	ap_sta_set_mld(sta, true);
+-
+ 	os_memcpy(&sta->mld_info, &origin_sta->mld_info, sizeof(sta->mld_info));
+ 	for (i = 0; i < MAX_NUM_MLD_LINKS; i++) {
+ 		struct mld_link_info *li = &sta->mld_info.links[i];
+-- 
+2.43.0
+

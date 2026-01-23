@@ -1,0 +1,406 @@
+From 3ea7cf11db4a6bd12f494f91b3a6f324762e6178 Mon Sep 17 00:00:00 2001
+From: Rameshkumar Sundaram <quic_ramess@quicinc.com>
+Date: Thu, 28 Mar 2024 23:46:46 +0530
+Subject: [PATCH] AP MLD: Enhance authenticator state machine
+
+Add required ML specific members in struct wpa_authenticator and struct
+wpa_state_machine to maintain self and partner link information.
+
+Maintain state machine object in all associated link stations and
+destroy/remove references from the same whenever link stations are
+getting removed.
+
+Increase the wpa_group object reference count for all links in which ML
+station is getting associated and release the same whenever link
+stations are getting removed.
+
+Signed-off-by: Rameshkumar Sundaram <quic_ramess@quicinc.com>
+Signed-off-by: Aditya Kumar Singh <quic_adisi@quicinc.com>
+---
+ src/ap/ieee802_11.c    |   9 ++-
+ src/ap/sta_info.c      |  36 +++++++++++-
+ src/ap/wpa_auth.c      | 128 +++++++++++++++++++++++++++++++++++++++--
+ src/ap/wpa_auth.h      |  15 +++++
+ src/ap/wpa_auth_glue.c |  21 +++++++
+ src/ap/wpa_auth_i.h    |   8 +++
+ 6 files changed, 208 insertions(+), 9 deletions(-)
+
+diff --git a/src/ap/ieee802_11.c b/src/ap/ieee802_11.c
+index c078a0536..1a2e44e85 100644
+--- a/src/ap/ieee802_11.c
++++ b/src/ap/ieee802_11.c
+@@ -4456,6 +4456,8 @@ static int ieee80211_ml_process_link(struct hostapd_data *hapd,
+ 	}
+ 
+ 	sta->flags |= origin_sta->flags | WLAN_STA_ASSOC_REQ_OK;
++	sta->mld_assoc_link_id = origin_sta->mld_assoc_link_id;
++
+ 	status = __check_assoc_ies(hapd, sta, NULL, 0, &elems, reassoc, true);
+ 	if (status != WLAN_STATUS_SUCCESS) {
+ 		wpa_printf(MSG_DEBUG, "MLD: link: Element check failed");
+@@ -4463,7 +4465,6 @@ static int ieee80211_ml_process_link(struct hostapd_data *hapd,
+ 	}
+ 
+ 	ap_sta_set_mld(sta, true);
+-	sta->mld_assoc_link_id = origin_sta->mld_assoc_link_id;
+ 
+ 	os_memcpy(&sta->mld_info, &origin_sta->mld_info, sizeof(sta->mld_info));
+ 	for (i = 0; i < MAX_NUM_MLD_LINKS; i++) {
+@@ -4490,9 +4491,11 @@ static int ieee80211_ml_process_link(struct hostapd_data *hapd,
+ 			ieee802_11_update_beacons(hapd->iface);
+ 	}
+ 
+-	/* RSN Authenticator should always be the one on the original station */
++	/* Maintain state machine reference on all link STAs, this is needed
++	 * during group rekey handling.
++	 */
+ 	wpa_auth_sta_deinit(sta->wpa_sm);
+-	sta->wpa_sm = NULL;
++	sta->wpa_sm = origin_sta->wpa_sm;
+ 
+ 	/*
+ 	 * Do not initialize the EAPOL state machine.
+diff --git a/src/ap/sta_info.c b/src/ap/sta_info.c
+index b62770735..87d63e188 100644
+--- a/src/ap/sta_info.c
++++ b/src/ap/sta_info.c
+@@ -200,6 +200,28 @@ static void __ap_free_sta(struct hostapd_data *hapd, struct sta_info *sta)
+ }
+ 
+ 
++#ifdef CONFIG_IEEE80211BE
++static void clear_wpa_sm_for_each_partner_link(struct hostapd_data *hapd,
++					       struct sta_info *psta)
++{
++	struct sta_info *lsta;
++	struct hostapd_data *lhapd;
++
++	if (!ap_sta_is_mld(hapd, psta))
++		return;
++
++	for_each_mld_link(lhapd, hapd) {
++		if (lhapd == hapd)
++			continue;
++
++		lsta = ap_get_sta(lhapd, psta->addr);
++		if (lsta)
++			lsta->wpa_sm = NULL;
++	}
++}
++#endif /* CONFIG_IEEE80211BE */
++
++
+ void ap_free_sta(struct hostapd_data *hapd, struct sta_info *sta)
+ {
+ 	int set_beacon = 0;
+@@ -317,8 +339,16 @@ void ap_free_sta(struct hostapd_data *hapd, struct sta_info *sta)
+ 
+ #ifdef CONFIG_IEEE80211BE
+ 	if (!ap_sta_is_mld(hapd, sta) ||
+-	    hapd->mld_link_id == sta->mld_assoc_link_id)
++	    hapd->mld_link_id == sta->mld_assoc_link_id) {
+ 		wpa_auth_sta_deinit(sta->wpa_sm);
++		/* Remove references from partner links. */
++		clear_wpa_sm_for_each_partner_link(hapd, sta);
++	}
++
++	/* Release group references in case non-association link STA is removed
++	 * before association link STA */
++	if (hostapd_sta_is_link_sta(hapd, sta))
++		wpa_release_link_auth_ref(sta->wpa_sm, hapd->mld_link_id);
+ #else /* CONFIG_IEEE80211BE */
+ 	wpa_auth_sta_deinit(sta->wpa_sm);
+ #endif /* CONFIG_IEEE80211BE */
+@@ -903,8 +933,10 @@ static void ap_sta_disconnect_common(struct hostapd_data *hapd,
+ 	ieee802_1x_free_station(hapd, sta);
+ #ifdef CONFIG_IEEE80211BE
+ 	if (!hapd->conf->mld_ap ||
+-	    hapd->mld_link_id == sta->mld_assoc_link_id)
++	    hapd->mld_link_id == sta->mld_assoc_link_id) {
+ 		wpa_auth_sta_deinit(sta->wpa_sm);
++		clear_wpa_sm_for_each_partner_link(hapd, sta);
++	}
+ #else /* CONFIG_IEEE80211BE */
+ 	wpa_auth_sta_deinit(sta->wpa_sm);
+ #endif /* CONFIG_IEEE80211BE */
+diff --git a/src/ap/wpa_auth.c b/src/ap/wpa_auth.c
+index 0d15c4209..f0098f186 100644
+--- a/src/ap/wpa_auth.c
++++ b/src/ap/wpa_auth.c
+@@ -103,6 +103,75 @@ static const u8 * wpa_auth_get_spa(const struct wpa_state_machine *sm)
+ }
+ 
+ 
++#ifdef CONFIG_IEEE80211BE
++
++void wpa_release_link_auth_ref(struct wpa_state_machine *sm,
++			       int release_link_id)
++{
++	int link_id;
++
++	if (!sm || release_link_id >= MAX_NUM_MLD_LINKS)
++		return;
++
++	for_each_sm_auth(sm, link_id) {
++		if (link_id == release_link_id) {
++			wpa_group_put(sm->mld_links[link_id].wpa_auth,
++				      sm->mld_links[link_id].wpa_auth->group);
++			sm->mld_links[link_id].wpa_auth = NULL;
++		}
++	}
++}
++
++
++struct wpa_get_link_auth_ctx {
++	const u8 *addr;
++	struct wpa_authenticator *wpa_auth;
++};
++
++static int wpa_get_link_sta_auth(struct wpa_authenticator *wpa_auth, void *data)
++{
++	struct wpa_get_link_auth_ctx *ctx = data;
++
++	if (!ether_addr_equal(wpa_auth->addr, ctx->addr))
++		return 0;
++	ctx->wpa_auth = wpa_auth;
++	return 1;
++}
++
++
++static int wpa_get_primary_auth_cb(struct wpa_authenticator *wpa_auth,
++				   void *data)
++{
++	struct wpa_get_link_auth_ctx *ctx = data;
++
++	if (!wpa_auth->is_ml ||
++	    !ether_addr_equal(wpa_auth->mld_addr, ctx->addr) ||
++	    !wpa_auth->primary_auth)
++		return 0;
++
++	ctx->wpa_auth = wpa_auth;
++	return 1;
++}
++
++
++static struct wpa_authenticator *
++wpa_get_primary_auth(struct wpa_authenticator *wpa_auth)
++{
++	struct wpa_get_link_auth_ctx ctx;
++
++	if (!wpa_auth || !wpa_auth->is_ml || wpa_auth->primary_auth)
++		return wpa_auth;
++
++	ctx.addr = wpa_auth->mld_addr;
++	ctx.wpa_auth = NULL;
++	wpa_auth_for_each_auth(wpa_auth, wpa_get_primary_auth_cb, &ctx);
++
++	return ctx.wpa_auth;
++}
++
++#endif /* CONFIG_IEEE80211BE */
++
++
+ static inline int wpa_auth_mic_failure_report(
+ 	struct wpa_authenticator *wpa_auth, const u8 *addr)
+ {
+@@ -537,8 +606,19 @@ struct wpa_authenticator * wpa_init(const u8 *addr,
+ 	wpa_auth = os_zalloc(sizeof(struct wpa_authenticator));
+ 	if (!wpa_auth)
+ 		return NULL;
++
+ 	os_memcpy(wpa_auth->addr, addr, ETH_ALEN);
+ 	os_memcpy(&wpa_auth->conf, conf, sizeof(*conf));
++
++#ifdef CONFIG_IEEE80211BE
++	if (conf->mld_addr) {
++		wpa_auth->is_ml = true;
++		wpa_auth->link_id = conf->link_id;
++		wpa_auth->primary_auth = !conf->first_link_auth;
++		os_memcpy(wpa_auth->mld_addr, conf->mld_addr, ETH_ALEN);
++	}
++#endif /* CONFIG_IEEE80211BE */
++
+ 	wpa_auth->cb = cb;
+ 	wpa_auth->cb_ctx = cb_ctx;
+ 
+@@ -798,6 +878,10 @@ void wpa_auth_sta_no_wpa(struct wpa_state_machine *sm)
+ 
+ static void wpa_free_sta_sm(struct wpa_state_machine *sm)
+ {
++#ifdef CONFIG_IEEE80211BE
++	int link_id;
++#endif /* CONFIG_IEEE80211BE */
++
+ #ifdef CONFIG_P2P
+ 	if (WPA_GET_BE32(sm->ip_addr)) {
+ 		wpa_printf(MSG_DEBUG,
+@@ -821,6 +905,13 @@ static void wpa_free_sta_sm(struct wpa_state_machine *sm)
+ 	os_free(sm->last_rx_eapol_key);
+ 	os_free(sm->wpa_ie);
+ 	os_free(sm->rsnxe);
++#ifdef CONFIG_IEEE80211BE
++	for_each_sm_auth(sm, link_id) {
++		wpa_group_put(sm->mld_links[link_id].wpa_auth,
++			      sm->mld_links[link_id].wpa_auth->group);
++		sm->mld_links[link_id].wpa_auth = NULL;
++	}
++#endif /* CONFIG_IEEE80211BE */
+ 	wpa_group_put(sm->wpa_auth, sm->group);
+ #ifdef CONFIG_DPP2
+ 	wpabuf_clear_free(sm->dpp_z);
+@@ -838,12 +929,20 @@ void wpa_auth_sta_deinit(struct wpa_state_machine *sm)
+ 
+ 	wpa_auth = sm->wpa_auth;
+ 	if (wpa_auth->conf.wpa_strict_rekey && sm->has_GTK) {
++		struct wpa_authenticator *primary_auth = wpa_auth;
++
+ 		wpa_auth_logger(wpa_auth, wpa_auth_get_spa(sm), LOGGER_DEBUG,
+ 				"strict rekeying - force GTK rekey since STA is leaving");
++
++#ifdef CONFIG_IEEE80211BE
++		if (wpa_auth->is_ml && !wpa_auth->primary_auth)
++			primary_auth = wpa_get_primary_auth(wpa_auth);
++#endif /* CONFIG_IEEE80211BE */
++
+ 		if (eloop_deplete_timeout(0, 500000, wpa_rekey_gtk,
+-					  wpa_auth, NULL) == -1)
++					  primary_auth, NULL) == -1)
+ 			eloop_register_timeout(0, 500000, wpa_rekey_gtk,
+-					       wpa_auth, NULL);
++					       primary_auth, NULL);
+ 	}
+ 
+ 	eloop_cancel_timeout(wpa_send_eapol_timeout, wpa_auth, sm);
+@@ -6835,6 +6934,7 @@ void wpa_auth_set_ml_info(struct wpa_state_machine *sm, const u8 *mld_addr,
+ 	for (i = 0, link_id = 0; link_id < MAX_NUM_MLD_LINKS; link_id++) {
+ 		struct mld_link_info *link = &info->links[link_id];
+ 		struct mld_link *sm_link = &sm->mld_links[link_id];
++		struct wpa_get_link_auth_ctx ctx;
+ 
+ 		sm_link->valid = link->valid;
+ 		if (!link->valid)
+@@ -6849,10 +6949,30 @@ void wpa_auth_set_ml_info(struct wpa_state_machine *sm, const u8 *mld_addr,
+ 			   MAC2STR(sm_link->own_addr),
+ 			   MAC2STR(sm_link->peer_addr));
+ 
+-		if (link_id != mld_assoc_link_id)
++		ml_rsn_info.links[i++].link_id = link_id;
++
++		if (link_id != mld_assoc_link_id) {
+ 			sm->n_mld_affiliated_links++;
++			ctx.addr = link->local_addr;
++			ctx.wpa_auth = NULL;
++			wpa_auth_for_each_auth(sm->wpa_auth,
++					       wpa_get_link_sta_auth, &ctx);
++			if (ctx.wpa_auth) {
++				sm_link->wpa_auth = ctx.wpa_auth;
++				wpa_group_get(sm_link->wpa_auth,
++					      sm_link->wpa_auth->group);
++			}
++		} else {
++			sm_link->wpa_auth = sm->wpa_auth;
++		}
+ 
+-		ml_rsn_info.links[i++].link_id = link_id;
++		if (!sm_link->wpa_auth)
++			wpa_printf(MSG_ERROR,
++				   "Unable to find authenticator object for ML STA "
++				   MACSTR " on link " MACSTR " link id %d",
++				   MAC2STR(sm->own_mld_addr),
++				   MAC2STR(sm_link->own_addr),
++				   link_id);
+ 	}
+ 
+ 	ml_rsn_info.n_mld_links = i;
+diff --git a/src/ap/wpa_auth.h b/src/ap/wpa_auth.h
+index 4247463ad..396fc4906 100644
+--- a/src/ap/wpa_auth.h
++++ b/src/ap/wpa_auth.h
+@@ -285,6 +285,12 @@ struct wpa_auth_config {
+ 	 * Set only in nontransmitted BSSs, i.e., is NULL for transmitted BSS
+ 	 * and in BSSs that are not part of a Multi-BSSID set. */
+ 	struct wpa_authenticator *tx_bss_auth;
++
++#ifdef CONFIG_IEEE80211BE
++	const u8 *mld_addr;
++	int link_id;
++	struct wpa_authenticator *first_link_auth;
++#endif /* CONFIG_IEEE80211BE */
+ };
+ 
+ typedef enum {
+@@ -647,4 +653,13 @@ void wpa_auth_ml_get_key_info(struct wpa_authenticator *a,
+ 			      struct wpa_auth_ml_link_key_info *info,
+ 			      bool mgmt_frame_prot, bool beacon_prot);
+ 
++void wpa_release_link_auth_ref(struct wpa_state_machine *sm,
++			       int release_link_id);
++
++#define for_each_sm_auth(sm, link_id) \
++	for (link_id = 0; link_id < MAX_NUM_MLD_LINKS; link_id++)	\
++		if (sm->mld_links[link_id].valid &&			\
++		    sm->mld_links[link_id].wpa_auth &&			\
++		    sm->wpa_auth != sm->mld_links[link_id].wpa_auth)
++
+ #endif /* WPA_AUTH_H */
+diff --git a/src/ap/wpa_auth_glue.c b/src/ap/wpa_auth_glue.c
+index c786d580e..66d426d51 100644
+--- a/src/ap/wpa_auth_glue.c
++++ b/src/ap/wpa_auth_glue.c
+@@ -1747,6 +1747,27 @@ int hostapd_setup_wpa(struct hostapd_data *hapd)
+ 		!!(hapd->iface->drv_flags2 &
+ 		   WPA_DRIVER_FLAGS2_PROT_RANGE_NEG_AP);
+ 
++#ifdef CONFIG_IEEE80211BE
++	_conf.mld_addr = NULL;
++	_conf.link_id = -1;
++	_conf.first_link_auth = NULL;
++
++	if (hapd->conf->mld_ap) {
++		struct hostapd_data *lhapd;
++
++		_conf.mld_addr = hapd->mld->mld_addr;
++		_conf.link_id = hapd->mld_link_id;
++
++		for_each_mld_link(lhapd, hapd) {
++			if (lhapd == hapd)
++				continue;
++
++			if (lhapd->wpa_auth)
++				_conf.first_link_auth = lhapd->wpa_auth;
++		}
++	}
++#endif /* CONFIG_IEEE80211BE */
++
+ 	hapd->wpa_auth = wpa_init(hapd->own_addr, &_conf, &cb, hapd);
+ 	if (hapd->wpa_auth == NULL) {
+ 		wpa_printf(MSG_ERROR, "WPA initialization failed.");
+diff --git a/src/ap/wpa_auth_i.h b/src/ap/wpa_auth_i.h
+index aa581c8b1..ac45cc413 100644
+--- a/src/ap/wpa_auth_i.h
++++ b/src/ap/wpa_auth_i.h
+@@ -186,6 +186,7 @@ struct wpa_state_machine {
+ 		size_t rsne_len;
+ 		const u8 *rsnxe;
+ 		size_t rsnxe_len;
++		struct wpa_authenticator *wpa_auth;
+ 	} mld_links[MAX_NUM_MLD_LINKS];
+ #endif /* CONFIG_IEEE80211BE */
+ };
+@@ -262,6 +263,13 @@ struct wpa_authenticator {
+ #ifdef CONFIG_P2P
+ 	struct bitfield *ip_pool;
+ #endif /* CONFIG_P2P */
++
++#ifdef CONFIG_IEEE80211BE
++	bool is_ml;
++	u8 mld_addr[ETH_ALEN];
++	u8 link_id;
++	bool primary_auth;
++#endif /* CONFIG_IEEE80211BE */
+ };
+ 
+ 
+-- 
+2.43.0
+

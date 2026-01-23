@@ -1,0 +1,344 @@
+From 23e8a42ca81d78d3f2ae5a7c6e3499cba3a4e36e Mon Sep 17 00:00:00 2001
+From: Jouni Malinen <quic_jouni@quicinc.com>
+Date: Wed, 2 Oct 2024 20:01:22 +0300
+Subject: [PATCH] wlantest: Fix BIP replay protection check
+
+IPN/BIPN are encoded using little endian byte order, so memcmp() cannot
+be used to check the validity of a received IPN/BIPN. Fix this by
+converting IPN/BIPN into an integer in host byte order for processing.
+
+Fixes: bacc31286cd1 ("wlantest: Validate MMIE MIC")
+Fixes: faf6894f35f6 ("wlantest: BIGTK fetching and Beacon protection validation")
+Fixes: 2e4c34691b73 ("wlantest: Add support for protecting injected broadcast frames")
+Signed-off-by: Jouni Malinen <quic_jouni@quicinc.com>
+---
+ src/utils/common.h      | 17 ++++++++++++++
+ wlantest/bip.c          |  4 ++--
+ wlantest/inject.c       |  2 +-
+ wlantest/rx_eapol.c     | 42 +++++------------------------------
+ wlantest/rx_mgmt.c      | 49 ++++++++++++++++++-----------------------
+ wlantest/test_vectors.c |  4 ++--
+ wlantest/wlantest.h     |  4 ++--
+ 7 files changed, 51 insertions(+), 71 deletions(-)
+
+diff --git a/src/utils/common.h b/src/utils/common.h
+index dc2177537..1dc2ea5aa 100644
+--- a/src/utils/common.h
++++ b/src/utils/common.h
+@@ -282,6 +282,23 @@ static inline void WPA_PUT_LE32(u8 *a, u32 val)
+ 	a[0] = val & 0xff;
+ }
+ 
++static inline u64 WPA_GET_LE48(const u8 *a)
++{
++	return (((u64) a[5]) << 40) | (((u64) a[4]) << 32) |
++		(((u64) a[3]) << 24) | (((u64) a[2]) << 16) |
++		(((u64) a[1]) << 8) | ((u64) a[0]);
++}
++
++static inline void WPA_PUT_LE48(u8 *a, u64 val)
++{
++	a[5] = val >> 40;
++	a[4] = val >> 32;
++	a[3] = val >> 24;
++	a[2] = val >> 16;
++	a[1] = val >> 8;
++	a[0] = val & 0xff;
++}
++
+ static inline u64 WPA_GET_BE64(const u8 *a)
+ {
+ 	return (((u64) a[0]) << 56) | (((u64) a[1]) << 48) |
+diff --git a/wlantest/bip.c b/wlantest/bip.c
+index 9dd145ac3..8fbf43ed6 100644
+--- a/wlantest/bip.c
++++ b/wlantest/bip.c
+@@ -15,7 +15,7 @@
+ 
+ 
+ u8 * bip_protect(const u8 *igtk, size_t igtk_len, u8 *frame, size_t len,
+-		 u8 *ipn, int keyid, size_t *prot_len)
++		 u64 ipn, int keyid, size_t *prot_len)
+ {
+ 	u8 *prot, *pos, *buf;
+ 	u8 mic[16];
+@@ -33,7 +33,7 @@ u8 * bip_protect(const u8 *igtk, size_t igtk_len, u8 *frame, size_t len,
+ 	*pos++ = igtk_len == 32 ? 24 : 16;
+ 	WPA_PUT_LE16(pos, keyid);
+ 	pos += 2;
+-	os_memcpy(pos, ipn, 6);
++	WPA_PUT_LE48(pos, ipn);
+ 	pos += 6;
+ 	os_memset(pos, 0, igtk_len == 32 ? 16 : 8); /* MIC */
+ 
+diff --git a/wlantest/inject.c b/wlantest/inject.c
+index 1f89ea9d1..f982f1ecc 100644
+--- a/wlantest/inject.c
++++ b/wlantest/inject.c
+@@ -91,7 +91,7 @@ static int wlantest_inject_bip(struct wlantest *wt, struct wlantest_bss *bss,
+ 		return -1;
+ 
+ 	os_memset(stub, 0x11, sizeof(stub));
+-	inc_byte_array(bss->ipn[bss->igtk_idx], 6);
++	bss->ipn[bss->igtk_idx]++;
+ 
+ 	prot = bip_protect(incorrect_key ? stub : bss->igtk[bss->igtk_idx],
+ 			   bss->igtk_len[bss->igtk_idx],
+diff --git a/wlantest/rx_eapol.c b/wlantest/rx_eapol.c
+index 8ce031c10..51b7c42fa 100644
+--- a/wlantest/rx_eapol.c
++++ b/wlantest/rx_eapol.c
+@@ -666,12 +666,7 @@ static void learn_kde_keys_mlo(struct wlantest *wt, struct wlantest_bss *bss,
+ 			wpa_hexdump(MSG_DEBUG, "IPN", pn, 6);
+ 			bss->igtk_len[key_id] = key_len;
+ 			os_memcpy(bss->igtk[key_id], key, key_len);
+-			bss->ipn[key_id][0] = pn[5];
+-			bss->ipn[key_id][1] = pn[4];
+-			bss->ipn[key_id][2] = pn[3];
+-			bss->ipn[key_id][3] = pn[2];
+-			bss->ipn[key_id][4] = pn[1];
+-			bss->ipn[key_id][5] = pn[0];
++			bss->ipn[key_id] = WPA_GET_LE48(pn);
+ 			bss->igtk_idx = key_id;
+ 		} else {
+ 			add_note(wt, MSG_INFO,
+@@ -697,12 +692,7 @@ static void learn_kde_keys_mlo(struct wlantest *wt, struct wlantest_bss *bss,
+ 			wpa_hexdump(MSG_DEBUG, "BIPN", pn, 6);
+ 			bss->igtk_len[key_id] = key_len;
+ 			os_memcpy(bss->igtk[key_id], key, key_len);
+-			bss->ipn[key_id][0] = pn[5];
+-			bss->ipn[key_id][1] = pn[4];
+-			bss->ipn[key_id][2] = pn[3];
+-			bss->ipn[key_id][3] = pn[2];
+-			bss->ipn[key_id][4] = pn[1];
+-			bss->ipn[key_id][5] = pn[0];
++			bss->ipn[key_id] = WPA_GET_LE48(pn);
+ 			bss->bigtk_idx = key_id;
+ 		} else {
+ 			add_note(wt, MSG_INFO,
+@@ -790,12 +780,7 @@ static void learn_kde_keys(struct wlantest *wt, struct wlantest_bss *bss,
+ 				os_memcpy(bss->igtk[id], ie.igtk + 8, 16);
+ 				bss->igtk_len[id] = 16;
+ 				ipn = ie.igtk + 2;
+-				bss->ipn[id][0] = ipn[5];
+-				bss->ipn[id][1] = ipn[4];
+-				bss->ipn[id][2] = ipn[3];
+-				bss->ipn[id][3] = ipn[2];
+-				bss->ipn[id][4] = ipn[1];
+-				bss->ipn[id][5] = ipn[0];
++				bss->ipn[id] = WPA_GET_LE48(ipn);
+ 				bss->igtk_idx = id;
+ 			}
+ 		} else if (ie.igtk_len == 40) {
+@@ -813,12 +798,7 @@ static void learn_kde_keys(struct wlantest *wt, struct wlantest_bss *bss,
+ 				os_memcpy(bss->igtk[id], ie.igtk + 8, 32);
+ 				bss->igtk_len[id] = 32;
+ 				ipn = ie.igtk + 2;
+-				bss->ipn[id][0] = ipn[5];
+-				bss->ipn[id][1] = ipn[4];
+-				bss->ipn[id][2] = ipn[3];
+-				bss->ipn[id][3] = ipn[2];
+-				bss->ipn[id][4] = ipn[1];
+-				bss->ipn[id][5] = ipn[0];
++				bss->ipn[id] = WPA_GET_LE48(ipn);
+ 				bss->igtk_idx = id;
+ 			}
+ 		} else {
+@@ -847,12 +827,7 @@ static void learn_kde_keys(struct wlantest *wt, struct wlantest_bss *bss,
+ 				os_memcpy(bss->igtk[id], ie.bigtk + 8, 16);
+ 				bss->igtk_len[id] = 16;
+ 				ipn = ie.bigtk + 2;
+-				bss->ipn[id][0] = ipn[5];
+-				bss->ipn[id][1] = ipn[4];
+-				bss->ipn[id][2] = ipn[3];
+-				bss->ipn[id][3] = ipn[2];
+-				bss->ipn[id][4] = ipn[1];
+-				bss->ipn[id][5] = ipn[0];
++				bss->ipn[id] = WPA_GET_LE48(ipn);
+ 				bss->bigtk_idx = id;
+ 			}
+ 		} else if (ie.bigtk_len == 40) {
+@@ -872,12 +847,7 @@ static void learn_kde_keys(struct wlantest *wt, struct wlantest_bss *bss,
+ 				os_memcpy(bss->igtk[id], ie.bigtk + 8, 32);
+ 				bss->igtk_len[id] = 32;
+ 				ipn = ie.bigtk + 2;
+-				bss->ipn[id][0] = ipn[5];
+-				bss->ipn[id][1] = ipn[4];
+-				bss->ipn[id][2] = ipn[3];
+-				bss->ipn[id][3] = ipn[2];
+-				bss->ipn[id][4] = ipn[1];
+-				bss->ipn[id][5] = ipn[0];
++				bss->ipn[id] = WPA_GET_LE48(ipn);
+ 				bss->bigtk_idx = id;
+ 			}
+ 		} else {
+diff --git a/wlantest/rx_mgmt.c b/wlantest/rx_mgmt.c
+index 4389ae77e..06bc904f6 100644
+--- a/wlantest/rx_mgmt.c
++++ b/wlantest/rx_mgmt.c
+@@ -408,6 +408,7 @@ static void rx_mgmt_beacon(struct wlantest *wt, const u8 *data, size_t len)
+ 	const u8 *mme;
+ 	size_t mic_len;
+ 	u16 keyid;
++	u64 rx_bipn;
+ 
+ 	mgmt = (const struct ieee80211_mgmt *) data;
+ 	offset = mgmt->u.beacon.variable - data;
+@@ -577,8 +578,10 @@ static void rx_mgmt_beacon(struct wlantest *wt, const u8 *data, size_t len)
+ 		return;
+ 	}
+ 
+-	wpa_printf(MSG_DEBUG, "Beacon frame MME KeyID %u", keyid);
+-	wpa_hexdump(MSG_MSGDUMP, "MME IPN", mme + 2, 6);
++	rx_bipn = WPA_GET_LE48(mme + 2);
++	wpa_printf(MSG_DEBUG, "Beacon frame BSSID " MACSTR
++		   " MME KeyID %u BIPN 0x%lx",
++		   MAC2STR(mgmt->bssid), keyid, rx_bipn);
+ 	wpa_hexdump(MSG_MSGDUMP, "MME MIC", mme + 8, mic_len);
+ 
+ 	if (!bss->igtk_len[keyid]) {
+@@ -588,11 +591,10 @@ static void rx_mgmt_beacon(struct wlantest *wt, const u8 *data, size_t len)
+ 		return;
+ 	}
+ 
+-	if (os_memcmp(mme + 2, bss->ipn[keyid], 6) <= 0) {
+-		add_note(wt, MSG_INFO, "BIP replay detected: SA=" MACSTR,
+-			 MAC2STR(mgmt->sa));
+-		wpa_hexdump(MSG_INFO, "RX IPN", mme + 2, 6);
+-		wpa_hexdump(MSG_INFO, "Last RX IPN", bss->ipn[keyid], 6);
++	if (rx_bipn <= bss->ipn[keyid]) {
++		add_note(wt, MSG_INFO, "BIP replay detected: SA=" MACSTR
++			 " RX BIPN 0x%lx <= 0x%lx",
++			 MAC2STR(mgmt->sa), rx_bipn, bss->ipn[keyid]);
+ 	}
+ 
+ 	if (check_mmie_mic(bss->mgmt_group_cipher, bss->igtk[keyid],
+@@ -604,7 +606,7 @@ static void rx_mgmt_beacon(struct wlantest *wt, const u8 *data, size_t len)
+ 	}
+ 
+ 	add_note(wt, MSG_DEBUG, "Valid MME MIC in Beacon frame");
+-	os_memcpy(bss->ipn[keyid], mme + 2, 6);
++	bss->ipn[keyid] = rx_bipn;
+ }
+ 
+ 
+@@ -1907,12 +1909,7 @@ static void process_igtk_subelem(struct wlantest *wt, struct wlantest_bss *bss,
+ 	os_memcpy(bss->igtk[keyidx], igtk, igtk_len);
+ 	bss->igtk_len[keyidx] = igtk_len;
+ 	ipn = igtk_elem + 2;
+-	bss->ipn[keyidx][0] = ipn[5];
+-	bss->ipn[keyidx][1] = ipn[4];
+-	bss->ipn[keyidx][2] = ipn[3];
+-	bss->ipn[keyidx][3] = ipn[2];
+-	bss->ipn[keyidx][4] = ipn[1];
+-	bss->ipn[keyidx][5] = ipn[0];
++	bss->ipn[keyidx] = WPA_GET_LE48(ipn);
+ 	bss->igtk_idx = keyidx;
+ }
+ 
+@@ -1979,12 +1976,7 @@ static void process_bigtk_subelem(struct wlantest *wt, struct wlantest_bss *bss,
+ 	os_memcpy(bss->igtk[keyidx], bigtk, bigtk_len);
+ 	bss->igtk_len[keyidx] = bigtk_len;
+ 	ipn = bigtk_elem + 2;
+-	bss->ipn[keyidx][0] = ipn[5];
+-	bss->ipn[keyidx][1] = ipn[4];
+-	bss->ipn[keyidx][2] = ipn[3];
+-	bss->ipn[keyidx][3] = ipn[2];
+-	bss->ipn[keyidx][4] = ipn[1];
+-	bss->ipn[keyidx][5] = ipn[0];
++	bss->ipn[keyidx] = WPA_GET_LE48(ipn);
+ 	bss->bigtk_idx = keyidx;
+ }
+ 
+@@ -3119,6 +3111,7 @@ static int check_bip(struct wlantest *wt, const u8 *data, size_t len)
+ 	u16 keyid;
+ 	struct wlantest_bss *bss;
+ 	size_t mic_len;
++	u64 rx_ipn;
+ 
+ 	mgmt = (const struct ieee80211_mgmt *) data;
+ 	fc = le_to_host16(mgmt->frame_control);
+@@ -3165,8 +3158,9 @@ static int check_bip(struct wlantest *wt, const u8 *data, size_t len)
+ 		bss->counters[WLANTEST_BSS_COUNTER_INVALID_BIP_MMIE]++;
+ 		return 0;
+ 	}
+-	wpa_printf(MSG_DEBUG, "MMIE KeyID %u", keyid);
+-	wpa_hexdump(MSG_MSGDUMP, "MMIE IPN", mmie + 2, 6);
++
++	rx_ipn = WPA_GET_LE48(mmie + 2);
++	wpa_printf(MSG_DEBUG, "MME KeyID %u IPN 0x%lx", keyid, rx_ipn);
+ 	wpa_hexdump(MSG_MSGDUMP, "MMIE MIC", mmie + 8, mic_len);
+ 
+ 	if (!bss->igtk_len[keyid]) {
+@@ -3174,11 +3168,10 @@ static int check_bip(struct wlantest *wt, const u8 *data, size_t len)
+ 		return 0;
+ 	}
+ 
+-	if (os_memcmp(mmie + 2, bss->ipn[keyid], 6) <= 0) {
+-		add_note(wt, MSG_INFO, "BIP replay detected: SA=" MACSTR,
+-			 MAC2STR(mgmt->sa));
+-		wpa_hexdump(MSG_INFO, "RX IPN", mmie + 2, 6);
+-		wpa_hexdump(MSG_INFO, "Last RX IPN", bss->ipn[keyid], 6);
++	if (rx_ipn <= bss->ipn[keyid]) {
++		add_note(wt, MSG_INFO, "BIP replay detected: SA=" MACSTR
++			 " RX IPN 0x%lx <= 0x%lx",
++			 MAC2STR(mgmt->sa), rx_ipn, bss->ipn[keyid]);
+ 	}
+ 
+ 	if (check_mmie_mic(bss->mgmt_group_cipher, bss->igtk[keyid],
+@@ -3190,7 +3183,7 @@ static int check_bip(struct wlantest *wt, const u8 *data, size_t len)
+ 	}
+ 
+ 	add_note(wt, MSG_DEBUG, "Valid MMIE MIC");
+-	os_memcpy(bss->ipn[keyid], mmie + 2, 6);
++	bss->ipn[keyid] = rx_ipn;
+ 	bss->counters[WLANTEST_BSS_COUNTER_VALID_BIP_MMIE]++;
+ 
+ 	if (stype == WLAN_FC_STYPE_DEAUTH)
+diff --git a/wlantest/test_vectors.c b/wlantest/test_vectors.c
+index 69af0a3a5..3b6d78bc1 100644
+--- a/wlantest/test_vectors.c
++++ b/wlantest/test_vectors.c
+@@ -350,7 +350,7 @@ static void test_vector_bip(void)
+ 		0x4e, 0xa9, 0x54, 0x3e, 0x09, 0xcf, 0x2b, 0x1e,
+ 		0xca, 0x66, 0xff, 0xc5, 0x8b, 0xde, 0xcb, 0xcf
+ 	};
+-	u8 ipn[] = { 0x04, 0x00, 0x00, 0x00, 0x00, 0x00 };
++	u64 ipn = 0x04;
+ 	u8 frame[] = {
+ 		0xc0, 0x00, 0x00, 0x00, 0xff, 0xff, 0xff, 0xff,
+ 		0xff, 0xff, 0x02, 0x00, 0x00, 0x00, 0x00, 0x00,
+@@ -364,7 +364,7 @@ static void test_vector_bip(void)
+ 		   "Deauthentication frame\n");
+ 
+ 	wpa_hexdump(MSG_INFO, "IGTK", igtk, sizeof(igtk));
+-	wpa_hexdump(MSG_INFO, "IPN", ipn, sizeof(ipn));
++	wpa_printf(MSG_INFO, "IPN: 0x%lx", ipn);
+ 	wpa_hexdump(MSG_INFO, "Plaintext frame", frame, sizeof(frame));
+ 
+ 	prot = bip_protect(igtk, sizeof(igtk), frame, sizeof(frame),
+diff --git a/wlantest/wlantest.h b/wlantest/wlantest.h
+index d8deaf0e8..30dc123dc 100644
+--- a/wlantest/wlantest.h
++++ b/wlantest/wlantest.h
+@@ -174,7 +174,7 @@ struct wlantest_bss {
+ 	u8 igtk[8][32];
+ 	size_t igtk_len[8];
+ 	int igtk_idx;
+-	u8 ipn[8][6];
++	u64 ipn[8];
+ 	int bigtk_idx;
+ 	u32 counters[NUM_WLANTEST_BSS_COUNTER];
+ 	struct dl_list tdls; /* struct wlantest_tdls */
+@@ -352,7 +352,7 @@ u8 * wep_decrypt(struct wlantest *wt, const struct ieee80211_hdr *hdr,
+ 		 const u8 *data, size_t data_len, size_t *decrypted_len);
+ 
+ u8 * bip_protect(const u8 *igtk, size_t igtk_len, u8 *frame, size_t len,
+-		 u8 *ipn, int keyid, size_t *prot_len);
++		 u64 ipn, int keyid, size_t *prot_len);
+ u8 * bip_protect_s1g_beacon(const u8 *igtk, size_t igtk_len, const u8 *frame,
+ 			    size_t len, const u8 *ipn, int keyid, bool bce,
+ 			    size_t *prot_len);
+-- 
+2.43.0
+

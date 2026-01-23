@@ -1,0 +1,38 @@
+From e3fb9e6f2d8abbc2de7d604753518d6197b95e24 Mon Sep 17 00:00:00 2001
+From: Veerendranath Jakkam <quic_vjakkam@quicinc.com>
+Date: Thu, 25 Jan 2024 01:14:23 +0530
+Subject: [PATCH] Send actual BTM capability when the driver takes care of BSS
+ selection
+
+wpa_supplicant disables BTM capability in Extended Capabilities element
+when wpa_supplicant selects a misbehaving MBO/OCE AP that uses RSN
+without PMF, but this is disabling BTM support for whole ESS connection
+lifetime though the BTM support can be enabled when the driver takes
+care of BSS selection and selects/roams to a BSS which is MBO and OCE
+specification compliant. Thus, always set the actual BTM capability in
+Extended Capabilities element when the driver takes care of BSS
+selection.
+
+Signed-off-by: Veerendranath Jakkam <quic_vjakkam@quicinc.com>
+---
+ wpa_supplicant/wpa_supplicant.c | 4 +++-
+ 1 file changed, 3 insertions(+), 1 deletion(-)
+
+diff --git a/wpa_supplicant/wpa_supplicant.c b/wpa_supplicant/wpa_supplicant.c
+index ecfc3b3ef..b820773b8 100644
+--- a/wpa_supplicant/wpa_supplicant.c
++++ b/wpa_supplicant/wpa_supplicant.c
+@@ -2120,7 +2120,9 @@ static void wpas_ext_capab_byte(struct wpa_supplicant *wpa_s, u8 *pos, int idx,
+ 	case 2: /* Bits 16-23 */
+ #ifdef CONFIG_WNM
+ 		*pos |= 0x02; /* Bit 17 - WNM-Sleep Mode */
+-		if (!wpa_s->disable_mbo_oce && !wpa_s->conf->disable_btm)
++		if ((wpas_driver_bss_selection(wpa_s) ||
++		     !wpa_s->disable_mbo_oce) &&
++		    !wpa_s->conf->disable_btm)
+ 			*pos |= 0x08; /* Bit 19 - BSS Transition */
+ #endif /* CONFIG_WNM */
+ 		break;
+-- 
+2.43.0
+

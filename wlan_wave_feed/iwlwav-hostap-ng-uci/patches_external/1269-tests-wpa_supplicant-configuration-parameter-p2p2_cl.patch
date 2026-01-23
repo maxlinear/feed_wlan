@@ -1,0 +1,43 @@
+From a771be174151338a8a4445ac00252437b1cde0a3 Mon Sep 17 00:00:00 2001
+From: Jouni Malinen <quic_jouni@quicinc.com>
+Date: Fri, 24 Jan 2025 10:47:37 +0200
+Subject: [PATCH] tests: wpa_supplicant configuration parameter
+ p2p2_client_list
+
+Signed-off-by: Jouni Malinen <quic_jouni@quicinc.com>
+---
+ tests/hwsim/test_wpas_config.py | 9 ++++++++-
+ 1 file changed, 8 insertions(+), 1 deletion(-)
+
+diff --git a/tests/hwsim/test_wpas_config.py b/tests/hwsim/test_wpas_config.py
+index c9e8f7c4d..433dc6214 100644
+--- a/tests/hwsim/test_wpas_config.py
++++ b/tests/hwsim/test_wpas_config.py
+@@ -196,6 +196,11 @@ def test_wpas_config_file(dev, apdev, params):
+             f.write('\tssid="hello"\n')
+             f.write('\tgroup=GCMP # "foo"\n')
+             f.write("}\n")
++            f.write("network={\n")
++            f.write("\tdisabled=2\n")
++            f.write("\tkey_mgmt=NONE\n")
++            f.write("\tp2p2_client_list=1 4 7 9 900\n")
++            f.write("}\n")
+ 
+         wpas.interface_add("wlan5", config=config)
+         capa = {}
+@@ -249,9 +254,11 @@ def test_wpas_config_file(dev, apdev, params):
+         data1 = check_config(capa, config)
+         if "group=GCMP" not in data1:
+             raise Exception("Network block group parameter with a comment not present")
++        if "p2p2_client_list=1 4 7 9 900" not in data1:
++            raise Exception("p2p2_client_list was not present")
+ 
+         wpas.interface_add("wlan5", config=config)
+-        if len(wpas.list_networks()) != 2:
++        if len(wpas.list_networks()) != 3:
+             raise Exception("Unexpected number of networks")
+         res = wpas.request("LIST_CREDS")
+         logger.info("Credentials:\n" + res)
+-- 
+2.43.0
+

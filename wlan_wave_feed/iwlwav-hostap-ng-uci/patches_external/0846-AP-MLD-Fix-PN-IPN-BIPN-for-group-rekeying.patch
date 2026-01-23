@@ -1,0 +1,156 @@
+From 8c9b9ccb491b053cc6407ba3baba6c442cfc7784 Mon Sep 17 00:00:00 2001
+From: Aditya Kumar Singh <quic_adisi@quicinc.com>
+Date: Tue, 13 Aug 2024 18:20:55 +0530
+Subject: [PATCH] AP MLD: Fix PN/IPN/BIPN for group rekeying
+
+wpa_auth_get_seqnum() for ML group rekeying needs to be skipped in the
+same way as it is done for non-ML cases to avoid indicating old values
+and resulting in group frames being dropped as replays. The simple check
+for gsm->wpa_group_state != WPA_GROUP_SETKEYS (as is done for non-ML) is
+not sufficient for this since the per-link Authenticator states are not
+strictly synchronized and the state change happens in the middle of this
+step.
+
+Fixes: 137b85509248 ("MLO: Mechanism for fetching group key information for the links")
+Signed-off-by: Aditya Kumar Singh <quic_adisi@quicinc.com>
+---
+ src/ap/wpa_auth.c      | 17 ++++++++++-------
+ src/ap/wpa_auth.h      |  6 ++++--
+ src/ap/wpa_auth_glue.c |  9 ++++++---
+ 3 files changed, 20 insertions(+), 12 deletions(-)
+
+diff --git a/src/ap/wpa_auth.c b/src/ap/wpa_auth.c
+index a729ef27e..3562ca1b8 100644
+--- a/src/ap/wpa_auth.c
++++ b/src/ap/wpa_auth.c
+@@ -4207,7 +4207,8 @@ static u8 * replace_ie(const char *name, const u8 *old_buf, size_t *len, u8 eid,
+ 
+ void wpa_auth_ml_get_key_info(struct wpa_authenticator *a,
+ 			      struct wpa_auth_ml_link_key_info *info,
+-			      bool mgmt_frame_prot, bool beacon_prot)
++			      bool mgmt_frame_prot, bool beacon_prot,
++			      bool rekey)
+ {
+ 	struct wpa_group *gsm = a->group;
+ 	u8 rsc[WPA_KEY_RSC_LEN];
+@@ -4220,7 +4221,7 @@ void wpa_auth_ml_get_key_info(struct wpa_authenticator *a,
+ 	info->gtk = gsm->GTK[gsm->GN - 1];
+ 	info->gtk_len = gsm->GTK_len;
+ 
+-	if (wpa_auth_get_seqnum(a, NULL, gsm->GN, rsc) < 0)
++	if (rekey || wpa_auth_get_seqnum(a, NULL, gsm->GN, rsc) < 0)
+ 		os_memset(info->pn, 0, sizeof(info->pn));
+ 	else
+ 		os_memcpy(info->pn, rsc, sizeof(info->pn));
+@@ -4232,7 +4233,7 @@ void wpa_auth_ml_get_key_info(struct wpa_authenticator *a,
+ 	info->igtk = gsm->IGTK[gsm->GN_igtk - 4];
+ 	info->igtk_len = wpa_cipher_key_len(a->conf.group_mgmt_cipher);
+ 
+-	if (wpa_auth_get_seqnum(a, NULL, gsm->GN_igtk, rsc) < 0)
++	if (rekey || wpa_auth_get_seqnum(a, NULL, gsm->GN_igtk, rsc) < 0)
+ 		os_memset(info->ipn, 0, sizeof(info->ipn));
+ 	else
+ 		os_memcpy(info->ipn, rsc, sizeof(info->ipn));
+@@ -4248,7 +4249,7 @@ void wpa_auth_ml_get_key_info(struct wpa_authenticator *a,
+ 	info->bigtkidx = gsm->GN_bigtk;
+ 	info->bigtk = gsm->BIGTK[gsm->GN_bigtk - 6];
+ 
+-	if (wpa_auth_get_seqnum(a, NULL, gsm->GN_bigtk, rsc) < 0)
++	if (rekey || wpa_auth_get_seqnum(a, NULL, gsm->GN_bigtk, rsc) < 0)
+ 		os_memset(info->bipn, 0, sizeof(info->bipn));
+ 	else
+ 		os_memcpy(info->bipn, rsc, sizeof(info->bipn));
+@@ -4256,12 +4257,13 @@ void wpa_auth_ml_get_key_info(struct wpa_authenticator *a,
+ 
+ 
+ static void wpa_auth_get_ml_key_info(struct wpa_authenticator *wpa_auth,
+-				     struct wpa_auth_ml_key_info *info)
++				     struct wpa_auth_ml_key_info *info,
++				     bool rekey)
+ {
+ 	if (!wpa_auth->cb->get_ml_key_info)
+ 		return;
+ 
+-	wpa_auth->cb->get_ml_key_info(wpa_auth->cb_ctx, info);
++	wpa_auth->cb->get_ml_key_info(wpa_auth->cb_ctx, info, rekey);
+ }
+ 
+ 
+@@ -4318,6 +4320,7 @@ static u8 * wpa_auth_ml_group_kdes(struct wpa_state_machine *sm, u8 *pos)
+ 	struct wpa_auth_ml_key_info ml_key_info;
+ 	unsigned int i, link_id;
+ 	u8 *start = pos;
++	bool rekey = sm->wpa_ptk_group_state == WPA_PTK_GROUP_REKEYNEGOTIATING;
+ 
+ 	/* First fetch the key information from all the authenticators */
+ 	os_memset(&ml_key_info, 0, sizeof(ml_key_info));
+@@ -4337,7 +4340,7 @@ static u8 * wpa_auth_ml_group_kdes(struct wpa_state_machine *sm, u8 *pos)
+ 		ml_key_info.links[i++].link_id = link_id;
+ 	}
+ 
+-	wpa_auth_get_ml_key_info(sm->wpa_auth, &ml_key_info);
++	wpa_auth_get_ml_key_info(sm->wpa_auth, &ml_key_info, rekey);
+ 
+ 	/* Add MLO GTK KDEs */
+ 	for (i = 0, link_id = 0; link_id < MAX_NUM_MLD_LINKS; link_id++) {
+diff --git a/src/ap/wpa_auth.h b/src/ap/wpa_auth.h
+index b22c4199b..975e546e0 100644
+--- a/src/ap/wpa_auth.h
++++ b/src/ap/wpa_auth.h
+@@ -424,7 +424,8 @@ struct wpa_auth_callbacks {
+ 			       size_t ltf_keyseed_len);
+ #endif /* CONFIG_PASN */
+ #ifdef CONFIG_IEEE80211BE
+-	int (*get_ml_key_info)(void *ctx, struct wpa_auth_ml_key_info *info);
++	int (*get_ml_key_info)(void *ctx, struct wpa_auth_ml_key_info *info,
++			       bool rekey);
+ #endif /* CONFIG_IEEE80211BE */
+ 	int (*get_drv_flags)(void *ctx, u64 *drv_flags, u64 *drv_flags2);
+ };
+@@ -670,7 +671,8 @@ void wpa_auth_set_ml_info(struct wpa_state_machine *sm,
+ 			  u8 mld_assoc_link_id, struct mld_info *info);
+ void wpa_auth_ml_get_key_info(struct wpa_authenticator *a,
+ 			      struct wpa_auth_ml_link_key_info *info,
+-			      bool mgmt_frame_prot, bool beacon_prot);
++			      bool mgmt_frame_prot, bool beacon_prot,
++			      bool rekey);
+ 
+ void wpa_release_link_auth_ref(struct wpa_state_machine *sm,
+ 			       int release_link_id);
+diff --git a/src/ap/wpa_auth_glue.c b/src/ap/wpa_auth_glue.c
+index 13685b7c2..9fa9f19b7 100644
+--- a/src/ap/wpa_auth_glue.c
++++ b/src/ap/wpa_auth_glue.c
+@@ -1587,7 +1587,8 @@ static int hostapd_set_ltf_keyseed(void *ctx, const u8 *peer_addr,
+ #ifdef CONFIG_IEEE80211BE
+ 
+ static int hostapd_wpa_auth_get_ml_key_info(void *ctx,
+-					    struct wpa_auth_ml_key_info *info)
++					    struct wpa_auth_ml_key_info *info,
++					    bool rekey)
+ {
+ 	struct hostapd_data *hapd = ctx;
+ 	unsigned int i;
+@@ -1611,7 +1612,8 @@ static int hostapd_wpa_auth_get_ml_key_info(void *ctx,
+ 			wpa_auth_ml_get_key_info(hapd->wpa_auth,
+ 						 &info->links[i],
+ 						 info->mgmt_frame_prot,
+-						 info->beacon_prot);
++						 info->beacon_prot,
++						 rekey);
+ 			continue;
+ 		}
+ 
+@@ -1622,7 +1624,8 @@ static int hostapd_wpa_auth_get_ml_key_info(void *ctx,
+ 			wpa_auth_ml_get_key_info(bss->wpa_auth,
+ 						 &info->links[i],
+ 						 info->mgmt_frame_prot,
+-						 info->beacon_prot);
++						 info->beacon_prot,
++						 rekey);
+ 			link_bss_found = true;
+ 			break;
+ 		}
+-- 
+2.43.0
+

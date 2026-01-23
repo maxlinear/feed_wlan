@@ -1,0 +1,246 @@
+From df34c2ced34fb442c5eae30f326f118049422966 Mon Sep 17 00:00:00 2001
+From: Aditya Kumar Singh <quic_adisi@quicinc.com>
+Date: Wed, 6 Mar 2024 12:10:16 +0530
+Subject: [PATCH] AP MLD: De-initialize/disable link BSS properly
+
+When the first link BSS of an interface was de-initialized/disabled, the
+whole MLD was brought down. All other links were stopped beaconing and
+links were removed. And if the non-first link BSS was
+de-initialized/disabled, nothing happened. Even beaconing was not
+stopped which is wrong.
+
+Fix this by properly bringing down the intended link alone from the
+interface.
+
+Signed-off-by: Aditya Kumar Singh <quic_adisi@quicinc.com>
+---
+ hostapd/main.c               |  1 +
+ src/ap/hostapd.c             | 77 ++++++++++++++++++++++--------------
+ src/drivers/driver.h         | 13 ++++++
+ src/drivers/driver_nl80211.c | 35 ++++++++++++++++
+ 4 files changed, 96 insertions(+), 30 deletions(-)
+
+diff --git a/hostapd/main.c b/hostapd/main.c
+index 119185726..a43d3a5be 100644
+--- a/hostapd/main.c
++++ b/hostapd/main.c
+@@ -195,6 +195,7 @@ static int hostapd_driver_init(struct hostapd_iface *iface)
+ 		}
+ 
+ 		hapd->drv_priv = h_hapd->drv_priv;
++		hapd->interface_added = h_hapd->interface_added;
+ 
+ 		/*
+ 		 * All interfaces participating in the AP MLD would have
+diff --git a/src/ap/hostapd.c b/src/ap/hostapd.c
+index f94b89e8f..323c02754 100644
+--- a/src/ap/hostapd.c
++++ b/src/ap/hostapd.c
+@@ -397,27 +397,6 @@ static int hostapd_broadcast_wep_set(struct hostapd_data *hapd)
+ #endif /* CONFIG_WEP */
+ 
+ 
+-static void hostapd_clear_drv_priv(struct hostapd_data *hapd)
+-{
+-#ifdef CONFIG_IEEE80211BE
+-	unsigned int i;
+-
+-	for (i = 0; i < hapd->iface->interfaces->count; i++) {
+-		struct hostapd_iface *iface = hapd->iface->interfaces->iface[i];
+-
+-		if (hapd->iface == iface || !iface)
+-			continue;
+-
+-		if (iface->bss && iface->bss[0] &&
+-		    hostapd_mld_get_first_bss(iface->bss[0]) == hapd)
+-			iface->bss[0]->drv_priv = NULL;
+-	}
+-#endif /* CONFIG_IEEE80211BE */
+-
+-	hapd->drv_priv = NULL;
+-}
+-
+-
+ #ifdef CONFIG_IEEE80211BE
+ #ifdef CONFIG_TESTING_OPTIONS
+ 
+@@ -554,10 +533,20 @@ void hostapd_free_hapd_data(struct hostapd_data *hapd)
+ 			 * driver wrapper may have removed its internal instance
+ 			 * and hapd->drv_priv is not valid anymore.
+ 			 */
+-			hostapd_clear_drv_priv(hapd);
++			hapd->drv_priv = NULL;
+ 		}
+ 	}
+ 
++#ifdef CONFIG_IEEE80211BE
++	/* If the interface was not added as well as it is not the first BSS,
++	 * at least the link should be removed here since deinit will take care
++	 * of only the first BSS. */
++	if (hapd->conf->mld_ap && !hapd->interface_added &&
++	    hapd->iface->bss[0] != hapd)
++		hostapd_if_link_remove(hapd, WPA_IF_AP_BSS, hapd->conf->iface,
++				       hapd->mld_link_id);
++#endif /* CONFIG_IEEE80211BE */
++
+ 	wpabuf_free(hapd->time_adv);
+ 	hapd->time_adv = NULL;
+ 
+@@ -3304,6 +3293,37 @@ hostapd_interface_init_bss(struct hapd_interfaces *interfaces, const char *phy,
+ }
+ 
+ 
++static void hostapd_cleanup_driver(const struct wpa_driver_ops *driver,
++				   void *drv_priv, struct hostapd_iface *iface)
++{
++#ifdef CONFIG_IEEE80211BE
++	if (!driver || !driver->hapd_deinit || !drv_priv)
++		return;
++
++	/* In case of non-ML operation, de-init. But if ML operation exist,
++	 * even if that's the last BSS in the interface, the driver (drv) could
++	 * be in use for a different AP MLD. Hence, need to check if drv is
++	 * still being used by some other BSS before de-initiallizing. */
++	if (!iface->bss[0]->conf->mld_ap) {
++		driver->hapd_deinit(drv_priv);
++	} else if (hostapd_mld_is_first_bss(iface->bss[0]) &&
++		   driver->is_drv_shared &&
++		   !driver->is_drv_shared(drv_priv, iface->bss[0])) {
++		driver->hapd_deinit(drv_priv);
++	} else if (hostapd_if_link_remove(iface->bss[0],
++					  WPA_IF_AP_BSS,
++					  iface->bss[0]->conf->iface,
++					  iface->bss[0]->mld_link_id)) {
++		wpa_printf(MSG_WARNING, "Failed to remove BSS interface %s",
++			   iface->bss[0]->conf->iface);
++	}
++#else /* CONFIG_IEEE80211BE */
++	driver->hapd_deinit(drv_priv);
++#endif /* CONFIG_IEEE80211BE */
++	iface->bss[0]->drv_priv = NULL;
++}
++
++
+ void hostapd_interface_deinit_free(struct hostapd_iface *iface)
+ {
+ 	const struct wpa_driver_ops *driver;
+@@ -3320,11 +3340,7 @@ void hostapd_interface_deinit_free(struct hostapd_iface *iface)
+ 	hostapd_interface_deinit(iface);
+ 	wpa_printf(MSG_DEBUG, "%s: driver=%p drv_priv=%p -> hapd_deinit",
+ 		   __func__, driver, drv_priv);
+-	if (driver && driver->hapd_deinit && drv_priv) {
+-		if (hostapd_mld_is_first_bss(iface->bss[0]))
+-			driver->hapd_deinit(drv_priv);
+-		hostapd_clear_drv_priv(iface->bss[0]);
+-	}
++	hostapd_cleanup_driver(driver, drv_priv, iface);
+ 	hostapd_interface_free(iface);
+ }
+ 
+@@ -3337,15 +3353,16 @@ static void hostapd_deinit_driver(const struct wpa_driver_ops *driver,
+ 
+ 	wpa_printf(MSG_DEBUG, "%s: driver=%p drv_priv=%p -> hapd_deinit",
+ 		   __func__, driver, drv_priv);
++
++	hostapd_cleanup_driver(driver, drv_priv, hapd_iface);
++
+ 	if (driver && driver->hapd_deinit && drv_priv) {
+-		if (hostapd_mld_is_first_bss(hapd_iface->bss[0]))
+-			driver->hapd_deinit(drv_priv);
+ 		for (j = 0; j < hapd_iface->num_bss; j++) {
+ 			wpa_printf(MSG_DEBUG, "%s:bss[%d]->drv_priv=%p",
+ 				   __func__, (int) j,
+ 				   hapd_iface->bss[j]->drv_priv);
+ 			if (hapd_iface->bss[j]->drv_priv == drv_priv) {
+-				hostapd_clear_drv_priv(hapd_iface->bss[j]);
++				hapd_iface->bss[j]->drv_priv = NULL;
+ 				hapd_iface->extended_capa = NULL;
+ 				hapd_iface->extended_capa_mask = NULL;
+ 				hapd_iface->extended_capa_len = 0;
+diff --git a/src/drivers/driver.h b/src/drivers/driver.h
+index 61601eb9d..833dbc895 100644
+--- a/src/drivers/driver.h
++++ b/src/drivers/driver.h
+@@ -5165,6 +5165,19 @@ struct wpa_driver_ops {
+ 	int (*link_remove)(void *priv, enum wpa_driver_if_type type,
+ 			   const char *ifname, u8 link_id);
+ 
++	/**
++	 * is_drv_shared - Check whether the driver interface is shared
++	 * @priv: Private driver interface data from init()
++	 * @bss_ctx: BSS context for %WPA_IF_AP_BSS interfaces
++	 *
++	 * Checks whether the driver interface is being used by other partner
++	 * BSS(s) or not. This is used to decide whether the driver interface
++	 * needs to be deinitilized when one interface is getting deinitialized.
++	 *
++	 * Returns: true if it is being used or else false.
++	 */
++	bool (*is_drv_shared)(void *priv, void *bss_ctx);
++
+ #ifdef CONFIG_TESTING_OPTIONS
+ 	int (*register_frame)(void *priv, u16 type,
+ 			      const u8 *match, size_t match_len,
+diff --git a/src/drivers/driver_nl80211.c b/src/drivers/driver_nl80211.c
+index 7a68b47ef..7590b30ab 100644
+--- a/src/drivers/driver_nl80211.c
++++ b/src/drivers/driver_nl80211.c
+@@ -10715,6 +10715,7 @@ static int driver_nl80211_if_remove(void *priv, enum wpa_driver_if_type type,
+ 
+ 
+ #ifdef CONFIG_IEEE80211BE
++
+ static int driver_nl80211_link_remove(void *priv, enum wpa_driver_if_type type,
+ 				      const char *ifname, u8 link_id)
+ {
+@@ -10744,6 +10745,39 @@ static int driver_nl80211_link_remove(void *priv, enum wpa_driver_if_type type,
+ 
+ 	return 0;
+ }
++
++
++static bool nl80211_is_drv_shared(void *priv, void *bss_ctx)
++{
++	struct i802_bss *bss = priv;
++	struct wpa_driver_nl80211_data *drv = bss->drv;
++	unsigned int num_bss = 0;
++
++	/* If any other BSS exist, someone else is using this since at this
++	 * time, we would have removed all BSSs created by this driver and only
++	 * this BSS should be remaining if the driver is not shared by anyone.
++	 */
++	for (bss = drv->first_bss; bss; bss = bss->next) {
++		num_bss++;
++		if (num_bss > 1)
++			return true;
++	}
++
++	/* This is the only BSS present */
++	bss = priv;
++
++	/* If only one/no link is there no one is sharing */
++	if (bss->valid_links <= 1)
++		return false;
++
++	/* More than one link means someone is still using. To check if
++	 * only 1 bit is set, power of 2 condition can be checked. */
++	if (!(bss->valid_links & (bss->valid_links - 1)))
++		return false;
++
++	return true;
++}
++
+ #endif /* CONFIG_IEEE80211BE */
+ 
+ 
+@@ -14078,6 +14112,7 @@ const struct wpa_driver_ops wpa_driver_nl80211_ops = {
+ 	.link_add = nl80211_link_add,
+ #ifdef CONFIG_IEEE80211BE
+ 	.link_remove = driver_nl80211_link_remove,
++	.is_drv_shared = nl80211_is_drv_shared,
+ #endif /* CONFIG_IEEE80211BE */
+ #ifdef CONFIG_TESTING_OPTIONS
+ 	.register_frame = testing_nl80211_register_frame,
+-- 
+2.43.0
+

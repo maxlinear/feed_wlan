@@ -1,0 +1,30 @@
+From 3d6360fb5ca2a9f69e600f8b50ca401ae21d6a05 Mon Sep 17 00:00:00 2001
+From: Jouni Malinen <quic_jouni@quicinc.com>
+Date: Mon, 4 Nov 2024 22:44:27 +0200
+Subject: [PATCH] NAN: Limit pauseState to be within service lifetime
+
+If a publish service is configured with an explicit lifetime (ttl), do
+not allow pauseState duration to exceed that.
+
+Signed-off-by: Jouni Malinen <quic_jouni@quicinc.com>
+---
+ src/common/nan_de.c | 3 +++
+ 1 file changed, 3 insertions(+)
+
+diff --git a/src/common/nan_de.c b/src/common/nan_de.c
+index 844fc4434..8855912a2 100644
+--- a/src/common/nan_de.c
++++ b/src/common/nan_de.c
+@@ -160,6 +160,9 @@ static void nan_de_pause_state(struct nan_de_service *srv, const u8 *peer_addr,
+ 	wpa_printf(MSG_DEBUG, "NAN: Start pauseState");
+ 	os_get_reltime(&srv->pause_state_end);
+ 	srv->pause_state_end.sec += 60;
++	if (os_reltime_initialized(&srv->end_time) &&
++	    os_reltime_before(&srv->end_time, &srv->pause_state_end))
++		srv->pause_state_end = srv->end_time;
+ 	os_memcpy(srv->sel_peer_addr, peer_addr, ETH_ALEN);
+ 	srv->sel_peer_id = peer_id;
+ }
+-- 
+2.43.0
+

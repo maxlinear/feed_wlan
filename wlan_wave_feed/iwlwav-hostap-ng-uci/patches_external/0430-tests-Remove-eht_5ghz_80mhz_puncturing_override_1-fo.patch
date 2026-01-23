@@ -1,0 +1,36 @@
+From eecaceed8f03cee676d47dd9fb70efd25d50e3e9 Mon Sep 17 00:00:00 2001
+From: Jouni Malinen <quic_jouni@quicinc.com>
+Date: Wed, 6 Mar 2024 22:38:09 +0200
+Subject: [PATCH] tests: Remove eht_5ghz_80mhz_puncturing_override_1 for now
+
+mac80211 has been modified to reject the configuration that is used in
+this test case. For now, remove this until the puncturing of the second
+20 MHz segment can be handled in a manner that allows mac80211 STA to
+use EHT.
+
+Signed-off-by: Jouni Malinen <quic_jouni@quicinc.com>
+---
+ tests/hwsim/test_eht.py | 7 -------
+ 1 file changed, 7 deletions(-)
+
+diff --git a/tests/hwsim/test_eht.py b/tests/hwsim/test_eht.py
+index 18ade87e3..1804c2250 100644
+--- a/tests/hwsim/test_eht.py
++++ b/tests/hwsim/test_eht.py
+@@ -1253,13 +1253,6 @@ def test_eht_5ghz_80mhz_2(dev, apdev):
+     """EHT with 80 MHz channel width on 5 GHz - primary=149"""
+     _test_eht_5ghz(dev, apdev, 149, 1, 155, 0)
+ 
+-def test_eht_5ghz_80mhz_puncturing_override_1(dev, apdev):
+-    """EHT with 80 MHz channel width on 5 GHz - primary=36 - puncturing override (2nd)"""
+-
+-    # The 2nd 20 MHz is punctured
+-    _test_eht_5ghz(dev, apdev, 36, 1, 42, 0,
+-                   eht_oper_puncturing_override="0x0002")
+-
+ def test_eht_5ghz_80mhz_puncturing_override_2(dev, apdev):
+     """EHT with 80 MHz channel width on 5 GHz - primary=149 - puncturing override (3rd)"""
+ 
+-- 
+2.43.0
+

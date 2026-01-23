@@ -1,0 +1,25 @@
+From e99cdfae41e1ff7c4e23b0a58b100ea47a757df8 Mon Sep 17 00:00:00 2001
+From: Jouni Malinen <j@w1.fi>
+Date: Sat, 20 Jul 2024 21:16:55 +0300
+Subject: [PATCH] The main branch is now used for v2.12 development
+
+Signed-off-by: Jouni Malinen <j@w1.fi>
+---
+ src/common/version.h | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/src/common/version.h b/src/common/version.h
+index 5b7359849..9e0fbc0b1 100644
+--- a/src/common/version.h
++++ b/src/common/version.h
+@@ -9,6 +9,6 @@
+ #define GIT_VERSION_STR_POSTFIX ""
+ #endif /* GIT_VERSION_STR_POSTFIX */
+ 
+-#define VERSION_STR "2.11" VERSION_STR_POSTFIX GIT_VERSION_STR_POSTFIX
++#define VERSION_STR "2.12-devel" VERSION_STR_POSTFIX GIT_VERSION_STR_POSTFIX
+ 
+ #endif /* VERSION_H */
+-- 
+2.43.0
+

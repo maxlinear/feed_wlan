@@ -1,0 +1,221 @@
+From 7ba52f6a4b7ac97cf36b85cf70d2b078dc2a2bed Mon Sep 17 00:00:00 2001
+From: Shivani Baranwal <quic_shivbara@quicinc.com>
+Date: Thu, 27 Jun 2024 02:54:59 +0530
+Subject: [PATCH] P2P2: Parameter setting for testing purpose
+
+Add support to configure following parameters using the P2P_SET command
+for testing purposes:
+
+    P2P_SET pasn_type <u8>
+    - Bitmap of supported PASN types
+
+    P2P_SET supported_bootstrapmethods <u16>
+    - Supported P2P bootstrapping methods
+
+    P2P_SET pairing_setup <0/1>
+    - Enable/disable P2P pairing setup
+
+    P2P_SET pairing_cache <0/1>
+    - Enable/disable P2P pairing cache for verification
+
+    P2P_SET pairing_verification <0/1>
+    - Enable/disable P2P pairing verification with cached NIK/NPK
+
+    P2P_SET comeback_after <u16>
+    - Bootstrap request for unauthorized peer is asked to come back after
+      this many TUs.
+
+    P2P_SET reginfo <u8>
+    - Regulatory info encoding for operation in 6 GHz band
+
+    P2P_SET twt_power_mgmt <0/1>
+    - Enable TWT based power management for P2P
+
+As these parameters could be varying based on the test requirement these
+should not be set in the wpa_supplicant configuration while testing.
+
+Signed-off-by: Shivani Baranwal <quic_shivbara@quicinc.com>
+---
+ src/p2p/p2p.c               | 89 +++++++++++++++++++++++++++++++++++++
+ src/p2p/p2p.h               | 11 +++++
+ wpa_supplicant/ctrl_iface.c | 42 +++++++++++++++++
+ 3 files changed, 142 insertions(+)
+
+diff --git a/src/p2p/p2p.c b/src/p2p/p2p.c
+index f9743b1a9..b65833689 100644
+--- a/src/p2p/p2p.c
++++ b/src/p2p/p2p.c
+@@ -4919,6 +4919,95 @@ void p2p_set_managed_oper(struct p2p_data *p2p, int enabled)
+ }
+ 
+ 
++#ifdef CONFIG_TESTING_OPTIONS
++
++void p2p_set_pairing_setup(struct p2p_data *p2p, int pairing_setup)
++{
++	p2p_dbg(p2p, "Pairing Setup %s",
++		pairing_setup ? "Enabled" : "Disabled");
++	if (pairing_setup) {
++		p2p->cfg->pairing_config.pairing_capable = true;
++		p2p->cfg->pairing_config.enable_pairing_setup = true;
++		if (p2p->pairing_info)
++			p2p->pairing_info->enable_pairing_setup = true;
++	} else {
++		p2p->cfg->pairing_config.pairing_capable = false;
++		p2p->cfg->pairing_config.enable_pairing_setup = false;
++		if (p2p->pairing_info)
++			p2p->pairing_info->enable_pairing_setup = false;
++	}
++}
++
++
++void p2p_set_pairing_cache(struct p2p_data *p2p, int pairing_cache)
++{
++	p2p_dbg(p2p, "Pairing Cache %s",
++		pairing_cache ? "Enabled" : "Disabled");
++	if (pairing_cache) {
++		p2p->cfg->pairing_config.enable_pairing_cache = true;
++		if (p2p->pairing_info)
++			p2p->pairing_info->enable_pairing_cache = true;
++	} else {
++		p2p->cfg->pairing_config.enable_pairing_cache = false;
++		if (p2p->pairing_info)
++			p2p->pairing_info->enable_pairing_cache = false;
++	}
++}
++
++
++void p2p_set_pairing_verification(struct p2p_data *p2p, int pairing_verification)
++{
++	p2p_dbg(p2p, "Pairing Verification %s",
++		pairing_verification ? "Enabled" : "Disabled");
++	if (pairing_verification)
++		p2p->cfg->pairing_config.enable_pairing_verification = true;
++	else
++		p2p->cfg->pairing_config.enable_pairing_verification = false;
++}
++
++
++void p2p_set_bootstrapmethods(struct p2p_data *p2p, int bootstrap_methods)
++{
++	p2p_dbg(p2p, "Bootstraping methods: 0x%x", bootstrap_methods);
++	p2p->cfg->pairing_config.bootstrap_methods = bootstrap_methods;
++	if (p2p->pairing_info)
++		p2p->pairing_info->supported_bootstrap = bootstrap_methods;
++}
++
++
++void p2p_set_pasn_type(struct p2p_data *p2p, u8 pasn_type)
++{
++	p2p_dbg(p2p, "PASN type: 0x%x", pasn_type);
++	p2p->cfg->pairing_config.pasn_type = pasn_type;
++}
++
++
++void p2p_set_comeback_after(struct p2p_data *p2p, int comeback_after)
++{
++	p2p_dbg(p2p, "Comeback after: %d", comeback_after);
++	p2p->cfg->comeback_after = comeback_after;
++}
++
++
++void p2p_set_reg_info(struct p2p_data *p2p, u8 val)
++{
++	p2p->cfg->reg_info = val;
++}
++
++
++void p2p_set_twt_power_mgmt(struct p2p_data *p2p, int val)
++{
++	p2p_dbg(p2p, "TWT-based P2P Power Mgmt: %s",
++		     val ? "Enabled" : "Disabled");
++	if (val)
++		p2p->cfg->twt_power_mgmt = true;
++	else
++		p2p->cfg->twt_power_mgmt = false;
++}
++
++#endif /* CONFIG_TESTING_OPTIONS */
++
++
+ int p2p_config_get_random_social(struct p2p_config *p2p, u8 *op_class,
+ 				 u8 *op_channel,
+ 				 struct wpa_freq_range_list *avoid_list,
+diff --git a/src/p2p/p2p.h b/src/p2p/p2p.h
+index 5d6f41b3c..0254980c4 100644
+--- a/src/p2p/p2p.h
++++ b/src/p2p/p2p.h
+@@ -2648,6 +2648,17 @@ int p2p_channel_to_freq(int op_class, int channel);
+ struct wpabuf * p2p_usd_elems(struct p2p_data *p2p);
+ void p2p_process_usd_elems(struct p2p_data *p2p, const u8 *ies, u16 ies_len,
+ 			   const u8 *peer_addr, unsigned int freq);
++
++void p2p_set_pairing_setup(struct p2p_data *p2p, int pairing_setup);
++void p2p_set_pairing_cache(struct p2p_data *p2p, int pairing_cache);
++void p2p_set_pairing_verification(struct p2p_data *p2p,
++				  int pairing_verification);
++void p2p_set_bootstrapmethods(struct p2p_data *p2p, int bootstrap_methods);
++void p2p_set_pasn_type(struct p2p_data *p2p, u8 pasn_type);
++void p2p_set_comeback_after(struct p2p_data *p2p, int comeback_after);
++void p2p_set_reg_info(struct p2p_data *p2p, u8 val);
++void p2p_set_twt_power_mgmt(struct p2p_data *p2p, int val);
++
+ int p2p_initiate_pasn_auth(struct p2p_data *p2p, const u8 *addr, int freq);
+ int p2p_pasn_auth_rx(struct p2p_data *p2p, const struct ieee80211_mgmt *mgmt,
+ 		     size_t len, int freq);
+diff --git a/wpa_supplicant/ctrl_iface.c b/wpa_supplicant/ctrl_iface.c
+index 5b5ab57bf..03ee107c3 100644
+--- a/wpa_supplicant/ctrl_iface.c
++++ b/wpa_supplicant/ctrl_iface.c
+@@ -7699,6 +7699,48 @@ static int p2p_ctrl_set(struct wpa_supplicant *wpa_s, char *cmd)
+ 		return 0;
+ 	}
+ 
++#ifdef CONFIG_TESTING_OPTIONS
++	if (os_strcmp(cmd, "pairing_setup") == 0) {
++		p2p_set_pairing_setup(wpa_s->global->p2p, atoi(param));
++		return 0;
++	}
++
++	if (os_strcmp(cmd, "pairing_cache") == 0) {
++		p2p_set_pairing_cache(wpa_s->global->p2p, atoi(param));
++		return 0;
++	}
++
++	if (os_strcmp(cmd, "pairing_verification") == 0) {
++		p2p_set_pairing_verification(wpa_s->global->p2p, atoi(param));
++		return 0;
++	}
++
++	if (os_strcmp(cmd, "supported_bootstrapmethods") == 0) {
++		p2p_set_bootstrapmethods(wpa_s->global->p2p, atoi(param));
++		return 0;
++	}
++
++	if (os_strcmp(cmd, "pasn_type") == 0) {
++		p2p_set_pasn_type(wpa_s->global->p2p, atoi(param));
++		return 0;
++	}
++
++	if (os_strcmp(cmd, "comeback_after") == 0) {
++		p2p_set_comeback_after(wpa_s->global->p2p, atoi(param));
++		return 0;
++	}
++
++	if (os_strcmp(cmd, "reginfo") == 0) {
++		p2p_set_reg_info(wpa_s->global->p2p, atoi(param));
++		return 0;
++	}
++
++	if (os_strcmp(cmd, "twt_power_mgmt") == 0) {
++		p2p_set_twt_power_mgmt(wpa_s->global->p2p, atoi(param));
++		return 0;
++	}
++#endif /* CONFIG_TESTING_OPTIONS */
++
+ 	wpa_printf(MSG_DEBUG, "CTRL_IFACE: Unknown P2P_SET field value '%s'",
+ 		   cmd);
+ 
+-- 
+2.43.0
+

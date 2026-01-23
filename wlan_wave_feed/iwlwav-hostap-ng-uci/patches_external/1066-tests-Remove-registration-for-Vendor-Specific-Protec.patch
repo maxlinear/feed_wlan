@@ -1,0 +1,43 @@
+From a7d256bf47080effc14f2e4bc9dca225a9e7919a Mon Sep 17 00:00:00 2001
+From: Jouni Malinen <quic_jouni@quicinc.com>
+Date: Tue, 5 Nov 2024 19:01:34 +0200
+Subject: [PATCH] tests: Remove registration for Vendor Specific Protected
+ action frames
+
+This additional registration is not needed anymore since hostapd
+registers for these frames internally. In fact, this additional
+registration is now failing.
+
+Signed-off-by: Jouni Malinen <quic_jouni@quicinc.com>
+---
+ tests/hwsim/test_dscp.py | 7 -------
+ 1 file changed, 7 deletions(-)
+
+diff --git a/tests/hwsim/test_dscp.py b/tests/hwsim/test_dscp.py
+index 7e75e56e3..14ab7abee 100644
+--- a/tests/hwsim/test_dscp.py
++++ b/tests/hwsim/test_dscp.py
+@@ -14,12 +14,6 @@ import hostapd
+ from wpasupplicant import WpaSupplicant
+ from utils import *
+ 
+-def register_dscp_req(hapd):
+-    type = 0x00d0
+-    match = "7e506f9a1a"
+-    if "OK" not in hapd.request("REGISTER_FRAME %04x %s" % (type, match)):
+-        raise Exception("Could not register frame reception for Vendor specific protected type")
+-
+ def send_dscp_req(hapd, da, oui_subtype, dialog_token, req_control, qos_ie,
+                   truncate=False):
+     type = 0
+@@ -116,7 +110,6 @@ def ap_sta_connectivity(dev, apdev, params):
+     p["ieee80211w"] = "1"
+     p.update(params)
+     hapd = hostapd.add_ap(apdev[0], p)
+-    register_dscp_req(hapd)
+ 
+     dev[0].request("SET enable_dscp_policy_capa 1")
+     dev[0].connect("dscp", psk="12345678", ieee80211w="1",
+-- 
+2.43.0
+

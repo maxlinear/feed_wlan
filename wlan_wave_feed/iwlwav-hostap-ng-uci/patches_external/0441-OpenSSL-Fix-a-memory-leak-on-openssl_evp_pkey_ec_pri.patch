@@ -1,0 +1,31 @@
+From b35b1036fe696262a47725fedd75eee7986cacb6 Mon Sep 17 00:00:00 2001
+From: Chien Wong <m@xv97.com>
+Date: Tue, 5 Mar 2024 22:20:40 +0800
+Subject: [PATCH] OpenSSL: Fix a memory leak on openssl_evp_pkey_ec_prime_len()
+ error path
+
+Fixes: b700a56e1478 ("OpenSSL 3.0: Determine the prime length for an EC key group using EVP_PKEY")
+Signed-off-by: Chien Wong <m@xv97.com>
+---
+ src/crypto/crypto_openssl.c | 3 ++-
+ 1 file changed, 2 insertions(+), 1 deletion(-)
+
+diff --git a/src/crypto/crypto_openssl.c b/src/crypto/crypto_openssl.c
+index 427677d34..315c3feac 100644
+--- a/src/crypto/crypto_openssl.c
++++ b/src/crypto/crypto_openssl.c
+@@ -3932,9 +3932,10 @@ static int openssl_evp_pkey_ec_prime_len(struct crypto_ec_key *key)
+ 	group = EC_GROUP_new_by_curve_name(nid);
+ 	prime = BN_new();
+ 	if (!group || !prime)
+-		return -1;
++		goto fail;
+ 	if (EC_GROUP_get_curve(group, prime, NULL, NULL, NULL) == 1)
+ 		prime_len = BN_num_bytes(prime);
++fail:
+ 	EC_GROUP_free(group);
+ 	BN_free(prime);
+ 	return prime_len;
+-- 
+2.43.0
+

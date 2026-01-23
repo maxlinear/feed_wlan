@@ -1,0 +1,54 @@
+From 3054112254f71d881959522fa23a87fd67907853 Mon Sep 17 00:00:00 2001
+From: Jouni Malinen <j@w1.fi>
+Date: Sun, 17 Mar 2024 15:21:11 +0200
+Subject: [PATCH] tests: Add missed test case __doc__ strings
+
+Signed-off-by: Jouni Malinen <j@w1.fi>
+---
+ tests/hwsim/test_eht.py | 1 +
+ tests/hwsim/test_he.py  | 3 ++-
+ 2 files changed, 3 insertions(+), 1 deletion(-)
+
+diff --git a/tests/hwsim/test_eht.py b/tests/hwsim/test_eht.py
+index 677a776b0..1d0ec5195 100644
+--- a/tests/hwsim/test_eht.py
++++ b/tests/hwsim/test_eht.py
+@@ -128,6 +128,7 @@ def test_eht_open(dev, apdev):
+         raise Exception("STA STATUS did not indicate wifi_generation=7")
+ 
+ def test_prefer_eht_20(dev, apdev):
++    """EHT AP on a 20 MHz channel"""
+     params = {"ssid": "eht",
+               "channel": "1",
+               "ieee80211ax": "1",
+diff --git a/tests/hwsim/test_he.py b/tests/hwsim/test_he.py
+index 52cbb1c60..3aec5fd65 100644
+--- a/tests/hwsim/test_he.py
++++ b/tests/hwsim/test_he.py
+@@ -196,7 +196,6 @@ def test_he80(dev, apdev):
+         clear_regdom(hapd, dev)
+ 
+ def _test_he_wifi_generation(dev, apdev, conf, scan_freq):
+-    """HE and wifi_generation"""
+     try:
+         hapd = None
+         params = {"ssid": "he",
+@@ -236,6 +235,7 @@ def _test_he_wifi_generation(dev, apdev, conf, scan_freq):
+         clear_regdom(hapd, dev)
+ 
+ def test_he_wifi_generation(dev, apdev):
++    """HE and wifi_generation (5 GHz)"""
+     conf = {
+         "vht_oper_chwidth": "1",
+         "hw_mode": "a",
+@@ -250,6 +250,7 @@ def test_he_wifi_generation(dev, apdev):
+     _test_he_wifi_generation(dev, apdev, conf, "5180")
+ 
+ def test_he_wifi_generation_24(dev, apdev):
++    """HE and wifi_generation (2.4 GHz)"""
+     conf = {
+         "hw_mode": "g",
+         "channel": "1",
+-- 
+2.43.0
+

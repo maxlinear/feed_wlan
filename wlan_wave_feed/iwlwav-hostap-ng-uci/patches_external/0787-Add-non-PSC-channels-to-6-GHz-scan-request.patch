@@ -1,0 +1,34 @@
+From b53d7a6a86ffeae220fb827bac9aec1205e0c260 Mon Sep 17 00:00:00 2001
+From: Ruth Mekonnen <rmekonnen@chromium.org>
+Date: Fri, 5 Apr 2024 07:36:48 +0000
+Subject: [PATCH] Add non-PSC channels to 6 GHz scan request
+
+When non_coloc_6ghz = false, the STA is expected to scan for colocated
+APs. However, if the colocated AP is on a non-PSC channel, it will not
+be detected during the 6 GHz-only scan because the frequency list is
+limited to PSC channels. Even when the NL80211_SCAN_FLAG_COLOCATED_6GHZ
+is set, the cfg80211 only scans a subset of the channels in the original
+6 GHz scan request. Therefore, this patch adds non-PSC channels to the
+original 6 GHz scan request.
+
+Signed-off-by: Ruth Mekonnen <rmekonnen@chromium.org>
+---
+ wpa_supplicant/events.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/wpa_supplicant/events.c b/wpa_supplicant/events.c
+index b0fb170af..71971c9f2 100644
+--- a/wpa_supplicant/events.c
++++ b/wpa_supplicant/events.c
+@@ -2612,7 +2612,7 @@ static int wpas_trigger_6ghz_scan(struct wpa_supplicant *wpa_s,
+ 		params.ssids[j] = data->scan_info.ssids[j];
+ 	params.num_ssids = data->scan_info.num_ssids;
+ 	wpa_add_scan_freqs_list(wpa_s, HOSTAPD_MODE_IEEE80211A, &params,
+-				true, !wpa_s->last_scan_non_coloc_6ghz, false);
++				true, false, false);
+ 	if (!wpa_supplicant_trigger_scan(wpa_s, &params, true, true)) {
+ 		os_free(params.freqs);
+ 		return 1;
+-- 
+2.43.0
+

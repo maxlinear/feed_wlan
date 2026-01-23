@@ -1,0 +1,35 @@
+From 39c7ef2224013988f437436e8dc73db28190068c Mon Sep 17 00:00:00 2001
+From: Harish Rachakonda <quic_rachakon@quicinc.com>
+Date: Fri, 21 Feb 2025 15:35:34 +0530
+Subject: [PATCH] nl80211: Mark HT disabled on channel switch to a 6 GHz
+ channel
+
+During channel switch processing ht_enabled was left enabled for 6 GHz
+channels since those cases do not use NL80211_CHAN_NO_HT. This would
+show incorrect channel information in the STATUS control interface
+command.
+
+Fix this by clearing ht_enabled when a channel switch event is
+indicating a switch to a 6 GHz channel.
+
+Signed-off-by: Harish Rachakonda <quic_rachakon@quicinc.com>
+---
+ src/drivers/driver_nl80211_event.c | 2 ++
+ 1 file changed, 2 insertions(+)
+
+diff --git a/src/drivers/driver_nl80211_event.c b/src/drivers/driver_nl80211_event.c
+index a58fff202..cb37a5004 100644
+--- a/src/drivers/driver_nl80211_event.c
++++ b/src/drivers/driver_nl80211_event.c
+@@ -1252,6 +1252,8 @@ static void mlme_event_ch_switch(struct wpa_driver_nl80211_data *drv,
+ 
+ 	os_memset(&data, 0, sizeof(data));
+ 	data.ch_switch.freq = nla_get_u32(freq);
++	if (is_6ghz_freq(data.ch_switch.freq))
++		ht_enabled = 0;
+ 	data.ch_switch.ht_enabled = ht_enabled;
+ 	data.ch_switch.ch_offset = chan_offset;
+ 	if (punct_bitmap)
+-- 
+2.43.0
+

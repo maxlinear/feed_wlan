@@ -1,0 +1,33 @@
+From 416598048c99733c84cbee4e1de84eb5bce754b4 Mon Sep 17 00:00:00 2001
+From: Benjamin Berg <benjamin.berg@intel.com>
+Date: Fri, 27 Sep 2024 11:36:20 +0200
+Subject: [PATCH] tests: Fix race condition in fst_setup_mbie_diff
+
+The allocation failure could be checked before the operation had
+completed. Fix this by enabling the wait in the call to fst_setup_req.
+
+Signed-off-by: Benjamin Berg <benjamin.berg@intel.com>
+---
+ tests/hwsim/test_fst_module.py | 5 ++++-
+ 1 file changed, 4 insertions(+), 1 deletion(-)
+
+diff --git a/tests/hwsim/test_fst_module.py b/tests/hwsim/test_fst_module.py
+index 6aeb95747..39e56fa24 100644
+--- a/tests/hwsim/test_fst_module.py
++++ b/tests/hwsim/test_fst_module.py
+@@ -2542,8 +2542,11 @@ def _test_fst_setup_mbie_diff(dev, apdev, test_params):
+     mbie = "9e16040200010200000004000000000000000000000000ff"
+     try:
+         with alloc_fail(hapd, 1, "mb_ies_by_info"):
++            # If no_wait is set to True an explicit wait would need to be
++            # inserted to ensure the failure was triggered. However, as the
++            # setup succeeds (currently), we can simply do the wait here.
+             fst_setup_req(wpas, hglobal, 5180, apdev[0]['bssid'], req, stie,
+-                          mbie, no_wait=True)
++                          mbie, no_wait=False)
+     except HwsimSkip as e:
+         # Skip exception to allow proper cleanup
+         pass
+-- 
+2.43.0
+

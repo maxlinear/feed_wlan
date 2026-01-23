@@ -1,0 +1,35 @@
+From 131ee5926636448393e9d628331fd6a03edc7c11 Mon Sep 17 00:00:00 2001
+From: Jouni Malinen <quic_jouni@quicinc.com>
+Date: Fri, 8 Mar 2024 10:12:16 +0200
+Subject: [PATCH] EHT: Support punct_bitmap overriding in HE element generation
+
+This was already added for VHT, but a similar change is needed for HE as
+well.
+
+Signed-off-by: Jouni Malinen <quic_jouni@quicinc.com>
+---
+ src/ap/ieee802_11_he.c | 7 ++++---
+ 1 file changed, 4 insertions(+), 3 deletions(-)
+
+diff --git a/src/ap/ieee802_11_he.c b/src/ap/ieee802_11_he.c
+index 3449326be..a2deda6c4 100644
+--- a/src/ap/ieee802_11_he.c
++++ b/src/ap/ieee802_11_he.c
+@@ -225,10 +225,11 @@ u8 * hostapd_eid_he_operation(struct hostapd_data *hapd, u8 *eid)
+ 		u8 seg0 = hapd->iconf->he_oper_centr_freq_seg0_idx;
+ 		u8 seg1 = hostapd_get_oper_centr_freq_seg1_idx(hapd->iconf);
+ 		u8 control;
+-
+ #ifdef CONFIG_IEEE80211BE
+-		if (hapd->iconf->punct_bitmap) {
+-			punct_update_legacy_bw(hapd->iconf->punct_bitmap,
++		u16 punct_bitmap = hostapd_get_punct_bitmap(hapd);
++
++		if (punct_bitmap) {
++			punct_update_legacy_bw(punct_bitmap,
+ 					       hapd->iconf->channel,
+ 					       &oper_chwidth, &seg0, &seg1);
+ 		}
+-- 
+2.43.0
+

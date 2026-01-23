@@ -1,0 +1,32 @@
+From ee5ababa1d91377195da0764e3a2c5460dc61aa3 Mon Sep 17 00:00:00 2001
+From: Jouni Malinen <quic_jouni@quicinc.com>
+Date: Mon, 18 Dec 2023 20:09:26 +0200
+Subject: [PATCH] tests: Make dpp_controller_init_through_relay* more robust
+
+Avoid a race condition that could result in the relay (hostapd)
+maintaining STA association with PMF and discarding of the GAS frames.
+
+Signed-off-by: Jouni Malinen <quic_jouni@quicinc.com>
+---
+ tests/hwsim/test_dpp.py | 2 ++
+ 1 file changed, 2 insertions(+)
+
+diff --git a/tests/hwsim/test_dpp.py b/tests/hwsim/test_dpp.py
+index 49da060ad..e595beea7 100644
+--- a/tests/hwsim/test_dpp.py
++++ b/tests/hwsim/test_dpp.py
+@@ -5977,9 +5977,11 @@ def run_dpp_controller_init_through_relay(dev, apdev, params, dynamic=False,
+         raise Exception("DPP network id not reported")
+     network = int(ev.split(' ')[1])
+     dev[0].wait_connected()
++    relay.wait_sta()
+     dev[0].dump_monitor()
+     dev[0].request("DISCONNECT")
+     dev[0].wait_disconnected()
++    relay.wait_sta_disconnect()
+     dev[0].dump_monitor()
+ 
+     if add:
+-- 
+2.43.0
+

@@ -1,0 +1,41 @@
+From 32434aa68a48d1571dec174c42cf833310e4daa9 Mon Sep 17 00:00:00 2001
+From: Ilan Peer <ilan.peer@intel.com>
+Date: Tue, 28 Nov 2023 12:14:10 +0200
+Subject: [PATCH] AP: Always include WPA_STA_AUTHORIZED in station flags mask
+
+As otherwise, the underlying driver would not handle a change
+in the 'authorized' state.
+
+Signed-off-by: Ilan Peer <ilan.peer@intel.com>
+---
+ src/ap/ap_drv_ops.c | 7 ++-----
+ 1 file changed, 2 insertions(+), 5 deletions(-)
+
+diff --git a/src/ap/ap_drv_ops.c b/src/ap/ap_drv_ops.c
+index 883243d5c..11a4eac82 100644
+--- a/src/ap/ap_drv_ops.c
++++ b/src/ap/ap_drv_ops.c
+@@ -311,7 +311,8 @@ int hostapd_set_sta_flags(struct hostapd_data *hapd, struct sta_info *sta)
+ {
+ 	int set_flags, total_flags, flags_and, flags_or;
+ 	total_flags = hostapd_sta_flags_to_drv(sta->flags);
+-	set_flags = WPA_STA_SHORT_PREAMBLE | WPA_STA_WMM | WPA_STA_MFP;
++	set_flags = WPA_STA_SHORT_PREAMBLE | WPA_STA_WMM | WPA_STA_MFP |
++		WPA_STA_AUTHORIZED;
+ 
+ 	/*
+ 	 * All the station flags other than WPA_STA_SHORT_PREAMBLE are relevant
+@@ -328,10 +329,6 @@ int hostapd_set_sta_flags(struct hostapd_data *hapd, struct sta_info *sta)
+ 		return 0;
+ 	}
+ 
+-	if (((!hapd->conf->ieee802_1x && !hapd->conf->wpa) ||
+-	     sta->auth_alg == WLAN_AUTH_FT) &&
+-	    sta->flags & WLAN_STA_AUTHORIZED)
+-		set_flags |= WPA_STA_AUTHORIZED;
+ 	flags_or = total_flags & set_flags;
+ 	flags_and = total_flags | ~set_flags;
+ 	return hostapd_sta_set_flags(hapd, sta->addr, total_flags,
+-- 
+2.43.0
+

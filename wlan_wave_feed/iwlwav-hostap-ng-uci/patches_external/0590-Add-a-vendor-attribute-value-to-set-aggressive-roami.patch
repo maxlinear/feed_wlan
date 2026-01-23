@@ -1,0 +1,44 @@
+From ed78f56dcecb46a36fe0bfffeeb90b78f8b31b9d Mon Sep 17 00:00:00 2001
+From: Aleti Nageshwar Reddy <quic_anageshw@quicinc.com>
+Date: Thu, 28 Mar 2024 15:05:13 +0530
+Subject: [PATCH] Add a vendor attribute value to set aggressive roaming mode
+
+Add QCA_ROAMING_MODE_AGGRESSIVE in enum qca_roaming_policy to set
+aggressive roaming mode. In addition, document the existing enum values.
+
+Signed-off-by: Jouni Malinen <quic_jouni@quicinc.com>
+---
+ src/common/qca-vendor.h | 14 ++++++++++++++
+ 1 file changed, 14 insertions(+)
+
+diff --git a/src/common/qca-vendor.h b/src/common/qca-vendor.h
+index 3a9455ff3..57f2e9680 100644
+--- a/src/common/qca-vendor.h
++++ b/src/common/qca-vendor.h
+@@ -1536,9 +1536,23 @@ enum qca_wlan_vendor_attr {
+ 	QCA_WLAN_VENDOR_ATTR_MAX	= QCA_WLAN_VENDOR_ATTR_AFTER_LAST - 1,
+ };
+ 
++/**
++ * enum qca_roaming_policy - Represents the policies for roaming. Used by
++ * QCA_WLAN_VENDOR_ATTR_ROAMING_POLICY.
++ *
++ * QCA_ROAMING_NOT_ALLOWED: Roaming is not allowed/disabled.
++ *
++ * QCA_ROAMING_ALLOWED_WITHIN_ESS: Roaming is allowed with in an ESS with
++ * default RSSI thresholds.
++ *
++ * QCA_ROAMING_MODE_AGGRESSIVE: This mode is an extension of
++ * QCA_ROAMING_ALLOWED_WITHIN_ESS. The driver/firmware roams on higher RSSI
++ * thresholds when compared to QCA_ROAMING_ALLOWED_WITHIN_ESS.
++ */
+ enum qca_roaming_policy {
+ 	QCA_ROAMING_NOT_ALLOWED,
+ 	QCA_ROAMING_ALLOWED_WITHIN_ESS,
++	QCA_ROAMING_MODE_AGGRESSIVE,
+ };
+ 
+ /**
+-- 
+2.43.0
+

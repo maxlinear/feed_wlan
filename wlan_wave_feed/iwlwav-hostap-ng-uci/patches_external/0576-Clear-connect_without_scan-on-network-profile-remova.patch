@@ -1,0 +1,32 @@
+From 2bbe4822a6461bcd634e290ee347668da4317635 Mon Sep 17 00:00:00 2001
+From: Jouni Malinen <j@w1.fi>
+Date: Sat, 20 Apr 2024 18:37:35 +0300
+Subject: [PATCH] Clear connect_without_scan on network profile removal
+
+wpa_s->connect_without_scan could have been left pointing to invalid
+network when a network profile was removed. It seems to be possible for
+this to happen in some hwsim test case scenarios under specific timing,
+but the exact reason for this is not clear. In any case, this pointer
+needs to be cleared.
+
+Signed-off-by: Jouni Malinen <j@w1.fi>
+---
+ wpa_supplicant/notify.c | 2 ++
+ 1 file changed, 2 insertions(+)
+
+diff --git a/wpa_supplicant/notify.c b/wpa_supplicant/notify.c
+index 6d5dbcc29..e967dc8ff 100644
+--- a/wpa_supplicant/notify.c
++++ b/wpa_supplicant/notify.c
+@@ -400,6 +400,8 @@ void wpas_notify_network_removed(struct wpa_supplicant *wpa_s,
+ 		wpa_s->ml_connect_probe_ssid = NULL;
+ 		wpa_s->ml_connect_probe_bss = NULL;
+ 	}
++	if (wpa_s->connect_without_scan == ssid)
++		wpa_s->connect_without_scan = NULL;
+ #if defined(CONFIG_SME) && defined(CONFIG_SAE)
+ 	if (wpa_s->sme.ext_auth_wpa_ssid == ssid)
+ 		wpa_s->sme.ext_auth_wpa_ssid = NULL;
+-- 
+2.43.0
+

@@ -1,0 +1,60 @@
+From dc9616f581355a4bfd32a417bacbcd5bbb71ef4c Mon Sep 17 00:00:00 2001
+From: Jouni Malinen <quic_jouni@quicinc.com>
+Date: Wed, 9 Oct 2024 19:46:23 +0300
+Subject: [PATCH] AP: Clean up MLD changes that modified skipping DMG
+ deauthentication
+
+Commit 05e5e615e6a2 ("AP: Skip authentication/deauthentication phase for
+DMG/IEEE 802.11ad") added the check for DMG in the beginnign of
+ap_sta_deauthenticate() to convert that call to ap_sta_disassociate()
+since deauthentication is not used in DMG. Commit c6f519ff15b2 ("AP:
+Support deauthenticate/disassociate with MLD") ended up moving this DMG
+check into the ap_sta_handle_deauthenticate() function that gets called
+once for each link. This is confusing even though DMG is not really used
+in MLD.
+
+Move the DMG check back to the beginning of ap_sta_deauthenticate() to
+make this clearer.
+
+Signed-off-by: Jouni Malinen <quic_jouni@quicinc.com>
+---
+ src/ap/sta_info.c | 16 ++++++++--------
+ 1 file changed, 8 insertions(+), 8 deletions(-)
+
+diff --git a/src/ap/sta_info.c b/src/ap/sta_info.c
+index 13613dbab..48ed3c03b 100644
+--- a/src/ap/sta_info.c
++++ b/src/ap/sta_info.c
+@@ -996,14 +996,6 @@ static void ap_sta_deauth_cb_timeout(void *eloop_ctx, void *timeout_ctx)
+ static void ap_sta_handle_deauthenticate(struct hostapd_data *hapd,
+ 					 struct sta_info *sta, u16 reason)
+ {
+-	if (hapd->iface->current_mode &&
+-	    hapd->iface->current_mode->mode == HOSTAPD_MODE_IEEE80211AD) {
+-		/* Deauthentication is not used in DMG/IEEE 802.11ad;
+-		 * disassociate the STA instead. */
+-		ap_sta_disassociate(hapd, sta, reason);
+-		return;
+-	}
+-
+ 	wpa_printf(MSG_DEBUG, "%s: deauthenticate STA " MACSTR,
+ 		   hapd->conf->iface, MAC2STR(sta->addr));
+ 
+@@ -1112,6 +1104,14 @@ void ap_sta_disassociate(struct hostapd_data *hapd, struct sta_info *sta,
+ void ap_sta_deauthenticate(struct hostapd_data *hapd, struct sta_info *sta,
+ 			   u16 reason)
+ {
++	if (hapd->iface->current_mode &&
++	    hapd->iface->current_mode->mode == HOSTAPD_MODE_IEEE80211AD) {
++		/* Deauthentication is not used in DMG/IEEE 802.11ad;
++		 * disassociate the STA instead. */
++		ap_sta_disassociate(hapd, sta, reason);
++		return;
++	}
++
+ 	if (ap_sta_ml_disconnect(hapd, sta, reason, false))
+ 		return;
+ 
+-- 
+2.43.0
+

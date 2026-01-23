@@ -1,0 +1,500 @@
+From 2e4c612dd2888087188b2fdd9800b6771c950524 Mon Sep 17 00:00:00 2001
+From: Jouni Malinen <quic_jouni@quicinc.com>
+Date: Wed, 24 Jul 2024 00:04:15 +0000
+Subject: [PATCH] Allow RSNE/RSNXE/RSNOE/RSNO2E/RSNXOE to be replace for
+ testing
+
+This is convenient for testing STA behavior with various RSN element
+combinations and special cases.
+
+Signed-off-by: Jouni Malinen <quic_jouni@quicinc.com>
+---
+ hostapd/config_file.c            |  61 ++++++++++++-----
+ src/ap/ap_config.c               |   5 ++
+ src/ap/ap_config.h               |   5 ++
+ src/ap/beacon.c                  |   2 +-
+ src/ap/wpa_auth.h                |  15 +++++
+ src/ap/wpa_auth_glue.c           |  40 +++++++++++
+ src/ap/wpa_auth_ie.c             | 112 ++++++++++++++++++++++++++++++-
+ tests/hwsim/test_rsn_override.py |  71 ++++++++++++++++++++
+ 8 files changed, 294 insertions(+), 17 deletions(-)
+
+diff --git a/hostapd/config_file.c b/hostapd/config_file.c
+index a98e417f7..c5aa2dc36 100644
+--- a/hostapd/config_file.c
++++ b/hostapd/config_file.c
+@@ -2436,6 +2436,31 @@ static int get_u16(const char *pos, int line, u16 *ret_val)
+ #endif /* CONFIG_IEEE80211BE */
+ 
+ 
++#ifdef CONFIG_TESTING_OPTIONS
++static bool get_hexstream(const char *val, struct wpabuf **var,
++			  const char *name, int line)
++{
++	struct wpabuf *tmp;
++	size_t len = os_strlen(val) / 2;
++
++	tmp = wpabuf_alloc(len);
++	if (!tmp)
++		return false;
++
++	if (hexstr2bin(val, wpabuf_put(tmp, len), len)) {
++		wpabuf_free(tmp);
++		wpa_printf(MSG_ERROR, "Line %d: Invalid %s '%s'",
++			   line, name, val);
++		return false;
++	}
++
++	wpabuf_free(*var);
++	*var = tmp;
++	return true;
++}
++#endif /* CONFIG_TESTING_OPTIONS */
++
++
+ static int hostapd_config_fill(struct hostapd_config *conf,
+ 			       struct hostapd_bss_config *bss,
+ 			       const char *buf, char *pos, int line)
+@@ -4504,23 +4529,29 @@ static int hostapd_config_fill(struct hostapd_config *conf,
+ 			bss->radio_measurements[0] |=
+ 				WLAN_RRM_CAPS_NEIGHBOR_REPORT;
+ 	} else if (os_strcmp(buf, "own_ie_override") == 0) {
+-		struct wpabuf *tmp;
+-		size_t len = os_strlen(pos) / 2;
+-
+-		tmp = wpabuf_alloc(len);
+-		if (!tmp)
++		if (!get_hexstream(pos, &bss->own_ie_override,
++				   "own_ie_override", line))
+ 			return 1;
+-
+-		if (hexstr2bin(pos, wpabuf_put(tmp, len), len)) {
+-			wpabuf_free(tmp);
+-			wpa_printf(MSG_ERROR,
+-				   "Line %d: Invalid own_ie_override '%s'",
+-				   line, pos);
++	} else if (os_strcmp(buf, "rsne_override") == 0) {
++		if (!get_hexstream(pos, &bss->rsne_override,
++				   "rsne_override", line))
++			return 1;
++	} else if (os_strcmp(buf, "rsnoe_override") == 0) {
++		if (!get_hexstream(pos, &bss->rsnoe_override,
++				   "rsnoe_override", line))
++			return 1;
++	} else if (os_strcmp(buf, "rsno2e_override") == 0) {
++		if (!get_hexstream(pos, &bss->rsno2e_override,
++				   "rsno2e_override", line))
++			return 1;
++	} else if (os_strcmp(buf, "rsnxe_override") == 0) {
++		if (!get_hexstream(pos, &bss->rsnxe_override,
++				   "rsnxe_override", line))
++			return 1;
++	} else if (os_strcmp(buf, "rsnxoe_override") == 0) {
++		if (!get_hexstream(pos, &bss->rsnxoe_override,
++				   "rsnxoe_override", line))
+ 			return 1;
+-		}
+-
+-		wpabuf_free(bss->own_ie_override);
+-		bss->own_ie_override = tmp;
+ 	} else if (os_strcmp(buf, "sae_reflection_attack") == 0) {
+ 		bss->sae_reflection_attack = atoi(pos);
+ 	} else if (os_strcmp(buf, "sae_commit_status") == 0) {
+diff --git a/src/ap/ap_config.c b/src/ap/ap_config.c
+index f7117b599..c6aa49610 100644
+--- a/src/ap/ap_config.c
++++ b/src/ap/ap_config.c
+@@ -964,6 +964,11 @@ void hostapd_config_free_bss(struct hostapd_bss_config *conf)
+ 
+ #ifdef CONFIG_TESTING_OPTIONS
+ 	wpabuf_free(conf->own_ie_override);
++	wpabuf_free(conf->rsne_override);
++	wpabuf_free(conf->rsnoe_override);
++	wpabuf_free(conf->rsno2e_override);
++	wpabuf_free(conf->rsnxe_override);
++	wpabuf_free(conf->rsnxoe_override);
+ 	wpabuf_free(conf->sae_commit_override);
+ 	wpabuf_free(conf->rsne_override_eapol);
+ 	wpabuf_free(conf->rsnxe_override_eapol);
+diff --git a/src/ap/ap_config.h b/src/ap/ap_config.h
+index 1027de978..cae2f97be 100644
+--- a/src/ap/ap_config.h
++++ b/src/ap/ap_config.h
+@@ -696,6 +696,11 @@ struct hostapd_bss_config {
+ 	u8 bss_load_test[5];
+ 	u8 bss_load_test_set;
+ 	struct wpabuf *own_ie_override;
++	struct wpabuf *rsne_override;
++	struct wpabuf *rsnoe_override;
++	struct wpabuf *rsno2e_override;
++	struct wpabuf *rsnxe_override;
++	struct wpabuf *rsnxoe_override;
+ 	int sae_reflection_attack;
+ 	int sae_commit_status;
+ 	int sae_pk_omit;
+diff --git a/src/ap/beacon.c b/src/ap/beacon.c
+index f8ce8103f..ddb99ca22 100644
+--- a/src/ap/beacon.c
++++ b/src/ap/beacon.c
+@@ -2188,7 +2188,7 @@ int ieee802_11_build_ap_params(struct hostapd_data *hapd,
+ 
+ #ifdef NEED_AP_MLME
+ #define BEACON_HEAD_BUF_SIZE 256
+-#define BEACON_TAIL_BUF_SIZE 512
++#define BEACON_TAIL_BUF_SIZE 1500
+ 	head = os_zalloc(BEACON_HEAD_BUF_SIZE);
+ 	tail_len = BEACON_TAIL_BUF_SIZE;
+ #ifdef CONFIG_WPS
+diff --git a/src/ap/wpa_auth.h b/src/ap/wpa_auth.h
+index 832d2e70e..39e3f0e1c 100644
+--- a/src/ap/wpa_auth.h
++++ b/src/ap/wpa_auth.h
+@@ -230,6 +230,21 @@ struct wpa_auth_config {
+ 	double corrupt_gtk_rekey_mic_probability;
+ 	u8 own_ie_override[MAX_OWN_IE_OVERRIDE];
+ 	size_t own_ie_override_len;
++	bool rsne_override_set;
++	u8 rsne_override[MAX_OWN_IE_OVERRIDE];
++	size_t rsne_override_len;
++	bool rsnoe_override_set;
++	u8 rsnoe_override[MAX_OWN_IE_OVERRIDE];
++	size_t rsnoe_override_len;
++	bool rsno2e_override_set;
++	u8 rsno2e_override[MAX_OWN_IE_OVERRIDE];
++	size_t rsno2e_override_len;
++	bool rsnxe_override_set;
++	u8 rsnxe_override[MAX_OWN_IE_OVERRIDE];
++	size_t rsnxe_override_len;
++	bool rsnxoe_override_set;
++	u8 rsnxoe_override[MAX_OWN_IE_OVERRIDE];
++	size_t rsnxoe_override_len;
+ 	u8 rsne_override_eapol[MAX_OWN_IE_OVERRIDE];
+ 	size_t rsne_override_eapol_len;
+ 	u8 rsnxe_override_eapol[MAX_OWN_IE_OVERRIDE];
+diff --git a/src/ap/wpa_auth_glue.c b/src/ap/wpa_auth_glue.c
+index 2e7e6f25a..b31ff75a4 100644
+--- a/src/ap/wpa_auth_glue.c
++++ b/src/ap/wpa_auth_glue.c
+@@ -132,6 +132,46 @@ static void hostapd_wpa_auth_conf(struct hostapd_bss_config *conf,
+ 			  wpabuf_head(conf->own_ie_override),
+ 			  wconf->own_ie_override_len);
+ 	}
++	if (conf->rsne_override &&
++	    wpabuf_len(conf->rsne_override) <= MAX_OWN_IE_OVERRIDE) {
++		wconf->rsne_override_len = wpabuf_len(conf->rsne_override);
++		os_memcpy(wconf->rsne_override,
++			  wpabuf_head(conf->rsne_override),
++			  wconf->rsne_override_len);
++		wconf->rsne_override_set = true;
++	}
++	if (conf->rsnoe_override &&
++	    wpabuf_len(conf->rsnoe_override) <= MAX_OWN_IE_OVERRIDE) {
++		wconf->rsnoe_override_len = wpabuf_len(conf->rsnoe_override);
++		os_memcpy(wconf->rsnoe_override,
++			  wpabuf_head(conf->rsnoe_override),
++			  wconf->rsnoe_override_len);
++		wconf->rsnoe_override_set = true;
++	}
++	if (conf->rsno2e_override &&
++	    wpabuf_len(conf->rsno2e_override) <= MAX_OWN_IE_OVERRIDE) {
++		wconf->rsno2e_override_len = wpabuf_len(conf->rsno2e_override);
++		os_memcpy(wconf->rsno2e_override,
++			  wpabuf_head(conf->rsno2e_override),
++			  wconf->rsno2e_override_len);
++		wconf->rsno2e_override_set = true;
++	}
++	if (conf->rsnxe_override &&
++	    wpabuf_len(conf->rsnxe_override) <= MAX_OWN_IE_OVERRIDE) {
++		wconf->rsnxe_override_len = wpabuf_len(conf->rsnxe_override);
++		os_memcpy(wconf->rsnxe_override,
++			  wpabuf_head(conf->rsnxe_override),
++			  wconf->rsnxe_override_len);
++		wconf->rsnxe_override_set = true;
++	}
++	if (conf->rsnxoe_override &&
++	    wpabuf_len(conf->rsnxoe_override) <= MAX_OWN_IE_OVERRIDE) {
++		wconf->rsnxoe_override_len = wpabuf_len(conf->rsnxoe_override);
++		os_memcpy(wconf->rsnxoe_override,
++			  wpabuf_head(conf->rsnxoe_override),
++			  wconf->rsnxoe_override_len);
++		wconf->rsnxoe_override_set = true;
++	}
+ 	if (conf->rsne_override_eapol &&
+ 	    wpabuf_len(conf->rsne_override_eapol) <= MAX_OWN_IE_OVERRIDE) {
+ 		wconf->rsne_override_eapol_set = 1;
+diff --git a/src/ap/wpa_auth_ie.c b/src/ap/wpa_auth_ie.c
+index 9a02f8e5d..6161edef1 100644
+--- a/src/ap/wpa_auth_ie.c
++++ b/src/ap/wpa_auth_ie.c
+@@ -632,7 +632,7 @@ static u8 * wpa_write_osen(struct wpa_auth_config *conf, u8 *eid)
+ 
+ int wpa_auth_gen_wpa_ie(struct wpa_authenticator *wpa_auth)
+ {
+-	u8 *pos, buf[256];
++	u8 *pos, buf[1500];
+ 	int res;
+ 
+ #ifdef CONFIG_TESTING_OPTIONS
+@@ -658,11 +658,42 @@ int wpa_auth_gen_wpa_ie(struct wpa_authenticator *wpa_auth)
+ 		pos = wpa_write_osen(&wpa_auth->conf, pos);
+ 	}
+ 	if (wpa_auth->conf.wpa & WPA_PROTO_RSN) {
++#ifdef CONFIG_TESTING_OPTIONS
++		if (wpa_auth->conf.rsne_override_set) {
++			wpa_hexdump(MSG_DEBUG,
++				    "RSN: Forced own RSNE for testing",
++				    wpa_auth->conf.rsne_override,
++				    wpa_auth->conf.rsne_override_len);
++			if (sizeof(buf) - (pos - buf) <
++			    wpa_auth->conf.rsne_override_len)
++				return -1;
++			os_memcpy(pos, wpa_auth->conf.rsne_override,
++				  wpa_auth->conf.rsne_override_len);
++			pos += wpa_auth->conf.rsne_override_len;
++			goto rsnxe;
++		}
++#endif /* CONFIG_TESTING_OPTIONS */
+ 		res = wpa_write_rsn_ie(&wpa_auth->conf,
+ 				       pos, buf + sizeof(buf) - pos, NULL);
+ 		if (res < 0)
+ 			return res;
+ 		pos += res;
++#ifdef CONFIG_TESTING_OPTIONS
++	rsnxe:
++		if (wpa_auth->conf.rsnxe_override_set) {
++			wpa_hexdump(MSG_DEBUG,
++				    "RSN: Forced own RSNXE for testing",
++				    wpa_auth->conf.rsnxe_override,
++				    wpa_auth->conf.rsnxe_override_len);
++			if (sizeof(buf) - (pos - buf) <
++			    wpa_auth->conf.rsnxe_override_len)
++				return -1;
++			os_memcpy(pos, wpa_auth->conf.rsnxe_override,
++				  wpa_auth->conf.rsnxe_override_len);
++			pos += wpa_auth->conf.rsnxe_override_len;
++			goto fte;
++		}
++#endif /* CONFIG_TESTING_OPTIONS */
+ 		if (wpa_auth->conf.rsn_override_omit_rsnxe)
+ 			res = 0;
+ 		else
+@@ -672,6 +703,9 @@ int wpa_auth_gen_wpa_ie(struct wpa_authenticator *wpa_auth)
+ 			return res;
+ 		pos += res;
+ 	}
++#ifdef CONFIG_TESTING_OPTIONS
++fte:
++#endif /* CONFIG_TESTING_OPTIONS */
+ #ifdef CONFIG_IEEE80211R_AP
+ 	if (wpa_key_mgmt_ft(wpa_auth->conf.wpa_key_mgmt)) {
+ 		res = wpa_write_mdie(&wpa_auth->conf, pos,
+@@ -690,30 +724,85 @@ int wpa_auth_gen_wpa_ie(struct wpa_authenticator *wpa_auth)
+ 	}
+ 	if ((wpa_auth->conf.wpa & WPA_PROTO_RSN) &&
+ 	    wpa_auth->conf.rsn_override_key_mgmt) {
++#ifdef CONFIG_TESTING_OPTIONS
++		if (wpa_auth->conf.rsnoe_override_set) {
++			wpa_hexdump(MSG_DEBUG,
++				    "RSN: Forced own RSNOE for testing",
++				    wpa_auth->conf.rsnoe_override,
++				    wpa_auth->conf.rsnoe_override_len);
++			if (sizeof(buf) - (pos - buf) <
++			    wpa_auth->conf.rsnoe_override_len)
++				return -1;
++			os_memcpy(pos, wpa_auth->conf.rsnoe_override,
++				  wpa_auth->conf.rsnoe_override_len);
++			pos += wpa_auth->conf.rsnoe_override_len;
++			goto rsno2e;
++		}
++#endif /* CONFIG_TESTING_OPTIONS */
+ 		res = wpa_write_rsne_override(&wpa_auth->conf,
+ 					      pos, buf + sizeof(buf) - pos);
+ 		if (res < 0)
+ 			return res;
+ 		pos += res;
+ 	}
++#ifdef CONFIG_TESTING_OPTIONS
++rsno2e:
++#endif /* CONFIG_TESTING_OPTIONS */
+ 	if ((wpa_auth->conf.wpa & WPA_PROTO_RSN) &&
+ 	    wpa_auth->conf.rsn_override_key_mgmt_2) {
++#ifdef CONFIG_TESTING_OPTIONS
++		if (wpa_auth->conf.rsno2e_override_set) {
++			wpa_hexdump(MSG_DEBUG,
++				    "RSN: Forced own RSNO2E for testing",
++				    wpa_auth->conf.rsno2e_override,
++				    wpa_auth->conf.rsno2e_override_len);
++			if (sizeof(buf) - (pos - buf) <
++			    wpa_auth->conf.rsno2e_override_len)
++				return -1;
++			os_memcpy(pos, wpa_auth->conf.rsno2e_override,
++				  wpa_auth->conf.rsno2e_override_len);
++			pos += wpa_auth->conf.rsno2e_override_len;
++			goto rsnxoe;
++		}
++#endif /* CONFIG_TESTING_OPTIONS */
+ 		res = wpa_write_rsne_override_2(&wpa_auth->conf, pos,
+ 						buf + sizeof(buf) - pos);
+ 		if (res < 0)
+ 			return res;
+ 		pos += res;
+ 	}
++#ifdef CONFIG_TESTING_OPTIONS
++rsnxoe:
++#endif /* CONFIG_TESTING_OPTIONS */
+ 	if ((wpa_auth->conf.wpa & WPA_PROTO_RSN) &&
+ 	    (wpa_auth->conf.rsn_override_key_mgmt ||
+ 	     wpa_auth->conf.rsn_override_key_mgmt_2)) {
++#ifdef CONFIG_TESTING_OPTIONS
++		if (wpa_auth->conf.rsnxoe_override_set) {
++			wpa_hexdump(MSG_DEBUG,
++				    "RSN: Forced own RSNXOE for testing",
++				    wpa_auth->conf.rsnxoe_override,
++				    wpa_auth->conf.rsnxoe_override_len);
++			if (sizeof(buf) - (pos - buf) <
++			    wpa_auth->conf.rsnxoe_override_len)
++				return -1;
++			os_memcpy(pos, wpa_auth->conf.rsnxoe_override,
++				  wpa_auth->conf.rsnxoe_override_len);
++			pos += wpa_auth->conf.rsnxoe_override_len;
++			goto done;
++		}
++#endif /* CONFIG_TESTING_OPTIONS */
+ 		res = wpa_write_rsnxe_override(&wpa_auth->conf, pos,
+ 					       buf + sizeof(buf) - pos);
+ 		if (res < 0)
+ 			return res;
+ 		pos += res;
+ 	}
++#ifdef CONFIG_TESTING_OPTIONS
++done:
++#endif /* CONFIG_TESTING_OPTIONS */
+ 
++	wpa_hexdump(MSG_DEBUG, "RSN: Own IEs", buf, pos - buf);
+ 	os_free(wpa_auth->wpa_ie);
+ 	wpa_auth->wpa_ie = os_malloc(pos - buf);
+ 	if (wpa_auth->wpa_ie == NULL)
+@@ -723,6 +812,13 @@ int wpa_auth_gen_wpa_ie(struct wpa_authenticator *wpa_auth)
+ 
+ 	if ((wpa_auth->conf.wpa & WPA_PROTO_RSN) &&
+ 	    wpa_auth->conf.rsn_override_key_mgmt) {
++#ifdef CONFIG_TESTING_OPTIONS
++		if (wpa_auth->conf.rsnoe_override_set) {
++			os_memcpy(buf, wpa_auth->conf.rsnoe_override,
++				  wpa_auth->conf.rsnoe_override_len);
++			res = wpa_auth->conf.rsnoe_override_len;
++		} else
++#endif /* CONFIG_TESTING_OPTIONS */
+ 		res = wpa_write_rsne_override(&wpa_auth->conf, buf,
+ 					      sizeof(buf));
+ 		if (res < 0)
+@@ -739,6 +835,13 @@ int wpa_auth_gen_wpa_ie(struct wpa_authenticator *wpa_auth)
+ 
+ 	if ((wpa_auth->conf.wpa & WPA_PROTO_RSN) &&
+ 	    wpa_auth->conf.rsn_override_key_mgmt_2) {
++#ifdef CONFIG_TESTING_OPTIONS
++		if (wpa_auth->conf.rsno2e_override_set) {
++			os_memcpy(buf, wpa_auth->conf.rsno2e_override,
++				  wpa_auth->conf.rsno2e_override_len);
++			res = wpa_auth->conf.rsno2e_override_len;
++		} else
++#endif /* CONFIG_TESTING_OPTIONS */
+ 		res = wpa_write_rsne_override_2(&wpa_auth->conf, buf,
+ 						sizeof(buf));
+ 		if (res < 0)
+@@ -756,6 +859,13 @@ int wpa_auth_gen_wpa_ie(struct wpa_authenticator *wpa_auth)
+ 	if ((wpa_auth->conf.wpa & WPA_PROTO_RSN) &&
+ 	    (wpa_auth->conf.rsn_override_key_mgmt ||
+ 	     wpa_auth->conf.rsn_override_key_mgmt_2)) {
++#ifdef CONFIG_TESTING_OPTIONS
++		if (wpa_auth->conf.rsnxoe_override_set) {
++			os_memcpy(buf, wpa_auth->conf.rsnxoe_override,
++				  wpa_auth->conf.rsnxoe_override_len);
++			res = wpa_auth->conf.rsnxoe_override_len;
++		} else
++#endif /* CONFIG_TESTING_OPTIONS */
+ 		res = wpa_write_rsnxe_override(&wpa_auth->conf, buf,
+ 					       sizeof(buf));
+ 		if (res < 0)
+diff --git a/tests/hwsim/test_rsn_override.py b/tests/hwsim/test_rsn_override.py
+index 0e989bebb..0ff0b1951 100644
+--- a/tests/hwsim/test_rsn_override.py
++++ b/tests/hwsim/test_rsn_override.py
+@@ -246,3 +246,74 @@ def test_rsn_override_omit_rsnxe(dev, apdev):
+     finally:
+         dev[0].set("sae_pwe", "0")
+         dev[0].set("rsn_overriding", "0")
++
++def test_rsn_override_replace_ies(dev, apdev):
++    """RSN overriding and replaced AP IEs"""
++    check_sae_capab(dev[0])
++
++    ssid = "test-rsn-override"
++    params = hostapd.wpa2_params(ssid=ssid,
++                                 passphrase="12345678",
++                                 ieee80211w='1')
++    params['rsn_override_key_mgmt'] = 'SAE'
++    params['rsn_override_key_mgmt_2'] = 'SAE-EXT-KEY'
++    params['rsn_override_pairwise'] = 'CCMP'
++    params['rsn_override_pairwise_2'] = 'GCMP-256'
++    params['rsn_override_mfp'] = '1'
++    params['rsn_override_mfp_2'] = '2'
++    params['beacon_prot'] = '1'
++    params['sae_groups'] = '19 20'
++    params['sae_require_mfp'] = '1'
++    params['sae_pwe'] = '2'
++    params['ssid_protection'] = '1'
++    params['rsne_override'] = '30180100000fac040100000fac040200000facff000fac020c00'
++    params['rsnxe_override'] = 'f40320eeee'
++    params['rsnoe_override'] = 'dd1c506f9a290100000fac040100000fac040200000facff000fac088c00'
++    params['rsno2e_override'] = 'dd1c506f9a2a0100000fac040100000fac090200000facff000fac18cc00'
++    params['rsnxoe_override'] = 'dd07506f9a2b20bbbb'
++    hapd = hostapd.add_ap(apdev[0], params)
++    bssid = hapd.own_addr()
++
++    try:
++        dev[0].set("rsn_overriding", "1")
++        dev[0].scan_for_bss(bssid, freq=2412)
++        dev[0].set("sae_pwe", "2")
++        dev[0].set("sae_groups", "")
++        dev[0].connect(ssid, sae_password="12345678", key_mgmt="SAE",
++                       ieee80211w="2", ssid_protection="1",
++                       scan_freq="2412")
++    finally:
++        dev[0].set("sae_pwe", "0")
++        dev[0].set("rsn_overriding", "0")
++
++def test_rsn_override_rsnxe_extensibility(dev, apdev):
++    """RSN overriding and RSNXE extensibility"""
++    check_sae_capab(dev[0])
++
++    ssid = "test-rsn-override"
++    params = hostapd.wpa2_params(ssid=ssid,
++                                 passphrase="12345678",
++                                 ieee80211w='1')
++    params['rsn_override_key_mgmt'] = 'SAE SAE-EXT-KEY'
++    params['rsn_override_pairwise'] = 'CCMP GCMP-256'
++    params['rsn_override_mfp'] = '2'
++    params['beacon_prot'] = '1'
++    params['sae_groups'] = '19 20'
++    params['sae_require_mfp'] = '1'
++    params['sae_pwe'] = '2'
++    params['rsnxe_override'] = 'f4182f0000ffffffffffffffffffffffffffeeeeeeeeeeeeeeee'
++    params['rsnxoe_override'] = 'dd1c506f9a2b2f0000ffffffffffffffffffffffffffeeeeeeeeeeeeeeee'
++    hapd = hostapd.add_ap(apdev[0], params)
++    bssid = hapd.own_addr()
++
++    try:
++        dev[0].set("rsn_overriding", "1")
++        dev[0].scan_for_bss(bssid, freq=2412)
++        dev[0].set("sae_pwe", "2")
++        dev[0].set("sae_groups", "")
++        dev[0].connect(ssid, sae_password="12345678", key_mgmt="SAE",
++                       ieee80211w="2", ssid_protection="1",
++                       scan_freq="2412")
++    finally:
++        dev[0].set("sae_pwe", "0")
++        dev[0].set("rsn_overriding", "0")
+-- 
+2.43.0
+

@@ -1,0 +1,69 @@
+From 62982dcf9a0f44e6543ef1b7b7ef648cb35b75b6 Mon Sep 17 00:00:00 2001
+From: npalanivel <npalanivel@maxlinear.com>
+Date: Thu, 18 Jul 2024 12:54:59 +0530
+Subject: [PATCH] WLANRTSYS-83174 : Extend check for Enterprise security modes
+ for the 6GHz BSS
+
+Porting WLANRTSYS-55517 : 6g-interface-is-up-after-configuring-wpa2-enterprise-security
+Issue:
+6GHz interfaces are coming up in WPA2-Enterprise mode when configured
+Expectation:
+As per the WFA-MRD_v1.3 release document, all the WPA2
+modes(Personel/Enterprise)
+modes should be blocked
+Fix:
+The security suite for blocking WPA2-Enterprise mode is now added
+as part of checking the config for bss in hostapd
+Todo: make feasibility study for upstream to opensource
+---
+ hostapd/mxl_config.c | 14 ++++++++------
+ src/ap/ap_config.c   |  5 +++++
+ 2 files changed, 13 insertions(+), 6 deletions(-)
+
+diff --git a/hostapd/mxl_config.c b/hostapd/mxl_config.c
+index ffd0ba870..4af9d3325 100644
+--- a/hostapd/mxl_config.c
++++ b/hostapd/mxl_config.c
+@@ -2040,15 +2040,17 @@ void mxl_hostapd_config_free(struct hostapd_config *conf)
+ 
+ 	os_free(mxl_conf->dfs_channels_state_file);
+ }
+-int mxl_hostapd_config_check(struct hostapd_config *conf, int full_config)
+-{
+ 
+-	if (full_config && conf->mxl_conf.dup_beacon.enabled &&
+-		conf->he_beacon && is_6ghz_op_class(conf->op_class)) {
+-		wpa_printf(MSG_ERROR,
+-				"Cannot enable both Duplicate Beacon and HE beacon at the same time");
++int mxl_hostapd_config_check_bss_6g(struct hostapd_bss_config *bss) {
++	if (bss->wpa_key_mgmt & (WPA_KEY_MGMT_IEEE8021X | WPA_KEY_MGMT_IEEE8021X_SHA256)) {
++		wpa_printf(MSG_ERROR, "Invalid AKM suite for 6 GHz");
+ 		return -1;
+ 	}
++	return 0;
++}
++
++int mxl_hostapd_config_check(struct hostapd_config *conf, int full_config)
++{
+ 
+ #ifdef CONFIG_IEEE80211BE_MXL_MLO
+ 	int i;
+diff --git a/src/ap/ap_config.c b/src/ap/ap_config.c
+index 6e7b8457a..8af883472 100644
+--- a/src/ap/ap_config.c
++++ b/src/ap/ap_config.c
+@@ -1398,6 +1398,11 @@ static bool hostapd_config_check_bss_6g(struct hostapd_bss_config *bss)
+ 	}
+ #endif /* CONFIG_SAE */
+ 
++#ifdef CONFIG_VENDOR_MXL
++	if (mxl_hostapd_config_check_bss_6g(bss)) 
++		return false;
++#endif /* CONFIG_VENDOR_MXL */
++
+ 	return true;
+ }
+ 
+-- 
+2.43.0
+

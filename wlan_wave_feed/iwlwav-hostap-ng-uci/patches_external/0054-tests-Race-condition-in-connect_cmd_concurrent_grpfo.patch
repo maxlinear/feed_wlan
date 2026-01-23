@@ -1,0 +1,28 @@
+From 7629ac4deff7a006702de8d3df00ae2f8119cafa Mon Sep 17 00:00:00 2001
+From: Jouni Malinen <quic_jouni@quicinc.com>
+Date: Tue, 12 Dec 2023 20:47:16 +0200
+Subject: [PATCH] tests: Race condition in
+ connect_cmd_concurrent_grpform_while_connecting
+
+Wait for AP to complete connection before running the connectivity test.
+
+Signed-off-by: Jouni Malinen <quic_jouni@quicinc.com>
+---
+ tests/hwsim/test_connect_cmd.py | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/tests/hwsim/test_connect_cmd.py b/tests/hwsim/test_connect_cmd.py
+index d101ee705..341cf2412 100644
+--- a/tests/hwsim/test_connect_cmd.py
++++ b/tests/hwsim/test_connect_cmd.py
+@@ -119,6 +119,7 @@ def test_connect_cmd_concurrent_grpform_while_connecting(dev, apdev):
+     wpas.dump_monitor()
+ 
+     logger.info("Confirm AP connection after P2P group removal")
++    hapd.wait_sta()
+     hwsim_utils.test_connectivity(wpas, hapd)
+ 
+     wpas.request("DISCONNECT")
+-- 
+2.43.0
+

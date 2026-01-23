@@ -1,0 +1,155 @@
+From 7855b6d60ee7556d5096119e2b4b8df6999370a6 Mon Sep 17 00:00:00 2001
+From: Ramasamy Kaliappan <quic_rkaliapp@quicinc.com>
+Date: Mon, 25 Nov 2024 18:42:14 +0530
+Subject: [PATCH] AP MLD: Send EML capabilities of an ML station to the driver
+
+When EMLSR is enabled for an ML association, the EML capabilities
+advertised by an ML station needs to be updated to the driver to enable
+EMLSR operation and to transmit and receive initial Control frame and
+Data frames.
+
+Send EML capabilities advertised by an ML station during association to
+the underlying driver via the NL80211_ATTR_EML_CAPABILITY attribute.
+
+Signed-off-by: Ramasamy Kaliappan <quic_rkaliapp@quicinc.com>
+Signed-off-by: Rameshkumar Sundaram <quic_ramess@quicinc.com>
+---
+ src/ap/ap_drv_ops.c          | 6 +++++-
+ src/ap/ap_drv_ops.h          | 3 ++-
+ src/ap/ieee802_11.c          | 4 +++-
+ src/ap/sta_info.c            | 4 +++-
+ src/drivers/driver.h         | 1 +
+ src/drivers/driver_nl80211.c | 9 +++++++++
+ 6 files changed, 23 insertions(+), 4 deletions(-)
+
+diff --git a/src/ap/ap_drv_ops.c b/src/ap/ap_drv_ops.c
+index f492a34cf..c41acd463 100644
+--- a/src/ap/ap_drv_ops.c
++++ b/src/ap/ap_drv_ops.c
+@@ -472,7 +472,8 @@ int hostapd_sta_add(struct hostapd_data *hapd,
+ 		    size_t eht_capab_len,
+ 		    const struct ieee80211_he_6ghz_band_cap *he_6ghz_capab,
+ 		    u32 flags, u8 qosinfo, u8 vht_opmode, int supp_p2p_ps,
+-		    int set, const u8 *link_addr, bool mld_link_sta)
++		    int set, const u8 *link_addr, bool mld_link_sta,
++		    u16 eml_cap)
+ {
+ 	struct hostapd_sta_add_params params;
+ 
+@@ -512,6 +513,9 @@ int hostapd_sta_add(struct hostapd_data *hapd,
+ 		params.mld_link_id = hapd->mld_link_id;
+ 		params.mld_link_addr = link_addr;
+ 		params.mld_link_sta = mld_link_sta;
++		/* Copy EML capabilities of ML STA */
++		if (link_addr)
++			params.eml_cap = eml_cap;
+ 	}
+ #endif /* CONFIG_IEEE80211BE */
+ 
+diff --git a/src/ap/ap_drv_ops.h b/src/ap/ap_drv_ops.h
+index 7b5525347..cbb8044c3 100644
+--- a/src/ap/ap_drv_ops.h
++++ b/src/ap/ap_drv_ops.h
+@@ -49,7 +49,8 @@ int hostapd_sta_add(struct hostapd_data *hapd,
+ 		    size_t eht_capab_len,
+ 		    const struct ieee80211_he_6ghz_band_cap *he_6ghz_capab,
+ 		    u32 flags, u8 qosinfo, u8 vht_opmode, int supp_p2p_ps,
+-		    int set, const u8 *link_addr, bool mld_link_sta);
++		    int set, const u8 *link_addr, bool mld_link_sta,
++		    u16 eml_cap);
+ int hostapd_set_privacy(struct hostapd_data *hapd, int enabled);
+ int hostapd_set_generic_elem(struct hostapd_data *hapd, const u8 *elem,
+ 			     size_t elem_len);
+diff --git a/src/ap/ieee802_11.c b/src/ap/ieee802_11.c
+index 42150e9b5..c0da03f4c 100644
+--- a/src/ap/ieee802_11.c
++++ b/src/ap/ieee802_11.c
+@@ -4800,6 +4800,7 @@ static int add_associated_sta(struct hostapd_data *hapd,
+ 	int set = 1;
+ 	const u8 *mld_link_addr = NULL;
+ 	bool mld_link_sta = false;
++	u16 eml_cap = 0;
+ 
+ #ifdef CONFIG_IEEE80211BE
+ 	if (ap_sta_is_mld(hapd, sta)) {
+@@ -4810,6 +4811,7 @@ static int add_associated_sta(struct hostapd_data *hapd,
+ 
+ 		if (hapd->mld_link_id != sta->mld_assoc_link_id)
+ 			set = 0;
++		eml_cap = sta->mld_info.common_info.eml_capa;
+ 	}
+ #endif /* CONFIG_IEEE80211BE */
+ 
+@@ -4890,7 +4892,7 @@ static int add_associated_sta(struct hostapd_data *hapd,
+ 			    sta->he_6ghz_capab,
+ 			    sta->flags | WLAN_STA_ASSOC, sta->qosinfo,
+ 			    sta->vht_opmode, sta->p2p_ie ? 1 : 0,
+-			    set, mld_link_addr, mld_link_sta)) {
++			    set, mld_link_addr, mld_link_sta, eml_cap)) {
+ 		hostapd_logger(hapd, sta->addr,
+ 			       HOSTAPD_MODULE_IEEE80211, HOSTAPD_LEVEL_NOTICE,
+ 			       "Could not %s STA to kernel driver",
+diff --git a/src/ap/sta_info.c b/src/ap/sta_info.c
+index 534aa28c4..857d3de50 100644
+--- a/src/ap/sta_info.c
++++ b/src/ap/sta_info.c
+@@ -1857,6 +1857,7 @@ int ap_sta_re_add(struct hostapd_data *hapd, struct sta_info *sta)
+ {
+ 	const u8 *mld_link_addr = NULL;
+ 	bool mld_link_sta = false;
++	u16 eml_cap = 0;
+ 
+ 	/*
+ 	 * If a station that is already associated to the AP, is trying to
+@@ -1872,6 +1873,7 @@ int ap_sta_re_add(struct hostapd_data *hapd, struct sta_info *sta)
+ 
+ 		mld_link_sta = sta->mld_assoc_link_id != mld_link_id;
+ 		mld_link_addr = sta->mld_info.links[mld_link_id].peer_addr;
++		eml_cap = sta->mld_info.common_info.eml_capa;
+ 
+ 		/*
+ 		 * In case the AP is affiliated with an AP MLD, we need to
+@@ -1890,7 +1892,7 @@ int ap_sta_re_add(struct hostapd_data *hapd, struct sta_info *sta)
+ 			    sta->supported_rates_len,
+ 			    0, NULL, NULL, NULL, 0, NULL, 0, NULL,
+ 			    sta->flags, 0, 0, 0, 0,
+-			    mld_link_addr, mld_link_sta)) {
++			    mld_link_addr, mld_link_sta, eml_cap)) {
+ 		hostapd_logger(hapd, sta->addr,
+ 			       HOSTAPD_MODULE_IEEE80211,
+ 			       HOSTAPD_LEVEL_NOTICE,
+diff --git a/src/drivers/driver.h b/src/drivers/driver.h
+index a612f8cd2..b28046db3 100644
+--- a/src/drivers/driver.h
++++ b/src/drivers/driver.h
+@@ -2591,6 +2591,7 @@ struct hostapd_sta_add_params {
+ 	bool mld_link_sta;
+ 	s8 mld_link_id;
+ 	const u8 *mld_link_addr;
++	u16 eml_cap;
+ };
+ 
+ struct mac_address {
+diff --git a/src/drivers/driver_nl80211.c b/src/drivers/driver_nl80211.c
+index b26d1c121..a8434fdbf 100644
+--- a/src/drivers/driver_nl80211.c
++++ b/src/drivers/driver_nl80211.c
+@@ -5768,6 +5768,15 @@ static int wpa_driver_nl80211_sta_add(void *priv,
+ 				goto fail;
+ 		}
+ 
++		/* Set EML capabilities of ML STA */
++		if (params->mld_link_addr && params->eml_cap) {
++			wpa_printf(MSG_DEBUG, "  * eml_cap =%u",
++				   params->eml_cap);
++			if (nla_put_u16(msg, NL80211_ATTR_EML_CAPABILITY,
++					params->eml_cap))
++				goto fail;
++		}
++
+ 		if (is_ap_interface(drv->nlmode) &&
+ 		    nla_put_u8(msg, NL80211_ATTR_STA_SUPPORT_P2P_PS,
+ 			       params->support_p2p_ps ?
+-- 
+2.43.0
+

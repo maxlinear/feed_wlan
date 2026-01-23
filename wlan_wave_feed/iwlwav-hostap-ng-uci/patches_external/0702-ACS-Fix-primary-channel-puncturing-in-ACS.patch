@@ -1,0 +1,59 @@
+From 627b67f29b1e0c914ef8edb74c772ae72b82245c Mon Sep 17 00:00:00 2001
+From: Hari Naraayana Desikan Kannan <quic_hnaraaya@quicinc.com>
+Date: Tue, 30 Apr 2024 15:22:32 +0530
+Subject: [PATCH] ACS: Fix primary channel puncturing in ACS
+
+Currently, when the ACS is updating the puncturing bitmap, the function
+acs_update_puncturing_bitmap() sets the primary channel bitmap to 0.
+This leads to a potential issue where the primary channel could be
+punctured if ACS selects a different best channel within the same
+segment.
+
+To fix this issue, ensure that the primary channel bitmap is correctly
+set by calculating the index of the primary channel based on the
+frequency difference between the current channel and the best channel in
+the segment, and is then passed to acs_update_puncturing_bitmap().
+
+Fixes: af0f60e7dd00 ("EHT: Calculate puncturing bitmap for ACS")
+Signed-off-by: Hari Naraayana Desikan Kannan <quic_hnaraaya@quicinc.com>
+---
+ src/ap/acs.c | 9 ++++++++-
+ 1 file changed, 8 insertions(+), 1 deletion(-)
+
+diff --git a/src/ap/acs.c b/src/ap/acs.c
+index 7e1b56700..f5b36d327 100644
+--- a/src/ap/acs.c
++++ b/src/ap/acs.c
+@@ -834,6 +834,9 @@ acs_find_ideal_chan_mode(struct hostapd_iface *iface,
+ 	int bw320_offset = 0, ideal_bw320_offset = 0;
+ 	unsigned int k;
+ 	int secondary_channel = 1, freq_offset;
++#ifdef CONFIG_IEEE80211BE
++	int index_primary = 0;
++#endif /* CONFIG_IEEE80211BE */
+ 
+ 	if (is_24ghz_mode(mode->mode))
+ 		secondary_channel = iface->conf->secondary_channel;
+@@ -973,6 +976,9 @@ acs_find_ideal_chan_mode(struct hostapd_iface *iface,
+ 				   best->chan, chan->chan,
+ 				   chan->interference_factor,
+ 				   best->interference_factor);
++#ifdef CONFIG_IEEE80211BE
++			index_primary = (chan->freq - best->freq) / 20;
++#endif /* CONFIG_IEEE80211BE */
+ 			chan = best;
+ 		}
+ 
+@@ -1061,7 +1067,8 @@ acs_find_ideal_chan_mode(struct hostapd_iface *iface,
+ 			if (iface->conf->ieee80211be)
+ 				acs_update_puncturing_bitmap(iface, mode, bw,
+ 							     n_chans, chan,
+-							     factor, 0);
++							     factor,
++							     index_primary);
+ #endif /* CONFIG_IEEE80211BE */
+ 		}
+ 
+-- 
+2.43.0
+

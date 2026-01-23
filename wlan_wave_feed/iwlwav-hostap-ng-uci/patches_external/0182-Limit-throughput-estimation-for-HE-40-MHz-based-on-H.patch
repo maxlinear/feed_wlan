@@ -1,0 +1,74 @@
+From 12c0f8ae3a6ea5ffeeee4d17e6dad47c98c7e018 Mon Sep 17 00:00:00 2001
+From: Jouni Malinen <j@w1.fi>
+Date: Sat, 23 Dec 2023 17:30:18 +0200
+Subject: [PATCH] Limit throughput estimation for HE 40 MHz based on HT info
+
+The current operating channel bandwidth in an HE BSS is determined with
+the combination of elements, include the HT Operation element. Use HT
+Operation element to check whether the 40 MHz case is enabled if the AP
+claims to be capable of operating a 40 MHz BSS.
+
+Signed-off-by: Jouni Malinen <j@w1.fi>
+---
+ wpa_supplicant/scan.c | 22 ++++++++++++----------
+ 1 file changed, 12 insertions(+), 10 deletions(-)
+
+diff --git a/wpa_supplicant/scan.c b/wpa_supplicant/scan.c
+index a85555799..822a9858e 100644
+--- a/wpa_supplicant/scan.c
++++ b/wpa_supplicant/scan.c
+@@ -2907,6 +2907,7 @@ unsigned int wpas_get_est_tpt(const struct wpa_supplicant *wpa_s,
+ 	 * been taken into account.
+ 	 */
+ 	int adjusted_snr;
++	bool ht40 = false;
+ 
+ 	/* Limit based on estimated SNR */
+ 	if (rate > 1 * 2 && snr < 1)
+@@ -2962,11 +2963,14 @@ unsigned int wpas_get_est_tpt(const struct wpa_supplicant *wpa_s,
+ 		}
+ 	}
+ 
++	ie = get_ie(ies, ies_len, WLAN_EID_HT_OPERATION);
++	if (ie && ie[1] >= 2 &&
++	    (ie[3] & HT_INFO_HT_PARAM_SECONDARY_CHNL_OFF_MASK))
++		ht40 = true;
++
+ 	if (hw_mode &&
+ 	    (hw_mode->ht_capab & HT_CAP_INFO_SUPP_CHANNEL_WIDTH_SET)) {
+-		ie = get_ie(ies, ies_len, WLAN_EID_HT_OPERATION);
+-		if (ie && ie[1] >= 2 &&
+-		    (ie[3] & HT_INFO_HT_PARAM_SECONDARY_CHNL_OFF_MASK)) {
++		if (ht40) {
+ 			*max_cw = CHAN_WIDTH_40;
+ 			adjusted_snr = snr +
+ 				wpas_channel_width_rssi_bump(ies, ies_len,
+@@ -2989,10 +2993,7 @@ unsigned int wpas_get_est_tpt(const struct wpa_supplicant *wpa_s,
+ 			if (tmp > est)
+ 				est = tmp;
+ 
+-			ie = get_ie(ies, ies_len, WLAN_EID_HT_OPERATION);
+-			if (ie && ie[1] >= 2 &&
+-			    (ie[3] &
+-			     HT_INFO_HT_PARAM_SECONDARY_CHNL_OFF_MASK)) {
++			if (ht40) {
+ 				*max_cw = CHAN_WIDTH_40;
+ 				adjusted_snr = snr +
+ 					wpas_channel_width_rssi_bump(
+@@ -3081,9 +3082,10 @@ unsigned int wpas_get_est_tpt(const struct wpa_supplicant *wpa_s,
+ 
+ 		cw = he->he_phy_capab_info[HE_PHYCAP_CHANNEL_WIDTH_SET_IDX] &
+ 			own_he->phy_cap[HE_PHYCAP_CHANNEL_WIDTH_SET_IDX];
+-		if (cw &
+-		    (IS_2P4GHZ(freq) ? HE_PHYCAP_CHANNEL_WIDTH_SET_40MHZ_IN_2G :
+-		     HE_PHYCAP_CHANNEL_WIDTH_SET_40MHZ_80MHZ_IN_5G)) {
++		if ((cw &
++		     (IS_2P4GHZ(freq) ?
++		      HE_PHYCAP_CHANNEL_WIDTH_SET_40MHZ_IN_2G :
++		      HE_PHYCAP_CHANNEL_WIDTH_SET_40MHZ_80MHZ_IN_5G)) && ht40) {
+ 			if (*max_cw == CHAN_WIDTH_UNKNOWN ||
+ 			    *max_cw < CHAN_WIDTH_40)
+ 				*max_cw = CHAN_WIDTH_40;
+-- 
+2.43.0
+

@@ -1,0 +1,29 @@
+From 3ef05790136aaf9d346a165f2a03e08f4ca93eb9 Mon Sep 17 00:00:00 2001
+From: Felix Fietkau <nbd@nbd.name>
+Date: Thu, 4 Apr 2024 12:52:13 +0200
+Subject: [PATCH] ndisc_snoop: Call dl_list_del() before freeing IPv6 addresses
+
+This fixes a segmentation fault on STA disconnect in case IPv6 addresses
+where learned for the STA based on snooped neighbor solicication.
+
+Fixes: bd00c4311c0e ("AP: Add Neighbor Discovery snooping mechanism for Proxy ARP")
+Signed-off-by: Felix Fietkau <nbd@nbd.name>
+---
+ src/ap/ndisc_snoop.c | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/src/ap/ndisc_snoop.c b/src/ap/ndisc_snoop.c
+index 788c12fdc..bc1eb6251 100644
+--- a/src/ap/ndisc_snoop.c
++++ b/src/ap/ndisc_snoop.c
+@@ -61,6 +61,7 @@ void sta_ip6addr_del(struct hostapd_data *hapd, struct sta_info *sta)
+ 	dl_list_for_each_safe(ip6addr, prev, &sta->ip6addr, struct ip6addr,
+ 			      list) {
+ 		hostapd_drv_br_delete_ip_neigh(hapd, 6, (u8 *) &ip6addr->addr);
++		dl_list_del(&ip6addr->list);
+ 		os_free(ip6addr);
+ 	}
+ }
+-- 
+2.43.0
+

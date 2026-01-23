@@ -1,0 +1,30 @@
+From 6a793c5f2493e4ad37beb2384cca1d95f533fa01 Mon Sep 17 00:00:00 2001
+From: Daniel Gabay <daniel.gabay@intel.com>
+Date: Thu, 14 Dec 2023 18:10:40 +0200
+Subject: [PATCH] bgscan: Fix bgscan_init() stub declaration
+
+The bgscan_init() declared wrongly when CONFIG_BGSCAN is not defined,
+fix that.
+
+Fixes: 3139270903af ("bgscan: Add global bgscan configuration")
+Signed-off-by: Daniel Gabay <daniel.gabay@intel.com>
+---
+ wpa_supplicant/bgscan.h | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/wpa_supplicant/bgscan.h b/wpa_supplicant/bgscan.h
+index 3df1550a9..4388b4e06 100644
+--- a/wpa_supplicant/bgscan.h
++++ b/wpa_supplicant/bgscan.h
+@@ -51,7 +51,7 @@ extern const struct bgscan_ops bgscan_learn_ops;
+ #else /* CONFIG_BGSCAN */
+ 
+ static inline int bgscan_init(struct wpa_supplicant *wpa_s,
+-			      struct wpa_ssid *ssid, const char name)
++			      struct wpa_ssid *ssid, const char *name)
+ {
+ 	return 0;
+ }
+-- 
+2.43.0
+

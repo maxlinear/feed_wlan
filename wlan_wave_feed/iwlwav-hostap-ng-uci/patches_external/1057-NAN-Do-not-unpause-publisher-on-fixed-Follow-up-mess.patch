@@ -1,0 +1,81 @@
+From b752dfc1dee5e3ef87bef0affa65cd2a3c2cf64a Mon Sep 17 00:00:00 2001
+From: Jouni Malinen <quic_jouni@quicinc.com>
+Date: Mon, 4 Nov 2024 22:05:29 +0200
+Subject: [PATCH] NAN: Do not unpause publisher on fixed Follow-up message
+ timeout
+
+Do not unpause publisher if more than one second has passed from the
+last Follow-up message TX or RX. There is no such behavior described in
+the Wi-Fi Aware specification and it is possible for a service to need
+more time to generate Follow-up messages. Leave it to the service itself
+to force timeout, if desired, or terminate pauseState after the 60
+second overall timeout.
+
+Signed-off-by: Jouni Malinen <quic_jouni@quicinc.com>
+---
+ src/common/nan_de.c | 15 +--------------
+ 1 file changed, 1 insertion(+), 14 deletions(-)
+
+diff --git a/src/common/nan_de.c b/src/common/nan_de.c
+index fb6f84d2a..85240648e 100644
+--- a/src/common/nan_de.c
++++ b/src/common/nan_de.c
+@@ -38,7 +38,6 @@ struct nan_de_service {
+ 	struct os_reltime end_time;
+ 	struct os_reltime last_multicast;
+ 	struct os_reltime first_discovered;
+-	struct os_reltime last_followup;
+ 	bool needs_fsd;
+ 	unsigned int freq;
+ 	unsigned int default_freq;
+@@ -401,9 +400,6 @@ static bool nan_de_srv_expired(struct nan_de_service *srv,
+ 			return false;
+ 		if (!srv->publish.fsd)
+ 			return true;
+-		if (os_reltime_initialized(&srv->last_followup) &&
+-		    !os_reltime_expired(now, &srv->last_followup, 1))
+-			return false;
+ 		if (os_reltime_expired(now, &srv->last_multicast, 1))
+ 			return true;
+ 	}
+@@ -415,9 +411,6 @@ static bool nan_de_srv_expired(struct nan_de_service *srv,
+ 			return false;
+ 		if (!srv->needs_fsd)
+ 			return true;
+-		if (os_reltime_initialized(&srv->last_followup) &&
+-		    !os_reltime_expired(now, &srv->last_followup, 1))
+-			return false;
+ 		if (os_reltime_expired(now, &srv->first_discovered, 1))
+ 			return true;
+ 	}
+@@ -586,10 +579,7 @@ static void nan_de_timer(void *eloop_ctx, void *timeout_ctx)
+ 
+ 		if (srv->type == NAN_DE_PUBLISH &&
+ 		    os_reltime_initialized(&srv->pause_state_end) &&
+-		    (os_reltime_before(&srv->pause_state_end, &now) ||
+-		     (srv->publish.fsd &&
+-		      os_reltime_initialized(&srv->last_followup) &&
+-		      os_reltime_expired(&now, &srv->last_followup, 1))))
++		    (os_reltime_before(&srv->pause_state_end, &now)))
+ 			nan_de_unpause_state(srv);
+ 
+ 		srv_next = nan_de_srv_time_to_next(de, srv, &now);
+@@ -1001,8 +991,6 @@ static void nan_de_rx_follow_up(struct nan_de *de, struct nan_de_service *srv,
+ 		return;
+ 	}
+ 
+-	os_get_reltime(&srv->last_followup);
+-
+ 	if (srv->type == NAN_DE_PUBLISH && !ssi)
+ 		nan_de_pause_state(srv, peer_addr, instance_id);
+ 
+@@ -1465,6 +1453,5 @@ int nan_de_transmit(struct nan_de *de, int handle,
+ 	nan_de_tx_sdf(de, srv, 100, NAN_SRV_CTRL_FOLLOW_UP,
+ 		      peer_addr, a3, req_instance_id, ssi);
+ 
+-	os_get_reltime(&srv->last_followup);
+ 	return 0;
+ }
+-- 
+2.43.0
+

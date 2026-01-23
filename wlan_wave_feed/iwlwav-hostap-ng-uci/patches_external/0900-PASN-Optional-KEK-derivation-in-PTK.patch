@@ -1,0 +1,169 @@
+From cb9b1f8c5a9639d99ba0f9ccfc7a2f55ba8f98e3 Mon Sep 17 00:00:00 2001
+From: Shivani Baranwal <quic_shivbara@quicinc.com>
+Date: Mon, 5 Aug 2024 01:32:07 +0530
+Subject: [PATCH] PASN: Optional KEK derivation in PTK
+
+Add support to derive KEK in PTK per IEEE P802.11bh/D6.0. This can be
+used to encrypt keys and passwords in opportunistic P2P pairing defined
+in P2P2.
+
+Signed-off-by: Shivani Baranwal <quic_shivbara@quicinc.com>
+---
+ src/ap/ieee802_11.c              |  3 ++-
+ src/common/common_module_tests.c |  2 +-
+ src/common/wpa_common.c          | 25 ++++++++++++++++++-------
+ src/common/wpa_common.h          |  2 +-
+ src/pasn/pasn_common.h           |  1 +
+ src/pasn/pasn_initiator.c        |  2 +-
+ src/pasn/pasn_responder.c        |  2 +-
+ 7 files changed, 25 insertions(+), 12 deletions(-)
+
+diff --git a/src/ap/ieee802_11.c b/src/ap/ieee802_11.c
+index 230fdb7b2..d4552f2f4 100644
+--- a/src/ap/ieee802_11.c
++++ b/src/ap/ieee802_11.c
+@@ -2481,7 +2481,8 @@ static void pasn_fils_auth_resp(struct hostapd_data *hapd,
+ 			      wpabuf_head(pasn->secret),
+ 			      wpabuf_len(pasn->secret),
+ 			      pasn_get_ptk(sta->pasn), pasn_get_akmp(sta->pasn),
+-			      pasn_get_cipher(sta->pasn), sta->pasn->kdk_len);
++			      pasn_get_cipher(sta->pasn), sta->pasn->kdk_len,
++			      sta->pasn->kek_len);
+ 	if (ret) {
+ 		wpa_printf(MSG_DEBUG, "PASN: FILS: Failed to derive PTK");
+ 		goto fail;
+diff --git a/src/common/common_module_tests.c b/src/common/common_module_tests.c
+index a95ae36dc..5763c51f4 100644
+--- a/src/common/common_module_tests.c
++++ b/src/common/common_module_tests.c
+@@ -651,7 +651,7 @@ static int pasn_test_pasn_auth(void)
+ 			      spa_addr, bssid,
+ 			      dhss, sizeof(dhss),
+ 			      &ptk, WPA_KEY_MGMT_PASN, WPA_CIPHER_CCMP,
+-			      WPA_KDK_MAX_LEN);
++			      WPA_KDK_MAX_LEN, 0);
+ 
+ 	if (ret)
+ 		return ret;
+diff --git a/src/common/wpa_common.c b/src/common/wpa_common.c
+index eb74c0393..a8c7c416d 100644
+--- a/src/common/wpa_common.c
++++ b/src/common/wpa_common.c
+@@ -1456,15 +1456,18 @@ bool pasn_use_sha384(int akmp, int cipher)
+  * @akmp: Negotiated AKM
+  * @cipher: Negotiated pairwise cipher
+  * @kdk_len: the length in octets that should be derived for HTLK. Can be zero.
++ * @kek_len: The length in octets that should be derived for KEK. Can be zero.
+  * Returns: 0 on success, -1 on failure
+  */
+ int pasn_pmk_to_ptk(const u8 *pmk, size_t pmk_len,
+ 		    const u8 *spa, const u8 *bssid,
+ 		    const u8 *dhss, size_t dhss_len,
+ 		    struct wpa_ptk *ptk, int akmp, int cipher,
+-		    size_t kdk_len)
++		    size_t kdk_len, size_t kek_len)
+ {
+-	u8 tmp[WPA_KCK_MAX_LEN + WPA_TK_MAX_LEN + WPA_KDK_MAX_LEN];
++	u8 tmp[WPA_KCK_MAX_LEN + WPA_KEK_MAX_LEN + WPA_TK_MAX_LEN +
++	       WPA_KDK_MAX_LEN];
++	const u8 *pos;
+ 	u8 *data;
+ 	size_t data_len, ptk_len;
+ 	int ret = -1;
+@@ -1499,7 +1502,7 @@ int pasn_pmk_to_ptk(const u8 *pmk, size_t pmk_len,
+ 	ptk->kck_len = WPA_PASN_KCK_LEN;
+ 	ptk->tk_len = wpa_cipher_key_len(cipher);
+ 	ptk->kdk_len = kdk_len;
+-	ptk->kek_len = 0;
++	ptk->kek_len = kek_len;
+ 	ptk->kek2_len = 0;
+ 	ptk->kck2_len = 0;
+ 
+@@ -1510,7 +1513,7 @@ int pasn_pmk_to_ptk(const u8 *pmk, size_t pmk_len,
+ 		goto err;
+ 	}
+ 
+-	ptk_len = ptk->kck_len + ptk->tk_len + ptk->kdk_len;
++	ptk_len = ptk->kck_len + ptk->tk_len + ptk->kdk_len + ptk->kek_len;
+ 	if (ptk_len > sizeof(tmp))
+ 		goto err;
+ 
+@@ -1538,13 +1541,21 @@ int pasn_pmk_to_ptk(const u8 *pmk, size_t pmk_len,
+ 
+ 	os_memcpy(ptk->kck, tmp, WPA_PASN_KCK_LEN);
+ 	wpa_hexdump_key(MSG_DEBUG, "PASN: KCK:", ptk->kck, WPA_PASN_KCK_LEN);
++	pos = &tmp[WPA_PASN_KCK_LEN];
++
++	if (kek_len) {
++		os_memcpy(ptk->kek, pos, kek_len);
++		wpa_hexdump_key(MSG_DEBUG, "PASN: KEK:",
++				ptk->kek, ptk->kek_len);
++		pos += kek_len;
++	}
+ 
+-	os_memcpy(ptk->tk, tmp + WPA_PASN_KCK_LEN, ptk->tk_len);
++	os_memcpy(ptk->tk, pos, ptk->tk_len);
+ 	wpa_hexdump_key(MSG_DEBUG, "PASN: TK:", ptk->tk, ptk->tk_len);
++	pos += ptk->tk_len;
+ 
+ 	if (kdk_len) {
+-		os_memcpy(ptk->kdk, tmp + WPA_PASN_KCK_LEN + ptk->tk_len,
+-			  ptk->kdk_len);
++		os_memcpy(ptk->kdk, pos, ptk->kdk_len);
+ 		wpa_hexdump_key(MSG_DEBUG, "PASN: KDK:",
+ 				ptk->kdk, ptk->kdk_len);
+ 	}
+diff --git a/src/common/wpa_common.h b/src/common/wpa_common.h
+index 6f513f2b6..e608d3cbe 100644
+--- a/src/common/wpa_common.h
++++ b/src/common/wpa_common.h
+@@ -770,7 +770,7 @@ int pasn_pmk_to_ptk(const u8 *pmk, size_t pmk_len,
+ 		    const u8 *spa, const u8 *bssid,
+ 		    const u8 *dhss, size_t dhss_len,
+ 		    struct wpa_ptk *ptk, int akmp, int cipher,
+-		    size_t kdk_len);
++		    size_t kdk_len, size_t kek_len);
+ 
+ u8 pasn_mic_len(int akmp, int cipher);
+ 
+diff --git a/src/pasn/pasn_common.h b/src/pasn/pasn_common.h
+index 54792f43e..eb0c16abf 100644
+--- a/src/pasn/pasn_common.h
++++ b/src/pasn/pasn_common.h
+@@ -66,6 +66,7 @@ struct pasn_data {
+ 	size_t extra_ies_len;
+ 
+ 	/* External modules do not access below variables */
++	size_t kek_len;
+ 	u16 group;
+ 	bool secure_ltf;
+ 	int freq;
+diff --git a/src/pasn/pasn_initiator.c b/src/pasn/pasn_initiator.c
+index d273067b7..c9771c70b 100644
+--- a/src/pasn/pasn_initiator.c
++++ b/src/pasn/pasn_initiator.c
+@@ -1233,7 +1233,7 @@ int wpa_pasn_auth_rx(struct pasn_data *pasn, const u8 *data, size_t len,
+ 			      pasn->own_addr, pasn->peer_addr,
+ 			      wpabuf_head(secret), wpabuf_len(secret),
+ 			      &pasn->ptk, pasn->akmp, pasn->cipher,
+-			      pasn->kdk_len);
++			      pasn->kdk_len, pasn->kek_len);
+ 	if (ret) {
+ 		wpa_printf(MSG_DEBUG, "PASN: Failed to derive PTK");
+ 		goto fail;
+diff --git a/src/pasn/pasn_responder.c b/src/pasn/pasn_responder.c
+index f6e44a53c..09e9f0d2d 100644
+--- a/src/pasn/pasn_responder.c
++++ b/src/pasn/pasn_responder.c
+@@ -349,7 +349,7 @@ pasn_derive_keys(struct pasn_data *pasn,
+ 	ret = pasn_pmk_to_ptk(pmk, pmk_len, peer_addr, own_addr,
+ 			      wpabuf_head(secret), wpabuf_len(secret),
+ 			      &pasn->ptk, pasn->akmp,
+-			      pasn->cipher, pasn->kdk_len);
++			      pasn->cipher, pasn->kdk_len, pasn->kek_len);
+ 	if (ret) {
+ 		wpa_printf(MSG_DEBUG, "PASN: Failed to derive PTK");
+ 		return -1;
+-- 
+2.43.0
+

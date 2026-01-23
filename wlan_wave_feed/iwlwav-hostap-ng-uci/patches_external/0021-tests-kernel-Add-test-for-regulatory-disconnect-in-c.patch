@@ -1,0 +1,58 @@
+From a40f64a198d9b369408877903e058f6c18852cf9 Mon Sep 17 00:00:00 2001
+From: Johannes Berg <johannes.berg@intel.com>
+Date: Fri, 16 Jun 2023 22:26:44 +0200
+Subject: [PATCH] tests: kernel: Add test for regulatory disconnect in cfg80211
+
+Add a test for regulatory disconnect, since that was broken
+for quite a while in various ways.
+
+Signed-off-by: Johannes Berg <johannes.berg@intel.com>
+---
+ tests/hwsim/test_kernel.py | 24 +++++++++++++++++++++++-
+ 1 file changed, 23 insertions(+), 1 deletion(-)
+
+diff --git a/tests/hwsim/test_kernel.py b/tests/hwsim/test_kernel.py
+index d0c4faec9..d8bb3fb8b 100644
+--- a/tests/hwsim/test_kernel.py
++++ b/tests/hwsim/test_kernel.py
+@@ -8,10 +8,11 @@
+ 
+ import hostapd
+ import binascii
+-import os
++import os, time
+ import struct
+ from test_wnm import expect_ack
+ from tshark import run_tshark
++from utils import clear_regdom, long_duration_test
+ 
+ def _test_kernel_bss_leak(dev, apdev, deauth):
+     ssid = "test-bss-leak"
+@@ -126,3 +127,24 @@ def test_kernel_unknown_action_frame_rejection_sta(dev, apdev, params):
+         raise Exception("Unexpected Action frame rejection: " + str(categ))
+     if 0xf0 not in categ or 0xf4 not in categ:
+         raise Exception("Action frame rejection missing: " + str(categ))
++
++@long_duration_test
++def test_kernel_reg_disconnect(dev, apdev):
++    """Connect and force disconnect via regulatory"""
++    hapd = None
++    try:
++        ssid = "test-reg-disconnect"
++        passphrase = 'qwertyuiop'
++        params = hostapd.wpa2_params(ssid=ssid, passphrase=passphrase)
++        params["country_code"] = "DE"
++        params["hw_mode"] = "b"
++        params["channel"] = "13"
++        hapd = hostapd.add_ap(apdev[0], params)
++        dev[0].set("country", "DE")
++        dev[0].connect(ssid, psk=passphrase, scan_freq="2472")
++        dev[0].set("country", "US")
++        time.sleep(61)
++        dev[0].wait_disconnected(error="no regulatory disconnect")
++    finally:
++        dev[0].request("DISCONNECT")
++        clear_regdom(hapd, dev)
+-- 
+2.43.0
+

@@ -1,0 +1,72 @@
+From b483ceafc4304d2d5743249e3d1ae34df61ba85a Mon Sep 17 00:00:00 2001
+From: Janusz Dziedzic <janusz.dziedzic@gmail.com>
+Date: Tue, 27 Feb 2024 18:17:47 +0100
+Subject: [PATCH] hostapd: Dump VHT/HE/EHT full capabilities in STA command
+ output
+
+Show full VHT/HE/EHT capabilities for connected stations.
+
+Signed-off-by: Janusz Dziedzic <janusz.dziedzic@gmail.com>
+---
+ src/ap/ctrl_iface_ap.c | 38 ++++++++++++++++++++++++++++++++++++++
+ 1 file changed, 38 insertions(+)
+
+diff --git a/src/ap/ctrl_iface_ap.c b/src/ap/ctrl_iface_ap.c
+index c39713c37..e65c3c4b2 100644
+--- a/src/ap/ctrl_iface_ap.c
++++ b/src/ap/ctrl_iface_ap.c
+@@ -368,6 +368,34 @@ static int hostapd_ctrl_iface_sta_mib(struct hostapd_data *hapd,
+ 			len += ret;
+ 	}
+ 
++#ifdef CONFIG_IEEE80211AX
++	if ((sta->flags & WLAN_STA_HE) && sta->he_capab) {
++		res = os_snprintf(buf + len, buflen - len, "he_capab=");
++		if (!os_snprintf_error(buflen - len, res))
++			len += res;
++		len += wpa_snprintf_hex(buf + len, buflen - len,
++					(const u8 *) sta->he_capab,
++					sta->he_capab_len);
++		res = os_snprintf(buf + len, buflen - len, "\n");
++		if (!os_snprintf_error(buflen - len, res))
++			len += res;
++	}
++#endif /* CONFIG_IEEE80211AX */
++
++#ifdef CONFIG_IEEE80211BE
++	if ((sta->flags & WLAN_STA_EHT) && sta->eht_capab) {
++		res = os_snprintf(buf + len, buflen - len, "eht_capab=");
++		if (!os_snprintf_error(buflen - len, res))
++			len += res;
++		len += wpa_snprintf_hex(buf + len, buflen - len,
++					(const u8 *) sta->eht_capab,
++					sta->eht_capab_len);
++		res = os_snprintf(buf + len, buflen - len, "\n");
++		if (!os_snprintf_error(buflen - len, res))
++			len += res;
++	}
++#endif /* CONFIG_IEEE80211BE */
++
+ #ifdef CONFIG_IEEE80211AC
+ 	if ((sta->flags & WLAN_STA_VHT) && sta->vht_capabilities) {
+ 		res = os_snprintf(buf + len, buflen - len,
+@@ -376,6 +404,16 @@ static int hostapd_ctrl_iface_sta_mib(struct hostapd_data *hapd,
+ 					       vht_capabilities_info));
+ 		if (!os_snprintf_error(buflen - len, res))
+ 			len += res;
++
++		res = os_snprintf(buf + len, buflen - len, "vht_capab=");
++		if (!os_snprintf_error(buflen - len, res))
++			len += res;
++		len += wpa_snprintf_hex(buf + len, buflen - len,
++					(const u8 *) sta->vht_capabilities,
++					sizeof(*sta->vht_capabilities));
++		res = os_snprintf(buf + len, buflen - len, "\n");
++		if (!os_snprintf_error(buflen - len, res))
++			len += res;
+ 	}
+ #endif /* CONFIG_IEEE80211AC */
+ 
+-- 
+2.43.0
+

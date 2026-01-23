@@ -1,0 +1,174 @@
+From a0f826c21969c7a103d947d8852295dccf9b59e8 Mon Sep 17 00:00:00 2001
+From: Benjamin Berg <benjamin.berg@intel.com>
+Date: Wed, 8 Jan 2025 10:10:33 +0100
+Subject: [PATCH] tests: Pass extra_bss_membership_selectors to nl80211 driver
+
+mac80211 will start checking whether the BSS membership selectors
+present in the supported rates set are supported by the local station.
+Add the appropriate options so that the check is bypassed when
+implemented on newer kernels.
+
+Signed-off-by: Benjamin Berg <benjamin.berg@intel.com>
+Reviewed-by: Andrei Otcheretianski <andrei.otcheretianski@intel.com>
+---
+ tests/hwsim/test_ap_ht.py  | 22 ++++++++++++++--------
+ tests/hwsim/test_ap_vht.py | 12 ++++++++----
+ tests/hwsim/test_he.py     | 22 +++++++++++++---------
+ tests/hwsim/test_owe.py    | 14 ++++++++------
+ 4 files changed, 43 insertions(+), 27 deletions(-)
+
+diff --git a/tests/hwsim/test_ap_ht.py b/tests/hwsim/test_ap_ht.py
+index 4ae02234e..01e874fc8 100644
+--- a/tests/hwsim/test_ap_ht.py
++++ b/tests/hwsim/test_ap_ht.py
+@@ -871,11 +871,14 @@ def test_ap_require_ht(dev, apdev):
+               "require_ht": "1"}
+     hapd = hostapd.add_ap(apdev[0], params)
+ 
+-    dev[1].connect("require-ht", key_mgmt="NONE", scan_freq="2412",
+-                   disable_ht="1", wait_connect=False)
++    wpas = WpaSupplicant(global_iface='/tmp/wpas-wlan5')
++    wpas.interface_add("wlan5", drv_params="extra_bss_membership_selectors=127")
++
++    wpas.connect("require-ht", key_mgmt="NONE", scan_freq="2412",
++                 disable_ht="1", wait_connect=False)
+     dev[0].connect("require-ht", key_mgmt="NONE", scan_freq="2412")
+-    ev = dev[1].wait_event(["CTRL-EVENT-ASSOC-REJECT"])
+-    dev[1].request("DISCONNECT")
++    ev = wpas.wait_event(["CTRL-EVENT-ASSOC-REJECT"])
++    wpas.request("DISCONNECT")
+     if ev is None:
+         raise Exception("Association rejection timed out")
+     if "status_code=27" not in ev:
+@@ -912,11 +915,14 @@ def test_ap_require_ht_limited_rates(dev, apdev):
+               "require_ht": "1"}
+     hapd = hostapd.add_ap(apdev[0], params)
+ 
+-    dev[1].connect("require-ht", key_mgmt="NONE", scan_freq="2412",
+-                   disable_ht="1", wait_connect=False)
++    wpas = WpaSupplicant(global_iface='/tmp/wpas-wlan5')
++    wpas.interface_add("wlan5", drv_params="extra_bss_membership_selectors=127")
++
++    wpas.connect("require-ht", key_mgmt="NONE", scan_freq="2412",
++                 disable_ht="1", wait_connect=False)
+     dev[0].connect("require-ht", key_mgmt="NONE", scan_freq="2412")
+-    ev = dev[1].wait_event(["CTRL-EVENT-ASSOC-REJECT"])
+-    dev[1].request("DISCONNECT")
++    ev = wpas.wait_event(["CTRL-EVENT-ASSOC-REJECT"])
++    wpas.request("DISCONNECT")
+     if ev is None:
+         raise Exception("Association rejection timed out")
+     if "status_code=27" not in ev:
+diff --git a/tests/hwsim/test_ap_vht.py b/tests/hwsim/test_ap_vht.py
+index 5ba0227e7..88ea1dd97 100644
+--- a/tests/hwsim/test_ap_vht.py
++++ b/tests/hwsim/test_ap_vht.py
+@@ -211,17 +211,21 @@ def test_ap_vht80_params(dev, apdev):
+                   "require_vht": "1"}
+         hapd = hostapd.add_ap(apdev[0], params)
+ 
+-        dev[1].connect("vht", key_mgmt="NONE", scan_freq="5180",
+-                       disable_vht="1", wait_connect=False)
++        wpas = WpaSupplicant(global_iface='/tmp/wpas-wlan5')
++        wpas.interface_add("wlan5",
++                           drv_params="extra_bss_membership_selectors=126")
++
++        wpas.connect("vht", key_mgmt="NONE", scan_freq="5180",
++                     disable_vht="1", wait_connect=False)
+         dev[0].connect("vht", key_mgmt="NONE", scan_freq="5180")
+         dev[2].connect("vht", key_mgmt="NONE", scan_freq="5180",
+                        disable_sgi="1")
+-        ev = dev[1].wait_event(["CTRL-EVENT-ASSOC-REJECT"])
++        ev = wpas.wait_event(["CTRL-EVENT-ASSOC-REJECT"])
+         if ev is None:
+             raise Exception("Association rejection timed out")
+         if "status_code=104" not in ev:
+             raise Exception("Unexpected rejection status code")
+-        dev[1].request("DISCONNECT")
++        wpas.request("DISCONNECT")
+         hwsim_utils.test_connectivity(dev[0], hapd)
+         sta0 = hapd.get_sta(dev[0].own_addr())
+         sta2 = hapd.get_sta(dev[2].own_addr())
+diff --git a/tests/hwsim/test_he.py b/tests/hwsim/test_he.py
+index 917313fee..9c4cfa4be 100644
+--- a/tests/hwsim/test_he.py
++++ b/tests/hwsim/test_he.py
+@@ -327,21 +327,25 @@ def test_he80_params(dev, apdev):
+                   "he_rts_threshold":"1"}
+         hapd = hostapd.add_ap(apdev[0], params)
+ 
+-        dev[1].connect("he", key_mgmt="NONE", scan_freq="5180",
+-                       disable_vht="1", wait_connect=False)
++        wpas = WpaSupplicant(global_iface='/tmp/wpas-wlan5')
++        wpas.interface_add("wlan5",
++                           drv_params="extra_bss_membership_selectors=126,122")
++
++        wpas.connect("he", key_mgmt="NONE", scan_freq="5180",
++                     disable_vht="1", wait_connect=False)
+         dev[0].connect("he", key_mgmt="NONE", scan_freq="5180")
+         dev[2].connect("he", key_mgmt="NONE", scan_freq="5180",
+                        disable_sgi="1")
+-        ev = dev[1].wait_event(["CTRL-EVENT-ASSOC-REJECT"])
++        ev = wpas.wait_event(["CTRL-EVENT-ASSOC-REJECT"])
+         if ev is None:
+             raise Exception("Association rejection timed out")
+         if "status_code=104" not in ev:
+             raise Exception("Unexpected rejection status code")
+-        dev[1].request("DISCONNECT")
+-        dev[1].request("REMOVE_NETWORK all")
+-        dev[1].dump_monitor()
+-        dev[1].connect("he", key_mgmt="NONE", scan_freq="5180",
+-                       disable_he="1", wait_connect=False)
++        wpas.request("DISCONNECT")
++        wpas.request("REMOVE_NETWORK all")
++        wpas.dump_monitor()
++        wpas.connect("he", key_mgmt="NONE", scan_freq="5180",
++                     disable_he="1", wait_connect=False)
+         hwsim_utils.test_connectivity(dev[0], hapd)
+         sta0 = hapd.get_sta(dev[0].own_addr())
+         sta2 = hapd.get_sta(dev[2].own_addr())
+@@ -351,7 +355,7 @@ def test_he80_params(dev, apdev):
+             raise Exception("dev[0] did not support SGI")
+         if capab2 & 0x60 != 0:
+             raise Exception("dev[2] claimed support for SGI")
+-        ev = dev[1].wait_event(["CTRL-EVENT-ASSOC-REJECT"])
++        ev = wpas.wait_event(["CTRL-EVENT-ASSOC-REJECT"])
+         if ev is None:
+             raise Exception("Association rejection timed out (2)")
+         if "status_code=124" not in ev:
+diff --git a/tests/hwsim/test_owe.py b/tests/hwsim/test_owe.py
+index e86eed0d3..6628150d3 100644
+--- a/tests/hwsim/test_owe.py
++++ b/tests/hwsim/test_owe.py
+@@ -778,11 +778,13 @@ def test_owe_assoc_reject(dev, apdev):
+     bssid = hapd.own_addr()
+ 
+     # First, reject two associations with HT-required (i.e., not OWE related)
+-    dev[0].scan_for_bss(bssid, freq="2412")
+-    dev[0].connect("owe", key_mgmt="OWE", ieee80211w="2",
+-                   disable_ht="1", scan_freq="2412", wait_connect=False)
++    wpas = WpaSupplicant(global_iface='/tmp/wpas-wlan5')
++    wpas.interface_add("wlan5", drv_params="extra_bss_membership_selectors=127")
++    wpas.scan_for_bss(bssid, freq="2412")
++    wpas.connect("owe", key_mgmt="OWE", ieee80211w="2",
++                 disable_ht="1", scan_freq="2412", wait_connect=False)
+     for i in range(0, 2):
+-        ev = dev[0].wait_event(["CTRL-EVENT-ASSOC-REJECT"], timeout=10)
++        ev = wpas.wait_event(["CTRL-EVENT-ASSOC-REJECT"], timeout=10)
+         if ev is None:
+             raise Exception("Association rejection not reported")
+ 
+@@ -790,8 +792,8 @@ def test_owe_assoc_reject(dev, apdev):
+     # attempt instead of having moved to testing another group.
+     hapd.set("require_ht", "0")
+     for i in range(0, 2):
+-        ev = dev[0].wait_event(["CTRL-EVENT-ASSOC-REJECT",
+-                                "CTRL-EVENT-CONNECTED"], timeout=10)
++        ev = wpas.wait_event(["CTRL-EVENT-ASSOC-REJECT",
++                             "CTRL-EVENT-CONNECTED"], timeout=10)
+         if ev is None:
+             raise Exception("Association result not reported")
+         if "CTRL-EVENT-CONNECTED" in ev:
+-- 
+2.43.0
+

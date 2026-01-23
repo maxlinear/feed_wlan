@@ -1,0 +1,173 @@
+From 9304e899f093b8e549c0fd88bd401dab279f1580 Mon Sep 17 00:00:00 2001
+From: Shivani Baranwal <quic_shivbara@quicinc.com>
+Date: Mon, 5 Aug 2024 02:43:59 +0530
+Subject: [PATCH] PASN: Store PASN authentication frames 1 and 2
+
+These are needed for P2P2 support.
+
+Signed-off-by: Shivani Baranwal <quic_shivbara@quicinc.com>
+---
+ src/ap/ieee802_11.c              | 11 +++++++++--
+ src/pasn/pasn_common.c           |  1 +
+ src/pasn/pasn_common.h           |  1 +
+ src/pasn/pasn_initiator.c        | 15 +++++++++++++--
+ src/pasn/pasn_responder.c        |  4 +++-
+ wpa_supplicant/pasn_supplicant.c |  3 +++
+ 6 files changed, 30 insertions(+), 5 deletions(-)
+
+diff --git a/src/ap/ieee802_11.c b/src/ap/ieee802_11.c
+index 10b59348f..3d5674d2f 100644
+--- a/src/ap/ieee802_11.c
++++ b/src/ap/ieee802_11.c
+@@ -2507,6 +2507,8 @@ static void pasn_fils_auth_resp(struct hostapd_data *hapd,
+ 	fils->erp_resp = erp_resp;
+ 	ret = handle_auth_pasn_resp(sta->pasn, hapd->own_addr, sta->addr, NULL,
+ 				    WLAN_STATUS_SUCCESS);
++	wpabuf_free(pasn->frame);
++	pasn->frame = NULL;
+ 	fils->erp_resp = NULL;
+ 
+ 	if (ret) {
+@@ -2820,6 +2822,8 @@ static void handle_auth_pasn(struct hostapd_data *hapd, struct sta_info *sta,
+ 			     const struct ieee80211_mgmt *mgmt, size_t len,
+ 			     u16 trans_seq, u16 status)
+ {
++	int ret;
++
+ 	if (hapd->conf->wpa != WPA_PROTO_RSN) {
+ 		wpa_printf(MSG_INFO, "PASN: RSN is not configured");
+ 		return;
+@@ -2851,8 +2855,11 @@ static void handle_auth_pasn(struct hostapd_data *hapd, struct sta_info *sta,
+ 		hapd_initialize_pasn(hapd, sta);
+ 
+ 		hapd_pasn_update_params(hapd, sta, mgmt, len);
+-		if (handle_auth_pasn_1(sta->pasn, hapd->own_addr,
+-				       sta->addr, mgmt, len, false) < 0)
++		ret = handle_auth_pasn_1(sta->pasn, hapd->own_addr, sta->addr,
++					 mgmt, len, false);
++		wpabuf_free(sta->pasn->frame);
++		sta->pasn->frame = NULL;
++		if (ret < 0)
+ 			ap_free_sta(hapd, sta);
+ 	} else if (trans_seq == 3) {
+ 		if (!sta->pasn) {
+diff --git a/src/pasn/pasn_common.c b/src/pasn/pasn_common.c
+index b5dd1758d..8a42e0941 100644
+--- a/src/pasn/pasn_common.c
++++ b/src/pasn/pasn_common.c
+@@ -33,6 +33,7 @@ void pasn_data_deinit(struct pasn_data *pasn)
+ 	if (!pasn)
+ 		return;
+ 	os_free(pasn->rsnxe_ie);
++	wpabuf_free(pasn->frame);
+ 	bin_clear_free(pasn, sizeof(struct pasn_data));
+ }
+ 
+diff --git a/src/pasn/pasn_common.h b/src/pasn/pasn_common.h
+index 4a5baf0ca..449746f0f 100644
+--- a/src/pasn/pasn_common.h
++++ b/src/pasn/pasn_common.h
+@@ -130,6 +130,7 @@ struct pasn_data {
+ 	struct os_reltime last_comeback_key_update;
+ 	u16 comeback_idx;
+ 	u16 *comeback_pending_idx;
++	struct wpabuf *frame;
+ 
+ 	/**
+ 	 * send_mgmt - Function handler to transmit a Management frame
+diff --git a/src/pasn/pasn_initiator.c b/src/pasn/pasn_initiator.c
+index 432e0c840..b0b901916 100644
+--- a/src/pasn/pasn_initiator.c
++++ b/src/pasn/pasn_initiator.c
+@@ -823,6 +823,9 @@ void wpa_pasn_reset(struct pasn_data *pasn)
+ 		os_free((u8 *) pasn->extra_ies);
+ 		pasn->extra_ies = NULL;
+ 	}
++
++	wpabuf_free(pasn->frame);
++	pasn->frame = NULL;
+ }
+ 
+ 
+@@ -993,16 +996,20 @@ static int wpas_pasn_send_auth_1(struct pasn_data *pasn, const u8 *own_addr,
+ 		goto fail;
+ 	}
+ 
++	wpabuf_free(pasn->frame);
++	pasn->frame = NULL;
++
+ 	ret = pasn->send_mgmt(pasn->cb_ctx,
+ 			      wpabuf_head(frame), wpabuf_len(frame), 0,
+ 			      pasn->freq, 1000);
+ 
+-	wpabuf_free(frame);
+ 	if (ret) {
+ 		wpa_printf(MSG_DEBUG, "PASN: Failed sending 1st auth frame");
++		wpabuf_free(frame);
+ 		goto fail;
+ 	}
+ 
++	pasn->frame = frame;
+ 	return 0;
+ 
+ fail:
+@@ -1403,15 +1410,19 @@ int wpa_pasn_auth_rx(struct pasn_data *pasn, const u8 *data, size_t len,
+ 		goto fail;
+ 	}
+ 
++	wpabuf_free(pasn->frame);
++	pasn->frame = NULL;
++
+ 	ret = pasn->send_mgmt(pasn->cb_ctx,
+ 			      wpabuf_head(frame), wpabuf_len(frame), 0,
+ 			      pasn->freq, 100);
+-	wpabuf_free(frame);
+ 	if (ret) {
+ 		wpa_printf(MSG_DEBUG, "PASN: Failed sending 3st auth frame");
++		wpabuf_free(frame);
+ 		goto fail;
+ 	}
+ 
++	pasn->frame = frame;
+ 	wpa_printf(MSG_DEBUG, "PASN: Success sending last frame. Store PTK");
+ 
+ 	pasn->status = WLAN_STATUS_SUCCESS;
+diff --git a/src/pasn/pasn_responder.c b/src/pasn/pasn_responder.c
+index 12d00ef3e..8e2049289 100644
+--- a/src/pasn/pasn_responder.c
++++ b/src/pasn/pasn_responder.c
+@@ -639,6 +639,8 @@ done:
+ 	wpa_printf(MSG_DEBUG,
+ 		   "PASN: Building frame 2: success; resp STA=" MACSTR,
+ 		   MAC2STR(peer_addr));
++	wpabuf_free(pasn->frame);
++	pasn->frame = NULL;
+ 
+ 	ret = pasn->send_mgmt(pasn->cb_ctx, wpabuf_head_u8(buf),
+ 			      wpabuf_len(buf), 0, pasn->freq, 0);
+@@ -646,7 +648,7 @@ done:
+ 		wpa_printf(MSG_INFO, "send_auth_reply: Send failed");
+ 
+ 	wpabuf_free(rsn_buf);
+-	wpabuf_free(buf);
++	pasn->frame = buf;
+ 	return ret;
+ fail:
+ 	wpabuf_free(wrapped_data_buf);
+diff --git a/wpa_supplicant/pasn_supplicant.c b/wpa_supplicant/pasn_supplicant.c
+index 89edad49e..a46fe46b1 100644
+--- a/wpa_supplicant/pasn_supplicant.c
++++ b/wpa_supplicant/pasn_supplicant.c
+@@ -806,6 +806,9 @@ int wpas_pasn_auth_rx(struct wpa_supplicant *wpa_s,
+ 	if (!wpa_s->pasn_auth_work)
+ 		return -2;
+ 
++	wpabuf_free(pasn->frame);
++	pasn->frame = NULL;
++
+ 	pasn_register_callbacks(pasn, wpa_s, wpas_pasn_send_mlme, NULL);
+ 	ret = wpa_pasn_auth_rx(pasn, (const u8 *) mgmt, len, &pasn_data);
+ 	if (ret == 0) {
+-- 
+2.43.0
+

@@ -1,0 +1,30 @@
+From 9297bf21f5b66450f9040684a5f3ae3d96984d0c Mon Sep 17 00:00:00 2001
+From: Jouni Malinen <j@w1.fi>
+Date: Sun, 22 Dec 2024 12:19:15 +0200
+Subject: [PATCH] tests: Stop sigma_dut stated hostapd based on
+ ap_reset_default
+
+Previously, this was done only based on ap_config_commit, but sigma_dut
+might start hostapd even without that command, e.g., when using DPP.
+
+Signed-off-by: Jouni Malinen <j@w1.fi>
+---
+ tests/hwsim/test_sigma_dut.py | 2 ++
+ 1 file changed, 2 insertions(+)
+
+diff --git a/tests/hwsim/test_sigma_dut.py b/tests/hwsim/test_sigma_dut.py
+index 6291a52b6..99d4ac1b2 100644
+--- a/tests/hwsim/test_sigma_dut.py
++++ b/tests/hwsim/test_sigma_dut.py
+@@ -90,6 +90,8 @@ class SigmaDut:
+     def run_cmd(self, cmd, port=9000, timeout=2, dump_dev=None):
+         if cmd.startswith('ap_config_commit'):
+             self.ap = True
++        if cmd.startswith('ap_reset_default'):
++            self.ap = True
+         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM,
+                              socket.IPPROTO_TCP)
+         sock.settimeout(1 if dump_dev else timeout)
+-- 
+2.43.0
+

@@ -1,0 +1,88 @@
+From f3a8e4284681502e87059c9bb9ab17e4f326cbb9 Mon Sep 17 00:00:00 2001
+From: Benjamin Berg <benjamin.berg@intel.com>
+Date: Thu, 19 Sep 2024 12:19:16 +0200
+Subject: [PATCH] WNM: Fix pre-scan rejection heuristic for BTM handling
+
+The idea was to only accept the cached scan results if the new target is
+reasonably good. To avoid having to write a custom quality logic, a call
+to wpa_supplicant_need_to_roam_within_ess() was used. However, the
+intention was to swap the parameters and check whether we would want to
+roam from the new BSS back to the current one.
+
+Fix the heuristic to match the comment. To do that, we need to add a
+parameter to not poll the current signal level as that would result in
+comparing the current BSS with itself within the function.
+
+Fixes: 20ed289a785c ("WNM: Clean up old scan data processing")
+Signed-off-by: Benjamin Berg <benjamin.berg@intel.com>
+---
+ wpa_supplicant/events.c           | 7 ++++---
+ wpa_supplicant/wnm_sta.c          | 4 ++--
+ wpa_supplicant/wpa_supplicant_i.h | 3 ++-
+ 3 files changed, 8 insertions(+), 6 deletions(-)
+
+diff --git a/wpa_supplicant/events.c b/wpa_supplicant/events.c
+index bab214572..2f57d6b48 100644
+--- a/wpa_supplicant/events.c
++++ b/wpa_supplicant/events.c
+@@ -2173,7 +2173,8 @@ static int wpas_evaluate_band_score(int frequency)
+ 
+ int wpa_supplicant_need_to_roam_within_ess(struct wpa_supplicant *wpa_s,
+ 					   struct wpa_bss *current_bss,
+-					   struct wpa_bss *selected)
++					   struct wpa_bss *selected,
++					   bool poll_current)
+ {
+ 	int min_diff, diff;
+ 	int cur_band_score, sel_band_score;
+@@ -2228,7 +2229,7 @@ int wpa_supplicant_need_to_roam_within_ess(struct wpa_supplicant *wpa_s,
+ 	 * scan results may be a bit old, since we can very quickly get fresh
+ 	 * information about our currently associated AP.
+ 	 */
+-	if (wpa_drv_signal_poll(wpa_s, &si) == 0 &&
++	if (poll_current && wpa_drv_signal_poll(wpa_s, &si) == 0 &&
+ 	    (si.data.avg_beacon_signal || si.data.avg_signal)) {
+ 		/*
+ 		 * Normalize avg_signal to the RSSI over 20 MHz, as the
+@@ -2401,7 +2402,7 @@ static int wpa_supplicant_need_to_roam(struct wpa_supplicant *wpa_s,
+ 
+ #ifndef CONFIG_NO_ROAMING
+ 	return wpa_supplicant_need_to_roam_within_ess(wpa_s, current_bss,
+-						      selected);
++						      selected, true);
+ #else /* CONFIG_NO_ROAMING */
+ 	return 0;
+ #endif /* CONFIG_NO_ROAMING */
+diff --git a/wpa_supplicant/wnm_sta.c b/wpa_supplicant/wnm_sta.c
+index 67e8df5f5..b5310f026 100644
+--- a/wpa_supplicant/wnm_sta.c
++++ b/wpa_supplicant/wnm_sta.c
+@@ -1193,9 +1193,9 @@ int wnm_scan_process(struct wpa_supplicant *wpa_s, bool pre_scan_check)
+ 
+ #ifndef CONFIG_NO_ROAMING
+ 		if (wpa_s->current_bss && bss != wpa_s->current_bss &&
+-		    wpa_supplicant_need_to_roam_within_ess(wpa_s,
++		    wpa_supplicant_need_to_roam_within_ess(wpa_s, bss,
+ 							   wpa_s->current_bss,
+-							   bss))
++							   false))
+ 			return 0;
+ #endif /* CONFIG_NO_ROAMING */
+ 	}
+diff --git a/wpa_supplicant/wpa_supplicant_i.h b/wpa_supplicant/wpa_supplicant_i.h
+index b077ee9f9..4fa463dc5 100644
+--- a/wpa_supplicant/wpa_supplicant_i.h
++++ b/wpa_supplicant/wpa_supplicant_i.h
+@@ -1888,7 +1888,8 @@ void wpa_supplicant_update_channel_list(struct wpa_supplicant *wpa_s,
+ 					struct channel_list_changed *info);
+ int wpa_supplicant_need_to_roam_within_ess(struct wpa_supplicant *wpa_s,
+ 					   struct wpa_bss *current_bss,
+-					   struct wpa_bss *seleceted);
++					   struct wpa_bss *selected,
++					   bool poll_current);
+ void wpas_reset_mlo_info(struct wpa_supplicant *wpa_s);
+ 
+ /* eap_register.c */
+-- 
+2.43.0
+

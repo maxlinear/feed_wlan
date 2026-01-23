@@ -1,0 +1,118 @@
+From 6a15737b3d6bb587a1ca57c904bd0922dce8cec0 Mon Sep 17 00:00:00 2001
+From: Jouni Malinen <j@w1.fi>
+Date: Sat, 1 Mar 2025 20:24:13 +0200
+Subject: [PATCH] OpenSSL: Allow MD5 if FIPS mode or FIPS provider is set
+ externally
+
+Systemwide OpenSSL configuration might be used to enable FIPS mode or
+loading of only the FIPS provider. These would result in MD5 not being
+available and that would break quite a few protocols that are used with
+Wi-Fi. Make MD5 available in such cases for builds without CONFIG_FIPS=y
+by disabling FIPS mode in OpenSSL and explicitly loading and using the
+default provider instead of the fips provider for MD5 caes.
+
+Signed-off-by: Jouni Malinen <j@w1.fi>
+---
+ src/crypto/crypto_openssl.c | 49 ++++++++++++++++++++++++++++++++++++-
+ 1 file changed, 48 insertions(+), 1 deletion(-)
+
+diff --git a/src/crypto/crypto_openssl.c b/src/crypto/crypto_openssl.c
+index e79fd6e83..b4ac2a934 100644
+--- a/src/crypto/crypto_openssl.c
++++ b/src/crypto/crypto_openssl.c
+@@ -211,6 +211,7 @@ static void openssl_disable_fips(void)
+ 
+ #if OPENSSL_VERSION_NUMBER >= 0x30000000L
+ static OSSL_PROVIDER *openssl_legacy_provider = NULL;
++static OSSL_PROVIDER *openssl_default_provider = NULL;
+ #endif /* OpenSSL version >= 3.0 */
+ 
+ void openssl_load_legacy_provider(void)
+@@ -235,6 +236,36 @@ static void openssl_unload_legacy_provider(void)
+ }
+ 
+ 
++static void openssl_load_default_provider_if_fips(void)
++{
++#if OPENSSL_VERSION_NUMBER >= 0x30000000L
++	if (openssl_default_provider)
++		return;
++
++	if (!OSSL_PROVIDER_available(NULL, "fips"))
++		return;
++
++	wpa_printf(MSG_DEBUG,
++		   "OpenSSL: Load default provider to replace fips provider when needed");
++	openssl_default_provider = OSSL_PROVIDER_try_load(NULL, "default", 1);
++	if (!openssl_default_provider)
++		wpa_printf(MSG_DEBUG,
++			   "OpenSSL: Failed to load default provider");
++#endif /* OpenSSL version >= 3.0 */
++}
++
++
++static void openssl_unload_default_provider(void)
++{
++#if OPENSSL_VERSION_NUMBER >= 0x30000000L
++	if (openssl_default_provider) {
++		OSSL_PROVIDER_unload(openssl_default_provider);
++		openssl_default_provider = NULL;
++	}
++#endif /* OpenSSL version >= 3.0 */
++}
++
++
+ #if OPENSSL_VERSION_NUMBER < 0x30000000L
+ 
+ static BIGNUM * get_group5_prime(void)
+@@ -342,6 +373,13 @@ static int openssl_digest_vector(const EVP_MD *type, size_t num_elem,
+ 
+ #ifndef CONFIG_FIPS
+ 
++static void openssl_need_md5(void)
++{
++	openssl_disable_fips();
++	openssl_load_default_provider_if_fips();
++}
++
++
+ int md4_vector(size_t num_elem, const u8 *addr[], const size_t *len, u8 *mac)
+ {
+ 	openssl_disable_fips();
+@@ -428,6 +466,7 @@ out:
+ 
+ int md5_vector(size_t num_elem, const u8 *addr[], const size_t *len, u8 *mac)
+ {
++	openssl_need_md5();
+ 	return openssl_digest_vector(EVP_md5(), num_elem, addr, len, mac);
+ }
+ 
+@@ -1554,11 +1593,18 @@ static int openssl_hmac_vector(char *digest, const u8 *key,
+ 	EVP_MAC_CTX *ctx;
+ 	size_t i, mlen;
+ 	int res;
++	const char *property_query = NULL;
+ 
+ 	if (TEST_FAIL())
+ 		return -1;
+ 
+-	hmac = EVP_MAC_fetch(NULL, "HMAC", NULL);
++#ifndef CONFIG_FIPS
++	if (os_strcmp(digest, "MD5") == 0) {
++		openssl_need_md5();
++		property_query = "provider!=fips";
++	}
++#endif /* CONFIG_FIPS */
++	hmac = EVP_MAC_fetch(NULL, "HMAC", property_query);
+ 	if (!hmac) {
+ 		wpa_printf(MSG_INFO, "OpenSSL: EVP_MAC_fetch(HMAC) failed: %s",
+ 			   ERR_error_string(ERR_get_error(), NULL));
+@@ -5634,4 +5680,5 @@ struct wpabuf * hpke_base_open(enum hpke_kem_id kem_id,
+ void crypto_unload(void)
+ {
+ 	openssl_unload_legacy_provider();
++	openssl_unload_default_provider();
+ }
+-- 
+2.43.0
+

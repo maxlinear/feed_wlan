@@ -1,0 +1,112 @@
+From bcab29a78c7792a89fbc0e25b4b597c06b699dfa Mon Sep 17 00:00:00 2001
+From: Shivani Baranwal <quic_shivbara@quicinc.com>
+Date: Mon, 5 Aug 2024 15:03:03 +0530
+Subject: [PATCH] P2P2: Device Identity Key generation and storage in
+ configuration
+
+Generate a random device identity key and save it to the config file.
+Use the same identity key from config to derive DIRA for NAN SDF frames.
+
+Signed-off-by: Shivani Baranwal <quic_shivbara@quicinc.com>
+---
+ wpa_supplicant/config.c         |  3 +++
+ wpa_supplicant/config.h         |  6 ++++++
+ wpa_supplicant/config_file.c    |  4 ++++
+ wpa_supplicant/p2p_supplicant.c | 28 ++++++++++++++++++++++++++++
+ 4 files changed, 41 insertions(+)
+
+diff --git a/wpa_supplicant/config.c b/wpa_supplicant/config.c
+index b02b694a3..77253e10a 100644
+--- a/wpa_supplicant/config.c
++++ b/wpa_supplicant/config.c
+@@ -3095,6 +3095,7 @@ void wpa_config_free(struct wpa_config *config)
+ 	os_free(config->dpp_mud_url);
+ 	os_free(config->dpp_extra_conf_req_name);
+ 	os_free(config->dpp_extra_conf_req_value);
++	wpabuf_free(config->dik);
+ 
+ 	os_free(config);
+ }
+@@ -5486,6 +5487,8 @@ static const struct global_parse_data global_fields[] = {
+ 	{ FUNC(p2p_device_persistent_mac_addr), 0 },
+ 	{ INT(p2p_interface_random_mac_addr), 0 },
+ 	{ INT(p2p_6ghz_disable), 0 },
++	{ INT(dik_cipher), 0},
++	{ BIN(dik), 0 },
+ #endif /* CONFIG_P2P */
+ 	{ FUNC(country), CFG_CHANGED_COUNTRY },
+ 	{ INT(bss_max_count), 0 },
+diff --git a/wpa_supplicant/config.h b/wpa_supplicant/config.h
+index d74b5c455..979f083da 100644
+--- a/wpa_supplicant/config.h
++++ b/wpa_supplicant/config.h
+@@ -1814,6 +1814,12 @@ struct wpa_config {
+ 
+ 	int mld_force_single_link;
+ #endif /* CONFIG_TESTING_OPTIONS */
++
++	/* Cipher version type */
++	int dik_cipher;
++
++	/* DevIK */
++	struct wpabuf *dik;
+ };
+ 
+ 
+diff --git a/wpa_supplicant/config_file.c b/wpa_supplicant/config_file.c
+index 782bd7f85..20b309a7f 100644
+--- a/wpa_supplicant/config_file.c
++++ b/wpa_supplicant/config_file.c
+@@ -1629,6 +1629,10 @@ static void wpa_config_write_global(FILE *f, struct wpa_config *config)
+ #endif /* CONFIG_TESTING_OPTIONS */
+ 	if (config->ft_prepend_pmkid)
+ 		fprintf(f, "ft_prepend_pmkid=%d\n", config->ft_prepend_pmkid);
++	if (config->dik) {
++		fprintf(f, "dik_cipher=%d\n", config->dik_cipher);
++		write_global_bin(f, "dik", config->dik);
++	}
+ }
+ 
+ #endif /* CONFIG_NO_CONFIG_WRITE */
+diff --git a/wpa_supplicant/p2p_supplicant.c b/wpa_supplicant/p2p_supplicant.c
+index 2df2d108b..cbb63e5f2 100644
+--- a/wpa_supplicant/p2p_supplicant.c
++++ b/wpa_supplicant/p2p_supplicant.c
+@@ -5057,6 +5057,34 @@ int wpas_p2p_init(struct wpa_global *global, struct wpa_supplicant *wpa_s)
+ 	else
+ 		p2p.passphrase_len = 8;
+ 
++	if (wpa_s->conf->dik &&
++	    wpabuf_len(wpa_s->conf->dik) <= DEVICE_IDENTITY_KEY_MAX_LEN) {
++		p2p.pairing_config.dik_cipher = wpa_s->conf->dik_cipher;
++		p2p.pairing_config.dik_len = wpabuf_len(wpa_s->conf->dik);
++		os_memcpy(p2p.pairing_config.dik_data,
++			  wpabuf_head(wpa_s->conf->dik),
++			  p2p.pairing_config.dik_len);
++	} else {
++		p2p.pairing_config.dik_cipher = DIRA_CIPHER_VERSION_128;
++		p2p.pairing_config.dik_len = DEVICE_IDENTITY_KEY_LEN;
++		if (os_get_random(p2p.pairing_config.dik_data,
++				  p2p.pairing_config.dik_len) < 0)
++			return -1;
++
++		wpa_s->conf->dik =
++			wpabuf_alloc_copy(p2p.pairing_config.dik_data,
++					  p2p.pairing_config.dik_len);
++		if (!wpa_s->conf->dik)
++			return -1;
++
++		wpa_s->conf->dik_cipher = p2p.pairing_config.dik_cipher;
++
++		if (wpa_s->conf->update_config &&
++		    wpa_config_write(wpa_s->confname, wpa_s->conf))
++			wpa_printf(MSG_DEBUG,
++				   "P2P: Failed to update configuration");
++	}
++
+ 	global->p2p = p2p_init(&p2p);
+ 	if (global->p2p == NULL)
+ 		return -1;
+-- 
+2.43.0
+

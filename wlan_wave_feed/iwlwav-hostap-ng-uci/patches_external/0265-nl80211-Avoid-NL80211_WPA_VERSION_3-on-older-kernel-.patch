@@ -1,0 +1,39 @@
+From 5589d62c57d97307c0682aa6654962eb15880bee Mon Sep 17 00:00:00 2001
+From: Benjamin Berg <benjamin.berg@intel.com>
+Date: Wed, 17 Jan 2024 20:04:28 +0100
+Subject: [PATCH] nl80211: Avoid NL80211_WPA_VERSION_3 on older kernel versions
+
+NL80211_WPA_VERSION_3 was only added in kernel 5.2 so it should not be
+set for older kernel versions.  There is no direct way to check if the
+value is supported. However, we can use the new infrastructure to check
+whether the kernel has the NL80211_ATTR_SAE_PASSWORD attribute. It is
+related and was added at the same time.
+
+Fixes: 6cc78b3945d3 ("nl80211: Set NL80211_WPA_VERSION_2 vs. _3 based on AKM")
+Signed-off-by: Benjamin Berg <benjamin.berg@intel.com>
+---
+ src/drivers/driver_nl80211.c | 8 +++++++-
+ 1 file changed, 7 insertions(+), 1 deletion(-)
+
+diff --git a/src/drivers/driver_nl80211.c b/src/drivers/driver_nl80211.c
+index 758d59722..fcac9cc04 100644
+--- a/src/drivers/driver_nl80211.c
++++ b/src/drivers/driver_nl80211.c
+@@ -6854,7 +6854,13 @@ static int nl80211_connect_common(struct wpa_driver_nl80211_data *drv,
+ 		if (params->wpa_proto & WPA_PROTO_WPA)
+ 			ver |= NL80211_WPA_VERSION_1;
+ 		if (params->wpa_proto & WPA_PROTO_RSN) {
+-			if (wpa_key_mgmt_sae(params->key_mgmt_suite))
++			/*
++			 * NL80211_ATTR_SAE_PASSWORD is related and was added
++			 * at the same time as NL80211_WPA_VERSION_3.
++			 */
++			if (nl80211_attr_supported(drv,
++						   NL80211_ATTR_SAE_PASSWORD) &&
++			    wpa_key_mgmt_sae(params->key_mgmt_suite))
+ 				ver |= NL80211_WPA_VERSION_3;
+ 			else
+ 				ver |= NL80211_WPA_VERSION_2;
+-- 
+2.43.0
+

@@ -1,0 +1,50 @@
+From d9bb64914a9ef4e4da76413c6ca945b381547773 Mon Sep 17 00:00:00 2001
+From: Shivam Rai <quic_shivamr@quicinc.com>
+Date: Mon, 5 Aug 2024 10:20:10 +0530
+Subject: [PATCH] PASN: Add a function to configure noauth variable
+
+When the PASN implementation is used as a library for Wi-Fi Aware
+applications there is need to allow the Responder to set the noauth
+parameter to support opportunistic pairing method using PASN AKMP. Add
+pasn_set_noauth() to address this.
+
+Signed-off-by: Jouni Malinen <quic_jouni@quicinc.com>
+---
+ src/pasn/pasn_common.c | 8 ++++++++
+ src/pasn/pasn_common.h | 1 +
+ 2 files changed, 9 insertions(+)
+
+diff --git a/src/pasn/pasn_common.c b/src/pasn/pasn_common.c
+index e2c668136..331a65b70 100644
+--- a/src/pasn/pasn_common.c
++++ b/src/pasn/pasn_common.c
+@@ -192,6 +192,14 @@ int pasn_set_extra_ies(struct pasn_data *pasn, const u8 *extra_ies,
+ }
+ 
+ 
++void pasn_set_noauth(struct pasn_data *pasn, bool noauth)
++{
++	if (!pasn)
++		return;
++	pasn->noauth = noauth;
++}
++
++
+ int pasn_get_akmp(struct pasn_data *pasn)
+ {
+ 	if (!pasn)
+diff --git a/src/pasn/pasn_common.h b/src/pasn/pasn_common.h
+index bb54175b2..54792f43e 100644
+--- a/src/pasn/pasn_common.h
++++ b/src/pasn/pasn_common.h
+@@ -208,6 +208,7 @@ void pasn_set_responder_pmksa(struct pasn_data *pasn,
+ int pasn_set_pt(struct pasn_data *pasn, struct sae_pt *pt);
+ 
+ /* Responder */
++void pasn_set_noauth(struct pasn_data *pasn, bool noauth);
+ void pasn_set_password(struct pasn_data *pasn, const char *password);
+ void pasn_set_wpa_key_mgmt(struct pasn_data *pasn, int key_mgmt);
+ void pasn_set_rsn_pairwise(struct pasn_data *pasn, int rsn_pairwise);
+-- 
+2.43.0
+

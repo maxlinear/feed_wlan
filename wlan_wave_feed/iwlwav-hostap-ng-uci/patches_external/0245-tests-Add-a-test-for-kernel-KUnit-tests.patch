@@ -1,0 +1,52 @@
+From c0674fb4f43e20ddaadc548b4a5763889fb2f125 Mon Sep 17 00:00:00 2001
+From: Johannes Berg <johannes.berg@intel.com>
+Date: Wed, 3 Jan 2024 14:58:21 +0100
+Subject: [PATCH] tests: Add a test for kernel KUnit tests
+
+Add a test that runs the cfg80211/mac80211 kunit tests (they must be
+built as modules to run at this point), and checks the results. The test
+is skipped if all the modules fail to load.
+
+Signed-off-by: Johannes Berg <johannes.berg@intel.com>
+---
+ tests/hwsim/test_kernel.py | 17 +++++++++++++++++
+ 1 file changed, 17 insertions(+)
+
+diff --git a/tests/hwsim/test_kernel.py b/tests/hwsim/test_kernel.py
+index d8bb3fb8b..df563ebd2 100644
+--- a/tests/hwsim/test_kernel.py
++++ b/tests/hwsim/test_kernel.py
+@@ -10,9 +10,11 @@ import hostapd
+ import binascii
+ import os, time
+ import struct
++import subprocess, re
+ from test_wnm import expect_ack
+ from tshark import run_tshark
+ from utils import clear_regdom, long_duration_test
++from utils import HwsimSkip
+ 
+ def _test_kernel_bss_leak(dev, apdev, deauth):
+     ssid = "test-bss-leak"
+@@ -148,3 +150,18 @@ def test_kernel_reg_disconnect(dev, apdev):
+     finally:
+         dev[0].request("DISCONNECT")
+         clear_regdom(hapd, dev)
++
++def test_kernel_kunit(dev, apdev):
++    """KUnit tests"""
++    modules = ('cfg80211-tests', 'mac80211-tests')
++    results = (subprocess.call(['modprobe', mod], stderr=subprocess.PIPE)
++               for mod in modules)
++
++    if all((r != 0 for r in results)):
++        raise HwsimSkip("KUnit tests not available")
++
++    dmesg = subprocess.check_output(['dmesg'])
++    fail_rx = re.compile(b'fail:[^0]')
++    for line in dmesg.split(b'\n'):
++        if fail_rx.search(line):
++            raise Exception(f'kunit test failed: {line.decode("utf-8")}')
+-- 
+2.43.0
+

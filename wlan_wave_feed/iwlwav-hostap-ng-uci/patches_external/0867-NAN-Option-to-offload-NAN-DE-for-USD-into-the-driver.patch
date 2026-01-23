@@ -1,0 +1,446 @@
+From 633e969311edebde833a661526911315a7ab7255 Mon Sep 17 00:00:00 2001
+From: Shivani Baranwal <quic_shivbara@quicinc.com>
+Date: Mon, 5 Aug 2024 15:02:59 +0530
+Subject: [PATCH] NAN: Option to offload NAN DE for USD into the driver
+
+Support implementation architecture where the NAN discovery engine is
+located in the driver/firmware instead of wpa_supplicant.
+
+Signed-off-by: Shivani Baranwal <quic_shivbara@quicinc.com>
+---
+ src/ap/nan_usd_ap.c       |  2 +-
+ src/common/nan_de.c       | 29 ++++++++++++---
+ src/common/nan_de.h       |  3 +-
+ src/drivers/driver.h      | 77 +++++++++++++++++++++++++++++++++++++++
+ wpa_supplicant/driver_i.h | 72 ++++++++++++++++++++++++++++++++++++
+ wpa_supplicant/nan_usd.c  | 39 +++++++++++++++++++-
+ 6 files changed, 213 insertions(+), 9 deletions(-)
+
+diff --git a/src/ap/nan_usd_ap.c b/src/ap/nan_usd_ap.c
+index 52a967a4e..70c6139fd 100644
+--- a/src/ap/nan_usd_ap.c
++++ b/src/ap/nan_usd_ap.c
+@@ -158,7 +158,7 @@ int hostapd_nan_usd_init(struct hostapd_data *hapd)
+ 	cb.subscribe_terminated = hostapd_nan_de_subscribe_terminated;
+ 	cb.receive = hostapd_nan_de_receive;
+ 
+-	hapd->nan_de = nan_de_init(hapd->own_addr, true, &cb);
++	hapd->nan_de = nan_de_init(hapd->own_addr, false, true, &cb);
+ 	if (!hapd->nan_de)
+ 		return -1;
+ 	return 0;
+diff --git a/src/common/nan_de.c b/src/common/nan_de.c
+index 12fad3112..08351ce90 100644
+--- a/src/common/nan_de.c
++++ b/src/common/nan_de.c
+@@ -62,6 +62,7 @@ struct nan_de_service {
+ 
+ struct nan_de {
+ 	u8 nmi[ETH_ALEN];
++	bool offload;
+ 	bool ap;
+ 	struct nan_callbacks cb;
+ 
+@@ -77,7 +78,7 @@ struct nan_de {
+ };
+ 
+ 
+-struct nan_de * nan_de_init(const u8 *nmi, bool ap,
++struct nan_de * nan_de_init(const u8 *nmi, bool offload, bool ap,
+ 			    const struct nan_callbacks *cb)
+ {
+ 	struct nan_de *de;
+@@ -87,6 +88,7 @@ struct nan_de * nan_de_init(const u8 *nmi, bool ap,
+ 		return NULL;
+ 
+ 	os_memcpy(de->nmi, nmi, ETH_ALEN);
++	de->offload = offload;
+ 	de->ap = ap;
+ 	os_memcpy(&de->cb, cb, sizeof(*cb));
+ 
+@@ -590,7 +592,7 @@ static void nan_de_timer(void *eloop_ctx, void *timeout_ctx)
+ 		if (srv_next >= 0 && (next == -1 || srv_next < next))
+ 			next = srv_next;
+ 
+-		if (srv_next == 0 && !started &&
++		if (srv_next == 0 && !started && !de->offload &&
+ 		    de->listen_freq == 0 && de->ext_listen_freq == 0 &&
+ 		    de->tx_wait_end_freq == 0 &&
+ 		    nan_de_next_multicast(de, srv, &now) == 0) {
+@@ -598,7 +600,7 @@ static void nan_de_timer(void *eloop_ctx, void *timeout_ctx)
+ 			nan_de_tx_multicast(de, srv, 0);
+ 		}
+ 
+-		if (!started && de->cb.listen &&
++		if (!started && !de->offload && de->cb.listen &&
+ 		    de->listen_freq == 0 && de->ext_listen_freq == 0 &&
+ 		    de->tx_wait_end_freq == 0 &&
+ 		    ((srv->type == NAN_DE_PUBLISH &&
+@@ -787,13 +789,13 @@ static void nan_de_rx_publish(struct nan_de *de, struct nan_de_service *srv,
+ 		nan_de_run_timer(de);
+ 	}
+ 
+-	if (srv->subscribe.active && req_instance_id == 0) {
++	if (!de->offload && srv->subscribe.active && req_instance_id == 0) {
+ 		/* Active subscriber replies with a Subscribe message if it
+ 		 * received a matching unsolicited Publish message. */
+ 		nan_de_tx_multicast(de, srv, instance_id);
+ 	}
+ 
+-	if (!srv->subscribe.active && req_instance_id == 0) {
++	if (!de->offload && !srv->subscribe.active && req_instance_id == 0) {
+ 		/* Passive subscriber replies with a Follow-up message without
+ 		 * Service Specific Info field if it received a matching
+ 		 * unsolicited Publish message. */
+@@ -873,6 +875,9 @@ static void nan_de_rx_subscribe(struct nan_de *de, struct nan_de_service *srv,
+ 		return;
+ 	}
+ 
++	if (de->offload)
++		goto offload;
++
+ 	/* Reply with a solicited Publish message */
+ 	/* Service Descriptor attribute */
+ 	sda_len = NAN_SERVICE_ID_LEN + 1 + 1 + 1;
+@@ -939,6 +944,7 @@ static void nan_de_rx_subscribe(struct nan_de *de, struct nan_de_service *srv,
+ 
+ 	nan_de_pause_state(srv, peer_addr, instance_id);
+ 
++offload:
+ 	if (!srv->publish.disable_events && de->cb.replied)
+ 		de->cb.replied(de->cb.ctx, srv->id, peer_addr, instance_id,
+ 			       srv_proto_type, ssi, ssi_len);
+@@ -1196,6 +1202,19 @@ static int nan_de_derive_service_id(struct nan_de_service *srv)
+ }
+ 
+ 
++const u8 * nan_de_get_service_id(struct nan_de *de, int id)
++{
++	struct nan_de_service *srv;
++
++	if (id < 1 || id > NAN_DE_MAX_SERVICE)
++		return NULL;
++	srv = de->service[id - 1];
++	if (!srv)
++		return NULL;
++	return srv->service_id;
++}
++
++
+ int nan_de_publish(struct nan_de *de, const char *service_name,
+ 		   enum nan_service_protocol_type srv_proto_type,
+ 		   const struct wpabuf *ssi, const struct wpabuf *elems,
+diff --git a/src/common/nan_de.h b/src/common/nan_de.h
+index 62235064b..ae77cf399 100644
+--- a/src/common/nan_de.h
++++ b/src/common/nan_de.h
+@@ -55,7 +55,7 @@ struct nan_callbacks {
+ 			const u8 *peer_addr);
+ };
+ 
+-struct nan_de * nan_de_init(const u8 *nmi, bool ap,
++struct nan_de * nan_de_init(const u8 *nmi, bool offload, bool ap,
+ 			    const struct nan_callbacks *cb);
+ void nan_de_flush(struct nan_de *de);
+ void nan_de_deinit(struct nan_de *de);
+@@ -68,6 +68,7 @@ void nan_de_tx_wait_ended(struct nan_de *de);
+ 
+ void nan_de_rx_sdf(struct nan_de *de, const u8 *peer_addr, unsigned int freq,
+ 		   const u8 *buf, size_t len);
++const u8 * nan_de_get_service_id(struct nan_de *de, int id);
+ 
+ struct nan_publish_params {
+ 	/* configuration_parameters */
+diff --git a/src/drivers/driver.h b/src/drivers/driver.h
+index 1625bccaa..30cbbc568 100644
+--- a/src/drivers/driver.h
++++ b/src/drivers/driver.h
+@@ -27,6 +27,10 @@
+ #endif /* CONFIG_MACSEC */
+ #include "utils/list.h"
+ 
++struct nan_subscribe_params;
++struct nan_publish_params;
++enum nan_service_protocol_type;
++
+ #define HOSTAPD_CHAN_DISABLED 0x00000001
+ #define HOSTAPD_CHAN_NO_IR 0x00000002
+ #define HOSTAPD_CHAN_RADAR 0x00000008
+@@ -2359,6 +2363,8 @@ struct wpa_driver_capa {
+ #define WPA_DRIVER_FLAGS2_HT_VHT_TWT_RESPONDER	0x0000000000200000ULL
+ /** Driver supports RSN override elements */
+ #define WPA_DRIVER_FLAGS2_RSN_OVERRIDE_STA	0x0000000000400000ULL
++/** Driver supports NAN offload */
++#define WPA_DRIVER_FLAGS2_NAN_OFFLOAD		0x0000000000800000ULL
+ 	u64 flags2;
+ 
+ #define FULL_AP_CLIENT_STATE_SUPP(drv_flags) \
+@@ -5246,6 +5252,77 @@ struct wpa_driver_ops {
+ 	 */
+ 	int (*link_sta_remove)(void *priv, u8 link_id, const u8 *addr);
+ 
++	/**
++	 * nan_flush - Flush all NAN offload services
++	 * @priv: Private driver interface data
++	 * Returns: 0 on success, negative value on failure
++	 */
++	int (*nan_flush)(void *priv);
++
++	/**
++	 * nan_publish - NAN offload for Publish()
++	 * @priv: Private driver interface data
++	 * @src: Source P2P device addr
++	 * @publish_id: Publish instance to add
++	 * @service_name: Service name
++	 * @service_id: Service ID (6 octet value derived from service name)
++	 * @srv_proto_type: Service protocol type
++	 * @ssi: Service specific information or %NULL
++	 * @elems: Information elements for Element Container attribute or %NULL
++	 * @params: Configuration parameters
++	 * Returns: 0 on success, negative value on failure
++	 */
++	int (*nan_publish)(void *priv, const u8 *src, int publish_id,
++			   const char *service_name, const u8 *service_id,
++			   enum nan_service_protocol_type srv_proto_type,
++			   const struct wpabuf *ssi, const struct wpabuf *elems,
++			   struct nan_publish_params *params);
++
++	/**
++	 * nan_cancel_publish - NAN offload for CancelPublish()
++	 * @priv: Private driver interface data
++	 * @publish_id: Publish instance to cancel
++	 * Returns: 0 on success, negative value on failure
++	 */
++	int (*nan_cancel_publish)(void *priv, int publish_id);
++
++	/**
++	 * nan_update_publish - NAN offload for UpdatePublish()
++	 * @priv: Private driver interface data
++	 * @ssi: Service specific information or %NULL
++	 * Returns: 0 on success, negative value on failure
++	 */
++	int (*nan_update_publish)(void *priv, int publish_id,
++				  const struct wpabuf *ssi);
++
++	/**
++	 * nan_subscribe - NAN offload for Subscribe()
++	 * @priv: Private driver interface data
++	 * @src: Source P2P device addr
++	 * @subscribe_id: Subscribe instance to add
++	 * @service_name: Service name
++	 * @service_id: Service ID (6 octet value derived from service name)
++	 * @srv_proto_type: Service protocol type
++	 * @ssi: Service specific information or %NULL
++	 * @elems: Information elements for Element Container attribute or %NULL
++	 * @params: Configuration parameters
++	 * Returns: 0 on success, negative value on failure
++	 */
++	int (*nan_subscribe)(void *priv, const u8 *src, int subscribe_id,
++			     const char *service_name, const u8 *service_id,
++			     enum nan_service_protocol_type srv_proto_type,
++			     const struct wpabuf *ssi,
++			     const struct wpabuf *elems,
++			     struct nan_subscribe_params *params);
++
++	/**
++	 * nan_cancel_subscribe - NAN offload for CancelSubscribe()
++	 * @priv: Private driver interface data
++	 * @subscribe_id: Subscribe instance to cancel
++	 * Returns: 0 on success, negative value on failure
++	 */
++	int (*nan_cancel_subscribe)(void *priv, int subscribe_id);
++
+ #ifdef CONFIG_TESTING_OPTIONS
+ 	int (*register_frame)(void *priv, u16 type,
+ 			      const u8 *match, size_t match_len,
+diff --git a/wpa_supplicant/driver_i.h b/wpa_supplicant/driver_i.h
+index d01b52bb1..b6c7f5085 100644
+--- a/wpa_supplicant/driver_i.h
++++ b/wpa_supplicant/driver_i.h
+@@ -9,6 +9,7 @@
+ #ifndef DRIVER_I_H
+ #define DRIVER_I_H
+ 
++#include "common/nan_de.h"
+ #include "drivers/driver.h"
+ 
+ /* driver_ops */
+@@ -1175,4 +1176,75 @@ wpas_drv_get_sta_mlo_info(struct wpa_supplicant *wpa_s,
+ 	return wpa_s->driver->get_sta_mlo_info(wpa_s->drv_priv, mlo_info);
+ }
+ 
++static inline int
++wpas_drv_nan_flush(struct wpa_supplicant *wpa_s)
++{
++	if (!wpa_s->driver->nan_flush)
++		return 0;
++
++	return wpa_s->driver->nan_flush(wpa_s->drv_priv);
++}
++
++static inline int
++wpas_drv_nan_publish(struct wpa_supplicant *wpa_s, const u8 *addr,
++		     int publish_id, const char *service_name,
++		     const u8 *service_id,
++		     enum nan_service_protocol_type srv_proto_type,
++		     const struct wpabuf *ssi, const struct wpabuf *elems,
++		     struct nan_publish_params *params)
++{
++	if (!wpa_s->driver->nan_publish)
++		return 0;
++
++	return wpa_s->driver->nan_publish(wpa_s->drv_priv, addr, publish_id,
++					  service_name, service_id,
++					  srv_proto_type, ssi, elems, params);
++}
++
++static inline int
++wpas_drv_nan_cancel_publish(struct wpa_supplicant *wpa_s, int publish_id)
++{
++	if (!wpa_s->driver->nan_cancel_publish)
++		return 0;
++
++	return wpa_s->driver->nan_cancel_publish(wpa_s->drv_priv, publish_id);
++}
++
++static inline int
++wpas_drv_nan_update_publish(struct wpa_supplicant *wpa_s, int publish_id,
++			    const struct wpabuf *ssi)
++{
++	if (!wpa_s->driver->nan_update_publish)
++		return 0;
++
++	return wpa_s->driver->nan_update_publish(wpa_s->drv_priv, publish_id,
++						 ssi);
++}
++
++static inline int
++wpas_drv_nan_subscribe(struct wpa_supplicant *wpa_s, const u8 *addr,
++		       int subscribe_id, const char *service_name,
++		       const u8 *service_id,
++		       enum nan_service_protocol_type srv_proto_type,
++		       const struct wpabuf *ssi, const struct wpabuf *elems,
++		       struct nan_subscribe_params *params)
++{
++	if (!wpa_s->driver->nan_subscribe)
++		return 0;
++
++	return wpa_s->driver->nan_subscribe(wpa_s->drv_priv, addr, subscribe_id,
++					    service_name, service_id,
++					    srv_proto_type, ssi, elems, params);
++}
++
++static inline int
++wpas_drv_nan_cancel_subscribe(struct wpa_supplicant *wpa_s, int subscribe_id)
++{
++	if (!wpa_s->driver->nan_cancel_subscribe)
++		return 0;
++
++	return wpa_s->driver->nan_cancel_subscribe(wpa_s->drv_priv,
++						   subscribe_id);
++}
++
+ #endif /* DRIVER_I_H */
+diff --git a/wpa_supplicant/nan_usd.c b/wpa_supplicant/nan_usd.c
+index 657b302c1..a79113c58 100644
+--- a/wpa_supplicant/nan_usd.c
++++ b/wpa_supplicant/nan_usd.c
+@@ -338,6 +338,7 @@ static void wpas_nan_de_receive(void *ctx, int id, int peer_instance_id,
+ int wpas_nan_usd_init(struct wpa_supplicant *wpa_s)
+ {
+ 	struct nan_callbacks cb;
++	bool offload = wpa_s->drv_flags2 & WPA_DRIVER_FLAGS2_NAN_OFFLOAD;
+ 
+ 	os_memset(&cb, 0, sizeof(cb));
+ 	cb.ctx = wpa_s;
+@@ -349,7 +350,7 @@ int wpas_nan_usd_init(struct wpa_supplicant *wpa_s)
+ 	cb.subscribe_terminated = wpas_nan_de_subscribe_terminated;
+ 	cb.receive = wpas_nan_de_receive;
+ 
+-	wpa_s->nan_de = nan_de_init(wpa_s->own_addr, false, &cb);
++	wpa_s->nan_de = nan_de_init(wpa_s->own_addr, offload, false, &cb);
+ 	if (!wpa_s->nan_de)
+ 		return -1;
+ 	return 0;
+@@ -377,6 +378,8 @@ void wpas_nan_usd_flush(struct wpa_supplicant *wpa_s)
+ 	if (!wpa_s->nan_de)
+ 		return;
+ 	nan_de_flush(wpa_s->nan_de);
++	if (wpa_s->drv_flags2 & WPA_DRIVER_FLAGS2_NAN_OFFLOAD)
++		wpas_drv_nan_flush(wpa_s);
+ }
+ 
+ 
+@@ -393,6 +396,17 @@ int wpas_nan_usd_publish(struct wpa_supplicant *wpa_s, const char *service_name,
+ 
+ 	publish_id = nan_de_publish(wpa_s->nan_de, service_name, srv_proto_type,
+ 				    ssi, elems, params);
++	if (publish_id >= 1 &&
++	    (wpa_s->drv_flags2 & WPA_DRIVER_FLAGS2_NAN_OFFLOAD) &&
++	    wpas_drv_nan_publish(wpa_s, wpa_s->own_addr, publish_id,
++				 service_name,
++				 nan_de_get_service_id(wpa_s->nan_de,
++						       publish_id),
++				 srv_proto_type, ssi, elems, params) < 0) {
++		nan_de_cancel_publish(wpa_s->nan_de, publish_id);
++		publish_id = -1;
++	}
++
+ 	wpabuf_free(elems);
+ 	return publish_id;
+ }
+@@ -403,15 +417,23 @@ void wpas_nan_usd_cancel_publish(struct wpa_supplicant *wpa_s, int publish_id)
+ 	if (!wpa_s->nan_de)
+ 		return;
+ 	nan_de_cancel_publish(wpa_s->nan_de, publish_id);
++	if (wpa_s->drv_flags2 & WPA_DRIVER_FLAGS2_NAN_OFFLOAD)
++		wpas_drv_nan_cancel_publish(wpa_s, publish_id);
+ }
+ 
+ 
+ int wpas_nan_usd_update_publish(struct wpa_supplicant *wpa_s, int publish_id,
+ 				const struct wpabuf *ssi)
+ {
++	int ret;
++
+ 	if (!wpa_s->nan_de)
+ 		return -1;
+-	return nan_de_update_publish(wpa_s->nan_de, publish_id, ssi);
++	ret = nan_de_update_publish(wpa_s->nan_de, publish_id, ssi);
++	if (ret == 0 && (wpa_s->drv_flags2 & WPA_DRIVER_FLAGS2_NAN_OFFLOAD) &&
++	    wpas_drv_nan_cancel_publish(wpa_s, publish_id) < 0)
++		return -1;
++	return ret;
+ }
+ 
+ 
+@@ -429,6 +451,17 @@ int wpas_nan_usd_subscribe(struct wpa_supplicant *wpa_s,
+ 
+ 	subscribe_id = nan_de_subscribe(wpa_s->nan_de, service_name,
+ 					srv_proto_type, ssi, elems, params);
++	if (subscribe_id >= 1 &&
++	    (wpa_s->drv_flags2 & WPA_DRIVER_FLAGS2_NAN_OFFLOAD) &&
++	    wpas_drv_nan_subscribe(wpa_s, wpa_s->own_addr, subscribe_id,
++				   service_name,
++				   nan_de_get_service_id(wpa_s->nan_de,
++							 subscribe_id),
++				   srv_proto_type, ssi, elems, params) < 0) {
++		nan_de_cancel_subscribe(wpa_s->nan_de, subscribe_id);
++		subscribe_id = -1;
++	}
++
+ 	wpabuf_free(elems);
+ 	return subscribe_id;
+ }
+@@ -440,6 +473,8 @@ void wpas_nan_usd_cancel_subscribe(struct wpa_supplicant *wpa_s,
+ 	if (!wpa_s->nan_de)
+ 		return;
+ 	nan_de_cancel_subscribe(wpa_s->nan_de, subscribe_id);
++	if (wpa_s->drv_flags2 & WPA_DRIVER_FLAGS2_NAN_OFFLOAD)
++		wpas_drv_nan_cancel_subscribe(wpa_s, subscribe_id);
+ }
+ 
+ 
+-- 
+2.43.0
+

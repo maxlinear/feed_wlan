@@ -1,0 +1,42 @@
+From 8e490da87fa054c88a788f729f34dcc97be44cf4 Mon Sep 17 00:00:00 2001
+From: Jintao Lin <jintaolin@chromium.org>
+Date: Wed, 7 Aug 2024 21:48:01 +0000
+Subject: [PATCH] P2P: Consult driver capabilities before setting HE bit in
+ GO's conf
+
+p2p_go_he could be set to 1 in the global config file while the device
+might only has a VHT Wi-Fi NIC. Consult driver capabilities before
+setting the HE bit for the GO's configuration so that latter AP
+configuration does not fail due to wrong AP configuration, like
+hostapd_get_oper_centr_freq_seg0_idx().
+
+This config bit is checked and set in wpa_supplicant_conf_ap_ht() based
+on a more recent commit 3459c54ac78b ("mesh: Add support for HE mode"),
+Thus there is no need to override this bit specifically for P2P GO using
+this older approach.
+
+Signed-off-by: Jintao Lin <jintaolin@chromium.org>
+---
+ wpa_supplicant/ap.c | 6 ------
+ 1 file changed, 6 deletions(-)
+
+diff --git a/wpa_supplicant/ap.c b/wpa_supplicant/ap.c
+index c4e19aa3d..de18a68f0 100644
+--- a/wpa_supplicant/ap.c
++++ b/wpa_supplicant/ap.c
+@@ -540,12 +540,6 @@ static int wpa_supplicant_conf_ap(struct wpa_supplicant *wpa_s,
+ 		conf->supported_rates = list;
+ 	}
+ 
+-#ifdef CONFIG_IEEE80211AX
+-	if (ssid->mode == WPAS_MODE_P2P_GO ||
+-	    ssid->mode == WPAS_MODE_P2P_GROUP_FORMATION)
+-		conf->ieee80211ax = ssid->he;
+-#endif /* CONFIG_IEEE80211AX */
+-
+ 	bss->isolate = !wpa_s->conf->p2p_intra_bss;
+ 	bss->extended_key_id = wpa_s->conf->extended_key_id;
+ 	bss->force_per_enrollee_psk = wpa_s->global->p2p_per_sta_psk;
+-- 
+2.43.0
+

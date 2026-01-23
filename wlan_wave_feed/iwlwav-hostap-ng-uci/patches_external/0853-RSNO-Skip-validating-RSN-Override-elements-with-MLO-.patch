@@ -1,0 +1,81 @@
+From bbb55af8c34cc2976442e998801dd7125d9b77d6 Mon Sep 17 00:00:00 2001
+From: Veerendranath Jakkam <quic_vjakkam@quicinc.com>
+Date: Tue, 13 Aug 2024 23:02:55 +0530
+Subject: [PATCH] RSNO: Skip validating RSN Override elements with MLO when RSN
+ overriding not used
+
+STA needs to skip validating RSN Override elements when RSN overriding
+is not used since AP will not send RSN Override elements in EAPOL-Key
+message 3/4. This is handled correctly in non-MLO case but in MLO case
+wpa_supplicant always validates RSN Override link KDEs. Fix validating
+RSN Override elements in MLO case as well.
+
+Signed-off-by: Veerendranath Jakkam <quic_vjakkam@quicinc.com>
+---
+ src/rsn_supp/wpa.c | 43 +++++++++++++++++++++++--------------------
+ 1 file changed, 23 insertions(+), 20 deletions(-)
+
+diff --git a/src/rsn_supp/wpa.c b/src/rsn_supp/wpa.c
+index 52a4c7442..67bfe7f60 100644
+--- a/src/rsn_supp/wpa.c
++++ b/src/rsn_supp/wpa.c
+@@ -2500,26 +2500,6 @@ static int wpa_supplicant_validate_link_kde(struct wpa_sm *sm, u8 link_id,
+ 		rsnxe_len = rsnxe[1] + 2;
+ 	}
+ 
+-	if (rsn_override_link_kde) {
+-		rsnoe = get_vendor_ie(rsn_override_link_kde + 1,
+-				      rsn_override_link_kde_len - 1,
+-				      RSNE_OVERRIDE_IE_VENDOR_TYPE);
+-		if (rsnoe)
+-			rsnoe_len = 2 + rsnoe[1];
+-
+-		rsno2e = get_vendor_ie(rsn_override_link_kde + 1,
+-				       rsn_override_link_kde_len - 1,
+-				       RSNE_OVERRIDE_2_IE_VENDOR_TYPE);
+-		if (rsno2e)
+-			rsno2e_len = 2 + rsno2e[1];
+-
+-		rsnxoe = get_vendor_ie(rsn_override_link_kde + 1,
+-				       rsn_override_link_kde_len - 1,
+-				       RSNXE_OVERRIDE_IE_VENDOR_TYPE);
+-		if (rsnxoe)
+-			rsnxoe_len = 2 + rsnxoe[1];
+-	}
+-
+ 	if (wpa_compare_rsn_ie(wpa_key_mgmt_ft(sm->key_mgmt),
+ 			       sm->mlo.links[link_id].ap_rsne,
+ 			       sm->mlo.links[link_id].ap_rsne_len,
+@@ -2552,6 +2532,29 @@ static int wpa_supplicant_validate_link_kde(struct wpa_sm *sm, u8 link_id,
+ 		goto fail;
+ 	}
+ 
++	if (sm->rsn_override == RSN_OVERRIDE_NOT_USED)
++		return 0;
++
++	if (rsn_override_link_kde) {
++		rsnoe = get_vendor_ie(rsn_override_link_kde + 1,
++				      rsn_override_link_kde_len - 1,
++				      RSNE_OVERRIDE_IE_VENDOR_TYPE);
++		if (rsnoe)
++			rsnoe_len = 2 + rsnoe[1];
++
++		rsno2e = get_vendor_ie(rsn_override_link_kde + 1,
++				       rsn_override_link_kde_len - 1,
++				       RSNE_OVERRIDE_2_IE_VENDOR_TYPE);
++		if (rsno2e)
++			rsno2e_len = 2 + rsno2e[1];
++
++		rsnxoe = get_vendor_ie(rsn_override_link_kde + 1,
++				       rsn_override_link_kde_len - 1,
++				       RSNXE_OVERRIDE_IE_VENDOR_TYPE);
++		if (rsnxoe)
++			rsnxoe_len = 2 + rsnxoe[1];
++	}
++
+ 	if ((sm->mlo.links[link_id].ap_rsnoe && !rsnoe) ||
+ 	    (!sm->mlo.links[link_id].ap_rsnoe && rsnoe) ||
+ 	    (sm->mlo.links[link_id].ap_rsnoe && rsnoe &&
+-- 
+2.43.0
+

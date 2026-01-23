@@ -1,0 +1,31 @@
+From 456bfec470373c0b1ab88a6d750f3fd8d0beeafb Mon Sep 17 00:00:00 2001
+From: Jouni Malinen <quic_jouni@quicinc.com>
+Date: Mon, 22 Jan 2024 18:26:19 +0200
+Subject: [PATCH] Avoid uninitialized seq number in debug print for testing
+ functionality
+
+If the driver fetch for the current sequency number fails, do not try to
+print the value in a debug print without having cleared it.
+
+Signed-off-by: Jouni Malinen <quic_jouni@quicinc.com>
+---
+ src/ap/wpa_auth.c | 3 +++
+ 1 file changed, 3 insertions(+)
+
+diff --git a/src/ap/wpa_auth.c b/src/ap/wpa_auth.c
+index b14920486..f3fc85af1 100644
+--- a/src/ap/wpa_auth.c
++++ b/src/ap/wpa_auth.c
+@@ -194,6 +194,9 @@ static inline int wpa_auth_get_seqnum(struct wpa_authenticator *wpa_auth,
+ 
+ 	if (!wpa_auth->cb->get_seqnum)
+ 		return -1;
++#ifdef CONFIG_TESTING_OPTIONS
++	os_memset(seq, 0, WPA_KEY_RSC_LEN);
++#endif /* CONFIG_TESTING_OPTIONS */
+ 	res = wpa_auth->cb->get_seqnum(wpa_auth->cb_ctx, addr, idx, seq);
+ #ifdef CONFIG_TESTING_OPTIONS
+ 	if (!addr && idx < 4 && wpa_auth->conf.gtk_rsc_override_set) {
+-- 
+2.43.0
+

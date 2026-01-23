@@ -1,0 +1,42 @@
+From 1bfd4398fb6f1ef8eaf1f3e25a0ee0eeea283c1f Mon Sep 17 00:00:00 2001
+From: Jouni Malinen <j@w1.fi>
+Date: Sun, 23 Feb 2025 16:38:11 +0200
+Subject: [PATCH] RNR: Silence static analyzer warnings
+
+The !tbtt_count check seemed to be too complex for static analyzers to
+understand that len and total_len have been incremented by at least
+RNR_TBTT_HEADER_LEN. Silence the incorrect warning about interget
+overflow with explicit checks.
+
+Signed-off-by: Jouni Malinen <j@w1.fi>
+---
+ src/ap/ieee802_11.c | 6 ++++--
+ 1 file changed, 4 insertions(+), 2 deletions(-)
+
+diff --git a/src/ap/ieee802_11.c b/src/ap/ieee802_11.c
+index 01e07d5cf..9a4869199 100644
+--- a/src/ap/ieee802_11.c
++++ b/src/ap/ieee802_11.c
+@@ -7861,7 +7861,8 @@ repeat_rnr_len:
+ 
+ 		/* If no TBTT was found, adjust the len and total_len since it
+ 		 * would have incremented before we checked all BSSs. */
+-		if (!tbtt_count) {
++		if (!tbtt_count && len >= RNR_TBTT_HEADER_LEN &&
++		    total_len >= RNR_TBTT_HEADER_LEN) {
+ 			len -= RNR_TBTT_HEADER_LEN;
+ 			total_len -= RNR_TBTT_HEADER_LEN;
+ 		}
+@@ -7871,7 +7872,8 @@ repeat_rnr_len:
+ 
+ 	/* This is possible when in the re-built case and no suitable TBTT was
+ 	 * found. Adjust the length accordingly. */
+-	if (!tbtt_count && total_tbtt_count) {
++	if (!tbtt_count && total_tbtt_count && len >= RNR_TBTT_HEADER_LEN &&
++	    total_len >= RNR_TBTT_HEADER_LEN) {
+ 		len -= RNR_TBTT_HEADER_LEN;
+ 		total_len -= RNR_TBTT_HEADER_LEN;
+ 	}
+-- 
+2.43.0
+

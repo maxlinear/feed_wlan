@@ -1,0 +1,35 @@
+From 666e954ca27aac845f0b69d0bd38f103e389d1b5 Mon Sep 17 00:00:00 2001
+From: Jouni Malinen <quic_jouni@quicinc.com>
+Date: Tue, 26 Mar 2024 17:51:28 +0200
+Subject: [PATCH] Remove unused wpa_drv_set_ap()
+
+This wrapper function was not used at all, so remove it to make it
+clearer that the set_ap() driver op is called only from hostapd code.
+
+Signed-off-by: Jouni Malinen <quic_jouni@quicinc.com>
+---
+ wpa_supplicant/driver_i.h | 8 --------
+ 1 file changed, 8 deletions(-)
+
+diff --git a/wpa_supplicant/driver_i.h b/wpa_supplicant/driver_i.h
+index 0322b7150..d01b52bb1 100644
+--- a/wpa_supplicant/driver_i.h
++++ b/wpa_supplicant/driver_i.h
+@@ -342,14 +342,6 @@ static inline int wpa_drv_update_ft_ies(struct wpa_supplicant *wpa_s,
+ 	return -1;
+ }
+ 
+-static inline int wpa_drv_set_ap(struct wpa_supplicant *wpa_s,
+-				 struct wpa_driver_ap_params *params)
+-{
+-	if (wpa_s->driver->set_ap)
+-		return wpa_s->driver->set_ap(wpa_s->drv_priv, params);
+-	return -1;
+-}
+-
+ static inline int wpa_drv_sta_add(struct wpa_supplicant *wpa_s,
+ 				  struct hostapd_sta_add_params *params)
+ {
+-- 
+2.43.0
+

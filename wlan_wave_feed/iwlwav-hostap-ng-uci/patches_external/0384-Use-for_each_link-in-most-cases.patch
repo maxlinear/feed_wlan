@@ -1,0 +1,453 @@
+From dbdf7ef679fb4c2fd5b4b5b80beea5be18aec118 Mon Sep 17 00:00:00 2001
+From: Benjamin Berg <benjamin.berg@intel.com>
+Date: Tue, 20 Feb 2024 14:18:12 +0100
+Subject: [PATCH] Use for_each_link() in most cases
+
+This was done using the below semantic patch. There are a few more
+places that were missed due to variable declarations or additional
+checks in the for loop.
+
+@@
+iterator name for_each_link;
+identifier max_links =~ "MAX_NUM_MLD_LINKS|MAX_NUM_MLO_LINKS";
+expression links;
+expression further_tests;
+identifier i;
+statement stmt;
+@@
+-for (i = 0; i < max_links; i++)
++for_each_link(links, i)
+ {
+(
+-  if (!(links & BIT(i)))
+-    continue;
+   ...
+|
+-  if (!(links & BIT(i)) || further_tests)
++  if (further_tests)
+     continue;
+   ...
+|
+-  if (further_tests || !(links & BIT(i)))
++  if (further_tests)
+     continue;
+   ...
+|
+-  if (links & BIT(i))
+     stmt
+|
+-  if (further_tests && (links & BIT(i)))
++  if (further_tests)
+     stmt
+|
+-  if ((links & BIT(i)) && further_tests)
++  if (further_tests)
+     stmt
+)
+ }
+
+Signed-off-by: Benjamin Berg <benjamin.berg@intel.com>
+---
+ src/ap/wpa_auth.c                  |  5 +----
+ src/drivers/driver_nl80211.c       | 30 ++++++------------------------
+ src/drivers/driver_nl80211_event.c | 14 +++-----------
+ src/rsn_supp/tdls.c                |  5 ++---
+ src/rsn_supp/wpa.c                 | 23 +++++++----------------
+ wpa_supplicant/bss.c               |  5 +----
+ wpa_supplicant/ctrl_iface.c        | 10 ++--------
+ wpa_supplicant/events.c            | 10 ++--------
+ wpa_supplicant/rrm.c               |  5 +----
+ wpa_supplicant/scan.c              |  5 +----
+ wpa_supplicant/sme.c               | 15 +++------------
+ wpa_supplicant/wnm_sta.c           |  5 +----
+ wpa_supplicant/wpa_supplicant.c    |  5 +----
+ 13 files changed, 31 insertions(+), 106 deletions(-)
+
+diff --git a/src/ap/wpa_auth.c b/src/ap/wpa_auth.c
+index afb0208e7..01a10b23c 100644
+--- a/src/ap/wpa_auth.c
++++ b/src/ap/wpa_auth.c
+@@ -3336,10 +3336,7 @@ static int wpa_auth_validate_ml_kdes_m2(struct wpa_state_machine *sm,
+ 	}
+ 
+ 	/* Find matching link ID and the MAC address for each link */
+-	for (i = 0; i < MAX_NUM_MLD_LINKS; i++) {
+-		if (!(kde->valid_mlo_links & BIT(i)))
+-			continue;
+-
++	for_each_link(kde->valid_mlo_links, i) {
+ 		/*
+ 		 * Each entry should contain the link information and the MAC
+ 		 * address.
+diff --git a/src/drivers/driver_nl80211.c b/src/drivers/driver_nl80211.c
+index 1e3327fbb..afafcc8ba 100644
+--- a/src/drivers/driver_nl80211.c
++++ b/src/drivers/driver_nl80211.c
+@@ -6733,10 +6733,7 @@ static int nl80211_connect_common(struct wpa_driver_nl80211_data *drv,
+ 		if (!links)
+ 			return -1;
+ 
+-		for (link_id = 0; link_id < MAX_NUM_MLD_LINKS; link_id++) {
+-			if (!(mld_params->valid_links & BIT(link_id)))
+-				continue;
+-
++		for_each_link(mld_params->valid_links, link_id) {
+ 			attr = nla_nest_start(msg, 0);
+ 			if (!attr)
+ 				return -1;
+@@ -7317,10 +7314,7 @@ static int wpa_driver_nl80211_associate(
+ 
+ 		/* Error and force TEST_FAIL checking for each link */
+ 		ret = -EINVAL;
+-		for (i = 0; i < MAX_NUM_MLD_LINKS; i++) {
+-			if (!(params->mld_params.valid_links & BIT(i)))
+-				continue;
+-
++		for_each_link(params->mld_params.valid_links, i) {
+ 			if (TEST_FAIL_TAG("link"))
+ 				err_info.link_id = i;
+ 		}
+@@ -9270,10 +9264,7 @@ static int nl80211_put_any_link_id(struct nl_msg *msg,
+ 		return 0;
+ 
+ 	/* First try to pick a link that uses the same band */
+-	for (i = 0; i < MAX_NUM_MLD_LINKS; i++) {
+-		if (!(mlo->valid_links & BIT(i)))
+-			continue;
+-
++	for_each_link(mlo->valid_links, i) {
+ 		if (any_valid_link_id == -1)
+ 			any_valid_link_id = i;
+ 
+@@ -9724,10 +9715,7 @@ static int get_links_noise(struct nl_msg *msg, void *arg)
+ 	if (!sinfo[NL80211_SURVEY_INFO_NOISE])
+ 		return NL_SKIP;
+ 
+-	for (i = 0; i < MAX_NUM_MLD_LINKS; i++) {
+-		if (!(mlo_sig->valid_links & BIT(i)))
+-			continue;
+-
++	for_each_link(mlo_sig->valid_links, i) {
+ 		if (nla_get_u32(sinfo[NL80211_SURVEY_INFO_FREQUENCY]) !=
+ 		    mlo_sig->links[i].frequency)
+ 			continue;
+@@ -9820,10 +9808,7 @@ static int nl80211_mlo_signal_poll(void *priv,
+ 	os_memset(mlo_si, 0, sizeof(*mlo_si));
+ 	mlo_si->valid_links = drv->sta_mlo_info.valid_links;
+ 
+-	for (i = 0; i < MAX_NUM_MLD_LINKS; i++) {
+-		if (!(mlo_si->valid_links & BIT(i)))
+-			continue;
+-
++	for_each_link(mlo_si->valid_links, i) {
+ 		res = nl80211_get_link_signal(drv,
+ 					      drv->sta_mlo_info.links[i].bssid,
+ 					      &mlo_si->links[i].data);
+@@ -11015,10 +11000,7 @@ static int wpa_driver_nl80211_status(void *priv, char *buf, size_t buflen)
+ 			return pos - buf;
+ 		pos += res;
+ 
+-		for (i = 0; i < MAX_NUM_MLD_LINKS; i++) {
+-			if (!(mlo->valid_links & BIT(i)))
+-				continue;
+-
++		for_each_link(mlo->valid_links, i) {
+ 			res = os_snprintf(pos, end - pos,
+ 					  "link_addr[%u]=" MACSTR "\n"
+ 					  "link_bssid[%u]=" MACSTR "\n"
+diff --git a/src/drivers/driver_nl80211_event.c b/src/drivers/driver_nl80211_event.c
+index b983f162d..d6c628cef 100644
+--- a/src/drivers/driver_nl80211_event.c
++++ b/src/drivers/driver_nl80211_event.c
+@@ -477,10 +477,7 @@ static void qca_nl80211_link_reconfig_event(struct wpa_driver_nl80211_data *drv,
+ 	 * links when the link used for (re)association is removed.
+ 	 */
+ 	if (removed_links & BIT(drv->sta_mlo_info.assoc_link_id)) {
+-		for (i = 0; i < MAX_NUM_MLD_LINKS; i++) {
+-			if (!(drv->sta_mlo_info.valid_links & BIT(i)))
+-				continue;
+-
++		for_each_link(drv->sta_mlo_info.valid_links, i) {
+ 			os_memcpy(drv->bssid, drv->sta_mlo_info.links[i].bssid,
+ 				  ETH_ALEN);
+ 			drv->sta_mlo_info.assoc_link_id = i;
+@@ -702,10 +699,7 @@ static int nl80211_update_rejected_links_info(struct driver_sta_mlo_info *mlo,
+ 	}
+ 
+ 	/* Get MLO links info for rejected links */
+-	for (i = 0; i < MAX_NUM_MLD_LINKS; i++) {
+-		if (!((mlo->req_links & ~mlo->valid_links) & BIT(i)))
+-			continue;
+-
++	for_each_link((mlo->req_links & ~mlo->valid_links), i) {
+ 		os_memcpy(mlo->links[i].bssid, resp_info.addr[i], ETH_ALEN);
+ 		os_memcpy(mlo->links[i].addr, req_info.addr[i], ETH_ALEN);
+ 	}
+@@ -875,9 +869,7 @@ qca_nl80211_tid_to_link_map_event(struct wpa_driver_nl80211_data *drv,
+ 		wpa_printf(MSG_DEBUG,
+ 			   "nl80211: TID-to-link: Received uplink %x downlink %x",
+ 			   uplink, downlink);
+-		for (i = 0; i < MAX_NUM_MLD_LINKS; i++) {
+-			if (!(drv->sta_mlo_info.valid_links & BIT(i)))
+-				continue;
++		for_each_link(drv->sta_mlo_info.valid_links, i) {
+ 			if (uplink & BIT(i))
+ 				event.t2l_map_info.t2lmap[i].uplink |=
+ 					BIT(tidnum);
+diff --git a/src/rsn_supp/tdls.c b/src/rsn_supp/tdls.c
+index 72ac9d947..65960b7bc 100644
+--- a/src/rsn_supp/tdls.c
++++ b/src/rsn_supp/tdls.c
+@@ -1571,9 +1571,8 @@ static bool wpa_tdls_is_lnkid_bss_valid(struct wpa_sm *sm,
+ 	} else {
+ 		int i;
+ 
+-		for (i = 0; i < MAX_NUM_MLD_LINKS; i++) {
+-			if ((sm->mlo.valid_links & BIT(i)) &&
+-			    ether_addr_equal(lnkid->bssid,
++		for_each_link(sm->mlo.valid_links, i) {
++			if (ether_addr_equal(lnkid->bssid,
+ 					     sm->mlo.links[i].bssid)) {
+ 				*link_id = i;
+ 				break;
+diff --git a/src/rsn_supp/wpa.c b/src/rsn_supp/wpa.c
+index 2109552c0..8956c4072 100644
+--- a/src/rsn_supp/wpa.c
++++ b/src/rsn_supp/wpa.c
+@@ -800,8 +800,8 @@ static size_t wpa_mlo_link_kde_len(struct wpa_sm *sm)
+ 	int i;
+ 	unsigned int num_links = 0;
+ 
+-	for (i = 0; i < MAX_NUM_MLO_LINKS; i++) {
+-		if (sm->mlo.assoc_link_id != i && (sm->mlo.req_links & BIT(i)))
++	for_each_link(sm->mlo.req_links, i) {
++		if (sm->mlo.assoc_link_id != i)
+ 			num_links++;
+ 	}
+ 
+@@ -814,8 +814,8 @@ static u8 * wpa_mlo_link_kde(struct wpa_sm *sm, u8 *pos)
+ 	int i;
+ 	u8 hdr[1 + ETH_ALEN];
+ 
+-	for (i = 0; i < MAX_NUM_MLO_LINKS; i++) {
+-		if (sm->mlo.assoc_link_id == i || !(sm->mlo.req_links & BIT(i)))
++	for_each_link(sm->mlo.req_links, i) {
++		if (sm->mlo.assoc_link_id == i)
+ 			continue;
+ 
+ 		wpa_printf(MSG_DEBUG,
+@@ -1550,10 +1550,7 @@ static int wpa_supplicant_pairwise_mlo_gtk(struct wpa_sm *sm,
+ {
+ 	u8 i;
+ 
+-	for (i = 0; i < MAX_NUM_MLO_LINKS; i++) {
+-		if (!(sm->mlo.valid_links & BIT(i)))
+-			continue;
+-
++	for_each_link(sm->mlo.valid_links, i) {
+ 		if (!ie->mlo_gtk[i]) {
+ 			wpa_msg(sm->ctx->msg_ctx, MSG_ERROR,
+ 				"MLO RSN: GTK not found for link ID %u", i);
+@@ -1902,10 +1899,7 @@ static int mlo_ieee80211w_set_keys(struct wpa_sm *sm,
+ 	    sm->mgmt_group_cipher == WPA_CIPHER_GTK_NOT_USED)
+ 		return 0;
+ 
+-	for (i = 0; i < MAX_NUM_MLO_LINKS; i++) {
+-		if (!(sm->mlo.valid_links & BIT(i)))
+-			continue;
+-
++	for_each_link(sm->mlo.valid_links, i) {
+ 		if (_mlo_ieee80211w_set_keys(sm, i, ie))
+ 			return -1;
+ 	}
+@@ -2931,10 +2925,7 @@ static void wpa_supplicant_process_mlo_1_of_2(struct wpa_sm *sm,
+ 		wpa_msg(sm->ctx->msg_ctx, MSG_INFO,
+ 			"MLO RSN: Failed to configure MLO IGTK");
+ 
+-	for (i = 0; i < MAX_NUM_MLO_LINKS; i++) {
+-		if (!(sm->mlo.valid_links & BIT(i)))
+-			continue;
+-
++	for_each_link(sm->mlo.valid_links, i) {
+ 		/*
+ 		 * AP may send group keys for subset of the all links during
+ 		 * rekey
+diff --git a/wpa_supplicant/bss.c b/wpa_supplicant/bss.c
+index 22b694cf3..3a061ea60 100644
+--- a/wpa_supplicant/bss.c
++++ b/wpa_supplicant/bss.c
+@@ -414,10 +414,7 @@ static int wpa_bss_in_use(struct wpa_supplicant *wpa_s, struct wpa_bss *bss)
+ 	if (!wpa_s->valid_links)
+ 		return 0;
+ 
+-	for (i = 0; i < MAX_NUM_MLD_LINKS; i++) {
+-		if (!(wpa_s->valid_links & BIT(i)))
+-			continue;
+-
++	for_each_link(wpa_s->valid_links, i) {
+ 		if (ether_addr_equal(bss->bssid, wpa_s->links[i].bssid))
+ 			return 1;
+ 	}
+diff --git a/wpa_supplicant/ctrl_iface.c b/wpa_supplicant/ctrl_iface.c
+index 500f4d1b5..8796e3060 100644
+--- a/wpa_supplicant/ctrl_iface.c
++++ b/wpa_supplicant/ctrl_iface.c
+@@ -11995,10 +11995,7 @@ static int wpas_ctrl_iface_mlo_signal_poll(struct wpa_supplicant *wpa_s,
+ 	pos = buf;
+ 	end = buf + buflen;
+ 
+-	for (i = 0; i < MAX_NUM_MLD_LINKS; i++) {
+-		if (!(mlo_si.valid_links & BIT(i)))
+-			continue;
+-
++	for_each_link(mlo_si.valid_links, i) {
+ 		ret = os_snprintf(pos, end - pos,
+ 				  "LINK_ID=%d\nRSSI=%d\nLINKSPEED=%lu\n"
+ 				  "NOISE=%d\nFREQUENCY=%u\n",
+@@ -12070,10 +12067,7 @@ static int wpas_ctrl_iface_mlo_status(struct wpa_supplicant *wpa_s,
+ 	pos = buf;
+ 	end = buf + buflen;
+ 
+-	for (i = 0; i < MAX_NUM_MLD_LINKS; i++) {
+-		if (!(wpa_s->valid_links & BIT(i)))
+-			continue;
+-
++	for_each_link(wpa_s->valid_links, i) {
+ 		ret = os_snprintf(pos, end - pos, "link_id=%d\nfreq=%u\n"
+ 				  "ap_link_addr=" MACSTR
+ 				  "\nsta_link_addr=" MACSTR "\n",
+diff --git a/wpa_supplicant/events.c b/wpa_supplicant/events.c
+index 201e43f67..42cde3c8a 100644
+--- a/wpa_supplicant/events.c
++++ b/wpa_supplicant/events.c
+@@ -3983,10 +3983,7 @@ static int wpa_drv_get_mlo_info(struct wpa_supplicant *wpa_s)
+ 		if (!mlo.valid_links)
+ 			return 0;
+ 
+-		for (i = 0; i < MAX_NUM_MLD_LINKS; i++) {
+-			if (!(mlo.valid_links & BIT(i)))
+-				continue;
+-
++		for_each_link(mlo.valid_links, i) {
+ 			if (!ether_addr_equal(wpa_s->links[i].addr,
+ 					      mlo.links[i].addr) ||
+ 			    !ether_addr_equal(wpa_s->links[i].bssid,
+@@ -4004,10 +4001,7 @@ static int wpa_drv_get_mlo_info(struct wpa_supplicant *wpa_s)
+ 	wpa_s->valid_links = mlo.valid_links;
+ 	wpa_s->mlo_assoc_link_id = mlo.assoc_link_id;
+ 	os_memcpy(wpa_s->ap_mld_addr, mlo.ap_mld_addr, ETH_ALEN);
+-	for (i = 0; i < MAX_NUM_MLD_LINKS; i++) {
+-		if (!(wpa_s->valid_links & BIT(i)))
+-			continue;
+-
++	for_each_link(wpa_s->valid_links, i) {
+ 		os_memcpy(wpa_s->links[i].addr, mlo.links[i].addr, ETH_ALEN);
+ 		os_memcpy(wpa_s->links[i].bssid, mlo.links[i].bssid, ETH_ALEN);
+ 		wpa_s->links[i].freq = mlo.links[i].freq;
+diff --git a/wpa_supplicant/rrm.c b/wpa_supplicant/rrm.c
+index 7ce854be0..9673b29de 100644
+--- a/wpa_supplicant/rrm.c
++++ b/wpa_supplicant/rrm.c
+@@ -1520,10 +1520,7 @@ static bool wpas_beacon_rep_scan_match(struct wpa_supplicant *wpa_s,
+ 	if (!wpa_s->valid_links)
+ 		return ether_addr_equal(wpa_s->current_bss->bssid, bssid);
+ 
+-	for (i = 0; i < MAX_NUM_MLD_LINKS; i++) {
+-		if (!(wpa_s->valid_links & BIT(i)))
+-			continue;
+-
++	for_each_link(wpa_s->valid_links, i) {
+ 		if (ether_addr_equal(wpa_s->links[i].bssid, bssid))
+ 			return true;
+ 	}
+diff --git a/wpa_supplicant/scan.c b/wpa_supplicant/scan.c
+index 6e6f05d42..e416bef99 100644
+--- a/wpa_supplicant/scan.c
++++ b/wpa_supplicant/scan.c
+@@ -698,10 +698,7 @@ static struct wpabuf * wpa_supplicant_ml_probe_ie(int mld_id, u16 links)
+ 	else
+ 		wpa_printf(MSG_DEBUG, "MLD: Probing links 0x%04x", links);
+ 
+-	for (link_id = 0; link_id < MAX_NUM_MLD_LINKS; link_id++) {
+-		if (!(links & BIT(link_id)))
+-			continue;
+-
++	for_each_link(links, link_id) {
+ 		wpabuf_put_u8(extra_ie, EHT_ML_SUB_ELEM_PER_STA_PROFILE);
+ 
+ 		/* Subelement length includes only the control */
+diff --git a/wpa_supplicant/sme.c b/wpa_supplicant/sme.c
+index 00e1117d5..d12ffb3ce 100644
+--- a/wpa_supplicant/sme.c
++++ b/wpa_supplicant/sme.c
+@@ -405,10 +405,7 @@ static struct wpa_bss * wpas_ml_connect_pref(struct wpa_supplicant *wpa_s,
+ 		return bss;
+ 
+ 	if (!is_zero_ether_addr(wpa_s->conf->mld_connect_bssid_pref)) {
+-		for (i = 0; i < MAX_NUM_MLD_LINKS; i++) {
+-			if (!(wpa_s->valid_links & BIT(i)))
+-				continue;
+-
++		for_each_link(wpa_s->valid_links, i) {
+ 			if (wpa_s->mlo_assoc_link_id == i)
+ 				continue;
+ 
+@@ -439,10 +436,7 @@ static struct wpa_bss * wpas_ml_connect_pref(struct wpa_supplicant *wpa_s,
+ 		return bss;
+ 	}
+ 
+-	for (i = 0; i < MAX_NUM_MLD_LINKS; i++) {
+-		if (!(wpa_s->valid_links & BIT(i)))
+-			continue;
+-
++	for_each_link(wpa_s->valid_links, i) {
+ 		if (wpa_s->mlo_assoc_link_id == i)
+ 			continue;
+ 
+@@ -2597,10 +2591,7 @@ mscs_fail:
+ 		params.mld_params.mld_addr = wpa_s->ap_mld_addr;
+ 		params.mld_params.valid_links = wpa_s->valid_links;
+ 		params.mld_params.assoc_link_id = wpa_s->mlo_assoc_link_id;
+-		for (i = 0; i < MAX_NUM_MLD_LINKS; i++) {
+-			if (!(wpa_s->valid_links & BIT(i)))
+-				continue;
+-
++		for_each_link(wpa_s->valid_links, i) {
+ 			params.mld_params.mld_links[i].bssid =
+ 				wpa_s->links[i].bssid;
+ 			params.mld_params.mld_links[i].freq =
+diff --git a/wpa_supplicant/wnm_sta.c b/wpa_supplicant/wnm_sta.c
+index 3fc11b24e..b340fae06 100644
+--- a/wpa_supplicant/wnm_sta.c
++++ b/wpa_supplicant/wnm_sta.c
+@@ -2090,10 +2090,7 @@ bool wnm_is_bss_excluded(struct wpa_supplicant *wpa_s, struct wpa_bss *bss)
+ 	if (!wpa_s->valid_links)
+ 		return false;
+ 
+-	for (i = 0; i < MAX_NUM_MLD_LINKS; i++) {
+-		if (!(wpa_s->valid_links & BIT(i)))
+-			continue;
+-
++	for_each_link(wpa_s->valid_links, i) {
+ 		if (ether_addr_equal(wpa_s->links[i].bssid, bss->bssid)) {
+ 			wpa_dbg(wpa_s, MSG_DEBUG,
+ 				"WNM: MLD: Disassociation imminent: current link");
+diff --git a/wpa_supplicant/wpa_supplicant.c b/wpa_supplicant/wpa_supplicant.c
+index cd37a20eb..c19ab810a 100644
+--- a/wpa_supplicant/wpa_supplicant.c
++++ b/wpa_supplicant/wpa_supplicant.c
+@@ -9342,10 +9342,7 @@ bool wpas_ap_link_address(struct wpa_supplicant *wpa_s, const u8 *addr)
+ 	if (!wpa_s->valid_links)
+ 		return false;
+ 
+-	for (i = 0; i < MAX_NUM_MLD_LINKS; i++) {
+-		if (!(wpa_s->valid_links & BIT(i)))
+-			continue;
+-
++	for_each_link(wpa_s->valid_links, i) {
+ 		if (ether_addr_equal(wpa_s->links[i].bssid, addr))
+ 			return true;
+ 	}
+-- 
+2.43.0
+

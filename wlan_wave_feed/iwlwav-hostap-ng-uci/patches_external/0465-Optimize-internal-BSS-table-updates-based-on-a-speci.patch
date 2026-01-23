@@ -1,0 +1,453 @@
+From 5b4a78b1f90977fdd013baffa0a05c47ef59f817 Mon Sep 17 00:00:00 2001
+From: Jouni Malinen <quic_jouni@quicinc.com>
+Date: Wed, 20 Mar 2024 11:20:43 +0200
+Subject: [PATCH] Optimize internal BSS table updates based on a specific BSSID
+
+When wpa_supplicant needed to update the internal BSS table with the
+latest scan results from the driver, it fetched all BSSs and processed
+them all. This is unnecessary for cases where an update is needed only
+for a specific BSS. Optimize this by filtering out the unnecessary
+entries from the results.
+
+Signed-off-by: Jouni Malinen <quic_jouni@quicinc.com>
+---
+ src/ap/ap_drv_ops.c               |  2 ++
+ src/drivers/driver.h              | 11 +++++++++++
+ src/drivers/driver_nl80211.c      |  2 +-
+ src/drivers/driver_nl80211.h      |  3 ++-
+ src/drivers/driver_nl80211_scan.c | 21 ++++++++++++++-------
+ wpa_supplicant/driver_i.h         |  2 +-
+ wpa_supplicant/events.c           | 11 ++++++-----
+ wpa_supplicant/p2p_supplicant.c   |  2 +-
+ wpa_supplicant/pasn_supplicant.c  |  2 +-
+ wpa_supplicant/scan.c             | 12 ++++++++----
+ wpa_supplicant/scan.h             |  6 ++++--
+ wpa_supplicant/sme.c              |  2 +-
+ wpa_supplicant/wnm_sta.c          |  2 +-
+ wpa_supplicant/wpa_priv.c         |  7 +++++--
+ wpa_supplicant/wpa_supplicant.c   | 15 ++++++++++-----
+ wpa_supplicant/wpas_glue.c        |  2 +-
+ 16 files changed, 69 insertions(+), 33 deletions(-)
+
+diff --git a/src/ap/ap_drv_ops.c b/src/ap/ap_drv_ops.c
+index e89f53060..6d910aa5a 100644
+--- a/src/ap/ap_drv_ops.c
++++ b/src/ap/ap_drv_ops.c
+@@ -758,6 +758,8 @@ int hostapd_driver_scan(struct hostapd_data *hapd,
+ struct wpa_scan_results * hostapd_driver_get_scan_results(
+ 	struct hostapd_data *hapd)
+ {
++	if (hapd->driver && hapd->driver->get_scan_results)
++		return hapd->driver->get_scan_results(hapd->drv_priv, NULL);
+ 	if (hapd->driver && hapd->driver->get_scan_results2)
+ 		return hapd->driver->get_scan_results2(hapd->drv_priv);
+ 	return NULL;
+diff --git a/src/drivers/driver.h b/src/drivers/driver.h
+index eedc3f647..72446fac1 100644
+--- a/src/drivers/driver.h
++++ b/src/drivers/driver.h
+@@ -3366,6 +3366,17 @@ struct wpa_driver_ops {
+ 	int (*update_ft_ies)(void *priv, const u8 *md, const u8 *ies,
+ 			     size_t ies_len);
+ 
++	/**
++	 * get_scan_results - Fetch the latest scan results
++	 * @priv: Private driver interface data
++	 * @bssid: Return results only for the specified BSSID, %NULL for all
++	 *
++	 * Returns: Allocated buffer of scan results (caller is responsible for
++	 * freeing the data structure) on success, NULL on failure
++	 */
++	struct wpa_scan_results * (*get_scan_results)(void *priv,
++						      const u8 *bssid);
++
+ 	/**
+ 	 * get_scan_results2 - Fetch the latest scan results
+ 	 * @priv: private driver interface data
+diff --git a/src/drivers/driver_nl80211.c b/src/drivers/driver_nl80211.c
+index b3e9e6f2f..e2c46c123 100644
+--- a/src/drivers/driver_nl80211.c
++++ b/src/drivers/driver_nl80211.c
+@@ -13880,7 +13880,7 @@ const struct wpa_driver_ops wpa_driver_nl80211_ops = {
+ 	.scan2 = driver_nl80211_scan2,
+ 	.sched_scan = wpa_driver_nl80211_sched_scan,
+ 	.stop_sched_scan = wpa_driver_nl80211_stop_sched_scan,
+-	.get_scan_results2 = wpa_driver_nl80211_get_scan_results,
++	.get_scan_results = wpa_driver_nl80211_get_scan_results,
+ 	.abort_scan = wpa_driver_nl80211_abort_scan,
+ 	.deauthenticate = driver_nl80211_deauthenticate,
+ 	.authenticate = driver_nl80211_authenticate,
+diff --git a/src/drivers/driver_nl80211.h b/src/drivers/driver_nl80211.h
+index 43a6625bb..32a1c8b1f 100644
+--- a/src/drivers/driver_nl80211.h
++++ b/src/drivers/driver_nl80211.h
+@@ -401,7 +401,8 @@ int wpa_driver_nl80211_scan(struct i802_bss *bss,
+ int wpa_driver_nl80211_sched_scan(void *priv,
+ 				  struct wpa_driver_scan_params *params);
+ int wpa_driver_nl80211_stop_sched_scan(void *priv);
+-struct wpa_scan_results * wpa_driver_nl80211_get_scan_results(void *priv);
++struct wpa_scan_results * wpa_driver_nl80211_get_scan_results(void *priv,
++							      const u8 *bssid);
+ void nl80211_dump_scan(struct wpa_driver_nl80211_data *drv);
+ int wpa_driver_nl80211_abort_scan(void *priv, u64 scan_cookie);
+ int wpa_driver_nl80211_vendor_scan(struct i802_bss *bss,
+diff --git a/src/drivers/driver_nl80211_scan.c b/src/drivers/driver_nl80211_scan.c
+index 68ae5799c..577f84fef 100644
+--- a/src/drivers/driver_nl80211_scan.c
++++ b/src/drivers/driver_nl80211_scan.c
+@@ -728,7 +728,7 @@ static int nl80211_scan_filtered(struct wpa_driver_nl80211_data *drv,
+ 
+ static struct wpa_scan_res *
+ nl80211_parse_bss_info(struct wpa_driver_nl80211_data *drv,
+-		       struct nl_msg *msg)
++		       struct nl_msg *msg, const u8 *bssid)
+ {
+ 	struct nlattr *tb[NL80211_ATTR_MAX + 1];
+ 	struct genlmsghdr *gnlh = nlmsg_data(nlmsg_hdr(msg));
+@@ -762,6 +762,9 @@ nl80211_parse_bss_info(struct wpa_driver_nl80211_data *drv,
+ 	if (nla_parse_nested(bss, NL80211_BSS_MAX, tb[NL80211_ATTR_BSS],
+ 			     bss_policy))
+ 		return NULL;
++	if (bssid && bss[NL80211_BSS_BSSID] &&
++	    !ether_addr_equal(bssid, nla_data(bss[NL80211_BSS_BSSID])))
++		return NULL;
+ 	if (bss[NL80211_BSS_INFORMATION_ELEMENTS]) {
+ 		ie = nla_data(bss[NL80211_BSS_INFORMATION_ELEMENTS]);
+ 		ie_len = nla_len(bss[NL80211_BSS_INFORMATION_ELEMENTS]);
+@@ -866,6 +869,7 @@ nl80211_parse_bss_info(struct wpa_driver_nl80211_data *drv,
+ struct nl80211_bss_info_arg {
+ 	struct wpa_driver_nl80211_data *drv;
+ 	struct wpa_scan_results *res;
++	const u8 *bssid;
+ };
+ 
+ static int bss_info_handler(struct nl_msg *msg, void *arg)
+@@ -875,7 +879,7 @@ static int bss_info_handler(struct nl_msg *msg, void *arg)
+ 	struct wpa_scan_res **tmp;
+ 	struct wpa_scan_res *r;
+ 
+-	r = nl80211_parse_bss_info(_arg->drv, msg);
++	r = nl80211_parse_bss_info(_arg->drv, msg, _arg->bssid);
+ 	if (!r)
+ 		return NL_SKIP;
+ 
+@@ -973,7 +977,7 @@ static void nl80211_update_scan_res_noise(struct wpa_scan_res *res,
+ 
+ 
+ static struct wpa_scan_results *
+-nl80211_get_scan_results(struct wpa_driver_nl80211_data *drv)
++nl80211_get_scan_results(struct wpa_driver_nl80211_data *drv, const u8 *bssid)
+ {
+ 	struct nl_msg *msg;
+ 	struct wpa_scan_results *res;
+@@ -993,6 +997,7 @@ try_again:
+ 
+ 	arg.drv = drv;
+ 	arg.res = res;
++	arg.bssid = bssid;
+ 	ret = send_and_recv_resp(drv, msg, bss_info_handler, &arg);
+ 	if (ret == -EAGAIN) {
+ 		count++;
+@@ -1029,16 +1034,18 @@ try_again:
+ 
+ /**
+  * wpa_driver_nl80211_get_scan_results - Fetch the latest scan results
+- * @priv: Pointer to private wext data from wpa_driver_nl80211_init()
++ * @priv: Pointer to private nl80211 data from wpa_driver_nl80211_init()
++ * @bssid: Return results only for the specified BSSID, %NULL for all
+  * Returns: Scan results on success, -1 on failure
+  */
+-struct wpa_scan_results * wpa_driver_nl80211_get_scan_results(void *priv)
++struct wpa_scan_results * wpa_driver_nl80211_get_scan_results(void *priv,
++							      const u8 *bssid)
+ {
+ 	struct i802_bss *bss = priv;
+ 	struct wpa_driver_nl80211_data *drv = bss->drv;
+ 	struct wpa_scan_results *res;
+ 
+-	res = nl80211_get_scan_results(drv);
++	res = nl80211_get_scan_results(drv, bssid);
+ 	if (res)
+ 		wpa_driver_nl80211_check_bss_status(drv, res);
+ 	return res;
+@@ -1055,7 +1062,7 @@ static int nl80211_dump_scan_handler(struct nl_msg *msg, void *arg)
+ 	struct nl80211_dump_scan_ctx *ctx = arg;
+ 	struct wpa_scan_res *r;
+ 
+-	r = nl80211_parse_bss_info(ctx->drv, msg);
++	r = nl80211_parse_bss_info(ctx->drv, msg, NULL);
+ 	if (!r)
+ 		return NL_SKIP;
+ 	wpa_printf(MSG_DEBUG, "nl80211: %d " MACSTR " %d%s",
+diff --git a/wpa_supplicant/driver_i.h b/wpa_supplicant/driver_i.h
+index 9a4c23537..0322b7150 100644
+--- a/wpa_supplicant/driver_i.h
++++ b/wpa_supplicant/driver_i.h
+@@ -128,7 +128,7 @@ static inline int wpa_drv_stop_sched_scan(struct wpa_supplicant *wpa_s)
+ }
+ 
+ struct wpa_scan_results *
+-wpa_drv_get_scan_results2(struct wpa_supplicant *wpa_s);
++wpa_drv_get_scan_results(struct wpa_supplicant *wpa_s, const u8 *bssid);
+ 
+ static inline int wpa_drv_get_bssid(struct wpa_supplicant *wpa_s, u8 *bssid)
+ {
+diff --git a/wpa_supplicant/events.c b/wpa_supplicant/events.c
+index c32610f9f..ca2794638 100644
+--- a/wpa_supplicant/events.c
++++ b/wpa_supplicant/events.c
+@@ -163,7 +163,7 @@ wpa_supplicant_update_current_bss(struct wpa_supplicant *wpa_s, const u8 *bssid)
+ 	struct wpa_bss *bss = wpa_supplicant_get_new_bss(wpa_s, bssid);
+ 
+ 	if (!bss) {
+-		wpa_supplicant_update_scan_results(wpa_s);
++		wpa_supplicant_update_scan_results(wpa_s, bssid);
+ 
+ 		/* Get the BSS from the new scan results */
+ 		bss = wpa_supplicant_get_new_bss(wpa_s, bssid);
+@@ -182,7 +182,7 @@ static void wpa_supplicant_update_link_bss(struct wpa_supplicant *wpa_s,
+ 	struct wpa_bss *bss = wpa_supplicant_get_new_bss(wpa_s, bssid);
+ 
+ 	if (!bss) {
+-		wpa_supplicant_update_scan_results(wpa_s);
++		wpa_supplicant_update_scan_results(wpa_s, bssid);
+ 		bss = wpa_supplicant_get_new_bss(wpa_s, bssid);
+ 	}
+ 
+@@ -2404,7 +2404,7 @@ static int _wpa_supplicant_event_scan_results(struct wpa_supplicant *wpa_s,
+ 
+ 	scan_res = wpa_supplicant_get_scan_results(wpa_s,
+ 						   data ? &data->scan_info :
+-						   NULL, 1);
++						   NULL, 1, NULL);
+ 	if (scan_res == NULL) {
+ 		if (wpa_s->conf->ap_scan == 2 || ap ||
+ 		    wpa_s->scan_res_handler == scan_only_handler)
+@@ -3635,7 +3635,7 @@ no_pfs:
+ 			wpa_printf(MSG_DEBUG,
+ 				   "Operating frequency changed from %u to %u MHz",
+ 				   wpa_s->assoc_freq, data->assoc_info.freq);
+-			wpa_supplicant_update_scan_results(wpa_s);
++			wpa_supplicant_update_scan_results(wpa_s, bssid);
+ 		}
+ 	}
+ 
+@@ -4046,7 +4046,8 @@ static int wpa_sm_set_ml_info(struct wpa_supplicant *wpa_s)
+ 
+ 		bss = wpa_supplicant_get_new_bss(wpa_s, drv_mlo.links[i].bssid);
+ 		if (!bss) {
+-			wpa_supplicant_update_scan_results(wpa_s);
++			wpa_supplicant_update_scan_results(
++				wpa_s, drv_mlo.links[i].bssid);
+ 			bss = wpa_supplicant_get_new_bss(
+ 				wpa_s, drv_mlo.links[i].bssid);
+ 		}
+diff --git a/wpa_supplicant/p2p_supplicant.c b/wpa_supplicant/p2p_supplicant.c
+index cfa4f4c88..70025f1e4 100644
+--- a/wpa_supplicant/p2p_supplicant.c
++++ b/wpa_supplicant/p2p_supplicant.c
+@@ -7012,7 +7012,7 @@ static int wpas_start_p2p_client(struct wpa_supplicant *wpa_s,
+ 	 * fetch time on the same radio so it reflects the actual time the last
+ 	 * scan result event occurred.
+ 	 */
+-	wpa_supplicant_update_scan_results(wpa_s);
++	wpa_supplicant_update_scan_results(wpa_s, go_bssid);
+ 	dl_list_for_each(ifs, &wpa_s->radio->ifaces, struct wpa_supplicant,
+ 			 radio_list) {
+ 		if (ifs == wpa_s)
+diff --git a/wpa_supplicant/pasn_supplicant.c b/wpa_supplicant/pasn_supplicant.c
+index 2e65cf085..3da9c7462 100644
+--- a/wpa_supplicant/pasn_supplicant.c
++++ b/wpa_supplicant/pasn_supplicant.c
+@@ -166,7 +166,7 @@ static int wpas_pasn_get_params_from_bss(struct wpa_supplicant *wpa_s,
+ 
+ 	bss = wpa_bss_get_bssid(wpa_s, peer_addr);
+ 	if (!bss) {
+-		wpa_supplicant_update_scan_results(wpa_s);
++		wpa_supplicant_update_scan_results(wpa_s, peer_addr);
+ 		bss = wpa_bss_get_bssid(wpa_s, peer_addr);
+ 		if (!bss) {
+ 			wpa_printf(MSG_DEBUG, "PASN: BSS not found");
+diff --git a/wpa_supplicant/scan.c b/wpa_supplicant/scan.c
+index 5c6f71f9f..2db4d8b91 100644
+--- a/wpa_supplicant/scan.c
++++ b/wpa_supplicant/scan.c
+@@ -3166,6 +3166,7 @@ void scan_est_throughput(struct wpa_supplicant *wpa_s,
+  * @wpa_s: Pointer to wpa_supplicant data
+  * @info: Information about what was scanned or %NULL if not available
+  * @new_scan: Whether a new scan was performed
++ * @bssid: Return BSS entries only for a single BSSID, %NULL for all
+  * Returns: Scan results, %NULL on failure
+  *
+  * This function request the current scan results from the driver and updates
+@@ -3174,13 +3175,14 @@ void scan_est_throughput(struct wpa_supplicant *wpa_s,
+  */
+ struct wpa_scan_results *
+ wpa_supplicant_get_scan_results(struct wpa_supplicant *wpa_s,
+-				struct scan_info *info, int new_scan)
++				struct scan_info *info, int new_scan,
++				const u8 *bssid)
+ {
+ 	struct wpa_scan_results *scan_res;
+ 	size_t i;
+ 	int (*compar)(const void *, const void *) = wpa_scan_result_compar;
+ 
+-	scan_res = wpa_drv_get_scan_results2(wpa_s);
++	scan_res = wpa_drv_get_scan_results(wpa_s, bssid);
+ 	if (scan_res == NULL) {
+ 		wpa_dbg(wpa_s, MSG_DEBUG, "Failed to get scan results");
+ 		return NULL;
+@@ -3238,6 +3240,7 @@ wpa_supplicant_get_scan_results(struct wpa_supplicant *wpa_s,
+ /**
+  * wpa_supplicant_update_scan_results - Update scan results from the driver
+  * @wpa_s: Pointer to wpa_supplicant data
++ * @bssid: Update BSS entries only for a single BSSID, %NULL for all
+  * Returns: 0 on success, -1 on failure
+  *
+  * This function updates the BSS table within wpa_supplicant based on the
+@@ -3247,10 +3250,11 @@ wpa_supplicant_get_scan_results(struct wpa_supplicant *wpa_s,
+  * needed information to complete the connection (e.g., to perform validation
+  * steps in 4-way handshake).
+  */
+-int wpa_supplicant_update_scan_results(struct wpa_supplicant *wpa_s)
++int wpa_supplicant_update_scan_results(struct wpa_supplicant *wpa_s,
++				       const u8 *bssid)
+ {
+ 	struct wpa_scan_results *scan_res;
+-	scan_res = wpa_supplicant_get_scan_results(wpa_s, NULL, 0);
++	scan_res = wpa_supplicant_get_scan_results(wpa_s, NULL, 0, bssid);
+ 	if (scan_res == NULL)
+ 		return -1;
+ 	wpa_scan_results_free(scan_res);
+diff --git a/wpa_supplicant/scan.h b/wpa_supplicant/scan.h
+index cc9d1a3fa..d4c06c1ae 100644
+--- a/wpa_supplicant/scan.h
++++ b/wpa_supplicant/scan.h
+@@ -54,8 +54,10 @@ int wpa_supplicant_trigger_scan(struct wpa_supplicant *wpa_s,
+ 				bool default_ies, bool next);
+ struct wpa_scan_results *
+ wpa_supplicant_get_scan_results(struct wpa_supplicant *wpa_s,
+-				struct scan_info *info, int new_scan);
+-int wpa_supplicant_update_scan_results(struct wpa_supplicant *wpa_s);
++				struct scan_info *info, int new_scan,
++				const u8 *bssid);
++int wpa_supplicant_update_scan_results(struct wpa_supplicant *wpa_s,
++				       const u8 *bssid);
+ const u8 * wpa_scan_get_ie(const struct wpa_scan_res *res, u8 ie);
+ const u8 * wpa_scan_get_ml_ie(const struct wpa_scan_res *res, u8 type);
+ const u8 * wpa_scan_get_vendor_ie(const struct wpa_scan_res *res,
+diff --git a/wpa_supplicant/sme.c b/wpa_supplicant/sme.c
+index 887dde5c7..f08184f98 100644
+--- a/wpa_supplicant/sme.c
++++ b/wpa_supplicant/sme.c
+@@ -182,7 +182,7 @@ static struct wpabuf * sme_auth_build_sae_commit(struct wpa_supplicant *wpa_s,
+ 	if (!bss) {
+ 		wpa_printf(MSG_DEBUG,
+ 			   "SAE: BSS not available, update scan result to get BSS");
+-		wpa_supplicant_update_scan_results(wpa_s);
++		wpa_supplicant_update_scan_results(wpa_s, bssid);
+ 		bss = wpa_bss_get_bssid_latest(wpa_s, bssid);
+ 	}
+ 	if (bss) {
+diff --git a/wpa_supplicant/wnm_sta.c b/wpa_supplicant/wnm_sta.c
+index 1672224d8..7dc93ebff 100644
+--- a/wpa_supplicant/wnm_sta.c
++++ b/wpa_supplicant/wnm_sta.c
+@@ -1602,7 +1602,7 @@ static void ieee802_11_rx_bss_trans_mgmt_req(struct wpa_supplicant *wpa_s,
+ 		* It is not a new scan, this does not update the last_scan
+ 		* timestamp nor will it expire old BSSs.
+ 		*/
+-		wpa_supplicant_update_scan_results(wpa_s);
++		wpa_supplicant_update_scan_results(wpa_s, NULL);
+ 		if (wnm_scan_process(wpa_s, true) > 0)
+ 			return;
+ 		wpa_printf(MSG_DEBUG,
+diff --git a/wpa_supplicant/wpa_priv.c b/wpa_supplicant/wpa_priv.c
+index 31a9af650..88f3f2a52 100644
+--- a/wpa_supplicant/wpa_priv.c
++++ b/wpa_supplicant/wpa_priv.c
+@@ -187,7 +187,10 @@ static void wpa_priv_get_scan_results2(struct wpa_priv_interface *iface,
+ 	int val;
+ 	size_t i;
+ 
+-	res = iface->driver->get_scan_results2(iface->drv_priv);
++	if (iface->driver->get_scan_results)
++		res = iface->driver->get_scan_results(iface->drv_priv, NULL);
++	else
++		res = iface->driver->get_scan_results2(iface->drv_priv);
+ 	if (res == NULL)
+ 		goto fail;
+ 
+@@ -231,7 +234,7 @@ static void wpa_priv_cmd_get_scan_results(struct wpa_priv_interface *iface,
+ 	if (iface->drv_priv == NULL)
+ 		return;
+ 
+-	if (iface->driver->get_scan_results2)
++	if (iface->driver->get_scan_results || iface->driver->get_scan_results2)
+ 		wpa_priv_get_scan_results2(iface, from, fromlen);
+ 	else
+ 		sendto(iface->fd, "", 0, 0, (struct sockaddr *) from, fromlen);
+diff --git a/wpa_supplicant/wpa_supplicant.c b/wpa_supplicant/wpa_supplicant.c
+index d52ce1efd..ab71e2f27 100644
+--- a/wpa_supplicant/wpa_supplicant.c
++++ b/wpa_supplicant/wpa_supplicant.c
+@@ -890,7 +890,7 @@ void wpa_supplicant_reset_bgscan(struct wpa_supplicant *wpa_s)
+ 			struct wpa_scan_results *scan_res;
+ 			wpa_s->bgscan_ssid = wpa_s->current_ssid;
+ 			scan_res = wpa_supplicant_get_scan_results(wpa_s, NULL,
+-								   0);
++								   0, NULL);
+ 			if (scan_res) {
+ 				bgscan_notify_scan(wpa_s, scan_res);
+ 				wpa_scan_results_free(scan_res);
+@@ -2900,7 +2900,8 @@ static void ibss_mesh_select_40mhz(struct wpa_supplicant *wpa_s,
+ 	if (obss_scan) {
+ 		struct wpa_scan_results *scan_res;
+ 
+-		scan_res = wpa_supplicant_get_scan_results(wpa_s, NULL, 0);
++		scan_res = wpa_supplicant_get_scan_results(wpa_s, NULL, 0,
++							   NULL);
+ 		if (scan_res == NULL) {
+ 			/* Back to HT20 */
+ 			freq->sec_channel_offset = 0;
+@@ -9301,17 +9302,21 @@ int wpa_drv_signal_poll(struct wpa_supplicant *wpa_s,
+ 
+ 
+ struct wpa_scan_results *
+-wpa_drv_get_scan_results2(struct wpa_supplicant *wpa_s)
++wpa_drv_get_scan_results(struct wpa_supplicant *wpa_s, const u8 *bssid)
+ {
+ 	struct wpa_scan_results *scan_res;
+ #ifdef CONFIG_TESTING_OPTIONS
+ 	size_t idx;
+ #endif /* CONFIG_TESTING_OPTIONS */
+ 
+-	if (!wpa_s->driver->get_scan_results2)
++	if (wpa_s->driver->get_scan_results)
++		scan_res = wpa_s->driver->get_scan_results(wpa_s->drv_priv,
++							   bssid);
++	else if (wpa_s->driver->get_scan_results2)
++		scan_res = wpa_s->driver->get_scan_results2(wpa_s->drv_priv);
++	else
+ 		return NULL;
+ 
+-	scan_res = wpa_s->driver->get_scan_results2(wpa_s->drv_priv);
+ 
+ #ifdef CONFIG_TESTING_OPTIONS
+ 	for (idx = 0; scan_res && idx < scan_res->num; idx++) {
+diff --git a/wpa_supplicant/wpas_glue.c b/wpa_supplicant/wpas_glue.c
+index 16463a47c..eea854899 100644
+--- a/wpa_supplicant/wpas_glue.c
++++ b/wpa_supplicant/wpas_glue.c
+@@ -449,7 +449,7 @@ static int wpa_supplicant_get_beacon_ie(void *ctx)
+ 
+ 	/* No WPA/RSN IE found in the cached scan results. Try to get updated
+ 	 * scan results from the driver. */
+-	if (wpa_supplicant_update_scan_results(wpa_s) < 0)
++	if (wpa_supplicant_update_scan_results(wpa_s, wpa_s->bssid) < 0)
+ 		return -1;
+ 
+ 	return wpa_get_beacon_ie(wpa_s);
+-- 
+2.43.0
+

@@ -1,0 +1,67 @@
+From a1150cc6030ffc8c79b8f8a98cda66c26de28cc3 Mon Sep 17 00:00:00 2001
+From: Juliusz Sosinowicz <juliusz@wolfssl.com>
+Date: Thu, 4 Apr 2024 20:16:28 +0200
+Subject: [PATCH] wolfSSL: Simplify option setting in tls_set_conn_flags()
+
+Use one call to wolfSSL_set_options with all the relevant options
+already set. In addition, use this function in
+tls_connection_set_verify() instead of just tls_connection_set_params().
+
+Signed-off-by: Juliusz Sosinowicz <juliusz@wolfssl.com>
+---
+ src/crypto/tls_wolfssl.c | 16 ++++++++++++----
+ 1 file changed, 12 insertions(+), 4 deletions(-)
+
+diff --git a/src/crypto/tls_wolfssl.c b/src/crypto/tls_wolfssl.c
+index f3589cfb3..dc2e14a98 100644
+--- a/src/crypto/tls_wolfssl.c
++++ b/src/crypto/tls_wolfssl.c
+@@ -1601,19 +1601,24 @@ static int tls_connection_ca_cert(void *tls_ctx, struct tls_connection *conn,
+ 
+ static void tls_set_conn_flags(WOLFSSL *ssl, unsigned int flags)
+ {
++	long op = 0;
++
+ #ifdef HAVE_SESSION_TICKET
+ 	if (!(flags & TLS_CONN_DISABLE_SESSION_TICKET))
+ 		wolfSSL_UseSessionTicket(ssl);
+ #endif /* HAVE_SESSION_TICKET */
+ 
++	wpa_printf(MSG_DEBUG, "SSL: conn_flags: %d", flags);
++
+ 	if (flags & TLS_CONN_DISABLE_TLSv1_0)
+-		wolfSSL_set_options(ssl, SSL_OP_NO_TLSv1);
++		op |= WOLFSSL_OP_NO_TLSv1;
+ 	if (flags & TLS_CONN_DISABLE_TLSv1_1)
+-		wolfSSL_set_options(ssl, SSL_OP_NO_TLSv1_1);
++		op |= WOLFSSL_OP_NO_TLSv1_1;
+ 	if (flags & TLS_CONN_DISABLE_TLSv1_2)
+-		wolfSSL_set_options(ssl, SSL_OP_NO_TLSv1_2);
++		op |= WOLFSSL_OP_NO_TLSv1_2;
+ 	if (flags & TLS_CONN_DISABLE_TLSv1_3)
+-		wolfSSL_set_options(ssl, SSL_OP_NO_TLSv1_3);
++		op |= WOLFSSL_OP_NO_TLSv1_3;
++	wolfSSL_set_options(ssl, op);
+ }
+ 
+ 
+@@ -1994,6 +1999,7 @@ int tls_connection_set_verify(void *ssl_ctx, struct tls_connection *conn,
+ 		return -1;
+ 
+ 	wpa_printf(MSG_DEBUG, "SSL: set verify: %d", verify_peer);
++	wpa_printf(MSG_DEBUG, "SSL: flags: %d", flags);
+ 
+ 	if (verify_peer) {
+ 		conn->ca_cert_verify = 1;
+@@ -2023,6 +2029,8 @@ int tls_connection_set_verify(void *ssl_ctx, struct tls_connection *conn,
+ 					       session_ctx_len);
+ 	}
+ 
++	tls_set_conn_flags(conn->ssl, flags);
++
+ 	return 0;
+ }
+ 
+-- 
+2.43.0
+

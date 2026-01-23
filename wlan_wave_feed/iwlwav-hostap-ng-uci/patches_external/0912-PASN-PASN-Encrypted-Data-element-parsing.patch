@@ -1,0 +1,65 @@
+From d582f8ce9b5d336e26eab79f6dc2e84c93b55ba9 Mon Sep 17 00:00:00 2001
+From: Shivani Baranwal <quic_shivbara@quicinc.com>
+Date: Mon, 5 Aug 2024 02:43:59 +0530
+Subject: [PATCH] PASN: PASN Encrypted Data element parsing
+
+Add the PASN Encrypted Data element from IEEE P802.11bh/D6.0 into the
+element parser. This is needed for P2P2.
+
+Signed-off-by: Shivani Baranwal <quic_shivbara@quicinc.com>
+---
+ src/common/ieee802_11_common.c | 4 ++++
+ src/common/ieee802_11_common.h | 2 ++
+ src/common/ieee802_11_defs.h   | 1 +
+ 3 files changed, 7 insertions(+)
+
+diff --git a/src/common/ieee802_11_common.c b/src/common/ieee802_11_common.c
+index 56d38a5fd..56d556980 100644
+--- a/src/common/ieee802_11_common.c
++++ b/src/common/ieee802_11_common.c
+@@ -413,6 +413,10 @@ static int ieee802_11_parse_extension(const u8 *pos, size_t elen,
+ 		elems->mbssid_known_bss = pos;
+ 		elems->mbssid_known_bss_len = elen;
+ 		break;
++	case WLAN_EID_EXT_PASN_ENCRYPTED_DATA:
++		elems->pasn_encrypted_data = pos;
++		elems->pasn_encrypted_data_len = elen;
++		break;
+ 	default:
+ 		if (show_errors) {
+ 			wpa_printf(MSG_MSGDUMP,
+diff --git a/src/common/ieee802_11_common.h b/src/common/ieee802_11_common.h
+index e4321b5c5..b8cecab0d 100644
+--- a/src/common/ieee802_11_common.h
++++ b/src/common/ieee802_11_common.h
+@@ -66,6 +66,7 @@ struct ieee802_11_elems {
+ 	const u8 *vendor_vht;
+ 	const u8 *p2p;
+ 	const u8 *p2p2_ie;
++	const u8 *pasn_encrypted_data;
+ 	const u8 *wfd;
+ 	const u8 *link_id;
+ 	const u8 *interworking;
+@@ -141,6 +142,7 @@ struct ieee802_11_elems {
+ 	u8 vendor_vht_len;
+ 	u8 p2p_len;
+ 	u8 p2p2_ie_len;
++	u8 pasn_encrypted_data_len;
+ 	u8 wfd_len;
+ 	u8 interworking_len;
+ 	u8 qos_map_set_len;
+diff --git a/src/common/ieee802_11_defs.h b/src/common/ieee802_11_defs.h
+index 4e09f0055..d25e2b906 100644
+--- a/src/common/ieee802_11_defs.h
++++ b/src/common/ieee802_11_defs.h
+@@ -526,6 +526,7 @@
+ #define WLAN_EID_EXT_QOS_CHARACTERISTICS 113
+ #define WLAN_EID_EXT_AKM_SUITE_SELECTOR 114
+ #define WLAN_EID_EXT_BANDWIDTH_INDICATION 135
++#define WLAN_EID_EXT_PASN_ENCRYPTED_DATA 140
+ 
+ /* Extended Capabilities field */
+ #define WLAN_EXT_CAPAB_20_40_COEX 0
+-- 
+2.43.0
+

@@ -1,0 +1,44 @@
+From 25ad3ef4fce94716cf8ec792857a65b564a33656 Mon Sep 17 00:00:00 2001
+From: Sagar Reddy <snandanuri@maxlinear.com>
+Date: Tue, 14 Oct 2025 19:30:40 +0800
+Subject: [PATCH] WLANRTSYS-95303 Fix invalid ml_sta_info parsed for Non-ML
+ AssocReq
+
+**Issue:**
+STA Association fails with `WLAN_STATUS_AP_UNABLE_TO_HANDLE_NEW_STA`
+
+**RCA:**
+Irregardless of the presence of MLO IE in AssocReq, Hostap adds the
+`NL80211_ATTR_ML_STA_INFO` attribute data (**Multi-Link STA info**) to
+the NL message. This leads to "binary attribute size out of range" in
+WLAN Driver.
+
+This happens because the `nl_put` for `NL80211_ATTR_ML_STA_INFO` is
+executed, if `ml_sta_info` is not `NULL`. But, the `ml_sta_info` could
+never be `NULL` as the respective struct is initialized with `{0}`.
+
+**Fix:**
+Use `is_ml` attribute isof the parent object `ml_sta_info` for
+parsing Multi-Link STA info in the MLO IE of AssocReq.
+
+Signed-off-by: Sagar Reddy <snandanuri@maxlinear.com>
+---
+ src/drivers/driver_nl80211.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/src/drivers/driver_nl80211.c b/src/drivers/driver_nl80211.c
+index f5f61958e..f0ef14c8c 100644
+--- a/src/drivers/driver_nl80211.c
++++ b/src/drivers/driver_nl80211.c
+@@ -6022,7 +6022,7 @@ static int wpa_driver_nl80211_sta_add(void *priv,
+ 		}
+ 
+ #ifdef CONFIG_IEEE80211BE_MXL_MLO
+-		if (params->mxl_params.ml_sta_info) {
++		if (params->mxl_params.ml_sta_info && params->mxl_params.ml_sta_info->is_ml) {
+ 			wpa_hexdump(MSG_DEBUG, "  * Multi-Link STA info",
+ 					params->mxl_params.ml_sta_info, sizeof(*params->mxl_params.ml_sta_info));
+ 			if (nla_put(msg, NL80211_ATTR_ML_STA_INFO,
+-- 
+2.43.0
+

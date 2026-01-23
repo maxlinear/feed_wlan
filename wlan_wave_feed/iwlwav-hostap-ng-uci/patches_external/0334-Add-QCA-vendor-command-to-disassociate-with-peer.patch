@@ -1,0 +1,40 @@
+From fe36750b39a095f0a13bfed1c88a885592be4083 Mon Sep 17 00:00:00 2001
+From: Muna Sinada <quic_msinada@quicinc.com>
+Date: Tue, 16 Jan 2024 19:48:48 -0800
+Subject: [PATCH] Add QCA vendor command to disassociate with peer
+
+This is an event indicating to the user space to disassociate with
+peer based on the peer MAC address provided.
+
+Signed-off-by: Muna Sinada <quic_msinada@quicinc.com>
+---
+ src/common/qca-vendor.h | 6 ++++++
+ 1 file changed, 6 insertions(+)
+
+diff --git a/src/common/qca-vendor.h b/src/common/qca-vendor.h
+index 4267136c2..a5bbc781a 100644
+--- a/src/common/qca-vendor.h
++++ b/src/common/qca-vendor.h
+@@ -1043,6 +1043,11 @@ enum qca_radiotap_vendor_ids {
+  *	driver to user space which is carrying firmware page fault related
+  *	summary report. The attributes for this command are defined in
+  *	enum qca_wlan_vendor_attr_fw_page_fault_report.
++ *
++ * @QCA_NL80211_VENDOR_SUBCMD_DISASSOC_PEER: Event indication from the driver
++ *	to user space to disassociate with a peer based on the peer MAC address
++ *	provided. Specify the peer MAC address in
++ *	QCA_WLAN_VENDOR_ATTR_MAC_ADDR. For MLO, MLD MAC address is provided.
+  */
+ enum qca_nl80211_vendor_subcmds {
+ 	QCA_NL80211_VENDOR_SUBCMD_UNSPEC = 0,
+@@ -1266,6 +1271,7 @@ enum qca_nl80211_vendor_subcmds {
+ 	QCA_NL80211_VENDOR_SUBCMD_REGULATORY_TPC_INFO = 237,
+ 	QCA_NL80211_VENDOR_SUBCMD_FW_PAGE_FAULT_REPORT = 238,
+ 	QCA_NL80211_VENDOR_SUBCMD_FLOW_POLICY = 239,
++	QCA_NL80211_VENDOR_SUBCMD_DISASSOC_PEER = 240,
+ };
+ 
+ /* Compatibility defines for previously used subcmd names.
+-- 
+2.43.0
+

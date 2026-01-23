@@ -1,0 +1,200 @@
+From 9c0a6d64d0e7fbe2fbd1c437eb71f488b10b7af9 Mon Sep 17 00:00:00 2001
+From: Ruth Mekonnen <rmekonnen@chromium.org>
+Date: Wed, 12 Jun 2024 20:09:43 +0000
+Subject: [PATCH] dbus: Emit ScanInProgress6GHz property
+
+Expose whether a 6 GHz scan is in progress with the ScanInProgress6GHz
+property and flush properties as soon as the property is updated, so
+that platforms can choose not to disconnect while a 6 GHz scan is in
+progress. Once the 6 GHz scan has completed and scan results have been
+received, the ScanInProgress6GHz property is reset to false.
+
+Signed-off-by: Ruth Mekonnen <rmekonnen@chromium.org>
+---
+ doc/dbus.doxygen                        |  5 +++++
+ wpa_supplicant/dbus/dbus_new.c          | 10 ++++++++++
+ wpa_supplicant/dbus/dbus_new.h          |  1 +
+ wpa_supplicant/dbus/dbus_new_handlers.c | 23 +++++++++++++++++++++++
+ wpa_supplicant/dbus/dbus_new_handlers.h |  1 +
+ wpa_supplicant/events.c                 |  8 ++++++++
+ wpa_supplicant/notify.c                 | 10 ++++++++++
+ wpa_supplicant/notify.h                 |  1 +
+ wpa_supplicant/wpa_supplicant_i.h       |  1 +
+ 9 files changed, 60 insertions(+)
+
+diff --git a/doc/dbus.doxygen b/doc/dbus.doxygen
+index 070210945..ae1e6f8cc 100644
+--- a/doc/dbus.doxygen
++++ b/doc/dbus.doxygen
+@@ -883,6 +883,11 @@ fi.w1.wpa_supplicant1.CreateInterface.
+ 	<p>The most recent roam success or failure.</p>
+       </li>
+ 
++      <li>
++	<h3>ScanInProgress6GHz - b - (read)</h3>
++	<p>Whether a 6GHz scan is currently in progress.</p>
++      </li>
++
+       <li>
+ 	<h3>SessionLength - u - (read)</h3>
+ 	<p>The most recent BSS session length in milliseconds.</p>
+diff --git a/wpa_supplicant/dbus/dbus_new.c b/wpa_supplicant/dbus/dbus_new.c
+index 76e42ffbc..5ad5bcd74 100644
+--- a/wpa_supplicant/dbus/dbus_new.c
++++ b/wpa_supplicant/dbus/dbus_new.c
+@@ -2396,6 +2396,10 @@ void wpas_dbus_signal_prop_changed(struct wpa_supplicant *wpa_s,
+ 	case WPAS_DBUS_PROP_ROAM_COMPLETE:
+ 		prop = "RoamComplete";
+ 		break;
++	case WPAS_DBUS_PROP_SCAN_IN_PROGRESS_6GHZ:
++		prop = "ScanInProgress6GHz";
++		flush = TRUE;
++		break;
+ 	case WPAS_DBUS_PROP_SESSION_LENGTH:
+ 		prop = "SessionLength";
+ 		break;
+@@ -3983,6 +3987,12 @@ static const struct wpa_dbus_property_desc wpas_dbus_interface_properties[] = {
+ 	  NULL,
+ 	  NULL
+ 	},
++	{
++	  "ScanInProgress6GHz", WPAS_DBUS_NEW_IFACE_INTERFACE, "b",
++	  wpas_dbus_getter_scan_in_progress_6ghz,
++	  NULL,
++	  NULL
++	},
+ 	{
+ 	  "SessionLength", WPAS_DBUS_NEW_IFACE_INTERFACE, "u",
+ 	  wpas_dbus_getter_session_length,
+diff --git a/wpa_supplicant/dbus/dbus_new.h b/wpa_supplicant/dbus/dbus_new.h
+index 952bb422a..1db5fe8ae 100644
+--- a/wpa_supplicant/dbus/dbus_new.h
++++ b/wpa_supplicant/dbus/dbus_new.h
+@@ -36,6 +36,7 @@ enum wpas_dbus_prop {
+ 	WPAS_DBUS_PROP_ASSOC_STATUS_CODE,
+ 	WPAS_DBUS_PROP_ROAM_TIME,
+ 	WPAS_DBUS_PROP_ROAM_COMPLETE,
++	WPAS_DBUS_PROP_SCAN_IN_PROGRESS_6GHZ,
+ 	WPAS_DBUS_PROP_SESSION_LENGTH,
+ 	WPAS_DBUS_PROP_BSS_TM_STATUS,
+ 	WPAS_DBUS_PROP_MAC_ADDRESS,
+diff --git a/wpa_supplicant/dbus/dbus_new_handlers.c b/wpa_supplicant/dbus/dbus_new_handlers.c
+index 960b3069b..52e35a770 100644
+--- a/wpa_supplicant/dbus/dbus_new_handlers.c
++++ b/wpa_supplicant/dbus/dbus_new_handlers.c
+@@ -3835,6 +3835,29 @@ dbus_bool_t wpas_dbus_getter_roam_complete(
+ }
+ 
+ 
++/**
++ * wpas_dbus_getter_scan_in_progress_6ghz - Get whether a 6 GHz scan is in
++ * progress
++ * @iter: Pointer to incoming dbus message iter
++ * @error: Location to store error on failure
++ * @user_data: Function specific data
++ * Returns: TRUE on success, FALSE on failure
++ *
++ * Getter function for "ScanInProgress6GHz" property.
++ */
++dbus_bool_t wpas_dbus_getter_scan_in_progress_6ghz(
++	const struct wpa_dbus_property_desc *property_desc,
++	DBusMessageIter *iter, DBusError *error, void *user_data)
++{
++	struct wpa_supplicant *wpa_s = user_data;
++	dbus_bool_t scan_in_progress_6ghz = wpa_s->scan_in_progress_6ghz ?
++		TRUE : FALSE;
++
++	return wpas_dbus_simple_property_getter(iter, DBUS_TYPE_BOOLEAN,
++						&scan_in_progress_6ghz, error);
++}
++
++
+ /**
+  * wpas_dbus_getter_session_length - Get most recent BSS session length
+  * @iter: Pointer to incoming dbus message iter
+diff --git a/wpa_supplicant/dbus/dbus_new_handlers.h b/wpa_supplicant/dbus/dbus_new_handlers.h
+index acd6af7ff..7faf70a77 100644
+--- a/wpa_supplicant/dbus/dbus_new_handlers.h
++++ b/wpa_supplicant/dbus/dbus_new_handlers.h
+@@ -173,6 +173,7 @@ DECLARE_ACCESSOR(wpas_dbus_getter_auth_status_code);
+ DECLARE_ACCESSOR(wpas_dbus_getter_assoc_status_code);
+ DECLARE_ACCESSOR(wpas_dbus_getter_roam_time);
+ DECLARE_ACCESSOR(wpas_dbus_getter_roam_complete);
++DECLARE_ACCESSOR(wpas_dbus_getter_scan_in_progress_6ghz);
+ DECLARE_ACCESSOR(wpas_dbus_getter_session_length);
+ DECLARE_ACCESSOR(wpas_dbus_getter_bss_tm_status);
+ DECLARE_ACCESSOR(wpas_dbus_getter_bss_expire_age);
+diff --git a/wpa_supplicant/events.c b/wpa_supplicant/events.c
+index 71971c9f2..7b39813f3 100644
+--- a/wpa_supplicant/events.c
++++ b/wpa_supplicant/events.c
+@@ -2433,6 +2433,12 @@ static int _wpa_supplicant_event_scan_results(struct wpa_supplicant *wpa_s,
+ 	scan_res = wpa_supplicant_get_scan_results(wpa_s,
+ 						   data ? &data->scan_info :
+ 						   NULL, 1, NULL);
++
++	if (wpa_s->scan_in_progress_6ghz) {
++		wpa_s->scan_in_progress_6ghz = false;
++		wpas_notify_scan_in_progress_6ghz(wpa_s);
++	}
++
+ 	if (scan_res == NULL) {
+ 		if (wpa_s->conf->ap_scan == 2 || ap ||
+ 		    wpa_s->scan_res_handler == scan_only_handler)
+@@ -2614,6 +2620,8 @@ static int wpas_trigger_6ghz_scan(struct wpa_supplicant *wpa_s,
+ 	wpa_add_scan_freqs_list(wpa_s, HOSTAPD_MODE_IEEE80211A, &params,
+ 				true, false, false);
+ 	if (!wpa_supplicant_trigger_scan(wpa_s, &params, true, true)) {
++		wpa_s->scan_in_progress_6ghz = true;
++		wpas_notify_scan_in_progress_6ghz(wpa_s);
+ 		os_free(params.freqs);
+ 		return 1;
+ 	}
+diff --git a/wpa_supplicant/notify.c b/wpa_supplicant/notify.c
+index e967dc8ff..308b93d90 100644
+--- a/wpa_supplicant/notify.c
++++ b/wpa_supplicant/notify.c
+@@ -168,6 +168,16 @@ void wpas_notify_roam_complete(struct wpa_supplicant *wpa_s)
+ }
+ 
+ 
++void wpas_notify_scan_in_progress_6ghz(struct wpa_supplicant *wpa_s)
++{
++	if (wpa_s->p2p_mgmt)
++		return;
++
++	wpas_dbus_signal_prop_changed(wpa_s,
++				      WPAS_DBUS_PROP_SCAN_IN_PROGRESS_6GHZ);
++}
++
++
+ void wpas_notify_session_length(struct wpa_supplicant *wpa_s)
+ {
+ 	if (wpa_s->p2p_mgmt)
+diff --git a/wpa_supplicant/notify.h b/wpa_supplicant/notify.h
+index f6c7ac4e2..9749e9cfc 100644
+--- a/wpa_supplicant/notify.h
++++ b/wpa_supplicant/notify.h
+@@ -30,6 +30,7 @@ void wpas_notify_auth_status_code(struct wpa_supplicant *wpa_s);
+ void wpas_notify_assoc_status_code(struct wpa_supplicant *wpa_s);
+ void wpas_notify_roam_time(struct wpa_supplicant *wpa_s);
+ void wpas_notify_roam_complete(struct wpa_supplicant *wpa_s);
++void wpas_notify_scan_in_progress_6ghz(struct wpa_supplicant *wpa_s);
+ void wpas_notify_session_length(struct wpa_supplicant *wpa_s);
+ void wpas_notify_bss_tm_status(struct wpa_supplicant *wpa_s);
+ void wpas_notify_network_changed(struct wpa_supplicant *wpa_s);
+diff --git a/wpa_supplicant/wpa_supplicant_i.h b/wpa_supplicant/wpa_supplicant_i.h
+index cbb0688d4..7f9d722b5 100644
+--- a/wpa_supplicant/wpa_supplicant_i.h
++++ b/wpa_supplicant/wpa_supplicant_i.h
+@@ -1583,6 +1583,7 @@ struct wpa_supplicant {
+ 	bool wps_scan_done; /* Set upon receiving scan results event */
+ 	bool supp_pbc_active; /* Set for interface when PBC is triggered */
+ 	bool wps_overlap;
++	bool scan_in_progress_6ghz; /* Set upon a 6 GHz scan being triggered */
+ 
+ #ifdef CONFIG_PASN
+ 	struct pasn_data pasn;
+-- 
+2.43.0
+

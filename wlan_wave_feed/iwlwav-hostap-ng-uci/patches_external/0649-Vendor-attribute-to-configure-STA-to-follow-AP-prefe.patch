@@ -1,0 +1,40 @@
+From c9db4925f6b07b6c8014689c70a61b58a8ba044b Mon Sep 17 00:00:00 2001
+From: Gururaj Pandurangi <quic_panduran@quicinc.com>
+Date: Mon, 17 Jun 2024 18:18:01 -0700
+Subject: [PATCH] Vendor attribute to configure STA to follow AP preference for
+ candidates
+
+Add a vendor attribute to configure a STA to follow AP advertised
+preference values to select roam candidates with BTM.
+
+Signed-off-by: Jouni Malinen <quic_jouni@quicinc.com>
+---
+ src/common/qca-vendor.h | 12 ++++++++++++
+ 1 file changed, 12 insertions(+)
+
+diff --git a/src/common/qca-vendor.h b/src/common/qca-vendor.h
+index f7bc107a2..5b58ffb39 100644
+--- a/src/common/qca-vendor.h
++++ b/src/common/qca-vendor.h
+@@ -3634,6 +3634,18 @@ enum qca_wlan_vendor_attr_config {
+ 	 */
+ 	QCA_WLAN_VENDOR_ATTR_CONFIG_INTF_OFFLOAD_TYPE = 120,
+ 
++	/* 8-bit unsigned integer to configure the driver to follow AP's
++	 * preference values to select a roam candidate from BTM request.
++	 *
++	 * This attribute is used to configure the driver to select the roam
++	 * candidate based on AP advertised preference values. If not set,
++	 * the driver uses its internal scoring algorithm to do the same.
++	 *
++	 * 1 - STA follows AP's preference values to select a roam candidate
++	 * 0 - STA uses internal scoring algorithm to select a roam candidate
++	 */
++	QCA_WLAN_VENDOR_ATTR_CONFIG_FOLLOW_AP_PREFERENCE_FOR_CNDS_SELECT = 121,
++
+ 	/* keep last */
+ 	QCA_WLAN_VENDOR_ATTR_CONFIG_AFTER_LAST,
+ 	QCA_WLAN_VENDOR_ATTR_CONFIG_MAX =
+-- 
+2.43.0
+

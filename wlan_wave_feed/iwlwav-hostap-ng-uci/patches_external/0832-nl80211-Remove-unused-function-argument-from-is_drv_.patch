@@ -1,0 +1,65 @@
+From 3e420372e714cc253444e2373d5fff66ca97ec5d Mon Sep 17 00:00:00 2001
+From: Aditya Kumar Singh <quic_adisi@quicinc.com>
+Date: Thu, 25 Apr 2024 15:45:24 +0530
+Subject: [PATCH] nl80211: Remove unused function argument from is_drv_shared()
+ ops
+
+The bss_ctx argument was never used and can be removed.
+
+Signed-off-by: Aditya Kumar Singh <quic_adisi@quicinc.com>
+---
+ src/ap/hostapd.c             | 2 +-
+ src/drivers/driver.h         | 3 +--
+ src/drivers/driver_nl80211.c | 2 +-
+ 3 files changed, 3 insertions(+), 4 deletions(-)
+
+diff --git a/src/ap/hostapd.c b/src/ap/hostapd.c
+index 0c3f1d709..d46358bba 100644
+--- a/src/ap/hostapd.c
++++ b/src/ap/hostapd.c
+@@ -3400,7 +3400,7 @@ static void hostapd_cleanup_driver(const struct wpa_driver_ops *driver,
+ 		driver->hapd_deinit(drv_priv);
+ 	} else if (hostapd_mld_is_first_bss(iface->bss[0]) &&
+ 		   driver->is_drv_shared &&
+-		   !driver->is_drv_shared(drv_priv, iface->bss[0])) {
++		   !driver->is_drv_shared(drv_priv)) {
+ 		driver->hapd_deinit(drv_priv);
+ 		hostapd_mld_interface_freed(iface->bss[0]);
+ 	} else if (hostapd_if_link_remove(iface->bss[0],
+diff --git a/src/drivers/driver.h b/src/drivers/driver.h
+index 616f011a8..f7beed8c0 100644
+--- a/src/drivers/driver.h
++++ b/src/drivers/driver.h
+@@ -5196,7 +5196,6 @@ struct wpa_driver_ops {
+ 	/**
+ 	 * is_drv_shared - Check whether the driver interface is shared
+ 	 * @priv: Private driver interface data from init()
+-	 * @bss_ctx: BSS context for %WPA_IF_AP_BSS interfaces
+ 	 *
+ 	 * Checks whether the driver interface is being used by other partner
+ 	 * BSS(s) or not. This is used to decide whether the driver interface
+@@ -5204,7 +5203,7 @@ struct wpa_driver_ops {
+ 	 *
+ 	 * Returns: true if it is being used or else false.
+ 	 */
+-	bool (*is_drv_shared)(void *priv, void *bss_ctx);
++	bool (*is_drv_shared)(void *priv);
+ 
+ 	/**
+ 	 * link_sta_remove - Remove a link STA from an MLD STA
+diff --git a/src/drivers/driver_nl80211.c b/src/drivers/driver_nl80211.c
+index 5e0ee0022..592e66fd6 100644
+--- a/src/drivers/driver_nl80211.c
++++ b/src/drivers/driver_nl80211.c
+@@ -10797,7 +10797,7 @@ static int driver_nl80211_link_remove(void *priv, enum wpa_driver_if_type type,
+ }
+ 
+ 
+-static bool nl80211_is_drv_shared(void *priv, void *bss_ctx)
++static bool nl80211_is_drv_shared(void *priv)
+ {
+ 	struct i802_bss *bss = priv;
+ 	struct wpa_driver_nl80211_data *drv = bss->drv;
+-- 
+2.43.0
+

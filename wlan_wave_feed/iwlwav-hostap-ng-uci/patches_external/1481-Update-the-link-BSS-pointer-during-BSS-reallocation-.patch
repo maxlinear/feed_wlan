@@ -1,0 +1,53 @@
+From 53303bb3e7437961d942f2b090c17d0b9f134e18 Mon Sep 17 00:00:00 2001
+From: Vinay Gannevaram <quic_vganneva@quicinc.com>
+Date: Fri, 14 Feb 2025 18:04:28 +0530
+Subject: [PATCH] Update the link BSS pointer during BSS reallocation on scan
+ results
+
+When updating the BSS during a scan results event, reallocation of the
+BSS due to needing more room for IEs results in a new allocation and the
+pointer changing. Update the link BSS pointer to the newly allocated BSS
+similarly to the other cases that were covered previously. This is
+needed to avoid use of freed memory in some MLO cases.
+
+Signed-off-by: Vinay Gannevaram <quic_vganneva@quicinc.com>
+---
+ wpa_supplicant/bss.c | 13 ++++++++++++-
+ 1 file changed, 12 insertions(+), 1 deletion(-)
+
+diff --git a/wpa_supplicant/bss.c b/wpa_supplicant/bss.c
+index 99548aae8..916b12920 100644
+--- a/wpa_supplicant/bss.c
++++ b/wpa_supplicant/bss.c
+@@ -858,9 +858,17 @@ wpa_bss_update(struct wpa_supplicant *wpa_s, struct wpa_bss *bss,
+ 		struct wpa_bss *nbss;
+ 		struct dl_list *prev = bss->list_id.prev;
+ 		struct wpa_connect_work *cwork;
+-		unsigned int i;
++		unsigned int i, j;
+ 		bool update_current_bss = wpa_s->current_bss == bss;
+ 		bool update_ml_probe_bss = wpa_s->ml_connect_probe_bss == bss;
++		int update_link_bss = -1;
++
++		for (j = 0; j < MAX_NUM_MLD_LINKS; j++) {
++			if (wpa_s->links[j].bss == bss) {
++				update_link_bss = j;
++				break;
++			}
++		}
+ 
+ 		cwork = wpa_bss_check_pending_connect(wpa_s, bss);
+ 
+@@ -882,6 +890,9 @@ wpa_bss_update(struct wpa_supplicant *wpa_s, struct wpa_bss *bss,
+ 			if (update_ml_probe_bss)
+ 				wpa_s->ml_connect_probe_bss = nbss;
+ 
++			if (update_link_bss >= 0)
++				wpa_s->links[update_link_bss].bss = nbss;
++
+ 			if (cwork)
+ 				wpa_bss_update_pending_connect(cwork, nbss);
+ 
+-- 
+2.43.0
+

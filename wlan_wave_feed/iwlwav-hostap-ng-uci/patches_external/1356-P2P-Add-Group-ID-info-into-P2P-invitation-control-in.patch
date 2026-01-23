@@ -1,0 +1,228 @@
+From 2ba179722443e512ea0868146a1c52b181477e40 Mon Sep 17 00:00:00 2001
+From: Shivani Baranwal <quic_shivbara@quicinc.com>
+Date: Tue, 28 Jan 2025 22:05:08 +0530
+Subject: [PATCH] P2P: Add Group ID info into P2P invitation control interface
+ events
+
+Include the Group ID information in the P2P-INVITATION-RESULT and
+P2P-INVITATION-ACCEPTED control interface events.
+
+Signed-off-by: Shivani Baranwal <quic_shivbara@quicinc.com>
+---
+ src/p2p/p2p.c                   |  3 +-
+ src/p2p/p2p.h                   |  6 ++-
+ src/p2p/p2p_invitation.c        | 12 ++++-
+ wpa_supplicant/p2p_supplicant.c | 87 ++++++++++++++++++++++++++++-----
+ 4 files changed, 91 insertions(+), 17 deletions(-)
+
+diff --git a/src/p2p/p2p.c b/src/p2p/p2p.c
+index 84fd24ee1..cbc602dd8 100644
+--- a/src/p2p/p2p.c
++++ b/src/p2p/p2p.c
+@@ -4307,7 +4307,8 @@ static void p2p_timeout_invite_listen(struct p2p_data *p2p)
+ 					p2p->cfg->cb_ctx, -1, NULL, 0, NULL,
+ 					NULL,
+ 					p2p->invite_peer->info.p2p_device_addr,
+-					0, 0, NULL, NULL, 0);
++					0, 0, NULL, NULL, 0,
++					p2p->invite_go_dev_addr);
+ 		}
+ 		p2p_set_state(p2p, P2P_IDLE);
+ 	}
+diff --git a/src/p2p/p2p.h b/src/p2p/p2p.h
+index 801c660cc..38d667565 100644
+--- a/src/p2p/p2p.h
++++ b/src/p2p/p2p.h
+@@ -1168,6 +1168,10 @@ struct p2p_config {
+ 	 * @freq: Frequency (in MHz) indicated during invitation or 0
+ 	 * @peer_oper_freq: Operating frequency (in MHz) advertized by the peer
+ 	 * during invitation or 0
++	 * @pmkid: PMKID used during invitation handshake
++	 * @pmk: The derived PMK
++	 * @pmk_len: PMK length in octets
++	 * @go_dev_addr: The P2P Device Address of the GO
+ 	 *
+ 	 * This callback is used to indicate result of an Invitation procedure
+ 	 * started with a call to p2p_invite(). The indicated status code is
+@@ -1180,7 +1184,7 @@ struct p2p_config {
+ 				  const struct p2p_channels *channels,
+ 				  const u8 *addr, int freq, int peer_oper_freq,
+ 				  const u8 *pmkid, const u8 *pmk,
+-				  size_t pmk_len);
++				  size_t pmk_len, const u8 *go_dev_addr);
+ 
+ 	/**
+ 	 * go_connected - Check whether we are connected to a GO
+diff --git a/src/p2p/p2p_invitation.c b/src/p2p/p2p_invitation.c
+index 90c4f63bb..26f7cae9b 100644
+--- a/src/p2p/p2p_invitation.c
++++ b/src/p2p/p2p_invitation.c
+@@ -489,6 +489,7 @@ void p2p_process_invitation_resp(struct p2p_data *p2p, const u8 *sa,
+ 	struct p2p_message msg;
+ 	struct p2p_channels intersection, *channels = NULL;
+ 	bool all_channels = false;
++	const u8 *go_dev_addr = NULL;
+ 
+ 	p2p_dbg(p2p, "Received Invitation Response from " MACSTR,
+ 		MAC2STR(sa));
+@@ -620,6 +621,12 @@ void p2p_process_invitation_resp(struct p2p_data *p2p, const u8 *sa,
+ 				os_memcpy(dev->inv_ssid,
+ 					  msg.group_id + ETH_ALEN,
+ 					  dev->inv_ssid_len);
++
++				os_memcpy(p2p->invite_go_dev_addr_buf,
++					  msg.group_id, ETH_ALEN);
++				p2p->invite_go_dev_addr =
++					p2p->invite_go_dev_addr_buf;
++				go_dev_addr = p2p->invite_go_dev_addr;
+ 			}
+ 			goto out;
+ 		}
+@@ -628,7 +635,7 @@ void p2p_process_invitation_resp(struct p2p_data *p2p, const u8 *sa,
+ 					    NULL, 0,
+ 					    msg.group_bssid, channels, sa,
+ 					    freq, peer_oper_freq, NULL, NULL,
+-					    0);
++					    0, go_dev_addr);
+ 	}
+ 
+ 	p2p_clear_timeout(p2p);
+@@ -672,7 +679,8 @@ void p2p_start_invitation_connect(struct p2p_data *p2p, struct p2p_device *dev)
+ 					    dev->info.p2p_device_addr,
+ 					    dev->inv_freq,
+ 					    dev->inv_peer_oper_freq, pmkid,
+-					    pmk, pmk_len);
++					    pmk, pmk_len,
++					    p2p->invite_go_dev_addr);
+ 
+ 	/* Reset PMK and PMKID from stack */
+ 	forced_memzero(pmkid, sizeof(pmkid));
+diff --git a/wpa_supplicant/p2p_supplicant.c b/wpa_supplicant/p2p_supplicant.c
+index 0311a920d..1f5c8602f 100644
+--- a/wpa_supplicant/p2p_supplicant.c
++++ b/wpa_supplicant/p2p_supplicant.c
+@@ -3887,19 +3887,25 @@ static void wpas_invitation_received(void *ctx, const u8 *sa, const u8 *bssid,
+ 			   " was accepted; op_freq=%d MHz, SSID=%s",
+ 			   MAC2STR(sa), op_freq, wpa_ssid_txt(ssid, ssid_len));
+ 		if (s) {
++			const char *ssid_txt;
++
++			ssid_txt = wpa_ssid_txt(s->ssid, s->ssid_len);
+ 			int go = s->mode == WPAS_MODE_P2P_GO;
+ 			if (go) {
+ 				wpa_msg_global(wpa_s, MSG_INFO,
+ 					       P2P_EVENT_INVITATION_ACCEPTED
+ 					       "sa=" MACSTR
+-					       " persistent=%d freq=%d",
+-					       MAC2STR(sa), s->id, op_freq);
++					       " persistent=%d freq=%d ssid=\"%s\" go_dev_addr="
++					       MACSTR, MAC2STR(sa), s->id,
++					       op_freq, ssid_txt,
++					       MAC2STR(go_dev_addr));
+ 			} else {
+ 				wpa_msg_global(wpa_s, MSG_INFO,
+ 					       P2P_EVENT_INVITATION_ACCEPTED
+ 					       "sa=" MACSTR
+-					       " persistent=%d",
+-					       MAC2STR(sa), s->id);
++					       " persistent=%d ssid=\"%s\" go_dev_addr=" MACSTR,
++					       MAC2STR(sa), s->id, ssid_txt,
++					       MAC2STR(go_dev_addr));
+ 			}
+ 			wpas_p2p_group_add_persistent(
+ 				wpa_s, s, go, 0, op_freq, 0,
+@@ -4025,12 +4031,73 @@ static void wpas_remove_persistent_client(struct wpa_supplicant *wpa_s,
+ }
+ 
+ 
++static void wpas_msg_p2p_invitation_result(struct wpa_supplicant *wpa_s,
++					   int status, const u8 *new_ssid,
++					   size_t new_ssid_len, const u8 *bssid,
++					   const u8 *go_dev_addr)
++{
++	int res;
++	char buf[500];
++	char *pos, *end;
++	const char *ssid_txt = NULL;
++
++	pos = buf;
++	end = buf + sizeof(buf);
++
++	if (go_dev_addr && new_ssid && new_ssid_len) {
++		ssid_txt = wpa_ssid_txt(new_ssid, new_ssid_len);
++	} else if (go_dev_addr) {
++		struct wpa_ssid *ssid;
++
++		ssid = wpa_config_get_network(wpa_s->conf,
++					      wpa_s->pending_invite_ssid_id);
++		if (ssid)
++			ssid_txt = wpa_ssid_txt(ssid->ssid, ssid->ssid_len);
++	}
++
++	res = os_snprintf(pos, end - pos, "status=%d", status);
++	if (os_snprintf_error(end - pos, res))
++		goto fail;
++	pos += res;
++
++	if (bssid) {
++		res = os_snprintf(pos, end - pos, " " MACSTR, MAC2STR(bssid));
++		if (os_snprintf_error(end - pos, res))
++			goto fail;
++		pos += res;
++	}
++
++	if (ssid_txt) {
++		res = os_snprintf(pos, end - pos, " ssid=\"%s\"", ssid_txt);
++		if (os_snprintf_error(end - pos, res))
++			goto fail;
++		pos += res;
++	}
++
++	if (go_dev_addr) {
++		res = os_snprintf(pos, end - pos, " go_dev_addr=" MACSTR,
++				  MAC2STR(go_dev_addr));
++		if (os_snprintf_error(end - pos, res))
++			goto fail;
++		pos += res;
++	}
++
++	wpa_msg_global(wpa_s, MSG_INFO, P2P_EVENT_INVITATION_RESULT "%s", buf);
++	return;
++
++fail:
++	wpa_printf(MSG_DEBUG,
++		   "P2P: Failed to send P2P-INVITATION-RESULT message");
++}
++
++
+ static void wpas_invitation_result(void *ctx, int status, const u8 *new_ssid,
+ 				   size_t new_ssid_len, const u8 *bssid,
+ 				   const struct p2p_channels *channels,
+ 				   const u8 *peer, int neg_freq,
+ 				   int peer_oper_freq, const u8 *pmkid,
+-				   const u8 *pmk, size_t pmk_len)
++				   const u8 *pmk, size_t pmk_len,
++				   const u8 *go_dev_addr)
+ {
+ 	struct wpa_supplicant *wpa_s = ctx;
+ 	struct wpa_ssid *ssid;
+@@ -4043,14 +4110,8 @@ static void wpas_invitation_result(void *ctx, int status, const u8 *new_ssid,
+ 	}
+ #endif /* CONFIG_PASN */
+ 
+-	if (bssid) {
+-		wpa_msg_global(wpa_s, MSG_INFO, P2P_EVENT_INVITATION_RESULT
+-			       "status=%d " MACSTR,
+-			       status, MAC2STR(bssid));
+-	} else {
+-		wpa_msg_global(wpa_s, MSG_INFO, P2P_EVENT_INVITATION_RESULT
+-			       "status=%d ", status);
+-	}
++	wpas_msg_p2p_invitation_result(wpa_s, status, new_ssid, new_ssid_len,
++				       bssid, go_dev_addr);
+ 	wpas_notify_p2p_invitation_result(wpa_s, status, bssid);
+ 
+ 	wpa_printf(MSG_DEBUG, "P2P: Invitation result - status=%d peer=" MACSTR,
+-- 
+2.43.0
+

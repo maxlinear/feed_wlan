@@ -1,0 +1,32 @@
+From e9fc4eec3ea3d9e9d49404c9b2d924af87fd8cb8 Mon Sep 17 00:00:00 2001
+From: Jouni Malinen <quic_jouni@quicinc.com>
+Date: Tue, 5 Nov 2024 18:39:07 +0200
+Subject: [PATCH] nl80211: Register to receive Vendor Specific Protected action
+ frames
+
+This is needed to be able to process Vendor Specific Protection action
+frames. In particular, this is needed for the Wi-Fi Alliance
+Capabilities frame on an AP.
+
+Signed-off-by: Jouni Malinen <quic_jouni@quicinc.com>
+---
+ src/drivers/driver_nl80211.c | 3 +++
+ 1 file changed, 3 insertions(+)
+
+diff --git a/src/drivers/driver_nl80211.c b/src/drivers/driver_nl80211.c
+index 4141bc578..2856d4584 100644
+--- a/src/drivers/driver_nl80211.c
++++ b/src/drivers/driver_nl80211.c
+@@ -2768,6 +2768,9 @@ static int nl80211_action_subscribe_ap(struct i802_bss *bss)
+ 	if (nl80211_register_action_frame(bss, (u8 *) "\x12", 1) < 0)
+ 		ret = -1;
+ #endif /* CONFIG_FST */
++	/* Vendor-specific Protected */
++	if (nl80211_register_action_frame(bss, (u8 *) "\x7e", 1) < 0)
++		ret = -1;
+ 	/* Vendor-specific */
+ 	if (nl80211_register_action_frame(bss, (u8 *) "\x7f", 1) < 0)
+ 		ret = -1;
+-- 
+2.43.0
+

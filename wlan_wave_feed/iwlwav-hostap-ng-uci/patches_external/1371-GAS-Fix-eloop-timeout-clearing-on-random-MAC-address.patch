@@ -1,0 +1,49 @@
+From 5edbb257d7f03886d31567a3896ba9ced2f9211d Mon Sep 17 00:00:00 2001
+From: Jouni Malinen <quic_jouni@quicinc.com>
+Date: Tue, 11 Feb 2025 12:02:34 +0200
+Subject: [PATCH] GAS: Fix eloop timeout clearing on random MAC address error
+ path
+
+There is one error case (for failing to update random MAC address) that
+uses gas_query_free() for a query that has started and as such, might
+have registered eloop timeouts. However, eloop timeouts were canceled in
+gas_query_done() and as such, that was skipped for this error case. That
+could result in leaving behind timeouts pointing to freed memory.
+
+Fix this by moving eloop_cancel_timeout() calls to gas_query_free() so
+that they are covered for all cases.
+
+Fixes: c267753ba2cc ("Add support for using random local MAC address")
+Signed-off-by: Jouni Malinen <quic_jouni@quicinc.com>
+---
+ wpa_supplicant/gas_query.c | 7 ++++---
+ 1 file changed, 4 insertions(+), 3 deletions(-)
+
+diff --git a/wpa_supplicant/gas_query.c b/wpa_supplicant/gas_query.c
+index 7d2993179..88564d518 100644
+--- a/wpa_supplicant/gas_query.c
++++ b/wpa_supplicant/gas_query.c
+@@ -147,6 +147,10 @@ static void gas_query_free(struct gas_query_pending *query, int del_list)
+ 		gas->work = NULL;
+ 	}
+ 
++	eloop_cancel_timeout(gas_query_tx_comeback_timeout, gas, query);
++	eloop_cancel_timeout(gas_query_timeout, gas, query);
++	eloop_cancel_timeout(gas_query_rx_comeback_timeout, gas, query);
++
+ 	wpabuf_free(query->req);
+ 	wpabuf_free(query->adv_proto);
+ 	wpabuf_free(query->resp);
+@@ -166,9 +170,6 @@ static void gas_query_done(struct gas_query *gas,
+ 		gas->current = NULL;
+ 	if (query->offchannel_tx_started)
+ 		offchannel_send_action_done(gas->wpa_s);
+-	eloop_cancel_timeout(gas_query_tx_comeback_timeout, gas, query);
+-	eloop_cancel_timeout(gas_query_timeout, gas, query);
+-	eloop_cancel_timeout(gas_query_rx_comeback_timeout, gas, query);
+ 	dl_list_del(&query->list);
+ 	query->cb(query->ctx, query->addr, query->dialog_token, result,
+ 		  query->adv_proto, query->resp, query->status_code);
+-- 
+2.43.0
+

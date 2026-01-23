@@ -1,0 +1,39 @@
+From 8677844db88932b8a4028282efd127e194c9dc04 Mon Sep 17 00:00:00 2001
+From: Muna Sinada <quic_msinada@quicinc.com>
+Date: Tue, 16 Jan 2024 19:30:21 -0800
+Subject: [PATCH] Add a QCA vendor attribute to determine QCA device
+
+Add a new attribute for
+%QCA_NL80211_VENDOR_SUBCMD_SET_WIFI_CONFIGURATION subcommand. This
+attribute is an 8 bit unsigned value used to specify whether an
+associated peer is a QCA device.
+
+Signed-off-by: Muna Sinada <quic_msinada@quicinc.com>
+---
+ src/common/qca-vendor.h | 10 ++++++++++
+ 1 file changed, 10 insertions(+)
+
+diff --git a/src/common/qca-vendor.h b/src/common/qca-vendor.h
+index 5e62715e7..4267136c2 100644
+--- a/src/common/qca-vendor.h
++++ b/src/common/qca-vendor.h
+@@ -3345,6 +3345,16 @@ enum qca_wlan_vendor_attr_config {
+ 	 */
+ 	QCA_WLAN_VENDOR_ATTR_CONFIG_COEX_TRAFFIC_SHAPING_MODE = 105,
+ 
++	/* 8-bit unsigned value.
++	 *
++	 * This attribute is used to specify whether an associated peer is a QCA
++	 * device. The associated peer is specified with
++	 * QCA_WLAN_VENDOR_ATTR_CONFIG_PEER_MAC. For MLO cases, the MLD MAC
++	 * address of the peer is used.
++	 * 1 - QCA device, 0 - non-QCA device.
++	 */
++	QCA_WLAN_VENDOR_ATTR_CONFIG_QCA_PEER = 106,
++
+ 	/* keep last */
+ 	QCA_WLAN_VENDOR_ATTR_CONFIG_AFTER_LAST,
+ 	QCA_WLAN_VENDOR_ATTR_CONFIG_MAX =
+-- 
+2.43.0
+

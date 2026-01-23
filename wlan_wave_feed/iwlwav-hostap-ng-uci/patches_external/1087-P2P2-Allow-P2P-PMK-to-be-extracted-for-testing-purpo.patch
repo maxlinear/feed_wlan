@@ -1,0 +1,58 @@
+From bd010a7ece1b31649d739ce9ac3a33dca0b78f55 Mon Sep 17 00:00:00 2001
+From: Shivani Baranwal <quic_shivbara@quicinc.com>
+Date: Tue, 13 Aug 2024 15:59:08 +0530
+Subject: [PATCH] P2P2: Allow P2P-PMK to be extracted for testing purposes
+
+Add support to fetch a recent PASN-PMK that is derived during a P2P2
+connection. This is needed for testing purposes.
+
+Signed-off-by: Shivani Baranwal <quic_shivbara@quicinc.com>
+---
+ wpa_supplicant/ctrl_iface.c | 24 ++++++++++++++++++++++++
+ 1 file changed, 24 insertions(+)
+
+diff --git a/wpa_supplicant/ctrl_iface.c b/wpa_supplicant/ctrl_iface.c
+index 2ac34df7e..0a8246c5e 100644
+--- a/wpa_supplicant/ctrl_iface.c
++++ b/wpa_supplicant/ctrl_iface.c
+@@ -7859,6 +7859,26 @@ static int p2p_ctrl_iface_p2p_lo_start(struct wpa_supplicant *wpa_s, char *cmd)
+ 	return wpas_p2p_lo_start(wpa_s, freq, period, interval, count);
+ }
+ 
++
++#ifdef CONFIG_TESTING_OPTIONS
++static int p2p_ctrl_pmk_get(struct wpa_supplicant *wpa_s, char *buf,
++			    size_t buflen)
++{
++	const u8 *pmk;
++	size_t pmk_len;
++
++	/* Return the PMK from the first identity entry. This assumes test
++	 * cases to remove all indentities at the beginning so that only one
++	 * entry is available. */
++	if (!wpa_s->conf->identity || !wpa_s->conf->identity->pmk)
++		return -1;
++
++	pmk_len = wpabuf_len(wpa_s->conf->identity->pmk);
++	pmk = wpabuf_head(wpa_s->conf->identity->pmk);
++
++	return wpa_snprintf_hex(buf, buflen, pmk, pmk_len);
++}
++#endif /* CONFIG_TESTING_OPTIONS */
+ #endif /* CONFIG_P2P */
+ 
+ 
+@@ -13017,6 +13037,10 @@ char * wpa_supplicant_ctrl_iface_process(struct wpa_supplicant *wpa_s,
+ 	} else if (os_strcmp(buf, "P2P_REMOVE_IDENTITY") == 0) {
+ 		if (wpas_p2p_remove_all_identity(wpa_s))
+ 			reply_len = -1;
++#ifdef CONFIG_TESTING_OPTIONS
++	} else if (os_strncmp(buf, "P2P_PMK_GET", 12) == 0) {
++		reply_len = p2p_ctrl_pmk_get(wpa_s, reply, reply_size);
++#endif /* CONFIG_TESTING_OPTIONS */
+ #endif /* CONFIG_P2P */
+ #ifdef CONFIG_WIFI_DISPLAY
+ 	} else if (os_strncmp(buf, "WFD_SUBELEM_SET ", 16) == 0) {
+-- 
+2.43.0
+

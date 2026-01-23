@@ -1,0 +1,46 @@
+From 12cdeb501692ad7e8042e29f063582358349f3c1 Mon Sep 17 00:00:00 2001
+From: Jouni Malinen <j@w1.fi>
+Date: Sun, 14 Jan 2024 17:32:22 +0200
+Subject: [PATCH] nl80211: Print driver name in debug output
+
+This can be helpful in debugging some driver specific issues.
+
+Signed-off-by: Jouni Malinen <j@w1.fi>
+---
+ src/drivers/driver_nl80211.c | 20 ++++++++++++++++++++
+ 1 file changed, 20 insertions(+)
+
+diff --git a/src/drivers/driver_nl80211.c b/src/drivers/driver_nl80211.c
+index a3147bc7c..758d59722 100644
+--- a/src/drivers/driver_nl80211.c
++++ b/src/drivers/driver_nl80211.c
+@@ -2288,6 +2288,26 @@ static void * wpa_driver_nl80211_drv_init(void *ctx, const char *ifname,
+ 	struct wpa_driver_nl80211_data *drv;
+ 	struct i802_bss *bss;
+ 	unsigned int i;
++	char path[128], buf[200], *pos;
++	ssize_t len;
++	int ret;
++
++	ret = os_snprintf(path, sizeof(path), "/sys/class/net/%s/device/driver",
++			  ifname);
++	if (!os_snprintf_error(sizeof(path), ret)) {
++		len = readlink(path, buf, sizeof(buf));
++		if (len > 0 && (size_t) len < sizeof(buf)) {
++			buf[len] = '\0';
++			pos = strrchr(buf, '/');
++			if (pos)
++				pos++;
++			else
++				pos = buf;
++			wpa_printf(MSG_DEBUG,
++				   "nl80211: Initialize interface %s (driver: %s)",
++				   ifname, pos);
++		}
++	}
+ 
+ 	if (global_priv == NULL)
+ 		return NULL;
+-- 
+2.43.0
+

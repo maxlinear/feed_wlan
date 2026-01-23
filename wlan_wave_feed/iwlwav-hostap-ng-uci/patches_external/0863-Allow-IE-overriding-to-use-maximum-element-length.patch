@@ -1,0 +1,32 @@
+From c03edfd5bd47690dfcc1da850f8ea83c7bbe0b7f Mon Sep 17 00:00:00 2001
+From: Jouni Malinen <quic_jouni@quicinc.com>
+Date: Fri, 23 Aug 2024 10:07:19 +0300
+Subject: [PATCH] Allow IE overriding to use maximum element length
+
+Elements can actually be 257 octets long (2 octets of header followed by
+255 octets of payload). The maximum length for various IE override
+testing parameters had somehow ended up being one octet too short to
+cover the maximum. Increase this to allow the maximum element length to
+be reached for testing purposes.
+
+Signed-off-by: Jouni Malinen <quic_jouni@quicinc.com>
+---
+ src/ap/wpa_auth.h | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/src/ap/wpa_auth.h b/src/ap/wpa_auth.h
+index 975e546e0..82d09f097 100644
+--- a/src/ap/wpa_auth.h
++++ b/src/ap/wpa_auth.h
+@@ -17,7 +17,7 @@
+ struct vlan_description;
+ struct mld_info;
+ 
+-#define MAX_OWN_IE_OVERRIDE 256
++#define MAX_OWN_IE_OVERRIDE 257
+ 
+ #ifdef _MSC_VER
+ #pragma pack(push, 1)
+-- 
+2.43.0
+

@@ -1,0 +1,29 @@
+From caa22873ce7975f8258f7674f009f8b5f7d696df Mon Sep 17 00:00:00 2001
+From: Jouni Malinen <quic_jouni@quicinc.com>
+Date: Tue, 25 Feb 2025 23:38:55 +0200
+Subject: [PATCH] OpenSSL: Avoid undefined behavior in altSubjectName matching
+
+Skip NULL + 1 calculation (i.e., undefined behavior) when going to exit
+the loop anyway due to end == NULL.
+
+Signed-off-by: Jouni Malinen <quic_jouni@quicinc.com>
+---
+ src/crypto/tls_openssl.c | 2 ++
+ 1 file changed, 2 insertions(+)
+
+diff --git a/src/crypto/tls_openssl.c b/src/crypto/tls_openssl.c
+index e225817fe..77f39c63d 100644
+--- a/src/crypto/tls_openssl.c
++++ b/src/crypto/tls_openssl.c
+@@ -2056,6 +2056,8 @@ static int tls_match_altsubject(X509 *cert, const char *match)
+ 			len = os_strlen(pos);
+ 		if (tls_match_altsubject_component(cert, type, pos, len) > 0)
+ 			return 1;
++		if (!end)
++			break;
+ 		pos = end + 1;
+ 	} while (end);
+ 
+-- 
+2.43.0
+

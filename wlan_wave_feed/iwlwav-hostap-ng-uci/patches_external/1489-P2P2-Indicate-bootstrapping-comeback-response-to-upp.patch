@@ -1,0 +1,242 @@
+From b3b0297d816c343e1f3254d1aeee457f5503a036 Mon Sep 17 00:00:00 2001
+From: Vinay Gannevaram <quic_vganneva@quicinc.com>
+Date: Thu, 20 Feb 2025 15:28:08 +0530
+Subject: [PATCH] P2P2: Indicate bootstrapping comeback response to upper
+ layers
+
+The bootstrapping comeback response is managed by wpa_supplicant and is
+not communicated to the upper layers. However, it is essential for the
+upper layers to be aware of the status of ongoing bootstrapping requests.
+
+Notify the upper layers of the bootstrapping comeback response. Modify
+the D-Bus interface for bootstrapping indications (instead of providing
+a new signal such for this new extended purpose) as this has not yet
+been used and is a recently added parameter.
+
+Signed-off-by: Vinay Gannevaram <quic_vganneva@quicinc.com>
+---
+ doc/dbus.doxygen                |  2 +-
+ src/p2p/p2p.h                   |  8 +++++---
+ src/p2p/p2p_pd.c                | 15 ++++++++++++---
+ wpa_supplicant/dbus/dbus_new.c  | 13 ++++++++-----
+ wpa_supplicant/dbus/dbus_new.h  | 10 ++++++----
+ wpa_supplicant/notify.c         |  8 +++++---
+ wpa_supplicant/notify.h         |  5 +++--
+ wpa_supplicant/p2p_supplicant.c |  9 +++++----
+ 8 files changed, 45 insertions(+), 25 deletions(-)
+
+diff --git a/doc/dbus.doxygen b/doc/dbus.doxygen
+index ea5ea56fa..473603a1f 100644
+--- a/doc/dbus.doxygen
++++ b/doc/dbus.doxygen
+@@ -2340,7 +2340,7 @@ Interface for performing P2P (Wi-Fi Peer-to-Peer) P2P Device operations.
+   </li>
+ 
+   <li>
+-    <h3>BootstrappingCompleted ( o : path, i : status )</h3>
++    <h3>BootstrappingResponse ( o : path, i : status, q : bootstrap_method )</h3>
+   </li>
+ 
+ \section dbus_bss fi.w1.wpa_supplicant1.BSS
+diff --git a/src/p2p/p2p.h b/src/p2p/p2p.h
+index e7658311e..d0ecbd8fb 100644
+--- a/src/p2p/p2p.h
++++ b/src/p2p/p2p.h
+@@ -1357,17 +1357,19 @@ struct p2p_config {
+ 				 u16 bootstrap_method);
+ 
+ 	/**
+-	 * bootstrap_completed - Indicate bootstrapping completed with P2P peer
++	 * bootstrap_rsp_rx - Indicate bootstrapping response from a P2P peer
+ 	 * @ctx: Callback context from cb_ctx
+ 	 * @addr: P2P device address with which bootstrapping is completed
+ 	 * @status: P2P Status Code of bootstrapping handshake
+ 	 * @freq: Frequency in which bootstrapping is done
++	 * @bootstrap_method: Bootstrapping method by the peer device
+ 	 *
+ 	 * This function can be used to notify the status of bootstrapping
+ 	 * handshake.
+ 	 */
+-	void (*bootstrap_completed)(void *ctx, const u8 *addr,
+-				    enum p2p_status_code status, int freq);
++	void (*bootstrap_rsp_rx)(void *ctx, const u8 *addr,
++				 enum p2p_status_code status, int freq,
++				 u16 bootstrap_method);
+ 
+ 	/**
+ 	 * validate_dira - Indicate reception of DIRA to be validated against a
+diff --git a/src/p2p/p2p_pd.c b/src/p2p/p2p_pd.c
+index 8e0a7e49e..f08fa0e10 100644
+--- a/src/p2p/p2p_pd.c
++++ b/src/p2p/p2p_pd.c
+@@ -1643,6 +1643,7 @@ static void p2p_process_prov_disc_bootstrap_resp(struct p2p_data *p2p,
+ 	size_t cookie_len = 0;
+ 	const u8 *pos, *cookie;
+ 	u16 comeback_after;
++	u16 bootstrap = 0;
+ 
+ 	/* Parse the P2P status present */
+ 	if (msg->status)
+@@ -1709,16 +1710,24 @@ static void p2p_process_prov_disc_bootstrap_resp(struct p2p_data *p2p,
+ 		p2p->cfg->register_bootstrap_comeback(p2p->cfg->cb_ctx, sa,
+ 						      comeback_after);
+ 		p2p->cfg->send_action_done(p2p->cfg->cb_ctx);
++
++		if (p2p->cfg->bootstrap_rsp_rx)
++			p2p->cfg->bootstrap_rsp_rx(p2p->cfg->cb_ctx, sa, status,
++						   rx_freq, bootstrap);
+ 		return;
+ 	}
+ 
++	/* PBMA response */
++	if (msg->pbma_info_len >= 2)
++		bootstrap = WPA_GET_LE16(msg->pbma_info);
++
+ 	p2p->cfg->send_action_done(p2p->cfg->cb_ctx);
+ 	if (dev->flags & P2P_DEV_PD_BEFORE_GO_NEG)
+ 		dev->flags &= ~P2P_DEV_PD_BEFORE_GO_NEG;
+ 
+-	if (p2p->cfg->bootstrap_completed)
+-		p2p->cfg->bootstrap_completed(p2p->cfg->cb_ctx, sa, status,
+-					      rx_freq);
++	if (p2p->cfg->bootstrap_rsp_rx)
++		p2p->cfg->bootstrap_rsp_rx(p2p->cfg->cb_ctx, sa, status,
++					   rx_freq, bootstrap);
+ }
+ 
+ 
+diff --git a/wpa_supplicant/dbus/dbus_new.c b/wpa_supplicant/dbus/dbus_new.c
+index 4269454e1..7893f3561 100644
+--- a/wpa_supplicant/dbus/dbus_new.c
++++ b/wpa_supplicant/dbus/dbus_new.c
+@@ -2386,17 +2386,18 @@ void wpas_dbus_signal_p2p_bootstrap_req(struct wpa_supplicant *wpa_s,
+ 
+ 
+ /**
+- * wpas_dbus_signal_p2p_bootstrap_completed - Signals BootstrappingCompleted event
+- * event
++ * wpas_dbus_signal_p2p_bootstrap_rsp - Signals BootstrappingResponse event
+  * @wpa_s: %wpa_supplicant network interface data
+  * @src: Source address of the peer with which bootstrapping is done
+  * @status: Status of Bootstrapping handshake
++ * @bootstrap_method: Peer's bootstrap method if status is success
+  *
+  * Sends a signal to notify that a peer P2P Device is requesting bootstrapping
+  * negotiation with us.
+  */
+-void wpas_dbus_signal_p2p_bootstrap_completed(struct wpa_supplicant *wpa_s,
+-					      const u8 *src, int status)
++void wpas_dbus_signal_p2p_bootstrap_rsp(struct wpa_supplicant *wpa_s,
++					const u8 *src, int status,
++					u16 bootstrap_method)
+ {
+ 	DBusMessage *msg;
+ 	DBusMessageIter iter;
+@@ -2430,7 +2431,9 @@ void wpas_dbus_signal_p2p_bootstrap_completed(struct wpa_supplicant *wpa_s,
+ 	if (!dbus_message_iter_append_basic(&iter, DBUS_TYPE_OBJECT_PATH,
+ 					    &path) ||
+ 	    !dbus_message_iter_append_basic(&iter, DBUS_TYPE_INT32,
+-					    &status))
++					    &status) ||
++	    !dbus_message_iter_append_basic(&iter, DBUS_TYPE_UINT16,
++					    &bootstrap_method))
+ 		wpa_printf(MSG_ERROR, "dbus: Failed to construct signal");
+ 	else
+ 		dbus_connection_send(iface->con, msg, NULL);
+diff --git a/wpa_supplicant/dbus/dbus_new.h b/wpa_supplicant/dbus/dbus_new.h
+index f9ff63642..d64843568 100644
+--- a/wpa_supplicant/dbus/dbus_new.h
++++ b/wpa_supplicant/dbus/dbus_new.h
+@@ -268,8 +268,9 @@ void wpas_dbus_signal_p2p_invitation_received(struct wpa_supplicant *wpa_s,
+ 					      int op_freq);
+ void wpas_dbus_signal_p2p_bootstrap_req(struct wpa_supplicant *wpa_s,
+ 					const u8 *src, u16 bootstrap_method);
+-void wpas_dbus_signal_p2p_bootstrap_completed(struct wpa_supplicant *wpa_s,
+-					      const u8 *src, int status);
++void wpas_dbus_signal_p2p_bootstrap_rsp(struct wpa_supplicant *wpa_s,
++					const u8 *src, int status,
++					u16 bootstrap_method);
+ void wpas_dbus_signal_mesh_group_started(struct wpa_supplicant *wpa_s,
+ 					 struct wpa_ssid *ssid);
+ void wpas_dbus_signal_mesh_group_removed(struct wpa_supplicant *wpa_s,
+@@ -650,8 +651,9 @@ void wpas_dbus_signal_p2p_bootstrap_req(struct wpa_supplicant *wpa_s,
+ }
+ 
+ static inline
+-void wpas_dbus_signal_p2p_bootstrap_completed(struct wpa_supplicant *wpa_s,
+-					      const u8 *src, int status)
++void wpas_dbus_signal_p2p_bootstrap_rsp(struct wpa_supplicant *wpa_s,
++					const u8 *src, int status,
++					u16 bootstrap_method)
+ {
+ }
+ 
+diff --git a/wpa_supplicant/notify.c b/wpa_supplicant/notify.c
+index 06e006963..fd8783d25 100644
+--- a/wpa_supplicant/notify.c
++++ b/wpa_supplicant/notify.c
+@@ -805,10 +805,12 @@ void wpas_notify_p2p_bootstrap_req(struct wpa_supplicant *wpa_s,
+ 	wpas_dbus_signal_p2p_bootstrap_req(wpa_s, src, bootstrap_method);
+ }
+ 
+-void wpas_notify_p2p_bootstrap_completed(struct wpa_supplicant *wpa_s,
+-					 const u8 *src, int status)
++void wpas_notify_p2p_bootstrap_rsp(struct wpa_supplicant *wpa_s,
++				   const u8 *src, int status,
++				   u16 bootstrap_method)
+ {
+-	wpas_dbus_signal_p2p_bootstrap_completed(wpa_s, src, status);
++	wpas_dbus_signal_p2p_bootstrap_rsp(wpa_s, src, status,
++					   bootstrap_method);
+ }
+ 
+ #endif /* CONFIG_P2P */
+diff --git a/wpa_supplicant/notify.h b/wpa_supplicant/notify.h
+index 7f6c345d2..9e5047c81 100644
+--- a/wpa_supplicant/notify.h
++++ b/wpa_supplicant/notify.h
+@@ -158,8 +158,9 @@ void wpas_notify_p2p_invitation_received(struct wpa_supplicant *wpa_s,
+ 					 const u8 *bssid, int id, int op_freq);
+ void wpas_notify_p2p_bootstrap_req(struct wpa_supplicant *wpa_s,
+ 				   const u8 *src, u16 bootstrap_method);
+-void wpas_notify_p2p_bootstrap_completed(struct wpa_supplicant *wpa_s,
+-					 const u8 *src, int status);
++void wpas_notify_p2p_bootstrap_rsp(struct wpa_supplicant *wpa_s,
++				   const u8 *src, int status,
++				   u16 bootstrap_method);
+ void wpas_notify_mesh_group_started(struct wpa_supplicant *wpa_s,
+ 				    struct wpa_ssid *ssid);
+ void wpas_notify_mesh_group_removed(struct wpa_supplicant *wpa_s,
+diff --git a/wpa_supplicant/p2p_supplicant.c b/wpa_supplicant/p2p_supplicant.c
+index 834c1d534..d4b69645e 100644
+--- a/wpa_supplicant/p2p_supplicant.c
++++ b/wpa_supplicant/p2p_supplicant.c
+@@ -5499,12 +5499,13 @@ static void wpas_bootstrap_req_rx(void *ctx, const u8 *addr,
+ }
+ 
+ 
+-static void wpas_bootstrap_completed(void *ctx, const u8 *addr,
+-				     enum p2p_status_code status, int freq)
++static void wpas_bootstrap_rsp_rx(void *ctx, const u8 *addr,
++				  enum p2p_status_code status, int freq,
++				  u16 bootstrap_method)
+ {
+ 	struct wpa_supplicant *wpa_s = ctx;
+ 
+-	wpas_notify_p2p_bootstrap_completed(wpa_s, addr, status);
++	wpas_notify_p2p_bootstrap_rsp(wpa_s, addr, status, bootstrap_method);
+ 
+ 	if (status) {
+ 		wpa_msg_global(wpa_s, MSG_INFO,
+@@ -5794,7 +5795,7 @@ int wpas_p2p_init(struct wpa_global *global, struct wpa_supplicant *wpa_s)
+ 	p2p.p2p_6ghz_disable = wpa_s->conf->p2p_6ghz_disable;
+ 	p2p.register_bootstrap_comeback = wpas_p2p_register_bootstrap_comeback;
+ 	p2p.bootstrap_req_rx = wpas_bootstrap_req_rx;
+-	p2p.bootstrap_completed = wpas_bootstrap_completed;
++	p2p.bootstrap_rsp_rx = wpas_bootstrap_rsp_rx;
+ 	p2p.validate_dira = wpas_validate_dira;
+ #ifdef CONFIG_PASN
+ 	p2p.pasn_send_mgmt = wpas_p2p_pasn_send_mgmt;
+-- 
+2.43.0
+

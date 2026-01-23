@@ -1,0 +1,43 @@
+From 61c8cc94fad03b5fe4548326bc5b60e98ec245a5 Mon Sep 17 00:00:00 2001
+From: Aleti Nageshwar Reddy <quic_anageshw@quicinc.com>
+Date: Thu, 7 Mar 2024 15:00:15 +0530
+Subject: [PATCH] Add a vendor attribute to configure custom keep-alive
+ interval for STA
+
+Introduce an attribute QCA_WLAN_VENDOR_ATTR_CONFIG_KEEP_ALIVE_INTERVAL
+in QCA_NL80211_VENDOR_SUBCMD_SET_WIFI_CONFIGURATION to configure
+station's keep-alive interval to the driver/firmware. This can be used
+to resolve kickout issues from APs which kick out STAs before the BSS
+maximum idle period expires.
+
+Signed-off-by: Jouni Malinen <quic_jouni@quicinc.com>
+---
+ src/common/qca-vendor.h | 12 ++++++++++++
+ 1 file changed, 12 insertions(+)
+
+diff --git a/src/common/qca-vendor.h b/src/common/qca-vendor.h
+index 72e164da8..3a9455ff3 100644
+--- a/src/common/qca-vendor.h
++++ b/src/common/qca-vendor.h
+@@ -3402,6 +3402,18 @@ enum qca_wlan_vendor_attr_config {
+ 	 */
+ 	QCA_WLAN_VENDOR_ATTR_CONFIG_BTM_SUPPORT = 107,
+ 
++	/* 16-bit unsigned value to configure client's keep-alive interval in
++	 * seconds. The driver will reduce the keep-alive interval to this
++	 * configured value if the AP advertises BSS maximum idle period and if
++	 * that BSS max idle period is larger than this configured value. If the
++	 * AP does not advertise a maximum value, the configured value will be
++	 * used as a keep-alive period for unprotected frames.
++	 *
++	 * This configuration is applicable only during the STA's current
++	 * association.
++	 */
++	QCA_WLAN_VENDOR_ATTR_CONFIG_KEEP_ALIVE_INTERVAL = 108,
++
+ 	/* keep last */
+ 	QCA_WLAN_VENDOR_ATTR_CONFIG_AFTER_LAST,
+ 	QCA_WLAN_VENDOR_ATTR_CONFIG_MAX =
+-- 
+2.43.0
+

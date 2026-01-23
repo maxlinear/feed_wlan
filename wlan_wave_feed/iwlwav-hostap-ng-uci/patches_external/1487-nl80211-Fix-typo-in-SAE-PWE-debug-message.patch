@@ -1,0 +1,26 @@
+From 5ec3397236bc763f278ada3028d6ffe2264fd680 Mon Sep 17 00:00:00 2001
+From: Pooventhiran G <quic_pooventh@quicinc.com>
+Date: Wed, 5 Mar 2025 21:57:59 +0530
+Subject: [PATCH] nl80211: Fix typo in SAE PWE debug message
+
+Signed-off-by: Pooventhiran G <quic_pooventh@quicinc.com>
+---
+ src/drivers/driver_nl80211.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/src/drivers/driver_nl80211.c b/src/drivers/driver_nl80211.c
+index 398ee5c0a..56a412732 100644
+--- a/src/drivers/driver_nl80211.c
++++ b/src/drivers/driver_nl80211.c
+@@ -4834,7 +4834,7 @@ static int nl80211_put_sae_pwe(struct nl_msg *msg, enum sae_pwe pwe)
+ {
+ 	u8 sae_pwe;
+ 
+-	wpa_printf(MSG_DEBUG, "nl802111: sae_pwe=%d", pwe);
++	wpa_printf(MSG_DEBUG, "nl80211: sae_pwe=%d", pwe);
+ 	if (pwe == SAE_PWE_HUNT_AND_PECK)
+ 		sae_pwe = NL80211_SAE_PWE_HUNT_AND_PECK;
+ 	else if (pwe == SAE_PWE_HASH_TO_ELEMENT)
+-- 
+2.43.0
+

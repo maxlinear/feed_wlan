@@ -1,0 +1,49 @@
+From e0935844724a8a5e03fe2a4f9dcaab5b962ea7eb Mon Sep 17 00:00:00 2001
+From: Purushottam Kushwaha <quic_pkushwah@quicinc.com>
+Date: Fri, 23 Aug 2024 18:53:08 +0530
+Subject: [PATCH] STA: Update driver roaming policy on connection completion
+
+When the network profile is configured with BSSID before connection,
+roaming policy in the driver (for driver-based BSS selection) doesn't
+get updated if the same BSSID is configured after connection. Update
+roaming policy to the driver on connection completion to cover this
+case.
+
+Signed-off-by: Purushottam Kushwaha <quic_pkushwah@quicinc.com>
+---
+ wpa_supplicant/notify.c | 10 ++++++++--
+ 1 file changed, 8 insertions(+), 2 deletions(-)
+
+diff --git a/wpa_supplicant/notify.c b/wpa_supplicant/notify.c
+index 22b75d46b..24812ffbb 100644
+--- a/wpa_supplicant/notify.c
++++ b/wpa_supplicant/notify.c
+@@ -88,6 +88,8 @@ void wpas_notify_state_changed(struct wpa_supplicant *wpa_s,
+ 			       enum wpa_states new_state,
+ 			       enum wpa_states old_state)
+ {
++	struct wpa_ssid *ssid = wpa_s->current_ssid;
++
+ 	if (wpa_s->p2p_mgmt)
+ 		return;
+ 
+@@ -104,10 +106,14 @@ void wpas_notify_state_changed(struct wpa_supplicant *wpa_s,
+ 	}
+ #endif /* CONFIG_FST */
+ 
+-	if (new_state == WPA_COMPLETED)
++	if (new_state == WPA_COMPLETED) {
+ 		wpas_p2p_notif_connected(wpa_s);
+-	else if (old_state >= WPA_ASSOCIATED && new_state < WPA_ASSOCIATED)
++		if (ssid)
++			wpa_drv_roaming(wpa_s, !ssid->bssid_set,
++					ssid->bssid_set ? ssid->bssid : NULL);
++	} else if (old_state >= WPA_ASSOCIATED && new_state < WPA_ASSOCIATED) {
+ 		wpas_p2p_notif_disconnected(wpa_s);
++	}
+ 
+ 	sme_state_changed(wpa_s);
+ 
+-- 
+2.43.0
+

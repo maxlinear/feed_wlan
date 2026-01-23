@@ -1,0 +1,52 @@
+From 7d314d6bdfa6f8cd268f9279513892bf45da8487 Mon Sep 17 00:00:00 2001
+From: Pradeep Kumar Chitrapu <quic_pradeepc@quicinc.com>
+Date: Wed, 8 May 2024 11:04:05 -0700
+Subject: [PATCH] Fix channel switch without 'ht' for HE and EHT modes in 2.4
+ GHz band
+
+hostapd_cli chan_switch command fails in 2.4 GHz band for HE and EHT
+modes if the user does not explicitly specify 'ht' option in the
+command.
+
+For example:
+"hostapd_cli -i wlan2 chan_switch 10 2412 sec_channel_offset=0 \
+ center_freq1=2412 bandwidth=20 blocktx he"
+
+Fix this by enabling HT by default if HE is enabled in the 2.4 GHz and 5
+GHz bands. Similarly, enable VHT by default when HE is enabled in the 5
+GHz band.
+
+Signed-off-by: Pradeep Kumar Chitrapu <quic_pradeepc@quicinc.com>
+---
+ hostapd/ctrl_iface.c | 15 +++++++++++++++
+ 1 file changed, 15 insertions(+)
+
+diff --git a/hostapd/ctrl_iface.c b/hostapd/ctrl_iface.c
+index 92df81c6c..39b9ef59d 100644
+--- a/hostapd/ctrl_iface.c
++++ b/hostapd/ctrl_iface.c
+@@ -2477,6 +2477,21 @@ static int hostapd_ctrl_check_freq_params(struct hostapd_freq_params *params,
+ 			    bw_idx[bw] != params->bandwidth)
+ 				return -1;
+ 		}
++	} else { /* Non-6 GHz channel */
++		/* An EHT STA is also an HE STA as defined in
++		 * IEEE P802.11be/D5.0, 4.3.16a. */
++		if (params->he_enabled || params->eht_enabled) {
++			params->he_enabled = 1;
++			/* An HE STA is also a VHT STA if operating in the 5 GHz
++			 * band and an HE STA is also an HT STA in the 2.4 GHz
++			 * band as defined in IEEE Std 802.11ax-2021, 4.3.15a.
++			 * A VHT STA is an HT STA as defined in IEEE
++			 * Std 802.11, 4.3.15. */
++			if (IS_5GHZ(params->freq))
++				params->vht_enabled = 1;
++
++			params->ht_enabled = 1;
++		}
+ 	}
+ 
+ 	switch (params->bandwidth) {
+-- 
+2.43.0
+

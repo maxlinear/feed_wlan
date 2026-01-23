@@ -1,0 +1,60 @@
+From 326f093b93186c9a6437c5ad1e7b8f027d5e9072 Mon Sep 17 00:00:00 2001
+From: Jouni Malinen <quic_jouni@quicinc.com>
+Date: Sat, 22 Feb 2025 20:02:38 +0200
+Subject: [PATCH] Interworking: Prefer cred realm over realm in username for
+ anonymous NAI
+
+Commit 61b2ed701291 ("Interworking: Use anonymous NAI in EAP-TTLS Phase
+1") introduced a mechanism for generating an anonymous NAI specifically
+for EAP-TTLS Phase 1. However, it was implemented before Passpoint R2
+rules were defined for this and the implementation was not updated to
+match the rules. The implementation uses the realm from the
+cred::username, if present, over the separate cred::realm parameter.
+However, the current Passpoint spec mandates realm from
+PPS/<X+>/Credential/Realm (i.e., cred::realm in wpa_supplicant
+configuration) to be used for this.
+
+Reorder the priorities for the first two options for constructing the
+anonymous identity when generating a network profile from a credential,
+i.e., use cred::realm, if set, regardless of whether cred::username
+contains a realm. cred::username is used as-is in Phase 2 which means
+the inner and outer identities can now be configured to use different
+realms.
+
+Signed-off-by: Jouni Malinen <quic_jouni@quicinc.com>
+---
+ wpa_supplicant/interworking.c | 12 ++++++------
+ 1 file changed, 6 insertions(+), 6 deletions(-)
+
+diff --git a/wpa_supplicant/interworking.c b/wpa_supplicant/interworking.c
+index e3faca69c..0a5d12d27 100644
+--- a/wpa_supplicant/interworking.c
++++ b/wpa_supplicant/interworking.c
+@@ -1496,18 +1496,18 @@ static int interworking_set_eap_params(struct wpa_ssid *ssid,
+ 		char *anon;
+ 		/* Use anonymous NAI in Phase 1 */
+ 		pos = os_strchr(cred->username, '@');
+-		if (pos) {
+-			size_t buflen = 9 + os_strlen(pos) + 1;
++		if (cred->realm) {
++			size_t buflen = 10 + os_strlen(cred->realm) + 1;
+ 			anon = os_malloc(buflen);
+ 			if (anon == NULL)
+ 				return -1;
+-			os_snprintf(anon, buflen, "anonymous%s", pos);
+-		} else if (cred->realm) {
+-			size_t buflen = 10 + os_strlen(cred->realm) + 1;
++			os_snprintf(anon, buflen, "anonymous@%s", cred->realm);
++		} else if (pos) {
++			size_t buflen = 9 + os_strlen(pos) + 1;
+ 			anon = os_malloc(buflen);
+ 			if (anon == NULL)
+ 				return -1;
+-			os_snprintf(anon, buflen, "anonymous@%s", cred->realm);
++			os_snprintf(anon, buflen, "anonymous%s", pos);
+ 		} else {
+ 			anon = os_strdup("anonymous");
+ 			if (anon == NULL)
+-- 
+2.43.0
+

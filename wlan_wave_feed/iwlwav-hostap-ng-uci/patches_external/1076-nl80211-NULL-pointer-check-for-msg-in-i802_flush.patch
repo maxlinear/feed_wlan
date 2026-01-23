@@ -1,0 +1,31 @@
+From 37061ef86038482a6a57b342f9f041ca3a00d3a3 Mon Sep 17 00:00:00 2001
+From: Hu Wang <quic_huw@quicinc.com>
+Date: Wed, 6 Nov 2024 02:17:04 -0800
+Subject: [PATCH] nl80211: NULL pointer check for msg in i802_flush()
+
+Pointer 'msg' from nl80211_bss_msg() might be NULL and might be
+dereferenced by nla_put_u8(), so need to check for memory allocation
+failure explicitly here.
+
+Fixes: b1e463374e ("AP MLD: Link-specific flushing of stations")
+Signed-off-by: Jouni Malinen <quic_jouni@quicinc.com>
+---
+ src/drivers/driver_nl80211.c | 2 ++
+ 1 file changed, 2 insertions(+)
+
+diff --git a/src/drivers/driver_nl80211.c b/src/drivers/driver_nl80211.c
+index 2856d4584..3f9789df3 100644
+--- a/src/drivers/driver_nl80211.c
++++ b/src/drivers/driver_nl80211.c
+@@ -7882,6 +7882,8 @@ static int i802_flush(void *priv, int link_id)
+ 	 * XXX: FIX! this needs to flush all VLANs too
+ 	 */
+ 	msg = nl80211_bss_msg(bss, 0, NL80211_CMD_DEL_STATION);
++	if (!msg)
++		goto fail;
+ 	if (link_id >= 0 && (bss->valid_links & BIT(link_id)) &&
+ 	    nla_put_u8(msg, NL80211_ATTR_MLO_LINK_ID, link_id))
+ 		goto fail;
+-- 
+2.43.0
+

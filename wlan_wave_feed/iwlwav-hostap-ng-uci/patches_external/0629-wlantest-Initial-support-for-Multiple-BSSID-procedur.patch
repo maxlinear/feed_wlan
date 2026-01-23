@@ -1,0 +1,175 @@
+From 2829f1c4391ef0830cb789108675ad72d111dc38 Mon Sep 17 00:00:00 2001
+From: Jouni Malinen <quic_jouni@quicinc.com>
+Date: Mon, 10 Jun 2024 21:27:00 +0300
+Subject: [PATCH] wlantest: Initial support for Multiple BSSID procedure
+
+Parse the Multiple BSSID element in Beacon frames and create and update
+all the nontransmitted BSSs.
+
+Signed-off-by: Jouni Malinen <quic_jouni@quicinc.com>
+---
+ src/common/ieee802_11_common.c |   6 ++
+ src/common/ieee802_11_common.h |   2 +
+ wlantest/rx_mgmt.c             | 109 +++++++++++++++++++++++++++++++++
+ 3 files changed, 117 insertions(+)
+
+diff --git a/src/common/ieee802_11_common.c b/src/common/ieee802_11_common.c
+index 9a78b6344..ba1cb5257 100644
+--- a/src/common/ieee802_11_common.c
++++ b/src/common/ieee802_11_common.c
+@@ -607,6 +607,12 @@ static ParseRes __ieee802_11_parse_elems(const u8 *start, size_t len,
+ 			elems->rrm_enabled = pos;
+ 			elems->rrm_enabled_len = elen;
+ 			break;
++		case WLAN_EID_MULTIPLE_BSSID:
++			if (elen < 1)
++				break;
++			elems->mbssid = pos;
++			elems->mbssid_len = elen;
++			break;
+ 		case WLAN_EID_CAG_NUMBER:
+ 			elems->cag_number = pos;
+ 			elems->cag_number_len = elen;
+diff --git a/src/common/ieee802_11_common.h b/src/common/ieee802_11_common.h
+index 4eaeed505..9e9684c11 100644
+--- a/src/common/ieee802_11_common.h
++++ b/src/common/ieee802_11_common.h
+@@ -115,6 +115,7 @@ struct ieee802_11_elems {
+ 	const u8 *tdls_mle;
+ 	const u8 *prior_access_mle;
+ 	const u8 *mbssid_known_bss;
++	const u8 *mbssid;
+ 
+ 	u8 ssid_len;
+ 	u8 supp_rates_len;
+@@ -177,6 +178,7 @@ struct ieee802_11_elems {
+ 	size_t tdls_mle_len;
+ 	size_t prior_access_mle_len;
+ 	u8 mbssid_known_bss_len;
++	u8 mbssid_len;
+ 
+ 	struct mb_ies_info mb_ies;
+ 
+diff --git a/wlantest/rx_mgmt.c b/wlantest/rx_mgmt.c
+index a47a81fb2..d82fd2b45 100644
+--- a/wlantest/rx_mgmt.c
++++ b/wlantest/rx_mgmt.c
+@@ -439,6 +439,115 @@ static void rx_mgmt_beacon(struct wlantest *wt, const u8 *data, size_t len)
+ 	if (!bss->proberesp_seen)
+ 		bss_update(wt, bss, &elems, 1);
+ 
++	if (elems.mbssid) {
++		const u8 *pos = elems.mbssid;
++		const u8 *end = elems.mbssid + elems.mbssid_len;
++		u8 max_bss = *pos++;
++
++		while (end - pos > 2) {
++			u8 s_id, s_len, ssid_len, bssid_idx;
++			const u8 *s_data, *ssid;
++			u16 capa;
++			u8 bssid[ETH_ALEN], b;
++			struct ieee802_11_elems m_elems, merged;
++			struct wlantest_bss *m_bss;
++
++			s_id = *pos++;
++			s_len = *pos++;
++
++			if (end - pos < s_len)
++				break;
++			s_data = pos;
++			pos += s_len;
++
++			if (s_id !=
++			    WLAN_MBSSID_SUBELEMENT_NONTRANSMITTED_BSSID_PROFILE)
++				continue;
++
++			/* Nontransmitted BSSID Capability element */
++			if (pos - s_data < 4 ||
++			    s_data[0] != WLAN_EID_NONTRANSMITTED_BSSID_CAPA ||
++			    s_data[1] < 2)
++				continue;
++			capa = WPA_GET_LE16(&s_data[2]);
++			s_data += 2 + s_data[1];
++
++			/* SSID element */
++			if (pos - s_data < 2 ||
++			    s_data[0] != WLAN_EID_SSID)
++				continue;
++			ssid = &s_data[2];
++			ssid_len = s_data[1];
++			s_data += 2 + s_data[1];
++
++			/* Multiple BSSID-Index element */
++			if (pos - s_data < 3 ||
++			    s_data[0] != WLAN_EID_MULTIPLE_BSSID_INDEX)
++				continue;
++			bssid_idx = s_data[2];
++			s_data += 2 + s_data[1];
++
++			if (max_bss < 1 || max_bss > 8)
++				break;
++			os_memcpy(bssid, mgmt->bssid, ETH_ALEN);
++			b = bssid[5] % (1 << max_bss);
++			bssid[5] = bssid[5] - b +
++				(b + bssid_idx) % (1 << max_bss);
++			wpa_printf(MSG_MSGDUMP, "MBSSID: " MACSTR
++				   " Capa 0x%x idx=%u MaxBSSID Indicator=%u",
++				   MAC2STR(bssid), capa, bssid_idx, max_bss);
++
++			wpa_hexdump(MSG_MSGDUMP, "MBSSID: SSID",
++				    ssid, ssid_len);
++
++			/* Rest of the elements */
++			wpa_hexdump(MSG_MSGDUMP, "MBSSID: Elements",
++				    s_data, pos - s_data);
++			if (ieee802_11_parse_elems(s_data, pos - s_data,
++						   &m_elems,
++						   0) == ParseFailed) {
++				wpa_printf(MSG_DEBUG,
++					   "MBSSID: Failed to parse nontransmitted BSS elements");
++				continue;
++			}
++
++			/* TODO: Noninheritance and rest of elements */
++			os_memcpy(&merged, &elems, sizeof(merged));
++			merged.ssid = ssid;
++			merged.ssid_len = ssid_len;
++
++			m_bss = bss_get(wt, bssid);
++			if (!m_bss)
++				continue;
++			if (!m_bss->proberesp_seen)
++				m_bss->capab_info = capa;
++
++			if (m_elems.basic_mle) {
++				merged.basic_mle = m_elems.basic_mle;
++				merged.basic_mle_len = m_elems.basic_mle_len;
++			}
++			if (m_elems.rsn_ie) {
++				merged.rsn_ie = m_elems.rsn_ie;
++				merged.rsn_ie_len = m_elems.rsn_ie_len;
++			}
++			if (m_elems.rsnxe) {
++				merged.rsnxe = m_elems.rsnxe;
++				merged.rsnxe_len = m_elems.rsnxe_len;
++			}
++
++			if (merged.rsnxe) {
++				os_memcpy(m_bss->rsnxe, merged.rsnxe,
++					  merged.rsnxe_len);
++				m_bss->rsnxe_len = merged.rsnxe_len;
++			} else {
++				m_bss->rsnxe_len = 0;
++			}
++
++			if (!m_bss->proberesp_seen)
++				bss_update(wt, m_bss, &merged, 1);
++		}
++	}
++
+ 	mme = get_ie(mgmt->u.beacon.variable, len - offset, WLAN_EID_MMIE);
+ 	if (!mme) {
+ 		if (bss->bigtk_idx) {
+-- 
+2.43.0
+

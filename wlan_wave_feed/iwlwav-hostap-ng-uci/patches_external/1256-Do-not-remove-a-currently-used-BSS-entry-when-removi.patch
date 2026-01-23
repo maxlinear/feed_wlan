@@ -1,0 +1,38 @@
+From b0f58794420df2fcc195b160e7fd8aa4bf86be2d Mon Sep 17 00:00:00 2001
+From: Jouni Malinen <quic_jouni@quicinc.com>
+Date: Tue, 21 Jan 2025 19:34:23 +0200
+Subject: [PATCH] Do not remove a currently used BSS entry when removing oldest
+ unknown BSS
+
+wpa_bss_known() might not be sufficient to catch all cases where a BSS
+entry is in use. One known example of such a case is OWE transition mode
+where the SSID of the transition mode AP is not the same as the one in
+the local network profile. Some other cases might exists as well.
+
+If the oldest unknown BSS needs to be removed due to running out of room
+in the BSS table and that removed BSS happens to be the currently
+associated one, wpa_s->current_bss might become invalid and point to
+freed memory. This needs to be avoided to prevent use of freed memory,
+so use wpa_bss_in_use() as an extra condition for removing the oldest
+unknown BSS.
+
+Signed-off-by: Jouni Malinen <quic_jouni@quicinc.com>
+---
+ wpa_supplicant/bss.c | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/wpa_supplicant/bss.c b/wpa_supplicant/bss.c
+index 10ebab020..445e6cd61 100644
+--- a/wpa_supplicant/bss.c
++++ b/wpa_supplicant/bss.c
+@@ -486,6 +486,7 @@ static int wpa_bss_remove_oldest_unknown(struct wpa_supplicant *wpa_s)
+ 
+ 	dl_list_for_each(bss, &wpa_s->bss, struct wpa_bss, list) {
+ 		if (!wpa_bss_known(wpa_s, bss) &&
++		    !wpa_bss_in_use(wpa_s, bss) &&
+ 		    !wpa_bss_is_wps_candidate(wpa_s, bss)) {
+ 			wpa_bss_remove(wpa_s, bss, __func__);
+ 			return 0;
+-- 
+2.43.0
+

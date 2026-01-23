@@ -1,0 +1,152 @@
+From c6ff28cb63a547469b5abb1f1c198560de79a346 Mon Sep 17 00:00:00 2001
+From: Naveen S <quic_naves@quicinc.com>
+Date: Thu, 25 Apr 2024 15:45:23 +0530
+Subject: [PATCH] AP MLD: Handle garbage pointer after MLD interface is deleted
+
+In function driver_nl80211_link_remove(), when there is no active links,
+interface is removed. This will free the BSS pointer. A copy of the BSS
+pointer is also stored in each of the affiliated links' hapd->drv_priv
+member.
+
+driver_nl80211_link_remove() is called via multiple paths, e.g., via
+NL80211_CMD_STOP_AP and via driver_nl80211_ops. When called when
+handling an nl80211 event, links will be removed and when count reaches
+zero, the interface will be removed. However, core hostapd will be
+unaware of this removal. Hence, if it tries to access its drv_priv
+pointer, this can lead to segmentation fault at times since the pointer
+is now pointing to freed memory.
+
+Prevent this by adding a new notification event
+(EVENT_MLD_INTERFACE_FREED). Whenever the interface is freed, this
+notification will be sent. hostapd will process this notification and
+will set all affliated links' hapd->drv_priv to NULL.
+
+Signed-off-by: Naveen S <quic_naves@quicinc.com>
+Signed-off-by: Aditya Kumar Singh <quic_adisi@quicinc.com>
+---
+ src/ap/drv_callbacks.c       |  7 +++++++
+ src/ap/hostapd.c             | 13 +++++++++++++
+ src/ap/hostapd.h             |  1 +
+ src/drivers/driver.h         |  5 +++++
+ src/drivers/driver_common.c  |  1 +
+ src/drivers/driver_nl80211.c |  8 +++++++-
+ 6 files changed, 34 insertions(+), 1 deletion(-)
+
+diff --git a/src/ap/drv_callbacks.c b/src/ap/drv_callbacks.c
+index 9e9b46bb1..6c98cb903 100644
+--- a/src/ap/drv_callbacks.c
++++ b/src/ap/drv_callbacks.c
+@@ -2859,6 +2859,13 @@ void wpa_supplicant_event(void *ctx, enum wpa_event_type event,
+ 		hostapd_event_color_change(hapd, true);
+ 		break;
+ #endif /* CONFIG_IEEE80211AX */
++#ifdef CONFIG_IEEE80211BE
++	case EVENT_MLD_INTERFACE_FREED:
++		wpa_printf(MSG_DEBUG, "MLD: Interface %s freed",
++			   hapd->conf->iface);
++		hostapd_mld_interface_freed(hapd);
++		break;
++#endif /* CONFIG_IEEE80211BE */
+ 	default:
+ 		wpa_printf(MSG_DEBUG, "Unknown event %d", event);
+ 		break;
+diff --git a/src/ap/hostapd.c b/src/ap/hostapd.c
+index 146b4960f..0c3f1d709 100644
+--- a/src/ap/hostapd.c
++++ b/src/ap/hostapd.c
+@@ -3402,6 +3402,7 @@ static void hostapd_cleanup_driver(const struct wpa_driver_ops *driver,
+ 		   driver->is_drv_shared &&
+ 		   !driver->is_drv_shared(drv_priv, iface->bss[0])) {
+ 		driver->hapd_deinit(drv_priv);
++		hostapd_mld_interface_freed(iface->bss[0]);
+ 	} else if (hostapd_if_link_remove(iface->bss[0],
+ 					  WPA_IF_AP_BSS,
+ 					  iface->bss[0]->conf->iface,
+@@ -4981,6 +4982,18 @@ struct hostapd_data * hostapd_mld_get_first_bss(struct hostapd_data *hapd)
+ 	return mld->fbss;
+ }
+ 
++
++void hostapd_mld_interface_freed(struct hostapd_data *hapd)
++{
++	struct hostapd_data *link_bss = NULL;
++
++	if (!hapd || !hapd->conf->mld_ap)
++		return;
++
++	for_each_mld_link(link_bss, hapd)
++		link_bss->drv_priv = NULL;
++}
++
+ #endif /* CONFIG_IEEE80211BE */
+ 
+ 
+diff --git a/src/ap/hostapd.h b/src/ap/hostapd.h
+index 0df670383..278e9c3ca 100644
+--- a/src/ap/hostapd.h
++++ b/src/ap/hostapd.h
+@@ -852,6 +852,7 @@ int hostapd_fill_cca_settings(struct hostapd_data *hapd,
+ #ifdef CONFIG_IEEE80211BE
+ 
+ bool hostapd_mld_is_first_bss(struct hostapd_data *hapd);
++void hostapd_mld_interface_freed(struct hostapd_data *hapd);
+ 
+ #define for_each_mld_link(partner, self) \
+ 	dl_list_for_each(partner, &self->mld->links, struct hostapd_data, link)
+diff --git a/src/drivers/driver.h b/src/drivers/driver.h
+index 4331782d8..616f011a8 100644
+--- a/src/drivers/driver.h
++++ b/src/drivers/driver.h
+@@ -5847,6 +5847,11 @@ enum wpa_event_type {
+ 	 * EVENT_LINK_RECONFIG - Notification that AP links removed
+ 	 */
+ 	EVENT_LINK_RECONFIG,
++
++	/**
++	 * EVENT_MLD_INTERFACE_FREED - Notification of AP MLD interface removal
++	 */
++	EVENT_MLD_INTERFACE_FREED,
+ };
+ 
+ 
+diff --git a/src/drivers/driver_common.c b/src/drivers/driver_common.c
+index 9bc5a731d..9589183d0 100644
+--- a/src/drivers/driver_common.c
++++ b/src/drivers/driver_common.c
+@@ -100,6 +100,7 @@ const char * event_to_string(enum wpa_event_type event)
+ 	E2S(LINK_CH_SWITCH_STARTED);
+ 	E2S(TID_LINK_MAP);
+ 	E2S(LINK_RECONFIG);
++	E2S(MLD_INTERFACE_FREED);
+ 	}
+ 
+ 	return "UNKNOWN";
+diff --git a/src/drivers/driver_nl80211.c b/src/drivers/driver_nl80211.c
+index 5b40737cc..5e0ee0022 100644
+--- a/src/drivers/driver_nl80211.c
++++ b/src/drivers/driver_nl80211.c
+@@ -10765,6 +10765,7 @@ static int driver_nl80211_link_remove(void *priv, enum wpa_driver_if_type type,
+ {
+ 	struct i802_bss *bss = priv;
+ 	struct wpa_driver_nl80211_data *drv = bss->drv;
++	int ret;
+ 
+ 	if (type != WPA_IF_AP_BSS ||
+ 	    !nl80211_link_valid(bss->valid_links, link_id))
+@@ -10784,7 +10785,12 @@ static int driver_nl80211_link_remove(void *priv, enum wpa_driver_if_type type,
+ 	if (!bss->valid_links) {
+ 		wpa_printf(MSG_DEBUG,
+ 			   "nl80211: No more links remaining, so remove interface");
+-		return wpa_driver_nl80211_if_remove(bss, type, ifname);
++		ret = wpa_driver_nl80211_if_remove(bss, type, ifname);
++		if (ret)
++			return ret;
++
++		/* Notify that the MLD interface is removed */
++		wpa_supplicant_event(bss->ctx, EVENT_MLD_INTERFACE_FREED, NULL);
+ 	}
+ 
+ 	return 0;
+-- 
+2.43.0
+

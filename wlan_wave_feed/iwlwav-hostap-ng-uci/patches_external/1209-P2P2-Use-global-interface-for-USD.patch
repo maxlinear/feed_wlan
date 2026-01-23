@@ -1,0 +1,108 @@
+From f8b898244c499131284bfc7c8c3761f30ce53c4f Mon Sep 17 00:00:00 2001
+From: Andrei Otcheretianski <andrei.otcheretianski@intel.com>
+Date: Tue, 26 Nov 2024 11:10:15 +0200
+Subject: [PATCH] P2P2: Use global interface for USD
+
+Redirect NAN USD command and events to global interface, so it can be
+used for P2P.
+
+Signed-off-by: Andrei Otcheretianski <andrei.otcheretianski@intel.com>
+---
+ wpa_supplicant/ctrl_iface.c |  1 +
+ wpa_supplicant/notify.c     | 40 ++++++++++++++++++-------------------
+ 2 files changed, 20 insertions(+), 21 deletions(-)
+
+diff --git a/wpa_supplicant/ctrl_iface.c b/wpa_supplicant/ctrl_iface.c
+index a6036a729..76012955b 100644
+--- a/wpa_supplicant/ctrl_iface.c
++++ b/wpa_supplicant/ctrl_iface.c
+@@ -14169,6 +14169,7 @@ static char * wpas_global_ctrl_iface_redir_p2p(struct wpa_global *global,
+ 		"NFC_REPORT_HANDOVER ",
+ 		"P2P_ASP_PROVISION ",
+ 		"P2P_ASP_PROVISION_RESP ",
++		"NAN_",
+ #ifdef CONFIG_AP
+ 		"STA ",
+ 		"STA-NEXT ",
+diff --git a/wpa_supplicant/notify.c b/wpa_supplicant/notify.c
+index b894a4916..06e006963 100644
+--- a/wpa_supplicant/notify.c
++++ b/wpa_supplicant/notify.c
+@@ -1106,11 +1106,11 @@ void wpas_notify_nan_discovery_result(struct wpa_supplicant *wpa_s,
+ 		return;
+ 	if (ssi)
+ 		wpa_snprintf_hex(ssi_hex, 2 * ssi_len + 1, ssi, ssi_len);
+-	wpa_msg(wpa_s, MSG_INFO, NAN_DISCOVERY_RESULT
+-		"subscribe_id=%d publish_id=%d address=" MACSTR
+-		" fsd=%d fsd_gas=%d srv_proto_type=%u ssi=%s",
+-		subscribe_id, peer_publish_id, MAC2STR(peer_addr),
+-		fsd, fsd_gas, srv_proto_type, ssi_hex);
++	wpa_msg_global(wpa_s, MSG_INFO, NAN_DISCOVERY_RESULT
++		       "subscribe_id=%d publish_id=%d address=" MACSTR
++		       " fsd=%d fsd_gas=%d srv_proto_type=%u ssi=%s",
++		       subscribe_id, peer_publish_id, MAC2STR(peer_addr),
++		       fsd, fsd_gas, srv_proto_type, ssi_hex);
+ 	os_free(ssi_hex);
+ 
+ 	wpas_dbus_signal_nan_discovery_result(wpa_s, srv_proto_type,
+@@ -1133,11 +1133,11 @@ void wpas_notify_nan_replied(struct wpa_supplicant *wpa_s,
+ 		return;
+ 	if (ssi)
+ 		wpa_snprintf_hex(ssi_hex, 2 * ssi_len + 1, ssi, ssi_len);
+-	wpa_msg(wpa_s, MSG_INFO, NAN_REPLIED
+-		"publish_id=%d address=" MACSTR
+-		" subscribe_id=%d srv_proto_type=%u ssi=%s",
+-		publish_id, MAC2STR(peer_addr), peer_subscribe_id,
+-		srv_proto_type, ssi_hex);
++	wpa_msg_global(wpa_s, MSG_INFO, NAN_REPLIED
++		       "publish_id=%d address=" MACSTR
++		       " subscribe_id=%d srv_proto_type=%u ssi=%s",
++		       publish_id, MAC2STR(peer_addr), peer_subscribe_id,
++		       srv_proto_type, ssi_hex);
+ 	os_free(ssi_hex);
+ 
+ 	wpas_dbus_signal_nan_replied(wpa_s, srv_proto_type, publish_id,
+@@ -1157,9 +1157,9 @@ void wpas_notify_nan_receive(struct wpa_supplicant *wpa_s, int id,
+ 		return;
+ 	if (ssi)
+ 		wpa_snprintf_hex(ssi_hex, 2 * ssi_len + 1, ssi, ssi_len);
+-	wpa_msg(wpa_s, MSG_INFO, NAN_RECEIVE
+-		"id=%d peer_instance_id=%d address=" MACSTR " ssi=%s",
+-		id, peer_instance_id, MAC2STR(peer_addr), ssi_hex);
++	wpa_msg_global(wpa_s, MSG_INFO, NAN_RECEIVE
++		       "id=%d peer_instance_id=%d address=" MACSTR " ssi=%s",
++		       id, peer_instance_id, MAC2STR(peer_addr), ssi_hex);
+ 	os_free(ssi_hex);
+ 
+ 	wpas_dbus_signal_nan_receive(wpa_s, id, peer_instance_id, peer_addr,
+@@ -1186,10 +1186,9 @@ void wpas_notify_nan_publish_terminated(struct wpa_supplicant *wpa_s,
+ 					int publish_id,
+ 					enum nan_de_reason reason)
+ {
+-	wpa_msg(wpa_s, MSG_INFO, NAN_PUBLISH_TERMINATED
+-		"publish_id=%d reason=%s",
+-		publish_id, nan_reason_txt(reason));
+-
++	wpa_msg_global(wpa_s, MSG_INFO, NAN_PUBLISH_TERMINATED
++		       "publish_id=%d reason=%s",
++		       publish_id, nan_reason_txt(reason));
+ 	wpas_dbus_signal_nan_publish_terminated(wpa_s, publish_id,
+ 						nan_reason_txt(reason));
+ }
+@@ -1199,10 +1198,9 @@ void wpas_notify_nan_subscribe_terminated(struct wpa_supplicant *wpa_s,
+ 					  int subscribe_id,
+ 					  enum nan_de_reason reason)
+ {
+-	wpa_msg(wpa_s, MSG_INFO, NAN_SUBSCRIBE_TERMINATED
+-		"subscribe_id=%d reason=%s",
+-		subscribe_id, nan_reason_txt(reason));
+-
++	wpa_msg_global(wpa_s, MSG_INFO, NAN_SUBSCRIBE_TERMINATED
++		       "subscribe_id=%d reason=%s",
++		       subscribe_id, nan_reason_txt(reason));
+ 	wpas_dbus_signal_nan_subscribe_terminated(wpa_s, subscribe_id,
+ 						  nan_reason_txt(reason));
+ }
+-- 
+2.43.0
+

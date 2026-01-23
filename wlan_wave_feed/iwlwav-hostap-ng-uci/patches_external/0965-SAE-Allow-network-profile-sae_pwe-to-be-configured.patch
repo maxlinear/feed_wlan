@@ -1,0 +1,29 @@
+From ec198cfaec517ea23f36d7a71abbb3cec927d844 Mon Sep 17 00:00:00 2001
+From: Jouni Malinen <quic_jouni@quicinc.com>
+Date: Fri, 27 Sep 2024 22:40:05 +0300
+Subject: [PATCH] SAE: Allow network profile sae_pwe to be configured
+
+This was supposed to be exposed in wpa_supplicant network profile for
+configuration instead of just internal use.
+
+Fixes: 5fb90cf3fa96 ("SAE: Use sae_pwe in network profile for STA mode")
+Signed-off-by: Jouni Malinen <quic_jouni@quicinc.com>
+---
+ wpa_supplicant/config.c | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/wpa_supplicant/config.c b/wpa_supplicant/config.c
+index 77253e10a..126447442 100644
+--- a/wpa_supplicant/config.c
++++ b/wpa_supplicant/config.c
+@@ -2529,6 +2529,7 @@ static const struct parse_data ssid_fields[] = {
+ 	{ INT(mem_only_psk) },
+ 	{ STR_KEY(sae_password) },
+ 	{ STR(sae_password_id) },
++	{ INT(sae_pwe) },
+ 	{ FUNC(proto) },
+ 	{ FUNC(key_mgmt) },
+ 	{ INT(bg_scan_period) },
+-- 
+2.43.0
+

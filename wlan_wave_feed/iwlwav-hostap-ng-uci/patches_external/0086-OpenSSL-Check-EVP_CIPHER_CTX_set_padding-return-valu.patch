@@ -1,0 +1,49 @@
+From a92694b0010da280a2fd07239baa642ff4d5fd4a Mon Sep 17 00:00:00 2001
+From: Jouni Malinen <j@w1.fi>
+Date: Sun, 17 Dec 2023 11:58:48 +0200
+Subject: [PATCH] OpenSSL: Check EVP_CIPHER_CTX_set_padding() return value more
+ consistently
+
+Even though this function is documented to always return 1, be more
+consistent in checking that to avoid warnings from static analyzers.
+
+Signed-off-by: Jouni Malinen <j@w1.fi>
+---
+ src/crypto/crypto_openssl.c | 8 ++++----
+ 1 file changed, 4 insertions(+), 4 deletions(-)
+
+diff --git a/src/crypto/crypto_openssl.c b/src/crypto/crypto_openssl.c
+index 22f6ab4c1..c6369e8ab 100644
+--- a/src/crypto/crypto_openssl.c
++++ b/src/crypto/crypto_openssl.c
+@@ -471,11 +471,11 @@ void * aes_encrypt_init(const u8 *key, size_t len)
+ 	ctx = EVP_CIPHER_CTX_new();
+ 	if (ctx == NULL)
+ 		return NULL;
+-	if (EVP_EncryptInit_ex(ctx, type, NULL, key, NULL) != 1) {
++	if (EVP_EncryptInit_ex(ctx, type, NULL, key, NULL) != 1 ||
++	    EVP_CIPHER_CTX_set_padding(ctx, 0) != 1) {
+ 		EVP_CIPHER_CTX_free(ctx);
+ 		return NULL;
+ 	}
+-	EVP_CIPHER_CTX_set_padding(ctx, 0);
+ 	return ctx;
+ }
+ 
+@@ -528,11 +528,11 @@ void * aes_decrypt_init(const u8 *key, size_t len)
+ 	ctx = EVP_CIPHER_CTX_new();
+ 	if (ctx == NULL)
+ 		return NULL;
+-	if (EVP_DecryptInit_ex(ctx, type, NULL, key, NULL) != 1) {
++	if (EVP_DecryptInit_ex(ctx, type, NULL, key, NULL) != 1 ||
++	    EVP_CIPHER_CTX_set_padding(ctx, 0) != 1) {
+ 		EVP_CIPHER_CTX_free(ctx);
+ 		return NULL;
+ 	}
+-	EVP_CIPHER_CTX_set_padding(ctx, 0);
+ 	return ctx;
+ }
+ 
+-- 
+2.43.0
+

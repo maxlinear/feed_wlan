@@ -1,0 +1,67 @@
+From 71bcb97b8c96c2f2d3d981441af04b34fa7d9992 Mon Sep 17 00:00:00 2001
+From: Benjamin Berg <benjamin.berg@intel.com>
+Date: Wed, 17 Jan 2024 19:02:31 +0100
+Subject: [PATCH] tests: Use pgrep instead of ps
+
+The ps command as shipped by busybox does not support the "command"
+column. Change the code to use pgrep instead which will work fine in all
+environments.
+
+In addition, raise an exception if PID was not found since the test
+would just hang with pid = 0.
+
+Signed-off-by: Benjamin Berg <benjamin.berg@intel.com>
+---
+ tests/hwsim/test_ap_eap.py | 19 +++++++------------
+ tests/hwsim/vm/inside.sh   |  3 +++
+ 2 files changed, 10 insertions(+), 12 deletions(-)
+
+diff --git a/tests/hwsim/test_ap_eap.py b/tests/hwsim/test_ap_eap.py
+index bfc1bb417..a20140316 100644
+--- a/tests/hwsim/test_ap_eap.py
++++ b/tests/hwsim/test_ap_eap.py
+@@ -7607,20 +7607,15 @@ def test_ap_wpa2_eap_psk_mac_addr_change(dev, apdev):
+     params = hostapd.wpa2_eap_params(ssid="test-wpa2-eap")
+     hapd = hostapd.add_ap(apdev[0], params)
+ 
+-    cmd = subprocess.Popen(['ps', '-eo', 'pid,command'], stdout=subprocess.PIPE)
+-    res = cmd.stdout.read().decode()
++    cmd = subprocess.Popen(['pgrep', '-nf', 'wpa_supplicant.*' + dev[0].ifname],
++                           stdout=subprocess.PIPE)
++    res = cmd.stdout.read().decode().strip()
+     cmd.stdout.close()
+-    pid = 0
+-    for p in res.splitlines():
+-        if "wpa_supplicant" not in p:
+-            continue
+-        if dev[0].ifname not in p:
+-            continue
+-        pid = int(p.strip().split(' ')[0])
+-    if pid == 0:
+-        logger.info("Could not find wpa_supplicant PID")
+-    else:
++    if res:
++        pid = int(res)
+         logger.info("wpa_supplicant PID %d" % pid)
++    else:
++        raise Exception("Could not find wpa_supplicant PID")
+ 
+     addr = dev[0].get_status_field("address")
+     subprocess.call(['ip', 'link', 'set', 'dev', dev[0].ifname, 'down'])
+diff --git a/tests/hwsim/vm/inside.sh b/tests/hwsim/vm/inside.sh
+index 38c5284d9..31dfb9d57 100755
+--- a/tests/hwsim/vm/inside.sh
++++ b/tests/hwsim/vm/inside.sh
+@@ -146,6 +146,9 @@ if [ "$TELNET" = "1" ] ; then
+   ) &
+ fi
+ 
++# procps 3.3.17 needs an uptime of >1s (relevant for UML time-travel)
++sleep 1
++
+ # check if we're rebooting due to a kernel panic ...
+ if grep -q 'Kernel panic' /tmp/logs/console ; then
+ 	echo "KERNEL CRASHED!" >/dev/ttyS0
+-- 
+2.43.0
+

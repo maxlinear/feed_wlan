@@ -1,0 +1,40 @@
+From 449135c2699b3d219174d256dd81021a6fb7969e Mon Sep 17 00:00:00 2001
+From: Jouni Malinen <quic_jouni@quicinc.com>
+Date: Tue, 25 Feb 2025 23:01:40 +0200
+Subject: [PATCH] Remove undefined behavior from ieee802_11_defrag()
+
+ieee802_11_defrag() might be called with data == NULL and that would
+result in trying to calculate end = data + len = NULL + 0 which is
+undefined behavior. Calculate the end pointer only after data has been
+checked to not be NULL to avoid this.
+
+Fixes: ec03b71ee999 ("common: Refactor element defragmentation")
+Signed-off-by: Jouni Malinen <quic_jouni@quicinc.com>
+---
+ src/common/ieee802_11_common.c | 3 ++-
+ 1 file changed, 2 insertions(+), 1 deletion(-)
+
+diff --git a/src/common/ieee802_11_common.c b/src/common/ieee802_11_common.c
+index ba6262765..14750b481 100644
+--- a/src/common/ieee802_11_common.c
++++ b/src/common/ieee802_11_common.c
+@@ -3395,7 +3395,7 @@ int chwidth_freq2_to_ch_width(int chwidth, int freq2)
+ struct wpabuf * ieee802_11_defrag(const u8 *data, size_t len, bool ext_elem)
+ {
+ 	struct wpabuf *buf;
+-	const u8 *pos, *end = data + len;
++	const u8 *pos, *end;
+ 	size_t min_defrag_len = ext_elem ? 255 : 256;
+ 
+ 	if (!data || !len)
+@@ -3409,6 +3409,7 @@ struct wpabuf * ieee802_11_defrag(const u8 *data, size_t len, bool ext_elem)
+ 		return NULL;
+ 
+ 	pos = &data[min_defrag_len - 1];
++	end = data + len;
+ 	len -= min_defrag_len - 1;
+ 	while (len > 2 && pos[0] == WLAN_EID_FRAGMENT && pos[1]) {
+ 		int ret;
+-- 
+2.43.0
+

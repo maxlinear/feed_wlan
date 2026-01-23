@@ -1,0 +1,310 @@
+From 512b9252405f6c04f7d9b654065420f7a8dcdf87 Mon Sep 17 00:00:00 2001
+From: Jouni Malinen <j@w1.fi>
+Date: Sun, 21 Jan 2024 21:06:18 +0200
+Subject: [PATCH] AP MLD: Reduce struct mld_link_info size
+
+Replace the fixed length maximum buffer size for STA profile with
+dynamically allocated buffers for active links. This reduces struct
+mld_link_info size by almost 16 kB and drops the per-STA information in
+struct sta_info to a more reasonable size to avoid the almost 10x
+increase from MLO support.
+
+In addition, free the resp_sta_profile buffers as soon as the ML element
+has bee generated for (Re)Association Response frame since those buffers
+are not needed after that.
+
+Signed-off-by: Jouni Malinen <j@w1.fi>
+---
+ src/ap/beacon.c         | 39 ++++++++++++++++++++++++++-----------
+ src/ap/ieee802_11.c     | 43 +++++++++++++++++++++--------------------
+ src/ap/ieee802_11_eht.c |  4 ++++
+ src/ap/sta_info.c       | 21 ++++++++++++++++++++
+ src/ap/sta_info.h       |  4 +++-
+ 5 files changed, 78 insertions(+), 33 deletions(-)
+
+diff --git a/src/ap/beacon.c b/src/ap/beacon.c
+index 9b08f65a7..e6a989d07 100644
+--- a/src/ap/beacon.c
++++ b/src/ap/beacon.c
+@@ -617,6 +617,19 @@ struct probe_resp_params {
+ #endif /* CONFIG_IEEE80211AX */
+ };
+ 
++
++static void hostapd_free_probe_resp_params(struct probe_resp_params *params)
++{
++#ifdef CONFIG_IEEE80211BE
++	if (!params)
++		return;
++	ap_sta_free_sta_profile(params->mld_info);
++	os_free(params->mld_info);
++	params->mld_info = NULL;
++#endif /* CONFIG_IEEE80211BE */
++}
++
++
+ static size_t hostapd_probe_resp_elems_len(struct hostapd_data *hapd,
+ 					   struct probe_resp_params *params)
+ {
+@@ -955,6 +968,7 @@ static void hostapd_fill_probe_resp_ml_params(struct hostapd_data *hapd,
+ 		size_t buflen;
+ 		u8 mld_link_id = link->mld_link_id;
+ 		u8 *epos;
++		u8 buf[EHT_ML_MAX_STA_PROF_LEN];
+ 
+ 		/*
+ 		 * Set mld_ap iff the ML probe request explicitly
+@@ -984,7 +998,7 @@ static void hostapd_fill_probe_resp_ml_params(struct hostapd_data *hapd,
+ 		buflen = MAX_PROBERESP_LEN;
+ 		buflen += hostapd_probe_resp_elems_len(link, &sta_info_params);
+ 
+-		if (buflen > sizeof(link_info->resp_sta_profile)) {
++		if (buflen > EHT_ML_MAX_STA_PROF_LEN) {
+ 			wpa_printf(MSG_DEBUG,
+ 				   "MLD: Not including link %d in ML probe response (%zu bytes is too long)",
+ 				   mld_link_id, buflen);
+@@ -996,18 +1010,21 @@ static void hostapd_fill_probe_resp_ml_params(struct hostapd_data *hapd,
+ 		 * various other things.
+ 		 */
+ 		link_info->valid = true;
+-		epos = link_info->resp_sta_profile;
++		epos = buf;
+ 
+ 		/* Capabilities is the only fixed parameter */
+-		WPA_PUT_LE16(link_info->resp_sta_profile,
+-			     hostapd_own_capab_info(hapd));
++		WPA_PUT_LE16(epos, hostapd_own_capab_info(hapd));
++		epos += 2;
+ 
+ 		epos = hostapd_probe_resp_fill_elems(
+-			link, &sta_info_params,
+-			link_info->resp_sta_profile + 2,
+-			sizeof(link_info->resp_sta_profile) - 2);
+-		link_info->resp_sta_profile_len =
+-			epos - link_info->resp_sta_profile;
++			link, &sta_info_params, epos,
++			EHT_ML_MAX_STA_PROF_LEN - 2);
++		link_info->resp_sta_profile_len = epos - buf;
++		os_free(link_info->resp_sta_profile);
++		link_info->resp_sta_profile = os_memdup(
++			buf, link_info->resp_sta_profile_len);
++		if (!link_info->resp_sta_profile)
++			link_info->resp_sta_profile_len = 0;
+ 		os_memcpy(link_info->local_addr, link->own_addr, ETH_ALEN);
+ 
+ 		wpa_printf(MSG_DEBUG,
+@@ -1026,7 +1043,7 @@ static void hostapd_fill_probe_resp_ml_params(struct hostapd_data *hapd,
+ 	return;
+ 
+ fail:
+-	os_free(params->mld_info);
++	hostapd_free_probe_resp_params(params);
+ 	params->mld_ap = NULL;
+ 	params->mld_info = NULL;
+ }
+@@ -1584,7 +1601,7 @@ void handle_probe_req(struct hostapd_data *hapd,
+ 
+ 	hostapd_gen_probe_resp(hapd, &params);
+ 
+-	os_free(params.mld_info);
++	hostapd_free_probe_resp_params(&params);
+ 
+ 	if (!params.resp)
+ 		return;
+diff --git a/src/ap/ieee802_11.c b/src/ap/ieee802_11.c
+index 114a01eb1..88906a61e 100644
+--- a/src/ap/ieee802_11.c
++++ b/src/ap/ieee802_11.c
+@@ -3078,6 +3078,7 @@ static void handle_auth(struct hostapd_data *hapd,
+ 
+ #ifdef CONFIG_IEEE80211BE
+ 	if (auth_transaction == 1) {
++		ap_sta_free_sta_profile(&sta->mld_info);
+ 		os_memset(&sta->mld_info, 0, sizeof(sta->mld_info));
+ 
+ 		if (mld_sta) {
+@@ -4319,22 +4320,23 @@ static int check_assoc_ies(struct hostapd_data *hapd, struct sta_info *sta,
+ 
+ #ifdef CONFIG_IEEE80211BE
+ 
+-static size_t ieee80211_ml_build_assoc_resp(struct hostapd_data *hapd,
+-					    u16 status_code,
+-					    u8 *buf, size_t buflen)
++static void ieee80211_ml_build_assoc_resp(struct hostapd_data *hapd,
++					  struct mld_link_info *link)
+ {
++	u8 buf[EHT_ML_MAX_STA_PROF_LEN];
+ 	u8 *p = buf;
++	size_t buflen = sizeof(buf);
+ 
+ 	/* Capability Info */
+ 	WPA_PUT_LE16(p, hostapd_own_capab_info(hapd));
+ 	p += 2;
+ 
+ 	/* Status Code */
+-	WPA_PUT_LE16(p, status_code);
++	WPA_PUT_LE16(p, link->status);
+ 	p += 2;
+ 
+-	if (status_code != WLAN_STATUS_SUCCESS)
+-		return p - buf;
++	if (link->status != WLAN_STATUS_SUCCESS)
++		goto out;
+ 
+ 	/* AID is not included */
+ 	p = hostapd_eid_supp_rates(hapd, p);
+@@ -4372,7 +4374,10 @@ static size_t ieee80211_ml_build_assoc_resp(struct hostapd_data *hapd,
+ 		p += wpabuf_len(hapd->conf->assocresp_elements);
+ 	}
+ 
+-	return p - buf;
++out:
++	os_free(link->resp_sta_profile);
++	link->resp_sta_profile = os_memdup(buf, p - buf);
++	link->resp_sta_profile_len = link->resp_sta_profile ? p - buf : 0;
+ }
+ 
+ 
+@@ -4386,6 +4391,7 @@ static void ieee80211_ml_process_link(struct hostapd_data *hapd,
+ 	struct wpabuf *mlbuf = NULL;
+ 	struct sta_info *sta = NULL;
+ 	u16 status = WLAN_STATUS_SUCCESS;
++	int i;
+ 
+ 	wpa_printf(MSG_DEBUG, "MLD: link: link_id=%u, peer=" MACSTR,
+ 		   hapd->mld_link_id, MAC2STR(link->peer_addr));
+@@ -4435,6 +4441,12 @@ static void ieee80211_ml_process_link(struct hostapd_data *hapd,
+ 	sta->mld_assoc_link_id = origin_sta->mld_assoc_link_id;
+ 
+ 	os_memcpy(&sta->mld_info, &origin_sta->mld_info, sizeof(sta->mld_info));
++	for (i = 0; i < MAX_NUM_MLD_LINKS; i++) {
++		struct mld_link_info *li = &sta->mld_info.links[i];
++
++		li->resp_sta_profile = NULL;
++		li->resp_sta_profile_len = 0;
++	}
+ 
+ 	/*
+ 	 * Get the AID from the station on which the association was performed,
+@@ -4485,10 +4497,7 @@ out:
+ 	if (sta && status != WLAN_STATUS_SUCCESS)
+ 		ap_free_sta(hapd, sta);
+ 
+-	link->resp_sta_profile_len =
+-		ieee80211_ml_build_assoc_resp(hapd, link->status,
+-					      link->resp_sta_profile,
+-					      sizeof(link->resp_sta_profile));
++	ieee80211_ml_build_assoc_resp(hapd, link);
+ }
+ 
+ 
+@@ -4552,19 +4561,11 @@ static void hostapd_process_assoc_ml_info(struct hostapd_data *hapd,
+ 				   "MLD: No link match for link_id=%u", i);
+ 
+ 			link->status = WLAN_STATUS_UNSPECIFIED_FAILURE;
+-			link->resp_sta_profile_len =
+-				ieee80211_ml_build_assoc_resp(
+-					hapd, link->status,
+-					link->resp_sta_profile,
+-					sizeof(link->resp_sta_profile));
++			ieee80211_ml_build_assoc_resp(hapd, link);
+ 		} else if (tx_link_status != WLAN_STATUS_SUCCESS) {
+ 			/* TX link rejected the connection */
+ 			link->status = WLAN_STATUS_DENIED_TX_LINK_NOT_ACCEPTED;
+-			link->resp_sta_profile_len =
+-				ieee80211_ml_build_assoc_resp(
+-					hapd, link->status,
+-					link->resp_sta_profile,
+-					sizeof(link->resp_sta_profile));
++			ieee80211_ml_build_assoc_resp(hapd, link);
+ 		} else {
+ 			ieee80211_ml_process_link(iface->bss[0], sta, link,
+ 						  ies, ies_len, reassoc);
+diff --git a/src/ap/ieee802_11_eht.c b/src/ap/ieee802_11_eht.c
+index 8dbf66a9c..c703017af 100644
+--- a/src/ap/ieee802_11_eht.c
++++ b/src/ap/ieee802_11_eht.c
+@@ -583,6 +583,9 @@ static u8 * hostapd_eid_eht_basic_ml_common(struct hostapd_data *hapd,
+ 		/* BSS Parameters Change Count */
+ 		wpabuf_put_u8(buf, hapd->eht_mld_bss_param_change);
+ 
++		if (!link->resp_sta_profile)
++			continue;
++
+ 		/* Fragment the sub element if needed */
+ 		if (total_len <= 255) {
+ 			wpabuf_put_data(buf, link->resp_sta_profile,
+@@ -784,6 +787,7 @@ u8 * hostapd_eid_eht_ml_assoc(struct hostapd_data *hapd, struct sta_info *info,
+ 
+ 	eid = hostapd_eid_eht_basic_ml_common(hapd, eid, &info->mld_info,
+ 					      false);
++	ap_sta_free_sta_profile(&info->mld_info);
+ 	return hostapd_eid_eht_reconf_ml(hapd, eid);
+ }
+ 
+diff --git a/src/ap/sta_info.c b/src/ap/sta_info.c
+index 3003b201d..042a5a286 100644
+--- a/src/ap/sta_info.c
++++ b/src/ap/sta_info.c
+@@ -350,6 +350,7 @@ void ap_free_sta(struct hostapd_data *hapd, struct sta_info *sta)
+ #ifdef CONFIG_INTERWORKING
+ 	if (sta->gas_dialog) {
+ 		int i;
++
+ 		for (i = 0; i < GAS_DIALOG_MAX; i++)
+ 			gas_serv_dialog_clear(&sta->gas_dialog[i]);
+ 		os_free(sta->gas_dialog);
+@@ -420,6 +421,10 @@ void ap_free_sta(struct hostapd_data *hapd, struct sta_info *sta)
+ 
+ 	os_free(sta->ifname_wds);
+ 
++#ifdef CONFIG_IEEE80211BE
++	ap_sta_free_sta_profile(&sta->mld_info);
++#endif /* CONFIG_IEEE80211BE */
++
+ #ifdef CONFIG_TESTING_OPTIONS
+ 	os_free(sta->sae_postponed_commit);
+ 	forced_memzero(sta->last_tk, WPA_TK_MAX_LEN);
+@@ -1791,3 +1796,19 @@ int ap_sta_re_add(struct hostapd_data *hapd, struct sta_info *sta)
+ 	sta->added_unassoc = 1;
+ 	return 0;
+ }
++
++
++#ifdef CONFIG_IEEE80211BE
++void ap_sta_free_sta_profile(struct mld_info *info)
++{
++	int i;
++
++	if (!info)
++		return;
++
++	for (i = 0; i < MAX_NUM_MLD_LINKS; i++) {
++		os_free(info->links[i].resp_sta_profile);
++		info->links[i].resp_sta_profile = NULL;
++	}
++}
++#endif /* CONFIG_IEEE80211BE */
+diff --git a/src/ap/sta_info.h b/src/ap/sta_info.h
+index d2ff03b3f..f459f6278 100644
+--- a/src/ap/sta_info.h
++++ b/src/ap/sta_info.h
+@@ -93,7 +93,7 @@ struct mld_info {
+ 
+ 		u16 status;
+ 		size_t resp_sta_profile_len;
+-		u8 resp_sta_profile[EHT_ML_MAX_STA_PROF_LEN];
++		u8 *resp_sta_profile;
+ 
+ 		const u8 *rsne, *rsnxe;
+ 	} links[MAX_NUM_MLD_LINKS];
+@@ -438,4 +438,6 @@ static inline void ap_sta_set_mld(struct sta_info *sta, bool mld)
+ #endif /* CONFIG_IEEE80211BE */
+ }
+ 
++void ap_sta_free_sta_profile(struct mld_info *info);
++
+ #endif /* STA_INFO_H */
+-- 
+2.43.0
+

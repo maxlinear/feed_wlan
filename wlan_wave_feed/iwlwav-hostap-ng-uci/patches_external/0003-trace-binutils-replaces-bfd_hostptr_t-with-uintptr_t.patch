@@ -1,0 +1,48 @@
+From 0302c3ad22524865473049cc11af9615a283a387 Mon Sep 17 00:00:00 2001
+From: Jaap Keuter <jaap.keuter@xs4all.nl>
+Date: Thu, 30 Nov 2023 23:31:03 +0100
+Subject: [PATCH] trace: binutils replaces bfd_hostptr_t with uintptr_t
+
+According to this message https://marc.info/?l=binutils&m=165363679302282
+the type bfd_hostptr_t is dropped in favor of uintptr_t.
+Replace the use of this type in the code.
+
+Signed-off-by: Jaap Keuter <jaap.keuter@xs4all.nl>
+---
+ src/utils/trace.c | 6 +++---
+ 1 file changed, 3 insertions(+), 3 deletions(-)
+
+diff --git a/src/utils/trace.c b/src/utils/trace.c
+index 8f12da87b..7c9a17ff8 100644
+--- a/src/utils/trace.c
++++ b/src/utils/trace.c
+@@ -197,7 +197,7 @@ static void wpa_trace_bfd_addr(void *pc)
+ 	if (abfd == NULL)
+ 		return;
+ 
+-	data.pc = (bfd_hostptr_t) ((u8 *) pc - start_offset);
++	data.pc = (uintptr_t) ((u8 *) pc - start_offset);
+ 	data.found = FALSE;
+ 	bfd_map_over_sections(abfd, find_addr_sect, &data);
+ 
+@@ -238,7 +238,7 @@ static const char * wpa_trace_bfd_addr2func(void *pc)
+ 	if (abfd == NULL)
+ 		return NULL;
+ 
+-	data.pc = (bfd_hostptr_t) ((u8 *) pc - start_offset);
++	data.pc = (uintptr_t) ((u8 *) pc - start_offset);
+ 	data.found = FALSE;
+ 	bfd_map_over_sections(abfd, find_addr_sect, &data);
+ 
+@@ -310,7 +310,7 @@ size_t wpa_trace_calling_func(const char *buf[], size_t len)
+ 	for (i = 0; i < btrace_num; i++) {
+ 		struct bfd_data data;
+ 
+-		data.pc = (bfd_hostptr_t) ((u8 *) btrace_res[i] - start_offset);
++		data.pc = (uintptr_t) ((u8 *) btrace_res[i] - start_offset);
+ 		data.found = FALSE;
+ 		bfd_map_over_sections(abfd, find_addr_sect, &data);
+ 
+-- 
+2.43.0
+

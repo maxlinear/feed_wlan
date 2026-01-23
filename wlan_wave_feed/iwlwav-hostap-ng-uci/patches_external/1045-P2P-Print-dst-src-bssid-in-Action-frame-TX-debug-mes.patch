@@ -1,0 +1,34 @@
+From a9c33fa0daf5752d0d08271c86a970ec0d220dd9 Mon Sep 17 00:00:00 2001
+From: Jouni Malinen <quic_jouni@quicinc.com>
+Date: Fri, 1 Nov 2024 16:16:58 +0200
+Subject: [PATCH] P2P: Print dst/src/bssid in Action frame TX debug message
+
+It's helpful to know all the addresses used for P2P Action frames in the
+debug message.
+
+Signed-off-by: Jouni Malinen <quic_jouni@quicinc.com>
+---
+ wpa_supplicant/p2p_supplicant.c | 7 +++++--
+ 1 file changed, 5 insertions(+), 2 deletions(-)
+
+diff --git a/wpa_supplicant/p2p_supplicant.c b/wpa_supplicant/p2p_supplicant.c
+index 3a337d1ac..608836cc6 100644
+--- a/wpa_supplicant/p2p_supplicant.c
++++ b/wpa_supplicant/p2p_supplicant.c
+@@ -1687,8 +1687,11 @@ static int wpas_send_action(void *ctx, unsigned int freq, const u8 *dst,
+ 	if (listen_freq != (int) freq && send_freq != (int) freq) {
+ 		int res;
+ 
+-		wpa_printf(MSG_DEBUG, "P2P: Schedule new radio work for Action frame TX (listen_freq=%d send_freq=%d freq=%u)",
+-			   listen_freq, send_freq, freq);
++		wpa_printf(MSG_DEBUG,
++			   "P2P: Schedule new radio work for Action frame TX (listen_freq=%d send_freq=%d freq=%u dst="
++			   MACSTR " src=" MACSTR " bssid=" MACSTR,
++			   listen_freq, send_freq, freq, MAC2STR(dst),
++			   MAC2STR(src), MAC2STR(bssid));
+ 		res = wpas_send_action_work(wpa_s, freq, dst, src, bssid, buf,
+ 					    len, wait_time);
+ 		if (res == 0 && scheduled)
+-- 
+2.43.0
+

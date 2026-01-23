@@ -1,0 +1,29 @@
+From 5f507ffcc6b16edbcd650a784b63ab90c14a9abd Mon Sep 17 00:00:00 2001
+From: Jouni Malinen <quic_jouni@quicinc.com>
+Date: Thu, 26 Sep 2024 12:06:36 +0300
+Subject: [PATCH] dbus: Increment introspection buffer size
+
+This is needed to allow more wpa_supplicant configuration parameters to
+be added.
+
+Signed-off-by: Jouni Malinen <quic_jouni@quicinc.com>
+---
+ wpa_supplicant/dbus/dbus_new_introspect.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/wpa_supplicant/dbus/dbus_new_introspect.c b/wpa_supplicant/dbus/dbus_new_introspect.c
+index 608a80bbc..bfdc3e29e 100644
+--- a/wpa_supplicant/dbus/dbus_new_introspect.c
++++ b/wpa_supplicant/dbus/dbus_new_introspect.c
+@@ -38,7 +38,7 @@ static struct interfaces * add_interface(struct dl_list *list,
+ 	if (!iface)
+ 		return NULL;
+ 	iface->dbus_interface = os_strdup(dbus_interface);
+-	iface->xml = wpabuf_alloc(17000);
++	iface->xml = wpabuf_alloc(18000);
+ 	if (iface->dbus_interface == NULL || iface->xml == NULL) {
+ 		os_free(iface->dbus_interface);
+ 		wpabuf_free(iface->xml);
+-- 
+2.43.0
+

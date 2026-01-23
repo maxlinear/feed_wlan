@@ -1,0 +1,106 @@
+From 61eb89d5fd899a5f359a6ccb2e0d97ab9a2db641 Mon Sep 17 00:00:00 2001
+From: Aditya Kumar Singh <quic_adisi@quicinc.com>
+Date: Wed, 12 Jun 2024 19:57:53 +0530
+Subject: [PATCH] nl80211: AP MLD: Parse link ID to determine the BSS for color
+ event
+
+When an HE BSS color event is received from the driver, the event was
+delevered to the first link BSS ctx. To support HE BSS color with MLO,
+there is a need to identify the correct link for which the event is
+intended.
+
+Add link ID parsing support in the event handler and pass the link ID
+(if included) down to the event handler so that appropriate link can be
+selected.
+
+Signed-off-by: Aditya Kumar Singh <quic_adisi@quicinc.com>
+---
+ src/ap/drv_callbacks.c             |  8 ++++++++
+ src/drivers/driver.h               |  1 +
+ src/drivers/driver_nl80211_event.c | 17 +++++++++++++++++
+ 3 files changed, 26 insertions(+)
+
+diff --git a/src/ap/drv_callbacks.c b/src/ap/drv_callbacks.c
+index ad06e6a3f..8b49b531e 100644
+--- a/src/ap/drv_callbacks.c
++++ b/src/ap/drv_callbacks.c
+@@ -2734,21 +2734,29 @@ void wpa_supplicant_event(void *ctx, enum wpa_event_type event,
+ 		/* The BSS color is shared amongst all BBSs on a specific phy.
+ 		 * Therefore we always start the color change on the primary
+ 		 * BSS. */
++		hapd = switch_link_hapd(hapd,
++					data->bss_color_collision.link_id);
+ 		wpa_printf(MSG_DEBUG, "BSS color collision on %s",
+ 			   hapd->conf->iface);
+ 		hostapd_switch_color(hapd->iface->bss[0],
+ 				     data->bss_color_collision.bitmap);
+ 		break;
+ 	case EVENT_CCA_STARTED_NOTIFY:
++		hapd = switch_link_hapd(hapd,
++					data->bss_color_collision.link_id);
+ 		wpa_printf(MSG_DEBUG, "CCA started on %s",
+ 			   hapd->conf->iface);
+ 		break;
+ 	case EVENT_CCA_ABORTED_NOTIFY:
++		hapd = switch_link_hapd(hapd,
++					data->bss_color_collision.link_id);
+ 		wpa_printf(MSG_DEBUG, "CCA aborted on %s",
+ 			   hapd->conf->iface);
+ 		hostapd_event_color_change(hapd, false);
+ 		break;
+ 	case EVENT_CCA_NOTIFY:
++		hapd = switch_link_hapd(hapd,
++					data->bss_color_collision.link_id);
+ 		wpa_printf(MSG_DEBUG, "CCA finished on %s",
+ 			   hapd->conf->iface);
+ 		hostapd_event_color_change(hapd, true);
+diff --git a/src/drivers/driver.h b/src/drivers/driver.h
+index 204694dd4..3e7747489 100644
+--- a/src/drivers/driver.h
++++ b/src/drivers/driver.h
+@@ -6799,6 +6799,7 @@ union wpa_event_data {
+ 	 */
+ 	struct bss_color_collision {
+ 		u64 bitmap;
++		int link_id;
+ 	} bss_color_collision;
+ 
+ 	/**
+diff --git a/src/drivers/driver_nl80211_event.c b/src/drivers/driver_nl80211_event.c
+index f033e64bf..aee815e97 100644
+--- a/src/drivers/driver_nl80211_event.c
++++ b/src/drivers/driver_nl80211_event.c
+@@ -3800,6 +3800,7 @@ static void nl80211_obss_color_event(struct i802_bss *bss,
+ 	enum wpa_event_type event_type;
+ 
+ 	os_memset(&data, 0, sizeof(data));
++	data.bss_color_collision.link_id = NL80211_DRV_LINK_ID_NA;
+ 
+ 	switch (cmd) {
+ 	case NL80211_CMD_OBSS_COLOR_COLLISION:
+@@ -3830,6 +3831,22 @@ static void nl80211_obss_color_event(struct i802_bss *bss,
+ 		return;
+ 	}
+ 
++	if (tb[NL80211_ATTR_MLO_LINK_ID]) {
++		data.bss_color_collision.link_id =
++			nla_get_u8(tb[NL80211_ATTR_MLO_LINK_ID]);
++
++		if (!nl80211_link_valid(bss->valid_links,
++					data.bss_color_collision.link_id)) {
++			wpa_printf(MSG_DEBUG,
++				   "nl80211: Invalid BSS color event link ID %d",
++				   data.bss_color_collision.link_id);
++			return;
++		}
++
++		wpa_printf(MSG_DEBUG, "nl80211: BSS color event - Link ID %d",
++			   data.bss_color_collision.link_id);
++	}
++
+ 	wpa_supplicant_event(bss->ctx, event_type, &data);
+ }
+ 
+-- 
+2.43.0
+

@@ -1,0 +1,31 @@
+From 8ead26ff58e61a0358ba6033b85f435f5229d4c6 Mon Sep 17 00:00:00 2001
+From: Jouni Malinen <j@w1.fi>
+Date: Sun, 9 Feb 2025 12:05:50 +0200
+Subject: [PATCH] wolfSSL: Include asn.h to fix build with some library configs
+
+It looks like wolfssl/wolfcrypt/asn.h gets pulled in by some of the DPP
+functionality when --enable-wpas-dpp, but it is not included without
+that. Include asn.h explicitly now that it is needed for non-DPP cases
+as well after commit 99239d08de3e ("wolfssl: Implement RSA-OAEP-SHA256
+for EAP-AKA privacy protection").
+
+Signed-off-by: Jouni Malinen <j@w1.fi>
+---
+ src/crypto/crypto_wolfssl.c | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/src/crypto/crypto_wolfssl.c b/src/crypto/crypto_wolfssl.c
+index 737f017d7..7a91202ee 100644
+--- a/src/crypto/crypto_wolfssl.c
++++ b/src/crypto/crypto_wolfssl.c
+@@ -18,6 +18,7 @@
+ #include <wolfssl/openssl/bn.h>
+ #include <wolfssl/wolfcrypt/aes.h>
+ #include <wolfssl/wolfcrypt/arc4.h>
++#include <wolfssl/wolfcrypt/asn.h>
+ #include <wolfssl/wolfcrypt/asn_public.h>
+ #include <wolfssl/wolfcrypt/cmac.h>
+ #include <wolfssl/wolfcrypt/des3.h>
+-- 
+2.43.0
+

@@ -1,0 +1,94 @@
+From 72ffc71d5d3fa959917b6af3608a8b9680f7112e Mon Sep 17 00:00:00 2001
+From: Daniel Gabay <daniel.gabay@intel.com>
+Date: Tue, 7 Jan 2025 14:51:43 +0200
+Subject: [PATCH] nl80211: SPP A-MSDU driver capability
+
+cfg80211 introduced a new device capability, add a new driver capability
+and station flag. In addition, since mac80211_hwsim does not implement
+this feature in offload mode, make sure to disable it when
+force_connect_cmd is set.
+
+Signed-off-by: Daniel Gabay <daniel.gabay@intel.com>
+---
+ src/drivers/driver.h              | 3 +++
+ src/drivers/driver_common.c       | 1 +
+ src/drivers/driver_nl80211.c      | 7 +++++++
+ src/drivers/driver_nl80211_capa.c | 4 ++++
+ 4 files changed, 15 insertions(+)
+
+diff --git a/src/drivers/driver.h b/src/drivers/driver.h
+index de2b1de09..fb6b69ef4 100644
+--- a/src/drivers/driver.h
++++ b/src/drivers/driver.h
+@@ -2373,6 +2373,8 @@ struct wpa_driver_capa {
+ #define WPA_DRIVER_FLAGS2_RSN_OVERRIDE_STA	0x0000000000400000ULL
+ /** Driver supports NAN offload */
+ #define WPA_DRIVER_FLAGS2_NAN_OFFLOAD		0x0000000000800000ULL
++/** Driver/device supports SPP A-MSDUs */
++#define WPA_DRIVER_FLAGS2_SPP_AMSDU		0x0000000001000000ULL
+ 	u64 flags2;
+ 
+ #define FULL_AP_CLIENT_STATE_SUPP(drv_flags) \
+@@ -2651,6 +2653,7 @@ struct wpa_bss_params {
+ #define WPA_STA_TDLS_PEER BIT(4)
+ #define WPA_STA_AUTHENTICATED BIT(5)
+ #define WPA_STA_ASSOCIATED BIT(6)
++#define WPA_STA_SPP_AMSDU BIT(7)
+ 
+ enum tdls_oper {
+ 	TDLS_DISCOVERY_REQ,
+diff --git a/src/drivers/driver_common.c b/src/drivers/driver_common.c
+index 9589183d0..7a9f18c21 100644
+--- a/src/drivers/driver_common.c
++++ b/src/drivers/driver_common.c
+@@ -374,6 +374,7 @@ const char * driver_flag2_to_string(u64 flag2)
+ 	DF2S(MLO);
+ 	DF2S(SCAN_MIN_PREQ);
+ 	DF2S(SAE_OFFLOAD_STA);
++	DF2S(SPP_AMSDU);
+ 	}
+ 	return "UNKNOWN";
+ #undef DF2S
+diff --git a/src/drivers/driver_nl80211.c b/src/drivers/driver_nl80211.c
+index 14d69206d..d03c8f980 100644
+--- a/src/drivers/driver_nl80211.c
++++ b/src/drivers/driver_nl80211.c
+@@ -5636,6 +5636,8 @@ static u32 sta_flags_nl80211(int flags)
+ 		f |= BIT(NL80211_STA_FLAG_AUTHENTICATED);
+ 	if (flags & WPA_STA_ASSOCIATED)
+ 		f |= BIT(NL80211_STA_FLAG_ASSOCIATED);
++	if (flags & WPA_STA_SPP_AMSDU)
++		f |= BIT(NL80211_STA_FLAG_SPP_AMSDU);
+ 
+ 	return f;
+ }
+@@ -10080,6 +10082,11 @@ static int nl80211_set_param(void *priv, const char *param)
+ 	if (os_strstr(param, "force_connect_cmd=1")) {
+ 		drv->capa.flags &= ~WPA_DRIVER_FLAGS_SME;
+ 		drv->force_connect_cmd = 1;
++		/*
++		 * mac80211_hwsim does not implement SPP A-MSDU in
++		 * offload mode.
++		 */
++		drv->capa.flags2 &= ~WPA_DRIVER_FLAGS2_SPP_AMSDU;
+ 	}
+ 
+ 	if (os_strstr(param, "force_bss_selection=1"))
+diff --git a/src/drivers/driver_nl80211_capa.c b/src/drivers/driver_nl80211_capa.c
+index 08a8552a1..72be7d103 100644
+--- a/src/drivers/driver_nl80211_capa.c
++++ b/src/drivers/driver_nl80211_capa.c
+@@ -720,6 +720,10 @@ static void wiphy_info_ext_feature_flags(struct wiphy_info_data *info,
+ 	if (ext_feature_isset(ext_features, len,
+ 			      NL80211_EXT_FEATURE_SAE_OFFLOAD_AP))
+ 		capa->flags2 |= WPA_DRIVER_FLAGS2_SAE_OFFLOAD_AP;
++
++	if (ext_feature_isset(ext_features, len,
++			      NL80211_EXT_FEATURE_SPP_AMSDU_SUPPORT))
++		capa->flags2 |= WPA_DRIVER_FLAGS2_SPP_AMSDU;
+ }
+ 
+ 
+-- 
+2.43.0
+

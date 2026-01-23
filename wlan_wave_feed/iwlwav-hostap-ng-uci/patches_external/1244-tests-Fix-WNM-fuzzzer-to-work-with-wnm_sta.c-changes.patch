@@ -1,0 +1,38 @@
+From e43d22419776e77c72eb0131f8c4ede35fc51fe0 Mon Sep 17 00:00:00 2001
+From: Jouni Malinen <j@w1.fi>
+Date: Mon, 30 Dec 2024 18:29:25 +0200
+Subject: [PATCH] tests: Fix WNM fuzzzer to work with wnm_sta.c changes
+
+wpa_s->current_ssid needs to be set for processing BSS transition
+management operations now witht he wnm_san_process() changes to use
+wpa_supplicant_select_bss(), so set that in the WNM fuzzer to avoid
+false errors due to dereferencing a NULL pointer.
+
+Signed-off-by: Jouni Malinen <j@w1.fi>
+---
+ tests/fuzzing/wnm/wnm.c | 2 ++
+ 1 file changed, 2 insertions(+)
+
+diff --git a/tests/fuzzing/wnm/wnm.c b/tests/fuzzing/wnm/wnm.c
+index ea2341006..561edd62e 100644
+--- a/tests/fuzzing/wnm/wnm.c
++++ b/tests/fuzzing/wnm/wnm.c
+@@ -28,6 +28,7 @@ struct arg_ctx {
+ 	struct wpa_driver_ops driver;
+ 	struct wpa_sm wpa;
+ 	struct wpa_config conf;
++	struct wpa_ssid ssid;
+ };
+ 
+ 
+@@ -50,6 +51,7 @@ static int init_wpa(struct arg_ctx *ctx)
+ 	ctx->wpa_s.wpa_state = WPA_COMPLETED;
+ 	os_memcpy(ctx->wpa_s.bssid, "\x02\x00\x00\x00\x03\x00", ETH_ALEN);
+ 	ctx->wpa_s.current_bss = &ctx->bss;
++	ctx->wpa_s.current_ssid = &ctx->ssid;
+ 	ctx->wpa_s.driver = &ctx->driver;
+ 	ctx->wpa_s.wpa = &ctx->wpa;
+ 	ctx->wpa_s.conf = &ctx->conf;
+-- 
+2.43.0
+

@@ -1,0 +1,49 @@
+From f888f7f9d90cb47de30fb1bf6a1546c72e429ea1 Mon Sep 17 00:00:00 2001
+From: Jouni Malinen <quic_jouni@quicinc.com>
+Date: Fri, 20 Dec 2024 01:06:57 +0200
+Subject: [PATCH] tests: Clear AP scan cache in prefer_ht40
+
+It was possible for the HT40+ AP to fail to start 40 MHz channel due to
+a conflicting AP in the scan results from a previous test case. This
+happened, e.g., with the following test case sequence:
+olbc prefer_ht40
+
+Signed-off-by: Jouni Malinen <quic_jouni@quicinc.com>
+---
+ tests/hwsim/test_ap_ht.py | 9 +++++++++
+ 1 file changed, 9 insertions(+)
+
+diff --git a/tests/hwsim/test_ap_ht.py b/tests/hwsim/test_ap_ht.py
+index 610a6f461..86c8bdec8 100644
+--- a/tests/hwsim/test_ap_ht.py
++++ b/tests/hwsim/test_ap_ht.py
+@@ -1231,17 +1231,26 @@ def test_prefer_ht20(dev, apdev):
+ 
+ def test_prefer_ht40(dev, apdev):
+     """Preference on HT40 over HT20"""
++    hostapd.cmd_execute(apdev[1], ['ifconfig', apdev[1]['ifname'], 'up'])
++    hostapd.cmd_execute(apdev[1], ['iw', apdev[1]['ifname'], 'scan',
++                                   'flush', 'freq', '2417'])
++    time.sleep(1)
++    hostapd.cmd_execute(apdev[1], ['ifconfig', apdev[1]['ifname'], 'down'])
++
+     params = {"ssid": "test",
+               "channel": "1",
+               "ieee80211n": "1"}
+     hapd = hostapd.add_ap(apdev[0], params)
+     bssid = apdev[0]['bssid']
++
+     params = {"ssid": "test",
+               "channel": "1",
+               "ieee80211n": "1",
+               "ht_capab": "[HT40+]"}
+     hapd2 = hostapd.add_ap(apdev[1], params)
+     bssid2 = apdev[1]['bssid']
++    if hapd2.get_status_field("secondary_channel") != "1":
++        raise Exception("AP2 did not enable HT40+")
+ 
+     dev[0].scan_for_bss(bssid, freq=2412)
+     dev[0].scan_for_bss(bssid2, freq=2412)
+-- 
+2.43.0
+

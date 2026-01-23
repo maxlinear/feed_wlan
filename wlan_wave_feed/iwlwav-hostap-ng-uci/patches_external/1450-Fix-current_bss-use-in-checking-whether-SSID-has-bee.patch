@@ -1,0 +1,37 @@
+From 1993770a5433e0512b0a8c3c1b67abf14068d679 Mon Sep 17 00:00:00 2001
+From: Jouni Malinen <quic_jouni@quicinc.com>
+Date: Wed, 26 Feb 2025 12:02:37 +0200
+Subject: [PATCH] Fix current_bss use in checking whether SSID has been
+ verified
+
+The call to wpa_supplicant_update_scan_resuls() might change
+wpa_s->current_bss, so need to fetch the ssid/ssid_len again after that
+all to avoid potential use of freed memory.
+
+Fixes: 5452a4a30204 ("SSID verification based on beacon protection")
+Signed-off-by: Jouni Malinen <quic_jouni@quicinc.com>
+---
+ wpa_supplicant/wpa_supplicant.c | 7 +++++++
+ 1 file changed, 7 insertions(+)
+
+diff --git a/wpa_supplicant/wpa_supplicant.c b/wpa_supplicant/wpa_supplicant.c
+index 933c971ce..128530eb5 100644
+--- a/wpa_supplicant/wpa_supplicant.c
++++ b/wpa_supplicant/wpa_supplicant.c
+@@ -1057,6 +1057,13 @@ static void wpas_verify_ssid_beacon(void *eloop_ctx, void *timeout_ctx)
+ 	if (wpa_supplicant_update_scan_results(wpa_s, wpa_s->bssid) < 0)
+ 		return;
+ 
++	/* wpa->current_bss might have changed due to memory reallocation, so
++	 * need to update ssid/ssid_len */
++	if (!wpa_s->current_bss)
++		return;
++	ssid = wpa_s->current_bss->ssid;
++	ssid_len = wpa_s->current_bss->ssid_len;
++
+ 	bss = wpa_bss_get_bssid_latest(wpa_s, wpa_s->bssid);
+ 	if (!bss)
+ 		return;
+-- 
+2.43.0
+

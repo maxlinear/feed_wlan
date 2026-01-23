@@ -1,0 +1,95 @@
+From 4750a4f62a9ac178fc18964950e34b389304f43f Mon Sep 17 00:00:00 2001
+From: Jouni Malinen <j@w1.fi>
+Date: Sat, 2 Mar 2024 19:37:11 +0200
+Subject: [PATCH] DPP: Wait for TX wait expiration on moving to neg_freq for
+ Auth Resp
+
+Avoid potential race conditions with the driver operations between
+stopping an ongoing wait for responses for an offchannel TX that was
+used to send Authentication Request with a request to use a different
+channel for Authentication Response and the start of a new ROC on the
+other channel by waiting for the TX expiration event before issuing the
+ROC request.
+
+Signed-off-by: Jouni Malinen <j@w1.fi>
+---
+ wpa_supplicant/dpp_supplicant.c   | 29 ++++++++++++++++++++++++++++-
+ wpa_supplicant/wpa_supplicant_i.h |  1 +
+ 2 files changed, 29 insertions(+), 1 deletion(-)
+
+diff --git a/wpa_supplicant/dpp_supplicant.c b/wpa_supplicant/dpp_supplicant.c
+index 5c8cc594d..d6801e1de 100644
+--- a/wpa_supplicant/dpp_supplicant.c
++++ b/wpa_supplicant/dpp_supplicant.c
+@@ -483,6 +483,21 @@ static void wpas_dpp_drv_wait_timeout(void *eloop_ctx, void *timeout_ctx)
+ }
+ 
+ 
++static void wpas_dpp_neg_freq_timeout(void *eloop_ctx, void *timeout_ctx)
++{
++	struct wpa_supplicant *wpa_s = eloop_ctx;
++	struct dpp_authentication *auth = wpa_s->dpp_auth;
++
++	if (!wpa_s->dpp_listen_on_tx_expire || !auth || !auth->neg_freq)
++		return;
++
++	wpa_printf(MSG_DEBUG,
++		   "DPP: Start listen on neg_freq %u MHz based on timeout for TX wait expiration",
++		   auth->neg_freq);
++	wpas_dpp_listen_start(wpa_s, auth->neg_freq);
++}
++
++
+ static void wpas_dpp_tx_status(struct wpa_supplicant *wpa_s,
+ 			       unsigned int freq, const u8 *dst,
+ 			       const u8 *src, const u8 *bssid,
+@@ -598,7 +613,9 @@ static void wpas_dpp_tx_status(struct wpa_supplicant *wpa_s,
+ 			   wpa_s->dpp_auth->curr_freq,
+ 			   wpa_s->dpp_auth->neg_freq);
+ 		offchannel_send_action_done(wpa_s);
+-		wpas_dpp_listen_start(wpa_s, wpa_s->dpp_auth->neg_freq);
++		wpa_s->dpp_listen_on_tx_expire = true;
++		eloop_register_timeout(0, 100000, wpas_dpp_neg_freq_timeout,
++				       wpa_s, NULL);
+ 	}
+ 
+ 	if (wpa_s->dpp_auth_ok_on_ack)
+@@ -1315,6 +1332,15 @@ void wpas_dpp_tx_wait_expire(struct wpa_supplicant *wpa_s)
+ 	struct dpp_authentication *auth = wpa_s->dpp_auth;
+ 	int freq;
+ 
++	if (wpa_s->dpp_listen_on_tx_expire && auth && auth->neg_freq) {
++		wpa_printf(MSG_DEBUG,
++			   "DPP: Start listen on neg_freq %u MHz based on TX wait expiration on the previous channel",
++			   auth->neg_freq);
++		eloop_cancel_timeout(wpas_dpp_neg_freq_timeout, wpa_s, NULL);
++		wpas_dpp_listen_start(wpa_s, auth->neg_freq);
++		return;
++	}
++
+ 	if (!wpa_s->dpp_gas_server || !auth) {
+ 		if (auth && auth->waiting_auth_resp &&
+ 		    eloop_is_timeout_registered(wpas_dpp_drv_wait_timeout,
+@@ -4834,6 +4860,7 @@ void wpas_dpp_deinit(struct wpa_supplicant *wpa_s)
+ 	eloop_cancel_timeout(wpas_dpp_gas_client_timeout, wpa_s, NULL);
+ 	eloop_cancel_timeout(wpas_dpp_drv_wait_timeout, wpa_s, NULL);
+ 	eloop_cancel_timeout(wpas_dpp_tx_auth_resp_roc_timeout, wpa_s, NULL);
++	eloop_cancel_timeout(wpas_dpp_neg_freq_timeout, wpa_s, NULL);
+ #ifdef CONFIG_DPP2
+ 	eloop_cancel_timeout(wpas_dpp_config_result_wait_timeout, wpa_s, NULL);
+ 	eloop_cancel_timeout(wpas_dpp_conn_status_result_wait_timeout,
+diff --git a/wpa_supplicant/wpa_supplicant_i.h b/wpa_supplicant/wpa_supplicant_i.h
+index 1b018aff7..7a35df950 100644
+--- a/wpa_supplicant/wpa_supplicant_i.h
++++ b/wpa_supplicant/wpa_supplicant_i.h
+@@ -1476,6 +1476,7 @@ struct wpa_supplicant {
+ 	int dpp_in_response_listen;
+ 	bool dpp_tx_auth_resp_on_roc_stop;
+ 	bool dpp_tx_chan_change;
++	bool dpp_listen_on_tx_expire;
+ 	int dpp_gas_client;
+ 	int dpp_gas_server;
+ 	int dpp_gas_dialog_token;
+-- 
+2.43.0
+

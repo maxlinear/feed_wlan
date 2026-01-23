@@ -1,0 +1,29 @@
+From ec50904c1274f535bab9908d338a43b25e590429 Mon Sep 17 00:00:00 2001
+From: Jouni Malinen <j@w1.fi>
+Date: Sun, 9 Feb 2025 12:48:16 +0200
+Subject: [PATCH] Fix a typo in documentation of a configuration parameter
+
+This "much" was likely supposed to be "must", but it is clearer to use
+simpler "that contains" here.
+
+Signed-off-by: Jouni Malinen <j@w1.fi>
+---
+ hostapd/hostapd.conf | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/hostapd/hostapd.conf b/hostapd/hostapd.conf
+index 3b53d2b2d..e37e0417b 100644
+--- a/hostapd/hostapd.conf
++++ b/hostapd/hostapd.conf
+@@ -2662,7 +2662,7 @@ own_ip_addr=127.0.0.1
+ # message when acting as a Registrar. If skip_cred_build=1, this data will also
+ # be able to override the Credential attribute that would have otherwise been
+ # automatically generated based on network configuration. This configuration
+-# option points to an external file that much contain the WPS Credential
++# option points to an external file that contains the WPS Credential
+ # attribute(s) as binary data.
+ #extra_cred=hostapd.cred
+ 
+-- 
+2.43.0
+

@@ -1,0 +1,28 @@
+From e90f6678f1414b09b52446af526c22359b5b9c64 Mon Sep 17 00:00:00 2001
+From: Benjamin Berg <benjamin.berg@intel.com>
+Date: Tue, 20 Feb 2024 14:18:14 +0100
+Subject: [PATCH] nl80211: Remnove unused struct i802_link ctx
+
+This was never used.
+
+Fixes: 47269be36e61 ("nl80211: Refactor i802_bss to support multiple links")
+Signed-off-by: Benjamin Berg <benjamin.berg@intel.com>
+---
+ src/drivers/driver_nl80211.h | 1 -
+ 1 file changed, 1 deletion(-)
+
+diff --git a/src/drivers/driver_nl80211.h b/src/drivers/driver_nl80211.h
+index 03d3c333b..43a6625bb 100644
+--- a/src/drivers/driver_nl80211.h
++++ b/src/drivers/driver_nl80211.h
+@@ -58,7 +58,6 @@ struct i802_link {
+ 	int freq;
+ 	int bandwidth;
+ 	u8 addr[ETH_ALEN];
+-	void *ctx;
+ };
+ 
+ struct i802_bss {
+-- 
+2.43.0
+

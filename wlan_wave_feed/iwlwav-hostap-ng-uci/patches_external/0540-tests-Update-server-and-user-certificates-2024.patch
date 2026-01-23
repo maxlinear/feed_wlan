@@ -1,0 +1,1575 @@
+From 9e59cb83923bd68ce85d74718f46760a1d3b8eb3 Mon Sep 17 00:00:00 2001
+From: Jouni Malinen <j@w1.fi>
+Date: Wed, 17 Apr 2024 21:25:56 +0300
+Subject: [PATCH] tests: Update server and user certificates (2024)
+
+At least some of the previous versions have expired, so need to re-sign
+these to avoid EAP test case failures. This contains updates from
+running tests/hwsim/auth_server/update.sh.
+
+Signed-off-by: Jouni Malinen <j@w1.fi>
+---
+ tests/hwsim/auth_serv/index.txt               |   2 +-
+ .../auth_serv/ocsp-multi-server-cache.der     | Bin 493 -> 493 bytes
+ tests/hwsim/auth_serv/ocsp-req.der            | Bin 76 -> 76 bytes
+ tests/hwsim/auth_serv/ocsp-responder.pem      |  54 +++++++++---------
+ tests/hwsim/auth_serv/ocsp-server-cache.der   | Bin 490 -> 490 bytes
+ tests/hwsim/auth_serv/server-certpol.pem      |  54 +++++++++---------
+ tests/hwsim/auth_serv/server-certpol2.pem     |  54 +++++++++---------
+ .../auth_serv/server-eku-client-server.pem    |  52 ++++++++---------
+ tests/hwsim/auth_serv/server-eku-client.pem   |  54 +++++++++---------
+ tests/hwsim/auth_serv/server-expired.pem      |  48 ++++++++--------
+ tests/hwsim/auth_serv/server-extra.pkcs12     | Bin 3645 -> 3645 bytes
+ .../hwsim/auth_serv/server-long-duration.pem  |  52 ++++++++---------
+ tests/hwsim/auth_serv/server-no-dnsname.pem   |  54 +++++++++---------
+ tests/hwsim/auth_serv/server.pem              |  52 ++++++++---------
+ tests/hwsim/auth_serv/server.pkcs12           | Bin 2691 -> 2691 bytes
+ tests/hwsim/auth_serv/test-ca/index.txt       |  10 ++++
+ tests/hwsim/auth_serv/test-ca/serial          |   2 +-
+ tests/hwsim/auth_serv/user.pem                |  54 +++++++++---------
+ tests/hwsim/auth_serv/user.pkcs12             | Bin 2600 -> 2600 bytes
+ tests/hwsim/auth_serv/user2.pkcs12            | Bin 3641 -> 3641 bytes
+ tests/hwsim/auth_serv/user3.pkcs12            | Bin 3607 -> 3607 bytes
+ tests/hwsim/test_ap_eap.py                    |   4 +-
+ 22 files changed, 278 insertions(+), 268 deletions(-)
+
+diff --git a/tests/hwsim/auth_serv/index.txt b/tests/hwsim/auth_serv/index.txt
+index 2d7d4d9d2..059d6115f 100644
+--- a/tests/hwsim/auth_serv/index.txt
++++ b/tests/hwsim/auth_serv/index.txt
+@@ -5,4 +5,4 @@ V	150215083008Z		D8D3E3A6CBE3CCCB	unknown	/C=FI/O=w1.fi/CN=server5.w1.fi
+ V	150228224144Z		D8D3E3A6CBE3CCCC	unknown	/C=FI/O=w1.fi/CN=server6.w1.fi
+ V	160111185024Z		D8D3E3A6CBE3CCCD	unknown	/C=FI/O=w1.fi/CN=ocsp.w1.fi
+ V	150929211300Z		D8D3E3A6CBE3CCD1	unknown	/C=FI/O=w1.fi/CN=Test User
+-V	240417080242Z		D8D3E3A6CBE3CD7D	unknown	/C=FI/O=w1.fi/CN=server.w1.fi
++V	250417182537Z		D8D3E3A6CBE3CD87	unknown	/C=FI/O=w1.fi/CN=server.w1.fi
+diff --git a/tests/hwsim/auth_serv/ocsp-multi-server-cache.der b/tests/hwsim/auth_serv/ocsp-multi-server-cache.der
+index 1f295845be2fe3042676c3e77511749e33f0eb75..3cd43b3dc7c807bf3208164ec0f6ffd99f1a726e 100644
+GIT binary patch
+delta 320
+zcmV-G0l)t31MLHlatkytG%+_ZI5IUeH<5ive}{ko7!NWqGBhwWF*h+dGBq<dS}+X;
+z2`Yw2hW8Bt0Sg5H1A+ko0I0;HP|;wF1GeE~QmbaVlCJ6i0;6l7|L7;PdaG*PSmF{C
+ze^rFl`9-sR#mz(pdVcCX>2G_=uo|xpYCu;uZxg<Q+a@)#=DRgl9Q@)XUzl-NJAjaa
+ze+0@u+ua4meu3S)L&0EDn3}_MGy1U~E^4v#c)dYTgM5BD!F&$NCdXY5h{w)z!P<4>
+zE`i<hwD(1<Rbu%RH(l30jlg9(5>dx2Pl?=Dv}o9L%SY#{7B|0lbVm(o8(^&8$wPoL
+z`|UwQMjE17-0sx@j+C$3Ymr-c-Jb|FDur;{=gBubw7mW1b;8N#bI5(GIbJoAFn88e
+ShxEa)Ez<^3CZz!jS9etkj*?IS
+
+delta 320
+zcmV-G0l)t31MLHlatkvsG%+|ZI509aGLd~qe|>-e7!NWqGBYqVF*q<dFfueUS}+X;
+z2`Yw2hW8Bt0Sg5H1A+ko09R&`fI($kpYnls=EOV;(;$j#uz$~Ae(YvW(ESLlKS&JP
+z!%%B)N`$xvE4(_>FuO{MPQ;F0{`~KSJUDA@33ZP0PtZj0US2ciuo6FG_;vhuU!97(
+zf7ML<JO5m&VW_lNg{MPv<3x^Y?7rH_6e4O!$cxp4CGxz&kT;Ly!lkt}`1&M%!t&bo
+zjLg)e1{}aEy3B|-WnF}9?o1I`W-wvci1at0jf8^VohxPXO1>NVn0AoZ0gBIAfWbxs
+zlH5T(N<|3)mL(Y?9MlH=(6PqhaA-T`D*KPA8ixPL>0tpWU|JUsLTqnQmojE1f=j1g
+SQV_F6>)H|Q*Yzl}RHo6Zw33<t
+
+diff --git a/tests/hwsim/auth_serv/ocsp-req.der b/tests/hwsim/auth_serv/ocsp-req.der
+index 02f72c4820c6288adafacf503fdc2e0a4a1a4f03..a8ab1f79fb653b33ebe6da2edc110b2552aa26f4 100644
+GIT binary patch
+delta 6
+NcmebAnc&UX4gd!90sH^}
+
+delta 6
+NcmebAnc&S>3jhY{0rCI<
+
+diff --git a/tests/hwsim/auth_serv/ocsp-responder.pem b/tests/hwsim/auth_serv/ocsp-responder.pem
+index fd5bec978..3ab32b32e 100644
+--- a/tests/hwsim/auth_serv/ocsp-responder.pem
++++ b/tests/hwsim/auth_serv/ocsp-responder.pem
+@@ -2,12 +2,12 @@ Certificate:
+     Data:
+         Version: 3 (0x2)
+         Serial Number:
+-            d8:d3:e3:a6:cb:e3:cd:86
++            d8:d3:e3:a6:cb:e3:cd:90
+         Signature Algorithm: sha256WithRSAEncryption
+         Issuer: C=FI, L=Tuusula, O=w1.fi, CN=Root CA
+         Validity
+-            Not Before: Apr 18 08:02:42 2023 GMT
+-            Not After : Apr 17 08:02:42 2024 GMT
++            Not Before: Apr 17 18:25:37 2024 GMT
++            Not After : Apr 17 18:25:37 2025 GMT
+         Subject: C=FI, O=w1.fi, CN=ocsp.w1.fi
+         Subject Public Key Info:
+             Public Key Algorithm: rsaEncryption
+@@ -45,25 +45,25 @@ Certificate:
+                 A4:FD:B9:39:1B:81:B3:AA:EB:88:1D:D4:81:A9:B5:11:70:CC:A7:E1
+     Signature Algorithm: sha256WithRSAEncryption
+     Signature Value:
+-        2d:31:e5:de:71:74:09:ad:c2:7e:58:a1:c9:71:69:4c:8e:19:
+-        4b:31:e6:09:c2:e9:6a:67:ec:89:94:a8:b2:84:6f:6c:d0:69:
+-        fd:64:12:42:6d:a0:be:1a:7c:e4:71:53:c9:11:3a:02:b2:a7:
+-        ad:78:ee:ea:7e:85:da:ff:91:dd:9c:20:ad:68:7b:81:d7:c4:
+-        b4:d5:b1:fa:8e:c1:d8:e4:db:77:01:19:28:16:df:13:83:ce:
+-        94:fe:6d:90:75:2b:9d:ed:29:00:16:0e:a3:6b:68:ba:7e:d2:
+-        49:97:dd:af:0f:63:8f:d2:c7:f1:1e:49:e7:06:84:81:30:4e:
+-        15:b5:40:dc:50:64:b6:05:3e:3d:0f:66:24:30:2f:06:b2:a2:
+-        46:c7:fc:21:d7:d6:a2:12:1c:10:44:8c:56:b3:26:56:0e:0d:
+-        b7:e8:c4:8f:6c:8d:d1:79:b9:2e:04:71:ed:aa:36:f6:e3:4a:
+-        f9:47:c5:72:fb:92:f5:15:bf:8d:c3:7f:51:75:9b:21:cc:7c:
+-        5f:2a:ef:d4:db:e5:50:cc:34:7c:26:78:0b:ac:ae:ef:77:6c:
+-        3f:ce:f8:46:1c:1f:7a:04:51:9b:55:2f:fb:b0:cc:20:85:f1:
+-        34:22:2c:a5:1f:1a:83:eb:a7:58:6f:f6:6b:da:2b:14:6a:91:
+-        b4:f6:a7:25
++        6c:9d:4b:89:89:80:3d:99:88:15:bd:fc:45:91:b3:72:4a:0d:
++        78:93:c8:71:29:19:56:3f:0a:33:c1:8c:10:4c:55:61:5a:f4:
++        b7:8f:2c:cb:ea:5f:e8:1e:a5:e0:36:30:c6:f4:c8:6a:63:32:
++        ac:bd:b8:c8:f6:2c:10:f3:45:f8:11:f7:35:12:d6:a3:5c:87:
++        34:29:66:ad:19:5f:cc:c1:b9:ad:ef:e4:02:93:4b:31:d3:3a:
++        1c:37:09:33:0f:ec:0f:7d:25:63:44:07:0f:53:1b:4a:83:0b:
++        42:4a:59:3b:2b:19:e9:50:2f:9e:51:03:f4:4e:77:d4:33:a7:
++        e8:67:da:97:e4:d3:8a:0f:72:b8:56:06:be:e4:59:a4:79:a6:
++        62:37:da:b1:4b:f8:0d:ee:64:2a:02:e9:67:bd:a2:13:b2:57:
++        44:1c:6d:80:75:29:cb:7f:38:d0:cb:13:65:78:b6:5f:7c:f5:
++        04:9f:f8:5a:69:36:a8:ca:20:b2:07:3c:b2:e3:ec:b2:db:41:
++        4f:bf:c8:21:23:c3:39:17:16:27:e5:89:cc:ae:b4:b2:85:a6:
++        0b:e7:16:e2:3b:5e:27:c8:7c:52:16:5c:9c:40:88:1c:e6:d3:
++        1e:8e:e9:d5:1d:d1:c2:f3:87:6b:d7:82:8a:a0:22:9a:45:dc:
++        15:4f:47:8e
+ -----BEGIN CERTIFICATE-----
+-MIIDZTCCAk2gAwIBAgIJANjT46bL482GMA0GCSqGSIb3DQEBCwUAMEExCzAJBgNV
++MIIDZTCCAk2gAwIBAgIJANjT46bL482QMA0GCSqGSIb3DQEBCwUAMEExCzAJBgNV
+ BAYTAkZJMRAwDgYDVQQHDAdUdXVzdWxhMQ4wDAYDVQQKDAV3MS5maTEQMA4GA1UE
+-AwwHUm9vdCBDQTAeFw0yMzA0MTgwODAyNDJaFw0yNDA0MTcwODAyNDJaMDIxCzAJ
++AwwHUm9vdCBDQTAeFw0yNDA0MTcxODI1MzdaFw0yNTA0MTcxODI1MzdaMDIxCzAJ
+ BgNVBAYTAkZJMQ4wDAYDVQQKDAV3MS5maTETMBEGA1UEAwwKb2NzcC53MS5maTCC
+ ASIwDQYJKoZIhvcNAQEBBQADggEPADCCAQoCggEBAKcihV27OxwCmgFzqohjbqFD
+ M7X9Av4fyCMEi4xRUlvgzGJgKqq6iE9BOWv7NMCiencu4Vae78quZ9X5i1+rrofh
+@@ -73,11 +73,11 @@ TnwK2cRKDBZOPmh/G63JUwhcuATU1pNi/a/5tB30lj6bnRRtHGwjrj3HtM8xkCBq
+ gJliflzp1dW9WU2j2dzp++h7ZYfV+Umevg7zqSHelOhU/IDP2uOPmsZMdhgO/qsC
+ AwEAAaNvMG0wCQYDVR0TBAIwADALBgNVHQ8EBAMCBeAwEwYDVR0lBAwwCgYIKwYB
+ BQUHAwkwHQYDVR0OBBYEFC3VLm8cSbF8yaEMZjI1q6iW+CGiMB8GA1UdIwQYMBaA
+-FKT9uTkbgbOq64gd1IGptRFwzKfhMA0GCSqGSIb3DQEBCwUAA4IBAQAtMeXecXQJ
+-rcJ+WKHJcWlMjhlLMeYJwulqZ+yJlKiyhG9s0Gn9ZBJCbaC+GnzkcVPJEToCsqet
+-eO7qfoXa/5HdnCCtaHuB18S01bH6jsHY5Nt3ARkoFt8Tg86U/m2QdSud7SkAFg6j
+-a2i6ftJJl92vD2OP0sfxHknnBoSBME4VtUDcUGS2BT49D2YkMC8GsqJGx/wh19ai
+-EhwQRIxWsyZWDg236MSPbI3RebkuBHHtqjb240r5R8Vy+5L1Fb+Nw39RdZshzHxf
+-Ku/U2+VQzDR8JngLrK7vd2w/zvhGHB96BFGbVS/7sMwghfE0IiylHxqD66dYb/Zr
+-2isUapG09qcl
++FKT9uTkbgbOq64gd1IGptRFwzKfhMA0GCSqGSIb3DQEBCwUAA4IBAQBsnUuJiYA9
++mYgVvfxFkbNySg14k8hxKRlWPwozwYwQTFVhWvS3jyzL6l/oHqXgNjDG9MhqYzKs
++vbjI9iwQ80X4Efc1EtajXIc0KWatGV/Mwbmt7+QCk0sx0zocNwkzD+wPfSVjRAcP
++UxtKgwtCSlk7KxnpUC+eUQP0TnfUM6foZ9qX5NOKD3K4Vga+5FmkeaZiN9qxS/gN
++7mQqAulnvaITsldEHG2AdSnLfzjQyxNleLZffPUEn/haaTaoyiCyBzyy4+yy20FP
++v8ghI8M5FxYn5YnMrrSyhaYL5xbiO14nyHxSFlycQIgc5tMejunVHdHC84dr14KK
++oCKaRdwVT0eO
+ -----END CERTIFICATE-----
+diff --git a/tests/hwsim/auth_serv/ocsp-server-cache.der b/tests/hwsim/auth_serv/ocsp-server-cache.der
+index 33792d2167792438e5a9a71d563fcc38f527fb8f..1eda5d9406fec2f7d491fe9cab5be6b5f75e584d 100644
+GIT binary patch
+delta 320
+zcmV-G0l)t01L^~iZwoXqG%+_ZI5IUeH<5Zse}{ko7!NWqGBhwWF*h+dGBq<dS}+X;
+z2`Yw2hW8Bt0Sg5H1A+ko0I0;HP|;wF1GeE~QmbaVlCJ6i0;6l7|L7;PdaG*PSmF{C
+ze^rFl`9-sR#mz(pdVcCX>2G_=uo|xpYCu;uZxg<Q+a@)#=DRgl9Q@)XUzl-NJAjaa
+ze+0@u+ua4meu3S)L&0EDn3}_MGy1U~E^4v#c)dYTgM5BD!F&$NCdXY5h{w)z!P<4>
+zE`i<hwD(1<Rbu%RH(l30jlg9(5>dx2Pl?=Dv}o9L%SY#{7B|0lbVm(o8(^&8$wPoL
+z`|UwQMjE17-0sx@j+C$3Ymr-c-Jb|FDur;{=gBubw7mW1b;8N#bI5(GIbJoAFn88e
+ShxEa)Ez<^3CZz!jS9ewW&5}d_
+
+delta 320
+zcmV-G0l)t01L^~iZwoUpG%+|ZI509aGLd>ne|>-e7!NWqGBYqVF*q<dFfueUS}+X;
+z2`Yw2hW8Bt0Sg5H1A+ko09R&`fI($kpYnls=EOV;(;$j#uz$~Ae(YvW(ESLlKS&JP
+z!%%B)N`$xvE4(_>FuO{MPQ;F0{`~KSJUDA@33ZP0PtZj0US2ciuo6FG_;vhuU!97(
+zf7ML<JO5m&VW_lNg{MPv<3x^Y?7rH_6e4O!$cxp4CGxz&kT;Ly!lkt}`1&M%!t&bo
+zjLg)e1{}aEy3B|-WnF}9?o1I`W-wvci1at0jf8^VohxPXO1>NVn0AoZ0gBIAfWbxs
+zlH5T(N<|3)mL(Y?9MlH=(6PqhaA-T`D*KPA8ixPL>0tpWU|JUsLTqnQmojE1f=j1g
+SQV_F6>)H|Q*Yzl}RHo6L0+NmZ
+
+diff --git a/tests/hwsim/auth_serv/server-certpol.pem b/tests/hwsim/auth_serv/server-certpol.pem
+index 9b258b04a..6c4d7f605 100644
+--- a/tests/hwsim/auth_serv/server-certpol.pem
++++ b/tests/hwsim/auth_serv/server-certpol.pem
+@@ -2,12 +2,12 @@ Certificate:
+     Data:
+         Version: 3 (0x2)
+         Serial Number:
+-            d8:d3:e3:a6:cb:e3:cd:83
++            d8:d3:e3:a6:cb:e3:cd:8d
+         Signature Algorithm: sha256WithRSAEncryption
+         Issuer: C=FI, L=Tuusula, O=w1.fi, CN=Root CA
+         Validity
+-            Not Before: Apr 18 08:02:42 2023 GMT
+-            Not After : Apr 17 08:02:42 2024 GMT
++            Not Before: Apr 17 18:25:37 2024 GMT
++            Not After : Apr 17 18:25:37 2025 GMT
+         Subject: C=FI, O=w1.fi, CN=server-policies.w1.fi
+         Subject Public Key Info:
+             Public Key Algorithm: rsaEncryption
+@@ -57,25 +57,25 @@ Certificate:
+                 TLS Web Server Authentication
+     Signature Algorithm: sha256WithRSAEncryption
+     Signature Value:
+-        ab:a4:22:3b:c9:e9:9e:54:56:a2:0c:48:fa:9b:90:d0:0d:40:
+-        af:ec:ce:ca:22:04:6c:32:20:bb:51:4a:30:fd:4b:72:9d:e3:
+-        ce:f3:f2:f4:d0:85:ac:cb:9e:6c:1b:19:cb:8a:62:b9:9f:a3:
+-        f0:3e:2d:0d:a3:85:03:20:fb:44:40:f9:b3:2d:13:fa:19:d2:
+-        a1:96:ea:03:79:1f:99:48:d4:78:58:2e:05:64:dd:9f:c1:cd:
+-        25:c6:fe:77:9b:78:44:7a:9f:93:9e:51:a3:01:f0:8f:d5:99:
+-        c4:2a:fe:38:c5:19:f5:9f:10:fa:7b:4a:9e:b7:b3:64:93:b7:
+-        24:b6:12:ab:9c:9c:86:74:2a:52:80:ce:84:b2:6c:af:ff:a6:
+-        80:d0:c0:70:79:d3:2e:89:02:25:5f:53:f2:cb:db:2a:33:4c:
+-        14:b0:78:51:26:18:99:bc:8c:92:17:9b:9f:56:e8:12:92:b9:
+-        75:60:2e:b5:c0:88:22:97:9f:ea:25:13:dd:3e:34:cf:7c:70:
+-        02:58:67:36:3d:0d:5d:b2:e2:5c:6e:7f:e8:42:8e:b1:f7:5e:
+-        79:2a:37:9e:9c:64:ea:2a:2f:8d:e8:91:c6:d7:70:6c:f0:a2:
+-        af:8a:a9:cb:e2:89:f0:31:c3:29:62:be:86:5e:db:84:5e:ab:
+-        50:25:da:c9
++        96:11:1a:9c:a9:c4:c4:d7:ee:d8:d5:e1:b9:41:e3:c5:89:6f:
++        84:e9:95:5f:44:3e:13:41:78:87:31:71:18:a9:23:dd:d0:92:
++        8f:56:1c:56:97:ab:bf:67:77:b5:62:5d:e4:75:67:fc:e6:16:
++        c9:f6:19:4d:5f:c3:12:4f:5b:12:17:e1:5c:6c:14:6b:78:03:
++        a2:12:85:d2:a6:d1:79:d0:55:d8:16:d0:10:2f:31:8e:ca:9c:
++        61:fb:31:45:7d:4a:18:aa:cc:9d:da:cd:d2:7a:30:3f:70:a0:
++        0e:ee:4b:3e:91:3a:d0:bf:88:ad:47:32:a2:ca:00:da:b9:31:
++        28:89:5e:5b:10:0a:7e:23:40:5f:21:a8:73:ab:a9:5e:04:02:
++        ed:86:7a:8e:bb:72:49:91:84:d2:32:0d:53:a0:1d:9d:47:a7:
++        d4:33:ac:f4:73:f9:f0:96:d5:72:d0:17:d1:d5:81:87:7c:99:
++        0e:92:9f:94:9a:c0:18:58:90:57:c4:12:24:2d:4c:1f:fb:cb:
++        74:d1:2f:84:06:f8:b4:dc:b2:8d:30:92:37:96:fe:7b:73:af:
++        96:9e:50:46:da:2e:71:0c:b8:4e:ae:3c:a3:17:6c:d3:34:0b:
++        e9:46:30:c4:d4:ee:97:72:81:7e:3e:56:c1:63:b7:9e:c4:0d:
++        82:39:63:79
+ -----BEGIN CERTIFICATE-----
+-MIIEWDCCA0CgAwIBAgIJANjT46bL482DMA0GCSqGSIb3DQEBCwUAMEExCzAJBgNV
++MIIEWDCCA0CgAwIBAgIJANjT46bL482NMA0GCSqGSIb3DQEBCwUAMEExCzAJBgNV
+ BAYTAkZJMRAwDgYDVQQHDAdUdXVzdWxhMQ4wDAYDVQQKDAV3MS5maTEQMA4GA1UE
+-AwwHUm9vdCBDQTAeFw0yMzA0MTgwODAyNDJaFw0yNDA0MTcwODAyNDJaMD0xCzAJ
++AwwHUm9vdCBDQTAeFw0yNDA0MTcxODI1MzdaFw0yNTA0MTcxODI1MzdaMD0xCzAJ
+ BgNVBAYTAkZJMQ4wDAYDVQQKDAV3MS5maTEeMBwGA1UEAwwVc2VydmVyLXBvbGlj
+ aWVzLncxLmZpMIIBojANBgkqhkiG9w0BAQEFAAOCAY8AMIIBigKCAYEA0qbvm71g
+ Y6F1rUvTb1lehPpkoGQkC3hI/I1miy9uHUQrrsNtlLrLozS+C05HjVvZmaaoBwmH
+@@ -90,11 +90,11 @@ gdYwgdMwCQYDVR0TBAIwADAdBgNVHQ4EFgQUPq0NTX76okrV9THqtrS/g7FVfscw
+ HwYDVR0jBBgwFoAUpP25ORuBs6rriB3Ugam1EXDMp+EwNQYIKwYBBQUHAQEEKTAn
+ MCUGCCsGAQUFBzABhhlodHRwOi8vc2VydmVyLncxLmZpOjg4ODgvMCAGA1UdEQQZ
+ MBeCFXNlcnZlci1wb2xpY2llcy53MS5maTAYBgNVHSAEETAPMA0GCysGAQQBgr5o
+-AQMBMBMGA1UdJQQMMAoGCCsGAQUFBwMBMA0GCSqGSIb3DQEBCwUAA4IBAQCrpCI7
+-yemeVFaiDEj6m5DQDUCv7M7KIgRsMiC7UUow/UtynePO8/L00IWsy55sGxnLimK5
+-n6PwPi0No4UDIPtEQPmzLRP6GdKhluoDeR+ZSNR4WC4FZN2fwc0lxv53m3hEep+T
+-nlGjAfCP1ZnEKv44xRn1nxD6e0qet7Nkk7ckthKrnJyGdCpSgM6Esmyv/6aA0MBw
+-edMuiQIlX1Pyy9sqM0wUsHhRJhiZvIySF5ufVugSkrl1YC61wIgil5/qJRPdPjTP
+-fHACWGc2PQ1dsuJcbn/oQo6x9155KjeenGTqKi+N6JHG13Bs8KKviqnL4onwMcMp
+-Yr6GXtuEXqtQJdrJ
++AQMBMBMGA1UdJQQMMAoGCCsGAQUFBwMBMA0GCSqGSIb3DQEBCwUAA4IBAQCWERqc
++qcTE1+7Y1eG5QePFiW+E6ZVfRD4TQXiHMXEYqSPd0JKPVhxWl6u/Z3e1Yl3kdWf8
++5hbJ9hlNX8MST1sSF+FcbBRreAOiEoXSptF50FXYFtAQLzGOypxh+zFFfUoYqsyd
++2s3SejA/cKAO7ks+kTrQv4itRzKiygDauTEoiV5bEAp+I0BfIahzq6leBALthnqO
++u3JJkYTSMg1ToB2dR6fUM6z0c/nwltVy0BfR1YGHfJkOkp+UmsAYWJBXxBIkLUwf
+++8t00S+EBvi03LKNMJI3lv57c6+WnlBG2i5xDLhOrjyjF2zTNAvpRjDE1O6XcoF+
++PlbBY7eexA2COWN5
+ -----END CERTIFICATE-----
+diff --git a/tests/hwsim/auth_serv/server-certpol2.pem b/tests/hwsim/auth_serv/server-certpol2.pem
+index d7c8da000..04b6091db 100644
+--- a/tests/hwsim/auth_serv/server-certpol2.pem
++++ b/tests/hwsim/auth_serv/server-certpol2.pem
+@@ -2,12 +2,12 @@ Certificate:
+     Data:
+         Version: 3 (0x2)
+         Serial Number:
+-            d8:d3:e3:a6:cb:e3:cd:84
++            d8:d3:e3:a6:cb:e3:cd:8e
+         Signature Algorithm: sha256WithRSAEncryption
+         Issuer: C=FI, L=Tuusula, O=w1.fi, CN=Root CA
+         Validity
+-            Not Before: Apr 18 08:02:42 2023 GMT
+-            Not After : Apr 17 08:02:42 2024 GMT
++            Not Before: Apr 17 18:25:37 2024 GMT
++            Not After : Apr 17 18:25:37 2025 GMT
+         Subject: C=FI, O=w1.fi, CN=server-policies2.w1.fi
+         Subject Public Key Info:
+             Public Key Algorithm: rsaEncryption
+@@ -57,25 +57,25 @@ Certificate:
+                 TLS Web Server Authentication
+     Signature Algorithm: sha256WithRSAEncryption
+     Signature Value:
+-        88:57:78:20:07:d5:4b:ba:97:28:33:8e:cc:fb:98:62:99:46:
+-        24:f7:c1:4b:d4:51:2c:5a:90:ce:e8:a7:81:0c:3e:d5:e8:19:
+-        a7:2a:d4:0c:64:4a:99:00:0a:3a:1b:09:4c:13:03:76:b5:f3:
+-        db:66:09:56:79:0f:61:5c:ea:1b:f4:52:3d:52:53:ef:dd:cd:
+-        da:58:20:db:3a:cd:6b:6c:f6:bf:3f:16:1a:12:0d:2e:ad:37:
+-        80:41:2d:7c:6c:21:38:b1:a1:f8:20:60:03:b1:ee:75:0b:bf:
+-        c9:02:f8:46:9a:66:19:3b:8b:5d:3a:3b:a7:39:d0:fd:88:77:
+-        b0:39:cf:75:0b:fb:f0:67:56:41:1e:63:26:5c:fe:5a:cb:6e:
+-        be:aa:36:e0:04:a4:5c:ae:2e:b2:7f:9f:55:d4:81:d8:cd:a9:
+-        4e:e7:b6:a8:bb:19:70:6b:63:ac:51:1b:3f:b1:16:c2:5c:b3:
+-        80:4a:2d:da:d9:18:1d:08:58:0a:99:b8:1e:6d:4f:87:f2:6b:
+-        bb:76:92:d4:8a:f1:13:66:bf:39:ab:22:9a:17:84:ee:c1:f9:
+-        14:88:02:3c:03:11:6b:9e:e0:d5:fc:4f:ec:11:38:3d:7a:7c:
+-        e7:00:d9:ac:f3:fd:bc:30:e5:0c:e5:dc:27:b2:61:3f:20:04:
+-        47:72:4c:42
++        29:98:1d:52:eb:5b:74:e3:7d:79:31:3f:79:09:4b:84:74:43:
++        da:b7:e2:b6:f8:13:ae:79:6c:78:f1:16:2d:58:19:27:8d:bd:
++        64:2c:99:f6:d3:16:37:55:47:2d:49:87:59:4e:eb:01:2b:ac:
++        e5:82:8b:49:2f:aa:7f:cc:dc:2d:77:c1:0e:52:4b:5e:ef:21:
++        88:55:cc:0e:87:6f:44:38:74:a5:2f:4a:f0:61:c2:18:71:d9:
++        e8:ac:d0:90:e9:7d:a5:aa:a9:2b:3e:41:c7:10:54:08:96:ee:
++        c1:b8:d8:5f:c8:12:91:41:4b:de:f5:f9:48:87:62:40:b4:3c:
++        42:28:b4:b5:73:fa:73:0e:2c:35:3c:65:89:b9:f9:2c:b6:48:
++        1f:f3:49:57:bc:70:5a:35:9b:36:a1:7b:ae:da:53:3b:7c:b0:
++        72:4e:9f:61:dc:b0:6a:e1:ee:af:1b:c0:6a:00:b4:0a:be:9a:
++        91:47:a7:3f:01:90:f1:a5:61:35:1a:82:31:49:3c:14:44:52:
++        46:a2:36:12:64:9f:e1:4b:58:d9:08:0b:51:b6:aa:03:45:72:
++        16:83:e3:21:f5:7a:fd:e9:15:9e:7a:84:45:e0:60:f9:5c:bc:
++        7f:8a:df:60:57:21:84:43:c2:56:d4:5f:1c:14:47:98:78:c6:
++        6f:f3:77:06
+ -----BEGIN CERTIFICATE-----
+-MIIEWjCCA0KgAwIBAgIJANjT46bL482EMA0GCSqGSIb3DQEBCwUAMEExCzAJBgNV
++MIIEWjCCA0KgAwIBAgIJANjT46bL482OMA0GCSqGSIb3DQEBCwUAMEExCzAJBgNV
+ BAYTAkZJMRAwDgYDVQQHDAdUdXVzdWxhMQ4wDAYDVQQKDAV3MS5maTEQMA4GA1UE
+-AwwHUm9vdCBDQTAeFw0yMzA0MTgwODAyNDJaFw0yNDA0MTcwODAyNDJaMD4xCzAJ
++AwwHUm9vdCBDQTAeFw0yNDA0MTcxODI1MzdaFw0yNTA0MTcxODI1MzdaMD4xCzAJ
+ BgNVBAYTAkZJMQ4wDAYDVQQKDAV3MS5maTEfMB0GA1UEAwwWc2VydmVyLXBvbGlj
+ aWVzMi53MS5maTCCAaIwDQYJKoZIhvcNAQEBBQADggGPADCCAYoCggGBAOZQ0SgF
+ J2zUQtNCx8xTqWvCo6sgbxc0neQdMdDEaGVC1ei9qrjk6fbuLnXNaoz2jqqvbHzr
+@@ -90,11 +90,11 @@ o4HXMIHUMAkGA1UdEwQCMAAwHQYDVR0OBBYEFE4Bi37Cd5ThaLPEKTUkBQvehEqJ
+ MB8GA1UdIwQYMBaAFKT9uTkbgbOq64gd1IGptRFwzKfhMDUGCCsGAQUFBwEBBCkw
+ JzAlBggrBgEFBQcwAYYZaHR0cDovL3NlcnZlci53MS5maTo4ODg4LzAhBgNVHREE
+ GjAYghZzZXJ2ZXItcG9saWNpZXMyLncxLmZpMBgGA1UdIAQRMA8wDQYLKwYBBAGC
+-vmgBAwIwEwYDVR0lBAwwCgYIKwYBBQUHAwEwDQYJKoZIhvcNAQELBQADggEBAIhX
+-eCAH1Uu6lygzjsz7mGKZRiT3wUvUUSxakM7op4EMPtXoGacq1AxkSpkACjobCUwT
+-A3a189tmCVZ5D2Fc6hv0Uj1SU+/dzdpYINs6zWts9r8/FhoSDS6tN4BBLXxsITix
+-ofggYAOx7nULv8kC+EaaZhk7i106O6c50P2Id7A5z3UL+/BnVkEeYyZc/lrLbr6q
+-NuAEpFyuLrJ/n1XUgdjNqU7ntqi7GXBrY6xRGz+xFsJcs4BKLdrZGB0IWAqZuB5t
+-T4fya7t2ktSK8RNmvzmrIpoXhO7B+RSIAjwDEWue4NX8T+wROD16fOcA2azz/bww
+-5Qzl3CeyYT8gBEdyTEI=
++vmgBAwIwEwYDVR0lBAwwCgYIKwYBBQUHAwEwDQYJKoZIhvcNAQELBQADggEBACmY
++HVLrW3TjfXkxP3kJS4R0Q9q34rb4E655bHjxFi1YGSeNvWQsmfbTFjdVRy1Jh1lO
++6wErrOWCi0kvqn/M3C13wQ5SS17vIYhVzA6Hb0Q4dKUvSvBhwhhx2eis0JDpfaWq
++qSs+QccQVAiW7sG42F/IEpFBS971+UiHYkC0PEIotLVz+nMOLDU8ZYm5+Sy2SB/z
++SVe8cFo1mzahe67aUzt8sHJOn2HcsGrh7q8bwGoAtAq+mpFHpz8BkPGlYTUagjFJ
++PBREUkaiNhJkn+FLWNkIC1G2qgNFchaD4yH1ev3pFZ56hEXgYPlcvH+K32BXIYRD
++wlbUXxwUR5h4xm/zdwY=
+ -----END CERTIFICATE-----
+diff --git a/tests/hwsim/auth_serv/server-eku-client-server.pem b/tests/hwsim/auth_serv/server-eku-client-server.pem
+index 5d8f2fe34..397a6e9f9 100644
+--- a/tests/hwsim/auth_serv/server-eku-client-server.pem
++++ b/tests/hwsim/auth_serv/server-eku-client-server.pem
+@@ -2,12 +2,12 @@ Certificate:
+     Data:
+         Version: 3 (0x2)
+         Serial Number:
+-            d8:d3:e3:a6:cb:e3:cd:81
++            d8:d3:e3:a6:cb:e3:cd:8b
+         Signature Algorithm: sha256WithRSAEncryption
+         Issuer: C=FI, L=Tuusula, O=w1.fi, CN=Root CA
+         Validity
+-            Not Before: Apr 18 08:02:42 2023 GMT
+-            Not After : Apr 17 08:02:42 2024 GMT
++            Not Before: Apr 17 18:25:37 2024 GMT
++            Not After : Apr 17 18:25:37 2025 GMT
+         Subject: C=FI, O=w1.fi, CN=server6.w1.fi
+         Subject Public Key Info:
+             Public Key Algorithm: rsaEncryption
+@@ -45,25 +45,25 @@ Certificate:
+                 TLS Web Client Authentication, TLS Web Server Authentication
+     Signature Algorithm: sha256WithRSAEncryption
+     Signature Value:
+-        9b:0c:21:e8:56:b8:41:d4:f7:9b:a4:54:16:2f:f1:86:2a:e1:
+-        65:a1:e2:2f:f7:10:1e:c7:ee:b8:3b:c3:28:4b:6d:f9:2e:77:
+-        6b:eb:4b:ea:1c:8b:e3:be:92:b0:67:75:d6:15:62:a1:ec:63:
+-        55:2d:12:32:a5:4c:e7:bb:27:41:de:9c:20:b6:a0:4d:7a:ea:
+-        63:6b:49:0a:fe:d7:4d:af:40:ff:35:61:88:00:c0:2b:fa:7b:
+-        88:b7:c0:fd:40:db:90:ba:de:23:04:82:76:f5:2a:a9:b6:56:
+-        6e:3e:e4:c7:af:27:6c:59:c5:8d:d8:37:9a:3d:73:80:e7:33:
+-        4d:72:00:cb:7a:70:55:0d:0b:9a:e1:26:b1:ba:a9:07:a2:ea:
+-        14:e8:e8:98:23:a9:20:71:dd:08:b6:41:ab:f9:84:dd:2d:51:
+-        58:d2:15:c2:95:9f:dc:da:ec:f7:79:2b:a2:5b:a1:77:c8:b4:
+-        d2:5d:39:7e:22:3c:34:50:86:d3:dd:0d:2d:a7:d4:b4:be:fb:
+-        8d:9c:e7:07:52:4b:8a:13:02:0f:5c:43:cd:a0:e6:2a:f1:74:
+-        6e:a8:cd:3c:10:aa:e6:41:d3:4b:eb:e3:5c:a7:e0:ef:4c:3f:
+-        fc:ee:6a:74:8c:c3:99:bf:3a:94:6f:b9:36:ee:9b:40:6a:e9:
+-        c3:5e:6d:a2
++        66:57:88:7e:5b:fc:3f:5d:d0:ad:f0:b7:53:89:8f:a7:47:68:
++        89:90:a1:df:72:0a:6c:03:d8:b2:b5:68:e5:78:d5:30:5e:a9:
++        a0:ba:8d:b5:08:4f:49:fc:07:fa:db:10:e3:0f:6d:a9:b2:14:
++        82:a4:ab:92:65:a7:7a:86:28:e6:84:c5:56:41:6f:a0:ae:dd:
++        18:fb:a6:f1:c0:d3:27:3a:39:fb:78:c6:5b:6d:e6:5c:93:e2:
++        68:44:ed:6c:33:73:7a:fe:09:30:0d:09:19:f3:65:96:de:56:
++        f9:e9:2b:6c:2e:1f:9c:dc:68:3e:60:35:a6:cb:31:3b:18:ab:
++        12:6f:a1:1d:f0:38:53:d8:d8:15:04:da:e8:0e:45:df:25:f1:
++        ac:01:2d:a9:73:8a:32:24:e1:27:53:b6:e8:fc:f4:bc:af:d9:
++        b1:db:93:c5:75:5b:03:db:22:af:ef:7a:79:38:9a:90:b3:dd:
++        da:4a:e1:9b:59:74:c4:de:5c:4c:55:c1:03:0a:77:46:3d:c4:
++        17:0b:4d:f6:b4:c0:11:3f:6a:30:93:e3:94:97:17:fd:c5:19:
++        f2:1a:79:db:f3:50:de:5f:3a:a5:92:3e:dd:0b:be:1d:e5:da:
++        90:65:a5:b2:0f:69:52:77:1e:d7:5e:59:dc:df:20:33:2a:62:
++        3e:00:b4:22
+ -----BEGIN CERTIFICATE-----
+-MIIDnjCCAoagAwIBAgIJANjT46bL482BMA0GCSqGSIb3DQEBCwUAMEExCzAJBgNV
++MIIDnjCCAoagAwIBAgIJANjT46bL482LMA0GCSqGSIb3DQEBCwUAMEExCzAJBgNV
+ BAYTAkZJMRAwDgYDVQQHDAdUdXVzdWxhMQ4wDAYDVQQKDAV3MS5maTEQMA4GA1UE
+-AwwHUm9vdCBDQTAeFw0yMzA0MTgwODAyNDJaFw0yNDA0MTcwODAyNDJaMDUxCzAJ
++AwwHUm9vdCBDQTAeFw0yNDA0MTcxODI1MzdaFw0yNTA0MTcxODI1MzdaMDUxCzAJ
+ BgNVBAYTAkZJMQ4wDAYDVQQKDAV3MS5maTEWMBQGA1UEAwwNc2VydmVyNi53MS5m
+ aTCCASIwDQYJKoZIhvcNAQEBBQADggEPADCCAQoCggEBANAj9IASvkpkTa+Zr1Lv
+ jfVzmhooK5Lo1JAlPoVHn8nEuXo1JIQvHlEWZtOsMerxY6RM6ibw+mHHn/J0aWp4
+@@ -75,10 +75,10 @@ kXECAwEAAaOBpDCBoTAJBgNVHRMEAjAAMB0GA1UdDgQWBBSr0ojKnEQmiS7AuY1G
+ 3VxpAp4ByzAfBgNVHSMEGDAWgBSk/bk5G4GzquuIHdSBqbURcMyn4TA1BggrBgEF
+ BQcBAQQpMCcwJQYIKwYBBQUHMAGGGWh0dHA6Ly9zZXJ2ZXIudzEuZmk6ODg4OC8w
+ HQYDVR0lBBYwFAYIKwYBBQUHAwIGCCsGAQUFBwMBMA0GCSqGSIb3DQEBCwUAA4IB
+-AQCbDCHoVrhB1PebpFQWL/GGKuFloeIv9xAex+64O8MoS235Lndr60vqHIvjvpKw
+-Z3XWFWKh7GNVLRIypUznuydB3pwgtqBNeupja0kK/tdNr0D/NWGIAMAr+nuIt8D9
+-QNuQut4jBIJ29SqptlZuPuTHrydsWcWN2DeaPXOA5zNNcgDLenBVDQua4SaxuqkH
+-ouoU6OiYI6kgcd0ItkGr+YTdLVFY0hXClZ/c2uz3eSuiW6F3yLTSXTl+Ijw0UIbT
+-3Q0tp9S0vvuNnOcHUkuKEwIPXEPNoOYq8XRuqM08EKrmQdNL6+Ncp+DvTD/87mp0
+-jMOZvzqUb7k27ptAaunDXm2i
++AQBmV4h+W/w/XdCt8LdTiY+nR2iJkKHfcgpsA9iytWjleNUwXqmguo21CE9J/Af6
++2xDjD22pshSCpKuSZad6hijmhMVWQW+grt0Y+6bxwNMnOjn7eMZbbeZck+JoRO1s
++M3N6/gkwDQkZ82WW3lb56StsLh+c3Gg+YDWmyzE7GKsSb6Ed8DhT2NgVBNroDkXf
++JfGsAS2pc4oyJOEnU7bo/PS8r9mx25PFdVsD2yKv73p5OJqQs93aSuGbWXTE3lxM
++VcEDCndGPcQXC032tMARP2owk+OUlxf9xRnyGnnb81DeXzqlkj7dC74d5dqQZaWy
++D2lSdx7XXlnc3yAzKmI+ALQi
+ -----END CERTIFICATE-----
+diff --git a/tests/hwsim/auth_serv/server-eku-client.pem b/tests/hwsim/auth_serv/server-eku-client.pem
+index c465b114b..72748c227 100644
+--- a/tests/hwsim/auth_serv/server-eku-client.pem
++++ b/tests/hwsim/auth_serv/server-eku-client.pem
+@@ -2,12 +2,12 @@ Certificate:
+     Data:
+         Version: 3 (0x2)
+         Serial Number:
+-            d8:d3:e3:a6:cb:e3:cd:80
++            d8:d3:e3:a6:cb:e3:cd:8a
+         Signature Algorithm: sha256WithRSAEncryption
+         Issuer: C=FI, L=Tuusula, O=w1.fi, CN=Root CA
+         Validity
+-            Not Before: Apr 18 08:02:42 2023 GMT
+-            Not After : Apr 17 08:02:42 2024 GMT
++            Not Before: Apr 17 18:25:37 2024 GMT
++            Not After : Apr 17 18:25:37 2025 GMT
+         Subject: C=FI, O=w1.fi, CN=server5.w1.fi
+         Subject Public Key Info:
+             Public Key Algorithm: rsaEncryption
+@@ -45,25 +45,25 @@ Certificate:
+                 TLS Web Client Authentication
+     Signature Algorithm: sha256WithRSAEncryption
+     Signature Value:
+-        ba:e6:af:f3:c2:8d:42:2c:3e:80:3d:98:b1:d8:c0:4d:c1:18:
+-        ca:d7:74:25:42:dd:9a:13:9c:74:e0:7a:a0:d7:b1:0c:a3:5c:
+-        2d:db:a7:43:dd:bd:ce:f1:ed:e8:80:5a:38:11:61:23:2f:aa:
+-        a3:47:46:66:59:cd:d3:aa:1e:60:5f:59:a0:de:a9:27:c8:11:
+-        0c:56:80:d6:c4:df:b7:d8:9c:f6:bb:14:08:8d:47:42:91:9c:
+-        d2:40:62:42:5f:06:3a:94:d4:13:af:88:9b:0c:53:69:bc:45:
+-        4a:32:bb:54:53:6b:95:88:8f:2d:f5:92:f2:8f:03:f8:32:b2:
+-        6c:94:32:7b:fa:5e:46:d8:f5:39:65:ff:cd:dc:2d:0e:d8:78:
+-        ef:96:13:9c:d1:6e:57:c9:27:64:ed:16:d7:1e:7b:fd:47:19:
+-        73:0e:f0:d0:27:5b:4b:82:4a:2c:ae:f5:1a:c4:15:b5:84:a9:
+-        66:4e:63:13:d9:0a:d4:88:28:ec:95:2a:7f:0f:a4:c5:3e:84:
+-        b4:98:16:21:a2:1a:71:a1:af:4b:8b:be:d0:6c:99:3e:61:94:
+-        19:7a:fc:2a:2c:7e:3d:df:be:b8:fb:52:0c:d9:fa:94:8a:18:
+-        88:a9:b1:73:33:2d:e5:78:53:75:88:99:1b:fc:ae:b9:25:59:
+-        cd:e1:03:77
++        0f:3d:94:ab:11:bc:11:cd:b7:1b:31:8e:29:8b:78:b5:87:07:
++        af:29:4f:89:23:a4:6f:b0:b4:87:0e:82:0d:b6:29:9e:4d:3b:
++        f9:c3:82:5d:84:a6:67:05:69:d3:45:57:bc:8d:db:4b:72:70:
++        2f:c9:44:42:8d:44:4f:8a:a1:0d:fb:31:47:ac:fb:84:e8:09:
++        47:73:86:34:f5:90:bd:c2:99:a2:e7:6e:a0:24:67:73:19:0c:
++        e2:41:97:9e:c0:fe:e8:12:8d:1a:f1:ad:c4:6e:69:95:5a:de:
++        6b:c4:29:01:bd:a4:4c:0b:1b:ca:db:8d:bc:7f:56:92:48:9c:
++        85:3b:0b:19:4e:3d:94:a9:fb:c4:ca:3d:0a:20:12:46:c6:eb:
++        66:55:17:01:c1:f7:c7:4c:b2:f3:05:68:7b:e3:37:ff:af:61:
++        d6:ba:83:4e:e7:d0:a6:b7:26:6c:5c:7d:d1:a3:0e:a0:3d:b6:
++        23:67:4a:9c:13:12:a3:87:4e:ba:77:c2:df:3e:45:7d:29:e5:
++        07:d5:c6:1c:5a:1a:62:77:03:d9:9c:63:d8:6d:43:e9:94:fb:
++        5c:88:1b:22:dd:bb:58:13:d0:a9:22:fe:b2:58:8e:9d:1a:c6:
++        c2:5b:6f:de:f3:07:1b:0f:4a:79:d5:df:81:24:44:0c:ef:26:
++        ea:8d:2e:e3
+ -----BEGIN CERTIFICATE-----
+-MIIDlDCCAnygAwIBAgIJANjT46bL482AMA0GCSqGSIb3DQEBCwUAMEExCzAJBgNV
++MIIDlDCCAnygAwIBAgIJANjT46bL482KMA0GCSqGSIb3DQEBCwUAMEExCzAJBgNV
+ BAYTAkZJMRAwDgYDVQQHDAdUdXVzdWxhMQ4wDAYDVQQKDAV3MS5maTEQMA4GA1UE
+-AwwHUm9vdCBDQTAeFw0yMzA0MTgwODAyNDJaFw0yNDA0MTcwODAyNDJaMDUxCzAJ
++AwwHUm9vdCBDQTAeFw0yNDA0MTcxODI1MzdaFw0yNTA0MTcxODI1MzdaMDUxCzAJ
+ BgNVBAYTAkZJMQ4wDAYDVQQKDAV3MS5maTEWMBQGA1UEAwwNc2VydmVyNS53MS5m
+ aTCCASIwDQYJKoZIhvcNAQEBBQADggEPADCCAQoCggEBAKWUYIC4yGEYjAKd3MzE
+ dNEXtTtHnDgPO5J0++onRUSKmipNECWOd84aCclzGf7ccDZejPqPTIS793LklE/8
+@@ -74,11 +74,11 @@ u9jjFCVw3tHHnVnPJEbH9W5vg2btGx0+UQSUZ2TfUSI8wOEkCjdq3GqL/UVbli0D
+ rGMCAwEAAaOBmjCBlzAJBgNVHRMEAjAAMB0GA1UdDgQWBBQyn58wJHNzy41TOoAj
+ 61tdTN0GATAfBgNVHSMEGDAWgBSk/bk5G4GzquuIHdSBqbURcMyn4TA1BggrBgEF
+ BQcBAQQpMCcwJQYIKwYBBQUHMAGGGWh0dHA6Ly9zZXJ2ZXIudzEuZmk6ODg4OC8w
+-EwYDVR0lBAwwCgYIKwYBBQUHAwIwDQYJKoZIhvcNAQELBQADggEBALrmr/PCjUIs
+-PoA9mLHYwE3BGMrXdCVC3ZoTnHTgeqDXsQyjXC3bp0Pdvc7x7eiAWjgRYSMvqqNH
+-RmZZzdOqHmBfWaDeqSfIEQxWgNbE37fYnPa7FAiNR0KRnNJAYkJfBjqU1BOviJsM
+-U2m8RUoyu1RTa5WIjy31kvKPA/gysmyUMnv6XkbY9Tll/83cLQ7YeO+WE5zRblfJ
+-J2TtFtcee/1HGXMO8NAnW0uCSiyu9RrEFbWEqWZOYxPZCtSIKOyVKn8PpMU+hLSY
+-FiGiGnGhr0uLvtBsmT5hlBl6/Cosfj3fvrj7UgzZ+pSKGIipsXMzLeV4U3WImRv8
+-rrklWc3hA3c=
++EwYDVR0lBAwwCgYIKwYBBQUHAwIwDQYJKoZIhvcNAQELBQADggEBAA89lKsRvBHN
++txsxjimLeLWHB68pT4kjpG+wtIcOgg22KZ5NO/nDgl2EpmcFadNFV7yN20tycC/J
++REKNRE+KoQ37MUes+4ToCUdzhjT1kL3CmaLnbqAkZ3MZDOJBl57A/ugSjRrxrcRu
++aZVa3mvEKQG9pEwLG8rbjbx/VpJInIU7CxlOPZSp+8TKPQogEkbG62ZVFwHB98dM
++svMFaHvjN/+vYda6g07n0Ka3JmxcfdGjDqA9tiNnSpwTEqOHTrp3wt8+RX0p5QfV
++xhxaGmJ3A9mcY9htQ+mU+1yIGyLdu1gT0Kki/rJYjp0axsJbb97zBxsPSnnV34Ek
++RAzvJuqNLuM=
+ -----END CERTIFICATE-----
+diff --git a/tests/hwsim/auth_serv/server-expired.pem b/tests/hwsim/auth_serv/server-expired.pem
+index efa936511..b809092a6 100644
+--- a/tests/hwsim/auth_serv/server-expired.pem
++++ b/tests/hwsim/auth_serv/server-expired.pem
+@@ -2,7 +2,7 @@ Certificate:
+     Data:
+         Version: 3 (0x2)
+         Serial Number:
+-            d8:d3:e3:a6:cb:e3:cd:7f
++            d8:d3:e3:a6:cb:e3:cd:89
+         Signature Algorithm: sha256WithRSAEncryption
+         Issuer: C=FI, L=Tuusula, O=w1.fi, CN=Root CA
+         Validity
+@@ -45,23 +45,23 @@ Certificate:
+                 TLS Web Server Authentication
+     Signature Algorithm: sha256WithRSAEncryption
+     Signature Value:
+-        41:59:17:46:54:33:fd:33:0c:e4:9c:4b:55:d7:b3:be:5a:0e:
+-        10:3c:e6:f4:d0:74:e0:8a:e9:13:8b:06:f4:94:8b:20:bf:52:
+-        69:b4:8f:1c:f7:94:e9:5f:c0:bd:63:11:37:0d:96:56:fc:15:
+-        24:1e:59:f1:bc:e5:75:ec:72:8d:f8:ad:34:c4:3d:4a:2f:18:
+-        8c:4b:f1:9d:9f:64:55:4c:ff:1a:90:47:e1:09:04:89:bd:8e:
+-        cd:cc:39:56:ee:ba:8d:76:ed:c7:c8:34:00:d7:11:c8:f3:5e:
+-        85:ae:6d:b0:14:b3:3a:04:5d:ec:58:35:8c:2d:6a:25:38:c6:
+-        e4:f8:0c:53:9f:74:8f:9c:b4:11:d3:44:6a:4c:13:e1:2e:c4:
+-        05:83:cc:a4:b0:32:03:e2:b5:58:b2:c7:e7:f2:28:18:59:19:
+-        8e:7e:81:75:46:21:38:df:14:f7:a5:4d:70:ad:8b:7a:d8:46:
+-        16:3a:71:13:7f:98:41:91:02:88:dc:75:95:8a:b1:57:3a:5a:
+-        a2:74:ce:f1:14:6d:14:9c:0e:ae:c9:99:8f:cf:29:28:a6:6b:
+-        b5:c9:80:4d:0b:bb:19:6f:23:69:64:3c:b7:89:a0:63:30:ed:
+-        0b:56:41:d0:56:3f:ed:0f:eb:07:51:29:7d:21:a4:ff:0f:28:
+-        80:3b:bb:c1
++        9e:c1:46:c2:90:83:1e:a0:4c:df:9c:76:28:94:e2:84:49:9e:
++        cf:2f:8c:20:11:9f:0a:3a:f2:52:7d:ba:06:b3:d9:50:3f:2f:
++        c4:10:2f:81:57:f6:c4:eb:95:16:18:6d:e0:39:3e:fd:73:8e:
++        a2:e9:1b:e4:7a:f9:7e:39:d6:9a:71:f4:62:19:90:57:7c:89:
++        e2:c6:97:db:be:80:15:83:d6:4a:49:07:ae:0a:1b:21:ee:1b:
++        f8:e3:41:2d:cc:90:69:2d:98:2a:38:7b:e6:77:d9:6c:6f:17:
++        c9:1f:66:7d:b3:fe:ec:19:87:b8:95:49:25:2e:df:ae:60:11:
++        9e:23:1a:3a:34:78:0a:19:02:8f:bd:2c:1f:07:71:d1:87:1f:
++        93:79:8f:df:8b:30:73:47:ee:da:aa:0b:85:38:c7:af:db:71:
++        87:b4:c8:9a:3d:ec:f0:28:0b:38:65:fe:91:78:97:79:6c:ed:
++        3a:43:3a:ef:8c:25:17:51:7a:50:66:28:0f:eb:7e:69:26:cc:
++        cf:c1:a6:ef:a1:5c:14:bf:cc:f9:96:ab:61:ca:80:3d:8e:79:
++        2e:04:52:b0:f3:21:c4:26:a1:ed:7d:20:aa:e3:38:d1:d8:0d:
++        fc:dd:92:34:dd:93:2d:6e:ae:68:10:79:79:f0:58:ed:b9:0c:
++        29:52:74:92
+ -----BEGIN CERTIFICATE-----
+-MIIDlDCCAnygAwIBAgIJANjT46bL481/MA0GCSqGSIb3DQEBCwUAMEExCzAJBgNV
++MIIDlDCCAnygAwIBAgIJANjT46bL482JMA0GCSqGSIb3DQEBCwUAMEExCzAJBgNV
+ BAYTAkZJMRAwDgYDVQQHDAdUdXVzdWxhMQ4wDAYDVQQKDAV3MS5maTEQMA4GA1UE
+ AwwHUm9vdCBDQTAeFw0yMDAxMDEwMDAwMDBaFw0yMDAxMDIwMDAwMDBaMDUxCzAJ
+ BgNVBAYTAkZJMQ4wDAYDVQQKDAV3MS5maTEWMBQGA1UEAwwNc2VydmVyNC53MS5m
+@@ -74,11 +74,11 @@ c+GT2FEtu0WDj7aTQTlBhF9LrQAlkT0WCuvwuJLgXHVlhRfSgOZeZqKk38cIdjNJ
+ zx0CAwEAAaOBmjCBlzAJBgNVHRMEAjAAMB0GA1UdDgQWBBQhsDHGFNS9XN9wJFE0
+ npP1GLMcoTAfBgNVHSMEGDAWgBSk/bk5G4GzquuIHdSBqbURcMyn4TA1BggrBgEF
+ BQcBAQQpMCcwJQYIKwYBBQUHMAGGGWh0dHA6Ly9zZXJ2ZXIudzEuZmk6ODg4OC8w
+-EwYDVR0lBAwwCgYIKwYBBQUHAwEwDQYJKoZIhvcNAQELBQADggEBAEFZF0ZUM/0z
+-DOScS1XXs75aDhA85vTQdOCK6ROLBvSUiyC/Umm0jxz3lOlfwL1jETcNllb8FSQe
+-WfG85XXsco34rTTEPUovGIxL8Z2fZFVM/xqQR+EJBIm9js3MOVbuuo127cfINADX
+-EcjzXoWubbAUszoEXexYNYwtaiU4xuT4DFOfdI+ctBHTRGpME+EuxAWDzKSwMgPi
+-tViyx+fyKBhZGY5+gXVGITjfFPelTXCti3rYRhY6cRN/mEGRAojcdZWKsVc6WqJ0
+-zvEUbRScDq7JmY/PKSima7XJgE0LuxlvI2lkPLeJoGMw7QtWQdBWP+0P6wdRKX0h
+-pP8PKIA7u8E=
++EwYDVR0lBAwwCgYIKwYBBQUHAwEwDQYJKoZIhvcNAQELBQADggEBAJ7BRsKQgx6g
++TN+cdiiU4oRJns8vjCARnwo68lJ9ugaz2VA/L8QQL4FX9sTrlRYYbeA5Pv1zjqLp
++G+R6+X451ppx9GIZkFd8ieLGl9u+gBWD1kpJB64KGyHuG/jjQS3MkGktmCo4e+Z3
++2WxvF8kfZn2z/uwZh7iVSSUu365gEZ4jGjo0eAoZAo+9LB8HcdGHH5N5j9+LMHNH
++7tqqC4U4x6/bcYe0yJo97PAoCzhl/pF4l3ls7TpDOu+MJRdRelBmKA/rfmkmzM/B
++pu+hXBS/zPmWq2HKgD2OeS4EUrDzIcQmoe19IKrjONHYDfzdkjTdky1urmgQeXnw
++WO25DClSdJI=
+ -----END CERTIFICATE-----
+diff --git a/tests/hwsim/auth_serv/server-extra.pkcs12 b/tests/hwsim/auth_serv/server-extra.pkcs12
+index 7f74d2e7c739e18833765447c557c2bb2ce06bf2..376492cc261d1c9733c7059c7b0b6969e6de728f 100644
+GIT binary patch
+delta 3452
+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
+
+delta 3452
+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
+
+diff --git a/tests/hwsim/auth_serv/server-long-duration.pem b/tests/hwsim/auth_serv/server-long-duration.pem
+index c5ec36fc4..2ed5ced9a 100644
+--- a/tests/hwsim/auth_serv/server-long-duration.pem
++++ b/tests/hwsim/auth_serv/server-long-duration.pem
+@@ -2,12 +2,12 @@ Certificate:
+     Data:
+         Version: 3 (0x2)
+         Serial Number:
+-            d8:d3:e3:a6:cb:e3:cd:82
++            d8:d3:e3:a6:cb:e3:cd:8c
+         Signature Algorithm: sha256WithRSAEncryption
+         Issuer: C=FI, L=Tuusula, O=w1.fi, CN=Root CA
+         Validity
+-            Not Before: Apr 18 08:02:42 2023 GMT
+-            Not After : Apr  5 08:02:42 2073 GMT
++            Not Before: Apr 17 18:25:37 2024 GMT
++            Not After : Apr  5 18:25:37 2074 GMT
+         Subject: C=FI, O=w1.fi, CN=server7.w1.fi
+         Subject Public Key Info:
+             Public Key Algorithm: rsaEncryption
+@@ -62,25 +62,25 @@ Certificate:
+                 TLS Web Server Authentication
+     Signature Algorithm: sha256WithRSAEncryption
+     Signature Value:
+-        5c:80:8b:a6:6f:32:7e:a0:80:99:79:4d:2c:10:69:07:e5:e6:
+-        bd:24:97:43:b8:bd:0a:16:bb:1d:7c:69:0d:50:bc:2d:1e:d5:
+-        7d:bf:14:b5:9a:7a:96:e0:51:88:39:12:51:b1:a7:3a:11:86:
+-        e2:cc:65:24:0d:6d:1e:da:27:f6:8d:11:3d:c7:9c:dd:1d:1d:
+-        5c:6a:46:73:87:58:53:bd:52:fd:7d:ba:ba:f2:dc:aa:0d:fe:
+-        78:1c:38:d1:4d:ac:d8:2f:8a:37:f5:e0:8c:22:70:77:01:d9:
+-        26:34:49:6e:e8:07:a3:2c:f1:b9:ee:cd:e2:31:64:c0:e8:c0:
+-        ab:4a:be:ab:84:f1:db:51:4f:be:b0:27:2b:62:1d:29:4a:ff:
+-        6c:d7:8b:33:29:56:b7:82:33:99:2c:cd:f8:da:4d:a9:0c:b5:
+-        7d:c8:71:3a:d0:f7:c2:d9:0b:17:d7:73:9f:3a:73:bc:df:14:
+-        0f:09:6e:42:66:dd:ea:67:6d:52:87:d5:e4:82:55:1a:45:c3:
+-        5a:15:66:ae:a0:db:bf:8d:05:d0:34:b2:bd:6d:1f:a4:60:c7:
+-        5a:56:94:33:0f:35:a1:9a:3a:b9:f0:66:f5:bb:cc:cc:69:15:
+-        5d:ba:37:61:7d:25:0c:09:5f:ac:7b:30:38:2a:5d:c7:71:de:
+-        38:b8:86:5d
++        75:47:06:dd:9a:7b:6e:40:f5:cf:eb:e1:8c:a4:26:2a:b7:4f:
++        46:60:87:8a:09:40:5e:69:61:e9:fd:8b:30:eb:8d:f8:8b:dc:
++        28:0f:cc:6e:d3:86:e7:d2:26:a5:c8:40:89:86:b4:4f:6e:6d:
++        d9:e0:37:b8:77:31:58:42:9d:08:06:a9:c7:43:f7:4a:6d:73:
++        8a:14:58:3c:68:ab:e2:cb:9d:ef:3a:82:e6:fe:99:2c:5a:ac:
++        b7:98:fa:fa:8c:b7:bb:22:a7:ed:1b:22:17:0c:78:96:f9:9d:
++        c4:18:4a:53:a9:ba:b9:f2:fd:86:46:be:41:5b:1e:7e:5d:0d:
++        be:25:f1:f4:c9:a6:d1:a9:7c:0c:48:ee:d7:99:42:ff:1c:bd:
++        85:65:00:e8:df:28:df:27:4b:c0:c1:ee:f5:03:d4:e9:1d:2d:
++        79:e1:9c:c0:55:89:3e:94:b7:bf:e8:34:8c:ed:8f:9c:0a:bb:
++        24:cf:3a:8e:88:16:87:e6:e8:99:4e:45:8f:86:84:02:1e:7d:
++        82:ca:b3:0a:1f:14:87:6d:4b:9c:c1:1c:f5:ca:4f:13:07:01:
++        0d:8c:c2:e7:66:e7:92:a5:75:cd:89:a3:f3:10:9f:a2:fb:3d:
++        3f:ee:ba:1f:e4:a1:55:f7:be:95:4d:e5:4a:5f:b8:08:fa:ed:
++        69:ec:0a:bd
+ -----BEGIN CERTIFICATE-----
+-MIIEljCCA36gAwIBAgIJANjT46bL482CMA0GCSqGSIb3DQEBCwUAMEExCzAJBgNV
++MIIEljCCA36gAwIBAgIJANjT46bL482MMA0GCSqGSIb3DQEBCwUAMEExCzAJBgNV
+ BAYTAkZJMRAwDgYDVQQHDAdUdXVzdWxhMQ4wDAYDVQQKDAV3MS5maTEQMA4GA1UE
+-AwwHUm9vdCBDQTAgFw0yMzA0MTgwODAyNDJaGA8yMDczMDQwNTA4MDI0MlowNTEL
++AwwHUm9vdCBDQTAgFw0yNDA0MTcxODI1MzdaGA8yMDc0MDQwNTE4MjUzN1owNTEL
+ MAkGA1UEBhMCRkkxDjAMBgNVBAoMBXcxLmZpMRYwFAYDVQQDDA1zZXJ2ZXI3Lncx
+ LmZpMIICIjANBgkqhkiG9w0BAQEFAAOCAg8AMIICCgKCAgEAvxDC67+9DyFoRCZ4
+ 1pAP3pxneAdvLjThUaY0bh1P8R8at5N6GgE2BNTjNfCbUo3MLYCTaDcACV/hDYo1
+@@ -97,10 +97,10 @@ fbuUpDl734zsZMjFjYZUb/GHk1ECAwEAAaOBmjCBlzAJBgNVHRMEAjAAMB0GA1Ud
+ DgQWBBQwyUXY08iO5kG4Kb1I3r/NmqWBzjAfBgNVHSMEGDAWgBSk/bk5G4GzquuI
+ HdSBqbURcMyn4TA1BggrBgEFBQcBAQQpMCcwJQYIKwYBBQUHMAGGGWh0dHA6Ly9z
+ ZXJ2ZXIudzEuZmk6ODg4OC8wEwYDVR0lBAwwCgYIKwYBBQUHAwEwDQYJKoZIhvcN
+-AQELBQADggEBAFyAi6ZvMn6ggJl5TSwQaQfl5r0kl0O4vQoWux18aQ1QvC0e1X2/
+-FLWaepbgUYg5ElGxpzoRhuLMZSQNbR7aJ/aNET3HnN0dHVxqRnOHWFO9Uv19urry
+-3KoN/ngcONFNrNgvijf14IwicHcB2SY0SW7oB6Ms8bnuzeIxZMDowKtKvquE8dtR
+-T76wJytiHSlK/2zXizMpVreCM5kszfjaTakMtX3IcTrQ98LZCxfXc586c7zfFA8J
+-bkJm3epnbVKH1eSCVRpFw1oVZq6g27+NBdA0sr1tH6Rgx1pWlDMPNaGaOrnwZvW7
+-zMxpFV26N2F9JQwJX6x7MDgqXcdx3ji4hl0=
++AQELBQADggEBAHVHBt2ae25A9c/r4YykJiq3T0Zgh4oJQF5pYen9izDrjfiL3CgP
++zG7ThufSJqXIQImGtE9ubdngN7h3MVhCnQgGqcdD90ptc4oUWDxoq+LLne86gub+
++mSxarLeY+vqMt7sip+0bIhcMeJb5ncQYSlOpurny/YZGvkFbHn5dDb4l8fTJptGp
++fAxI7teZQv8cvYVlAOjfKN8nS8DB7vUD1OkdLXnhnMBViT6Ut7/oNIztj5wKuyTP
++Oo6IFofm6JlORY+GhAIefYLKswofFIdtS5zBHPXKTxMHAQ2Mwudm55Kldc2Jo/MQ
++n6L7PT/uuh/koVX3vpVN5UpfuAj67WnsCr0=
+ -----END CERTIFICATE-----
+diff --git a/tests/hwsim/auth_serv/server-no-dnsname.pem b/tests/hwsim/auth_serv/server-no-dnsname.pem
+index 3ba6edefc..2331c09b8 100644
+--- a/tests/hwsim/auth_serv/server-no-dnsname.pem
++++ b/tests/hwsim/auth_serv/server-no-dnsname.pem
+@@ -2,12 +2,12 @@ Certificate:
+     Data:
+         Version: 3 (0x2)
+         Serial Number:
+-            d8:d3:e3:a6:cb:e3:cd:7e
++            d8:d3:e3:a6:cb:e3:cd:88
+         Signature Algorithm: sha256WithRSAEncryption
+         Issuer: C=FI, L=Tuusula, O=w1.fi, CN=Root CA
+         Validity
+-            Not Before: Apr 18 08:02:42 2023 GMT
+-            Not After : Apr 17 08:02:42 2024 GMT
++            Not Before: Apr 17 18:25:37 2024 GMT
++            Not After : Apr 17 18:25:37 2025 GMT
+         Subject: C=FI, O=w1.fi, CN=server3.w1.fi
+         Subject Public Key Info:
+             Public Key Algorithm: rsaEncryption
+@@ -45,25 +45,25 @@ Certificate:
+                 TLS Web Server Authentication
+     Signature Algorithm: sha256WithRSAEncryption
+     Signature Value:
+-        76:b4:10:91:bf:f2:00:22:ed:ef:94:50:85:1c:60:3d:da:b9:
+-        89:57:f8:6c:5d:cd:c2:2d:81:ff:2d:83:3c:4d:42:4b:b3:04:
+-        dd:da:3d:7b:de:ef:72:0f:8e:f2:ae:2d:b5:9b:c9:45:58:86:
+-        42:36:58:cf:0e:03:2c:08:77:60:3d:86:28:7f:62:18:b5:a8:
+-        6a:0c:c0:cb:11:5d:6b:75:32:a2:f3:ed:7d:d4:d3:91:4c:2b:
+-        bc:2e:7a:46:0d:f4:83:87:d3:e7:25:60:5d:fe:ab:2b:ad:16:
+-        f8:72:3f:bc:12:17:6b:91:c5:e9:25:f9:08:b8:82:31:a7:17:
+-        7c:8f:d5:68:0e:58:03:78:50:cc:4a:2d:99:40:bc:da:6f:0a:
+-        7a:e5:71:71:ef:e4:e8:b1:22:12:76:14:1c:f8:13:a1:3c:b8:
+-        46:ba:e6:31:d4:44:f6:ed:eb:d1:1c:02:15:2f:fc:c0:52:0b:
+-        b9:4a:78:33:42:9d:20:3a:ac:5b:40:a1:41:4b:02:d9:7c:b8:
+-        80:33:6e:88:b2:6c:49:f6:55:61:da:62:34:58:ab:3c:5c:53:
+-        a0:8e:f2:23:ac:52:40:e5:00:a4:84:79:18:af:c1:7e:e5:c0:
+-        75:29:f8:79:b2:6b:dc:58:04:12:f8:9e:3d:24:1d:f2:21:f9:
+-        83:0e:85:42
++        4d:3a:25:75:cf:bf:3a:d4:c1:8c:db:40:02:ef:54:0e:68:1f:
++        1a:5f:41:35:51:3b:da:7d:73:a7:b3:a1:78:47:ab:8c:74:c4:
++        3b:4e:7a:36:90:ad:f1:96:de:aa:30:fd:48:47:23:aa:08:d5:
++        2a:e0:85:f4:cf:10:f8:b4:06:b8:cb:53:90:22:e5:0a:03:2d:
++        43:da:6a:c9:6c:86:93:ab:24:38:73:29:2c:7f:21:84:42:3c:
++        7e:65:aa:74:46:4b:f7:29:d4:47:16:03:72:09:e4:ac:7e:39:
++        ac:ed:a4:ef:81:48:a2:8d:e0:bd:98:e2:7a:c0:d8:85:28:be:
++        f8:5e:87:19:75:f5:10:5b:83:3b:37:ed:b9:9a:0b:b4:fb:5d:
++        8e:13:35:6c:92:76:ed:55:17:72:aa:a9:99:ab:9e:1c:e7:83:
++        60:f6:34:4e:8b:8d:b6:fe:52:23:5b:e5:f3:8b:c9:87:cd:97:
++        f3:31:03:a0:87:6c:53:7d:6d:ed:1d:f6:4c:3b:aa:5b:fb:fb:
++        36:ed:0d:b5:6b:4c:ce:b4:f1:81:2b:55:42:79:9c:23:c3:01:
++        c1:a1:d2:14:cc:df:70:dc:2b:a6:c9:a2:c2:0d:d1:e5:7d:65:
++        60:43:84:d3:4f:a0:a3:7b:8e:e6:6e:92:8e:44:81:ef:65:e7:
++        2e:55:3c:d3
+ -----BEGIN CERTIFICATE-----
+-MIIDlDCCAnygAwIBAgIJANjT46bL481+MA0GCSqGSIb3DQEBCwUAMEExCzAJBgNV
++MIIDlDCCAnygAwIBAgIJANjT46bL482IMA0GCSqGSIb3DQEBCwUAMEExCzAJBgNV
+ BAYTAkZJMRAwDgYDVQQHDAdUdXVzdWxhMQ4wDAYDVQQKDAV3MS5maTEQMA4GA1UE
+-AwwHUm9vdCBDQTAeFw0yMzA0MTgwODAyNDJaFw0yNDA0MTcwODAyNDJaMDUxCzAJ
++AwwHUm9vdCBDQTAeFw0yNDA0MTcxODI1MzdaFw0yNTA0MTcxODI1MzdaMDUxCzAJ
+ BgNVBAYTAkZJMQ4wDAYDVQQKDAV3MS5maTEWMBQGA1UEAwwNc2VydmVyMy53MS5m
+ aTCCASIwDQYJKoZIhvcNAQEBBQADggEPADCCAQoCggEBAMLrrQRvTOsjuJJOddwA
+ 0A3ZrQkh+BJKLc3bfWOhMhKOuOO935U5OhdlVPgg1nE3fbe0cjF6ej26dHLzrJ0W
+@@ -74,11 +74,11 @@ hq6aTH1T9rEOgs0GYXfdRlz9RWry6CLKY4vTHPZPEOzqGggeOD2AbKNIR/IWKgdb
+ 94kCAwEAAaOBmjCBlzAJBgNVHRMEAjAAMB0GA1UdDgQWBBRehNYxmBdx+GNcMlt9
+ M8DU+janajAfBgNVHSMEGDAWgBSk/bk5G4GzquuIHdSBqbURcMyn4TA1BggrBgEF
+ BQcBAQQpMCcwJQYIKwYBBQUHMAGGGWh0dHA6Ly9zZXJ2ZXIudzEuZmk6ODg4OC8w
+-EwYDVR0lBAwwCgYIKwYBBQUHAwEwDQYJKoZIhvcNAQELBQADggEBAHa0EJG/8gAi
+-7e+UUIUcYD3auYlX+GxdzcItgf8tgzxNQkuzBN3aPXve73IPjvKuLbWbyUVYhkI2
+-WM8OAywId2A9hih/Yhi1qGoMwMsRXWt1MqLz7X3U05FMK7wuekYN9IOH0+clYF3+
+-qyutFvhyP7wSF2uRxekl+Qi4gjGnF3yP1WgOWAN4UMxKLZlAvNpvCnrlcXHv5Oix
+-IhJ2FBz4E6E8uEa65jHURPbt69EcAhUv/MBSC7lKeDNCnSA6rFtAoUFLAtl8uIAz
+-boiybEn2VWHaYjRYqzxcU6CO8iOsUkDlAKSEeRivwX7lwHUp+Hmya9xYBBL4nj0k
+-HfIh+YMOhUI=
++EwYDVR0lBAwwCgYIKwYBBQUHAwEwDQYJKoZIhvcNAQELBQADggEBAE06JXXPvzrU
++wYzbQALvVA5oHxpfQTVRO9p9c6ezoXhHq4x0xDtOejaQrfGW3qow/UhHI6oI1Srg
++hfTPEPi0BrjLU5Ai5QoDLUPaaslshpOrJDhzKSx/IYRCPH5lqnRGS/cp1EcWA3IJ
++5Kx+OaztpO+BSKKN4L2Y4nrA2IUovvhehxl19RBbgzs37bmaC7T7XY4TNWySdu1V
++F3KqqZmrnhzng2D2NE6Ljbb+UiNb5fOLyYfNl/MxA6CHbFN9be0d9kw7qlv7+zbt
++DbVrTM608YErVUJ5nCPDAcGh0hTM33DcK6bJosIN0eV9ZWBDhNNPoKN7juZuko5E
++ge9l5y5VPNM=
+ -----END CERTIFICATE-----
+diff --git a/tests/hwsim/auth_serv/server.pem b/tests/hwsim/auth_serv/server.pem
+index 9ae212c94..cef1ace3f 100644
+--- a/tests/hwsim/auth_serv/server.pem
++++ b/tests/hwsim/auth_serv/server.pem
+@@ -2,12 +2,12 @@ Certificate:
+     Data:
+         Version: 3 (0x2)
+         Serial Number:
+-            d8:d3:e3:a6:cb:e3:cd:7d
++            d8:d3:e3:a6:cb:e3:cd:87
+         Signature Algorithm: sha256WithRSAEncryption
+         Issuer: C=FI, L=Tuusula, O=w1.fi, CN=Root CA
+         Validity
+-            Not Before: Apr 18 08:02:42 2023 GMT
+-            Not After : Apr 17 08:02:42 2024 GMT
++            Not Before: Apr 17 18:25:37 2024 GMT
++            Not After : Apr 17 18:25:37 2025 GMT
+         Subject: C=FI, O=w1.fi, CN=server.w1.fi
+         Subject Public Key Info:
+             Public Key Algorithm: rsaEncryption
+@@ -47,25 +47,25 @@ Certificate:
+                 TLS Web Server Authentication
+     Signature Algorithm: sha256WithRSAEncryption
+     Signature Value:
+-        3d:1d:f2:7d:c1:b0:48:79:ae:1c:5c:90:f8:29:99:60:49:ff:
+-        81:0c:b6:a0:89:21:ea:3f:91:97:a6:27:43:ef:9a:83:bc:46:
+-        db:5d:5b:7f:c5:c3:3d:bb:3c:28:53:7e:5e:a3:1f:ca:06:da:
+-        74:b3:4b:fc:1f:1f:62:ac:83:a3:b7:41:c1:50:1b:d6:93:b0:
+-        1f:24:87:be:08:02:f2:51:99:4e:0c:85:cc:df:b8:8d:93:12:
+-        cf:63:ae:9f:47:88:36:55:eb:af:ed:de:07:0b:f8:b1:e8:0f:
+-        cd:fe:fd:4e:69:33:d7:35:3f:18:95:56:20:df:87:58:8e:64:
+-        60:72:36:21:67:3d:6d:99:85:86:10:33:78:94:b1:75:75:40:
+-        98:b3:64:38:03:57:e5:11:c7:15:36:4d:44:96:e4:22:ea:1c:
+-        87:77:76:2a:20:c5:9a:58:f3:85:f9:20:b8:6e:fd:88:2e:73:
+-        08:7c:22:fb:e5:de:f9:aa:7d:39:1c:ab:d9:b4:37:0b:76:90:
+-        0a:ee:24:5e:4b:8c:3f:14:38:f9:1f:1c:1f:d1:15:46:d8:ce:
+-        6c:13:1e:15:62:38:72:72:eb:d9:3f:ab:15:e8:f6:28:8c:e7:
+-        ea:89:75:83:ae:ba:b2:93:4b:9a:61:a1:23:88:a0:9c:e4:39:
+-        95:5f:2b:84
++        a2:4b:c4:50:e9:62:ce:34:ad:e4:6a:04:93:e4:46:c7:3f:1c:
++        dc:5d:99:8f:3c:da:6e:1f:f3:2b:3a:bb:4d:35:6b:e0:c7:42:
++        14:e1:eb:73:93:f2:55:d3:01:27:d0:a8:48:a4:ef:96:b2:20:
++        66:23:49:09:2f:98:a4:10:51:f5:52:6c:3b:ee:f0:6c:32:52:
++        ff:05:16:d4:42:a2:63:d4:c5:bb:90:23:24:a7:1a:d9:a4:d3:
++        b3:8b:12:df:28:f6:c3:a3:00:77:7c:d0:09:92:d3:79:f5:bd:
++        58:f6:22:fe:c3:94:9c:a0:0c:aa:0e:b9:55:ca:8d:61:e3:50:
++        cb:83:d3:6e:bd:fd:60:fd:42:7f:15:8a:c3:bb:37:d6:af:b5:
++        de:c2:40:35:bc:0d:79:8d:58:d7:53:0d:d0:44:74:b5:3a:22:
++        21:33:da:c7:ba:ed:2f:8c:8b:3f:69:7f:8b:f0:49:49:ab:d3:
++        79:8b:35:d9:1a:8c:d3:cc:df:83:eb:20:ad:3d:cd:a6:b5:27:
++        d3:45:f9:90:09:da:71:30:46:3c:10:ae:62:94:ae:ae:da:ae:
++        a7:5b:38:a3:91:b9:b5:f3:d3:22:83:f7:2c:a3:26:3a:0c:f8:
++        65:1b:ee:f6:9e:af:84:73:72:ec:09:4d:d5:68:1b:ca:ca:d3:
++        f0:bc:60:c5
+ -----BEGIN CERTIFICATE-----
+-MIIDrDCCApSgAwIBAgIJANjT46bL4819MA0GCSqGSIb3DQEBCwUAMEExCzAJBgNV
++MIIDrDCCApSgAwIBAgIJANjT46bL482HMA0GCSqGSIb3DQEBCwUAMEExCzAJBgNV
+ BAYTAkZJMRAwDgYDVQQHDAdUdXVzdWxhMQ4wDAYDVQQKDAV3MS5maTEQMA4GA1UE
+-AwwHUm9vdCBDQTAeFw0yMzA0MTgwODAyNDJaFw0yNDA0MTcwODAyNDJaMDQxCzAJ
++AwwHUm9vdCBDQTAeFw0yNDA0MTcxODI1MzdaFw0yNTA0MTcxODI1MzdaMDQxCzAJ
+ BgNVBAYTAkZJMQ4wDAYDVQQKDAV3MS5maTEVMBMGA1UEAwwMc2VydmVyLncxLmZp
+ MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA/Q5ezRksakGD2SwONs0J
+ sI+yyYzI0gM4blS8Q+7O+Fmx6T9t1F7jxXMZPQu8KdfQbnUANfz3ZbG2D8sGSc+p
+@@ -77,10 +77,10 @@ c6xGrsvreTZXrcNwAhVt8KVDc6tyBLEWYHQOSsGPUigalX6r0AT2+hHaG9GZpE+e
+ MRBpSdDnMB8GA1UdIwQYMBaAFKT9uTkbgbOq64gd1IGptRFwzKfhMDUGCCsGAQUF
+ BwEBBCkwJzAlBggrBgEFBQcwAYYZaHR0cDovL3NlcnZlci53MS5maTo4ODg4LzAX
+ BgNVHREEEDAOggxzZXJ2ZXIudzEuZmkwEwYDVR0lBAwwCgYIKwYBBQUHAwEwDQYJ
+-KoZIhvcNAQELBQADggEBAD0d8n3BsEh5rhxckPgpmWBJ/4EMtqCJIeo/kZemJ0Pv
+-moO8RttdW3/Fwz27PChTfl6jH8oG2nSzS/wfH2Ksg6O3QcFQG9aTsB8kh74IAvJR
+-mU4MhczfuI2TEs9jrp9HiDZV66/t3gcL+LHoD83+/U5pM9c1PxiVViDfh1iOZGBy
+-NiFnPW2ZhYYQM3iUsXV1QJizZDgDV+URxxU2TUSW5CLqHId3diogxZpY84X5ILhu
+-/Ygucwh8Ivvl3vmqfTkcq9m0Nwt2kAruJF5LjD8UOPkfHB/RFUbYzmwTHhViOHJy
+-69k/qxXo9iiM5+qJdYOuurKTS5phoSOIoJzkOZVfK4Q=
++KoZIhvcNAQELBQADggEBAKJLxFDpYs40reRqBJPkRsc/HNxdmY882m4f8ys6u001
++a+DHQhTh63OT8lXTASfQqEik75ayIGYjSQkvmKQQUfVSbDvu8GwyUv8FFtRComPU
++xbuQIySnGtmk07OLEt8o9sOjAHd80AmS03n1vVj2Iv7DlJygDKoOuVXKjWHjUMuD
++0269/WD9Qn8VisO7N9avtd7CQDW8DXmNWNdTDdBEdLU6IiEz2se67S+Miz9pf4vw
++SUmr03mLNdkajNPM34PrIK09zaa1J9NF+ZAJ2nEwRjwQrmKUrq7arqdbOKORubXz
++0yKD9yyjJjoM+GUb7vaer4RzcuwJTdVoG8rK0/C8YMU=
+ -----END CERTIFICATE-----
+diff --git a/tests/hwsim/auth_serv/server.pkcs12 b/tests/hwsim/auth_serv/server.pkcs12
+index a56cd51d948b38f805ba2ead56f30dcbcbbe5f09..29898c6385723de3fd06f8a7dc5e0b4ebd6aee00 100644
+GIT binary patch
+delta 2458
+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
+YSVf=wNFXN!2!T(3a<Io3;sOE)0KECBPXGV_
+
+delta 2458
+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
+YpUa6udJ=U62=bnRGnD0()&c?u0Du9qm;e9(
+
+diff --git a/tests/hwsim/auth_serv/test-ca/index.txt b/tests/hwsim/auth_serv/test-ca/index.txt
+index 3381c8c9c..87b6789ff 100644
+--- a/tests/hwsim/auth_serv/test-ca/index.txt
++++ b/tests/hwsim/auth_serv/test-ca/index.txt
+@@ -148,3 +148,13 @@ V	240417080242Z		D8D3E3A6CBE3CD83	unknown	/C=FI/O=w1.fi/CN=server-policies.w1.fi
+ V	240417080242Z		D8D3E3A6CBE3CD84	unknown	/C=FI/O=w1.fi/CN=server-policies2.w1.fi
+ V	240417080242Z		D8D3E3A6CBE3CD85	unknown	/C=FI/O=w1.fi/CN=Test User
+ V	240417080242Z		D8D3E3A6CBE3CD86	unknown	/C=FI/O=w1.fi/CN=ocsp.w1.fi
++V	250417182537Z		D8D3E3A6CBE3CD87	unknown	/C=FI/O=w1.fi/CN=server.w1.fi
++V	250417182537Z		D8D3E3A6CBE3CD88	unknown	/C=FI/O=w1.fi/CN=server3.w1.fi
++V	200102000000Z		D8D3E3A6CBE3CD89	unknown	/C=FI/O=w1.fi/CN=server4.w1.fi
++V	250417182537Z		D8D3E3A6CBE3CD8A	unknown	/C=FI/O=w1.fi/CN=server5.w1.fi
++V	250417182537Z		D8D3E3A6CBE3CD8B	unknown	/C=FI/O=w1.fi/CN=server6.w1.fi
++V	20740405182537Z		D8D3E3A6CBE3CD8C	unknown	/C=FI/O=w1.fi/CN=server7.w1.fi
++V	250417182537Z		D8D3E3A6CBE3CD8D	unknown	/C=FI/O=w1.fi/CN=server-policies.w1.fi
++V	250417182537Z		D8D3E3A6CBE3CD8E	unknown	/C=FI/O=w1.fi/CN=server-policies2.w1.fi
++V	250417182537Z		D8D3E3A6CBE3CD8F	unknown	/C=FI/O=w1.fi/CN=Test User
++V	250417182537Z		D8D3E3A6CBE3CD90	unknown	/C=FI/O=w1.fi/CN=ocsp.w1.fi
+diff --git a/tests/hwsim/auth_serv/test-ca/serial b/tests/hwsim/auth_serv/test-ca/serial
+index 60610dbc2..f779bbbcd 100644
+--- a/tests/hwsim/auth_serv/test-ca/serial
++++ b/tests/hwsim/auth_serv/test-ca/serial
+@@ -1 +1 @@
+-D8D3E3A6CBE3CD87
++D8D3E3A6CBE3CD91
+diff --git a/tests/hwsim/auth_serv/user.pem b/tests/hwsim/auth_serv/user.pem
+index 305e71775..339050db3 100644
+--- a/tests/hwsim/auth_serv/user.pem
++++ b/tests/hwsim/auth_serv/user.pem
+@@ -2,12 +2,12 @@ Certificate:
+     Data:
+         Version: 3 (0x2)
+         Serial Number:
+-            d8:d3:e3:a6:cb:e3:cd:85
++            d8:d3:e3:a6:cb:e3:cd:8f
+         Signature Algorithm: sha256WithRSAEncryption
+         Issuer: C=FI, L=Tuusula, O=w1.fi, CN=Root CA
+         Validity
+-            Not Before: Apr 18 08:02:42 2023 GMT
+-            Not After : Apr 17 08:02:42 2024 GMT
++            Not Before: Apr 17 18:25:37 2024 GMT
++            Not After : Apr 17 18:25:37 2025 GMT
+         Subject: C=FI, O=w1.fi, CN=Test User
+         Subject Public Key Info:
+             Public Key Algorithm: rsaEncryption
+@@ -45,25 +45,25 @@ Certificate:
+                 TLS Web Client Authentication
+     Signature Algorithm: sha256WithRSAEncryption
+     Signature Value:
+-        3f:b7:e2:46:d1:32:4c:6a:9a:91:1f:00:24:ed:dc:30:23:7f:
+-        8c:44:5c:ea:ff:f2:07:ff:a7:75:61:73:41:0a:90:a7:dc:42:
+-        e7:89:b0:10:ac:36:cb:4a:d7:fd:7d:cc:9d:d3:18:4e:29:1a:
+-        bb:a8:22:7f:a1:95:83:b8:7d:19:b3:26:17:5b:5b:ed:80:8c:
+-        f7:bd:27:b4:57:6a:b8:5c:49:e3:f7:39:5e:d0:e7:18:e2:ca:
+-        2f:bc:0f:2a:c5:fb:6e:69:fa:7b:15:df:21:f3:f4:d2:10:bc:
+-        e0:89:51:1b:35:85:a3:bf:47:4f:0d:b8:34:86:66:f0:ee:5a:
+-        90:49:d2:93:e1:10:f8:b0:fa:93:42:a2:e7:43:0a:c9:69:b5:
+-        f9:d6:b8:cf:58:36:6a:8a:06:24:8f:34:a5:63:77:8e:1c:16:
+-        30:74:b9:82:72:91:c3:91:0f:68:cf:f0:24:26:d1:c8:b1:3c:
+-        03:cb:b0:63:62:9a:2b:69:e9:0f:6e:80:39:ff:3c:3e:6b:b6:
+-        d6:be:95:b9:fc:2c:ab:f7:d3:14:d1:c9:b1:53:31:8d:55:d0:
+-        52:40:52:a0:82:7f:01:4f:24:c1:dd:d3:d2:7f:92:6a:2e:d3:
+-        41:b7:4f:52:ef:1b:34:b5:08:55:7d:6c:15:f4:4f:cc:18:3b:
+-        62:f3:61:d5
++        8b:bf:ce:5a:2c:e2:8a:7f:2e:db:fb:d9:cc:a4:43:d0:a0:94:
++        a3:71:cf:73:9d:29:4c:bd:f2:e2:3a:33:60:32:05:e9:4e:93:
++        cc:b0:9a:37:e0:01:44:e4:ef:b8:f5:83:c9:3c:7d:51:4b:08:
++        fa:7e:96:e5:bf:24:e0:fd:33:fa:89:ce:65:d9:80:f0:46:50:
++        bc:31:cc:b9:24:b8:8d:c5:87:f4:0b:59:c0:e3:00:3b:56:46:
++        13:90:cc:4a:c7:81:d6:9f:66:2f:96:c3:91:f6:4e:0b:8c:a4:
++        b5:23:9d:48:24:f7:b9:af:d4:07:be:19:4d:35:18:c0:c8:92:
++        ca:42:a1:0d:a4:0c:f9:aa:76:1d:9c:98:6a:0f:01:e6:e6:85:
++        8d:6b:e4:45:9e:06:2f:fb:41:02:06:0a:ac:43:fa:f9:e0:80:
++        5c:68:8f:aa:75:85:9b:c6:75:40:3d:ed:73:27:17:69:ab:47:
++        94:07:95:aa:95:8d:70:f9:1d:39:06:c4:0d:16:24:cb:2d:e1:
++        ae:cd:e4:98:30:e5:b6:52:32:90:0d:34:8b:43:f9:c0:c6:77:
++        69:fd:09:ba:d0:92:fc:65:22:22:64:be:86:cb:32:8d:4d:9b:
++        d2:f0:63:23:28:08:65:12:f3:43:d2:c4:f2:c7:72:cc:51:c2:
++        fe:8e:f4:bd
+ -----BEGIN CERTIFICATE-----
+-MIIDkDCCAnigAwIBAgIJANjT46bL482FMA0GCSqGSIb3DQEBCwUAMEExCzAJBgNV
++MIIDkDCCAnigAwIBAgIJANjT46bL482PMA0GCSqGSIb3DQEBCwUAMEExCzAJBgNV
+ BAYTAkZJMRAwDgYDVQQHDAdUdXVzdWxhMQ4wDAYDVQQKDAV3MS5maTEQMA4GA1UE
+-AwwHUm9vdCBDQTAeFw0yMzA0MTgwODAyNDJaFw0yNDA0MTcwODAyNDJaMDExCzAJ
++AwwHUm9vdCBDQTAeFw0yNDA0MTcxODI1MzdaFw0yNTA0MTcxODI1MzdaMDExCzAJ
+ BgNVBAYTAkZJMQ4wDAYDVQQKDAV3MS5maTESMBAGA1UEAwwJVGVzdCBVc2VyMIIB
+ IjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAvCQI2QdtGQ6UXGvZioQbAyLi
+ GgZC0wtgjV8xBAb6okBqDCQpWM2DvzqdfzcNTSdd1VdXHPO+dT86TERvAi9biyyw
+@@ -74,11 +74,11 @@ HaUhPfA1YpTIzzM/2KJd38xYAAiN7bEExSs/GhX2kgjU8ULNbNvy/+BuaYTYiwID
+ AQABo4GaMIGXMAkGA1UdEwQCMAAwHQYDVR0OBBYEFPuFAKjf1gwOp+M5Ydm+zirv
+ bSjYMB8GA1UdIwQYMBaAFKT9uTkbgbOq64gd1IGptRFwzKfhMDUGCCsGAQUFBwEB
+ BCkwJzAlBggrBgEFBQcwAYYZaHR0cDovL3NlcnZlci53MS5maTo4ODg4LzATBgNV
+-HSUEDDAKBggrBgEFBQcDAjANBgkqhkiG9w0BAQsFAAOCAQEAP7fiRtEyTGqakR8A
+-JO3cMCN/jERc6v/yB/+ndWFzQQqQp9xC54mwEKw2y0rX/X3MndMYTikau6gif6GV
+-g7h9GbMmF1tb7YCM970ntFdquFxJ4/c5XtDnGOLKL7wPKsX7bmn6exXfIfP00hC8
+-4IlRGzWFo79HTw24NIZm8O5akEnSk+EQ+LD6k0Ki50MKyWm1+da4z1g2aooGJI80
+-pWN3jhwWMHS5gnKRw5EPaM/wJCbRyLE8A8uwY2KaK2npD26AOf88Pmu21r6Vufws
+-q/fTFNHJsVMxjVXQUkBSoIJ/AU8kwd3T0n+Sai7TQbdPUu8bNLUIVX1sFfRPzBg7
+-YvNh1Q==
++HSUEDDAKBggrBgEFBQcDAjANBgkqhkiG9w0BAQsFAAOCAQEAi7/OWiziin8u2/vZ
++zKRD0KCUo3HPc50pTL3y4jozYDIF6U6TzLCaN+ABROTvuPWDyTx9UUsI+n6W5b8k
++4P0z+onOZdmA8EZQvDHMuSS4jcWH9AtZwOMAO1ZGE5DMSseB1p9mL5bDkfZOC4yk
++tSOdSCT3ua/UB74ZTTUYwMiSykKhDaQM+ap2HZyYag8B5uaFjWvkRZ4GL/tBAgYK
++rEP6+eCAXGiPqnWFm8Z1QD3tcycXaatHlAeVqpWNcPkdOQbEDRYkyy3hrs3kmDDl
++tlIykA00i0P5wMZ3af0JutCS/GUiImS+hssyjU2b0vBjIygIZRLzQ9LE8sdyzFHC
++/o70vQ==
+ -----END CERTIFICATE-----
+diff --git a/tests/hwsim/auth_serv/user.pkcs12 b/tests/hwsim/auth_serv/user.pkcs12
+index 17466eafec3b7558415e6014eeac326aa912bca0..438e49399793dc2e2917ba83b90008cdb8711a55 100644
+GIT binary patch
+delta 2425
+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
+
+delta 2425
+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
+
+diff --git a/tests/hwsim/auth_serv/user2.pkcs12 b/tests/hwsim/auth_serv/user2.pkcs12
+index c1eb62edd3307058bf642ee7c152c701c0f55aa7..d1587ed04eee83befeea89ce99b7e4f59f059245 100644
+GIT binary patch
+delta 3452
+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
+
+delta 3452
+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
+
+diff --git a/tests/hwsim/auth_serv/user3.pkcs12 b/tests/hwsim/auth_serv/user3.pkcs12
+index cbd901f2efaf487241d3c9269c2848dfa364a7c1..1f19632f9c62a79d1229ae68818da21d08c9d003 100644
+GIT binary patch
+delta 3376
+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
+G0tf(LT!-iY
+
+delta 3376
+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
+G0tf*3w`OYq
+
+diff --git a/tests/hwsim/test_ap_eap.py b/tests/hwsim/test_ap_eap.py
+index a20140316..aafca8daf 100644
+--- a/tests/hwsim/test_ap_eap.py
++++ b/tests/hwsim/test_ap_eap.py
+@@ -3117,7 +3117,7 @@ def test_ap_wpa2_eap_ttls_server_cert_hash(dev, apdev):
+     """WPA2-Enterprise connection using EAP-TTLS and server certificate hash"""
+     check_cert_probe_support(dev[0])
+     skip_with_fips(dev[0])
+-    srv_cert_hash = "645830f9c128146bd1420aadc5179ffc4d4f0ef34f63075cefdd7d14a6c5af79"
++    srv_cert_hash = "afe085c36fd9533180aebfa286068e7cf093036e7178138f353a1dfeada129f8"
+     params = hostapd.wpa2_eap_params(ssid="test-wpa2-eap")
+     hapd = hostapd.add_ap(apdev[0], params)
+     dev[0].connect("test-wpa2-eap", key_mgmt="WPA-EAP", eap="TTLS",
+@@ -4568,7 +4568,7 @@ def ocsp_req(outfile):
+            "-reqout", outfile,
+            '-issuer', 'auth_serv/ca.pem',
+            '-sha256',
+-           '-serial', '0xD8D3E3A6CBE3CD7D',
++           '-serial', '0xD8D3E3A6CBE3CD87',
+            '-no_nonce']
+     run_openssl(arg)
+     if not os.path.exists(outfile):
+-- 
+2.43.0
+

@@ -1,0 +1,27 @@
+From 47d7f31693426b840a439117835f4850029b3f07 Mon Sep 17 00:00:00 2001
+From: Felix Fietkau <nbd@nbd.name>
+Date: Thu, 4 Apr 2024 12:52:11 +0200
+Subject: [PATCH] nl80211: Update drv->ifindex on removing the first BSS
+
+Otherwise it will point at the ifindex of the just removed BSS.
+
+Signed-off-by: Felix Fietkau <nbd@nbd.name>
+---
+ src/drivers/driver_nl80211.c | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/src/drivers/driver_nl80211.c b/src/drivers/driver_nl80211.c
+index 4949de577..863497e8f 100644
+--- a/src/drivers/driver_nl80211.c
++++ b/src/drivers/driver_nl80211.c
+@@ -8989,6 +8989,7 @@ static int wpa_driver_nl80211_if_remove(struct i802_bss *bss,
+ 		if (drv->first_bss->next) {
+ 			drv->first_bss = drv->first_bss->next;
+ 			drv->ctx = drv->first_bss->ctx;
++			drv->ifindex = drv->first_bss->ifindex;
+ 			os_free(bss);
+ 		} else {
+ 			wpa_printf(MSG_DEBUG, "nl80211: No second BSS to reassign context to");
+-- 
+2.43.0
+

@@ -1,0 +1,31 @@
+From ccc8414703183419c0139d19e99964ca834f1e96 Mon Sep 17 00:00:00 2001
+From: Jouni Malinen <j@w1.fi>
+Date: Sat, 1 Mar 2025 12:07:45 +0200
+Subject: [PATCH] SAE: Do not mark SAE enabled network disabled if PSK is not
+ set
+
+SAE does not PSK, i.e., it is sufficient for the passphrase to be set in
+cases where the psk parameter instead of the SAE specific sae_password
+is used.
+
+Signed-off-by: Jouni Malinen <j@w1.fi>
+---
+ wpa_supplicant/wpa_supplicant.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/wpa_supplicant/wpa_supplicant.c b/wpa_supplicant/wpa_supplicant.c
+index 128530eb5..e63048d18 100644
+--- a/wpa_supplicant/wpa_supplicant.c
++++ b/wpa_supplicant/wpa_supplicant.c
+@@ -9052,7 +9052,7 @@ int wpas_network_disabled(struct wpa_supplicant *wpa_s, struct wpa_ssid *ssid)
+ 	if (wpa_key_mgmt_wpa_psk(ssid->key_mgmt) && !ssid->psk_set &&
+ 	    (!ssid->passphrase || ssid->ssid_len != 0) && !ssid->ext_psk &&
+ 	    !(wpa_key_mgmt_sae(ssid->key_mgmt) &&
+-	      (ssid->sae_password || ssid->pmk_valid)) &&
++	      (ssid->passphrase || ssid->sae_password || ssid->pmk_valid)) &&
+ 	    !ssid->mem_only_psk)
+ 		return 1;
+ 
+-- 
+2.43.0
+

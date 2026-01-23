@@ -1,0 +1,30 @@
+From bbc55f3d6f38f5ed11c3fdce1b380707e968bd04 Mon Sep 17 00:00:00 2001
+From: Andrei Otcheretianski <andrei.otcheretianski@intel.com>
+Date: Tue, 26 Nov 2024 11:10:17 +0200
+Subject: [PATCH] tests: Properly cancel NAN publish/subscribe
+
+Wrong command was used. Fix it.
+
+Signed-off-by: Andrei Otcheretianski <andrei.otcheretianski@intel.com>
+---
+ tests/hwsim/test_p2p2.py | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/tests/hwsim/test_p2p2.py b/tests/hwsim/test_p2p2.py
+index 3b0adccff..404ae0dc4 100644
+--- a/tests/hwsim/test_p2p2.py
++++ b/tests/hwsim/test_p2p2.py
+@@ -124,8 +124,8 @@ def test_p2p_usd_match(dev, apdev):
+     if "ssi=6677" not in ev.split(' '):
+         raise Exception("Unexpected ssi: " + ev)
+ 
+-    dev[0].global_request("NAN_CANCEL_SUBSCRIBE id=" + id0)
+-    dev[1].global_request("NAN_CANCEL_PUBLISH id=" + id1)
++    dev[0].global_request("NAN_CANCEL_SUBSCRIBE subscribe_id=" + id0)
++    dev[1].global_request("NAN_CANCEL_PUBLISH publish_id=" + id1)
+ 
+ def test_p2p_pairing_password(dev, apdev):
+     """P2P Pairing with Password"""
+-- 
+2.43.0
+

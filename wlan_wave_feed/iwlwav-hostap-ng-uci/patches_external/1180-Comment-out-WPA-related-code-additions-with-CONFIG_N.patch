@@ -1,0 +1,110 @@
+From 550513ee523993c2e76f441acae7392f1b08c605 Mon Sep 17 00:00:00 2001
+From: Jouni Malinen <j@w1.fi>
+Date: Sun, 22 Dec 2024 18:22:10 +0200
+Subject: [PATCH] Comment out WPA related code additions with CONFIG_NO_WPA
+
+These broke CONFIG_NO_WPA=y builds due to dependencies to
+src/common/wpa_common.c functionality.
+
+Signed-off-by: Jouni Malinen <j@w1.fi>
+---
+ wpa_supplicant/bss.c    | 6 ++++++
+ wpa_supplicant/events.c | 4 ++++
+ wpa_supplicant/scan.c   | 4 ++++
+ 3 files changed, 14 insertions(+)
+
+diff --git a/wpa_supplicant/bss.c b/wpa_supplicant/bss.c
+index 014752257..c641b510c 100644
+--- a/wpa_supplicant/bss.c
++++ b/wpa_supplicant/bss.c
+@@ -1930,6 +1930,8 @@ out:
+ }
+ 
+ 
++#ifndef CONFIG_NO_WPA
++
+ static bool wpa_bss_supported_cipher(struct wpa_supplicant *wpa_s,
+ 				     int pairwise_cipher)
+ {
+@@ -2055,11 +2057,14 @@ static bool wpa_bss_supported_rsne(struct wpa_supplicant *wpa_s,
+ 	return true;
+ }
+ 
++#endif /* CONFIG_NO_WPA */
++
+ 
+ const u8 * wpa_bss_get_rsne(struct wpa_supplicant *wpa_s,
+ 			    const struct wpa_bss *bss, struct wpa_ssid *ssid,
+ 			    bool mlo)
+ {
++#ifndef CONFIG_NO_WPA
+ 	const u8 *ie;
+ 
+ 	if (wpas_rsn_overriding(wpa_s, ssid)) {
+@@ -2086,6 +2091,7 @@ const u8 * wpa_bss_get_rsne(struct wpa_supplicant *wpa_s,
+ 				return ie;
+ 		}
+ 	}
++#endif /* CONFIG_NO_WPA */
+ 
+ 	return wpa_bss_get_ie(bss, WLAN_EID_RSN);
+ }
+diff --git a/wpa_supplicant/events.c b/wpa_supplicant/events.c
+index 03364e3f7..5a1bc6d58 100644
+--- a/wpa_supplicant/events.c
++++ b/wpa_supplicant/events.c
+@@ -1266,7 +1266,9 @@ static bool wpa_scan_res_ok(struct wpa_supplicant *wpa_s, struct wpa_ssid *ssid,
+ {
+ 	int res;
+ 	bool wpa, check_ssid, osen, rsn_osen = false;
++#ifndef CONFIG_NO_WPA
+ 	struct wpa_ie_data data;
++#endif /* CONFIG_NO_WPA */
+ #ifdef CONFIG_MBO
+ 	const u8 *assoc_disallow;
+ #endif /* CONFIG_MBO */
+@@ -1280,9 +1282,11 @@ static bool wpa_scan_res_ok(struct wpa_supplicant *wpa_s, struct wpa_ssid *ssid,
+ 	wpa = ie && ie[1];
+ 	ie = wpa_bss_get_rsne(wpa_s, bss, ssid, false);
+ 	wpa |= ie && ie[1];
++#ifndef CONFIG_NO_WPA
+ 	if (ie && wpa_parse_wpa_ie_rsn(ie, 2 + ie[1], &data) == 0 &&
+ 	    (data.key_mgmt & WPA_KEY_MGMT_OSEN))
+ 		rsn_osen = true;
++#endif /* CONFIG_NO_WPA */
+ 	ie = wpa_bss_get_vendor_ie(bss, OSEN_IE_VENDOR_TYPE);
+ 	osen = ie != NULL;
+ 
+diff --git a/wpa_supplicant/scan.c b/wpa_supplicant/scan.c
+index f0ab122f5..46dfcf24b 100644
+--- a/wpa_supplicant/scan.c
++++ b/wpa_supplicant/scan.c
+@@ -2368,7 +2368,9 @@ static int wpa_scan_result_compar(const void *a, const void *b)
+ 	int wpa_a, wpa_b;
+ 	int snr_a, snr_b, snr_a_full, snr_b_full;
+ 	size_t ies_len;
++#ifndef CONFIG_NO_WPA
+ 	const u8 *rsne_a, *rsne_b;
++#endif /* CONFIG_NO_WPA */
+ 
+ 	/* WPA/WPA2 support preferred */
+ 	wpa_a = wpa_scan_get_vendor_ie(wa, WPA_IE_VENDOR_TYPE) != NULL ||
+@@ -2412,6 +2414,7 @@ static int wpa_scan_result_compar(const void *a, const void *b)
+ 		snr_b = snr_b_full = wb->level;
+ 	}
+ 
++#ifndef CONFIG_NO_WPA
+ 	/* If SNR of a SAE BSS is good or at least as high as the PSK BSS,
+ 	 * prefer SAE over PSK for mixed WPA3-Personal transition mode and
+ 	 * WPA2-Personal deployments */
+@@ -2437,6 +2440,7 @@ static int wpa_scan_result_compar(const void *a, const void *b)
+ 		    (snr_b >= GREAT_SNR || snr_b >= snr_a))
+ 			return 1;
+ 	}
++#endif /* CONFIG_NO_WPA */
+ 
+ 	/* If SNR is close, decide by max rate or frequency band. For cases
+ 	 * involving the 6 GHz band, use the throughput estimate irrespective
+-- 
+2.43.0
+

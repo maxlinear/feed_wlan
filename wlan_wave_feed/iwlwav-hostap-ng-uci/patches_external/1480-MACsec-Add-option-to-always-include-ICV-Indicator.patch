@@ -1,0 +1,245 @@
+From a4d2288dec3833ea7940db7fb07cc1c0268d3516 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Mart=C3=ADnek=20Petr?= <petr.martinek@elvac.eu>
+Date: Tue, 25 Feb 2025 08:18:06 +0000
+Subject: [PATCH] MACsec: Add option to always include ICV Indicator
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Some older MACsec switches incorrectly require ICV Indicator to be
+present even when ICV has default length (Cisco C3560CX). To allow
+communication with such devices option include-icv-indicator was added
+to always include ICV Indicator.
+
+Similar option is found in configuration of some other switches:
+
+Cisco:
+include-icv-indicator - this parameter configures inclusion of the
+optional ICV Indicator as part of the transmitted MACsec Key Agreement
+PDU (MKPDU). This configuration is necessary for MACsec to interoperate
+with routers that run software prior to IOS XR version 6.1.3. This
+configuration is also important in a service provider WAN setup where
+MACsec interoperates with other vendor MACsec implementations that
+expect ICV indicator to be present in the MKPDU.
+
+fortiswitch:
+include-mka-icv-ind: The MACsec Key Agreement (MKA) integrity check
+value (ICV) indicator is always included. (enabled by default)
+
+Signed-off-by: Petr Martínek <petr.martinek at elvac.eu>
+---
+ hostapd/config_file.c              | 10 ++++++++++
+ hostapd/hostapd.conf               |  4 ++++
+ src/ap/ap_config.h                 |  8 ++++++++
+ src/ap/wpa_auth_kay.c              |  1 +
+ src/pae/ieee802_1x_kay.c           |  8 +++++---
+ src/pae/ieee802_1x_kay.h           |  4 +++-
+ wpa_supplicant/config.c            |  1 +
+ wpa_supplicant/config_file.c       |  1 +
+ wpa_supplicant/config_ssid.h       |  8 ++++++++
+ wpa_supplicant/wpa_supplicant.conf |  4 ++++
+ wpa_supplicant/wpas_kay.c          |  1 +
+ 11 files changed, 46 insertions(+), 4 deletions(-)
+
+diff --git a/hostapd/config_file.c b/hostapd/config_file.c
+index c52adb8f2..0e35730f9 100644
+--- a/hostapd/config_file.c
++++ b/hostapd/config_file.c
+@@ -4791,6 +4791,16 @@ static int hostapd_config_fill(struct hostapd_config *conf,
+ 			return 1;
+ 		}
+ 		bss->macsec_csindex = macsec_csindex;
++	} else if (os_strcmp(buf, "macsec_icv_indicator") == 0) {
++		int macsec_icv_indicator = atoi(pos);
++
++		if (macsec_icv_indicator < 0 || macsec_icv_indicator > 1) {
++			wpa_printf(MSG_ERROR,
++				   "Line %d: invalid macsec_icv_indicator (%d): '%s'.",
++				   line, macsec_icv_indicator, pos);
++			return 1;
++		}
++		bss->macsec_icv_indicator = macsec_icv_indicator;
+ 	} else if (os_strcmp(buf, "mka_cak") == 0) {
+ 		size_t len = os_strlen(pos);
+ 
+diff --git a/hostapd/hostapd.conf b/hostapd/hostapd.conf
+index 97a4dc38d..338a16c82 100644
+--- a/hostapd/hostapd.conf
++++ b/hostapd/hostapd.conf
+@@ -1219,6 +1219,10 @@ eapol_key_index_workaround=0
+ # mka_priority (Priority of MKA Actor)
+ # Range: 0..255 (default: 255)
+ #
++# macsec_icv_indicator: Always include ICV indicator
++# 0 = ICV Indicator is not included when ICV has default length (default)
++# 1 = ICV Indicator is always included (compatibility mode)
++#
+ # macsec_csindex: IEEE 802.1X/MACsec cipher suite
+ # 0 = GCM-AES-128 (default)
+ # 1 = GCM-AES-256 (default)
+diff --git a/src/ap/ap_config.h b/src/ap/ap_config.h
+index 2b6cf4acf..02eb4b6fb 100644
+--- a/src/ap/ap_config.h
++++ b/src/ap/ap_config.h
+@@ -891,6 +891,14 @@ struct hostapd_bss_config {
+ 	 */
+ 	int macsec_csindex;
+ 
++	/**
++	 * macsec_icv_indicator - Always include ICV Indicator
++	 * (for compatibility with older MACsec switches)
++	 *
++	 * Range: 0-1 (default: 0)
++	 */
++	int macsec_icv_indicator;
++
+ 	/**
+ 	 * mka_ckn - MKA pre-shared CKN
+ 	 */
+diff --git a/src/ap/wpa_auth_kay.c b/src/ap/wpa_auth_kay.c
+index 9902384b0..20a5aaa10 100644
+--- a/src/ap/wpa_auth_kay.c
++++ b/src/ap/wpa_auth_kay.c
+@@ -331,6 +331,7 @@ int ieee802_1x_alloc_kay_sm_hapd(struct hostapd_data *hapd,
+ 				  hapd->conf->macsec_port,
+ 				  hapd->conf->mka_priority,
+ 				  hapd->conf->macsec_csindex,
++				  hapd->conf->macsec_icv_indicator,
+ 				  hapd->conf->iface,
+ 				  hapd->own_addr);
+ 	/* ieee802_1x_kay_init() frees kay_ctx on failure */
+diff --git a/src/pae/ieee802_1x_kay.c b/src/pae/ieee802_1x_kay.c
+index 81f721af8..57b5e6064 100644
+--- a/src/pae/ieee802_1x_kay.c
++++ b/src/pae/ieee802_1x_kay.c
+@@ -1871,7 +1871,7 @@ ieee802_1x_mka_get_icv_length(struct ieee802_1x_mka_participant *participant)
+ 
+ 	/* Determine if we need space for the ICV Indicator */
+ 	if (mka_alg_tbl[participant->kay->mka_algindex].icv_len !=
+-	    DEFAULT_ICV_LEN)
++	    DEFAULT_ICV_LEN || participant->kay->include_icv_indicator)
+ 		length = sizeof(struct ieee802_1x_mka_icv_body);
+ 	else
+ 		length = 0;
+@@ -1894,7 +1894,7 @@ ieee802_1x_mka_encode_icv_body(struct ieee802_1x_mka_participant *participant,
+ 
+ 	length = ieee802_1x_mka_get_icv_length(participant);
+ 	if (mka_alg_tbl[participant->kay->mka_algindex].icv_len !=
+-	    DEFAULT_ICV_LEN)  {
++	    DEFAULT_ICV_LEN || participant->kay->include_icv_indicator)  {
+ 		wpa_printf(MSG_DEBUG, "KaY: ICV Indicator");
+ 		body = wpabuf_put(buf, MKA_HDR_LEN);
+ 		body->type = MKA_ICV_INDICATOR;
+@@ -3495,7 +3495,8 @@ struct ieee802_1x_kay *
+ ieee802_1x_kay_init(struct ieee802_1x_kay_ctx *ctx, enum macsec_policy policy,
+ 		    bool macsec_replay_protect, u32 macsec_replay_window,
+ 		    u8 macsec_offload, u16 port, u8 priority,
+-		    u32 macsec_csindex, const char *ifname, const u8 *addr)
++		    u32 macsec_csindex, bool include_icv_indicator,
++		    const char *ifname, const u8 *addr)
+ {
+ 	struct ieee802_1x_kay *kay;
+ 
+@@ -3533,6 +3534,7 @@ ieee802_1x_kay_init(struct ieee802_1x_kay_ctx *ctx, enum macsec_policy policy,
+ 
+ 	kay->pn_exhaustion = PENDING_PN_EXHAUSTION;
+ 	kay->macsec_csindex = macsec_csindex;
++	kay->include_icv_indicator = include_icv_indicator;
+ 	kay->mka_algindex = DEFAULT_MKA_ALG_INDEX;
+ 	kay->mka_version = MKA_VERSION_ID;
+ 
+diff --git a/src/pae/ieee802_1x_kay.h b/src/pae/ieee802_1x_kay.h
+index 11464f7fc..d46f0b285 100644
+--- a/src/pae/ieee802_1x_kay.h
++++ b/src/pae/ieee802_1x_kay.h
+@@ -206,6 +206,7 @@ struct ieee802_1x_kay {
+ 	struct ieee802_1x_kay_ctx *ctx;
+ 	bool is_key_server;
+ 	bool is_obliged_key_server;
++	bool include_icv_indicator; /* Always include ICV Indicator */
+ 	char if_name[IFNAMSIZ];
+ 	u8 macsec_offload;
+ 
+@@ -243,7 +244,8 @@ struct ieee802_1x_kay *
+ ieee802_1x_kay_init(struct ieee802_1x_kay_ctx *ctx, enum macsec_policy policy,
+ 		    bool macsec_replay_protect, u32 macsec_replay_window,
+ 		    u8 macsec_offload, u16 port, u8 priority,
+-		    u32 macsec_csindex, const char *ifname, const u8 *addr);
++		    u32 macsec_csindex, bool include_icv_indicator,
++		    const char *ifname, const u8 *addr);
+ void ieee802_1x_kay_deinit(struct ieee802_1x_kay *kay);
+ 
+ struct ieee802_1x_mka_participant *
+diff --git a/wpa_supplicant/config.c b/wpa_supplicant/config.c
+index d958610b7..77eb9bf68 100644
+--- a/wpa_supplicant/config.c
++++ b/wpa_supplicant/config.c
+@@ -2726,6 +2726,7 @@ static const struct parse_data ssid_fields[] = {
+ 	{ INT_RANGE(macsec_port, 1, 65534) },
+ 	{ INT_RANGE(mka_priority, 0, 255) },
+ 	{ INT_RANGE(macsec_csindex, 0, 1) },
++	{ INT_RANGE(macsec_icv_indicator, 0, 1) },
+ 	{ FUNC_KEY(mka_cak) },
+ 	{ FUNC_KEY(mka_ckn) },
+ #endif /* CONFIG_MACSEC */
+diff --git a/wpa_supplicant/config_file.c b/wpa_supplicant/config_file.c
+index 67cb144f1..0f53753fa 100644
+--- a/wpa_supplicant/config_file.c
++++ b/wpa_supplicant/config_file.c
+@@ -912,6 +912,7 @@ static void wpa_config_write_network(FILE *f, struct wpa_ssid *ssid)
+ 	INT(macsec_port);
+ 	INT_DEF(mka_priority, DEFAULT_PRIO_NOT_KEY_SERVER);
+ 	INT(macsec_csindex);
++	INT(macsec_icv_indicator);
+ #endif /* CONFIG_MACSEC */
+ #ifdef CONFIG_HS20
+ 	INT(update_identifier);
+diff --git a/wpa_supplicant/config_ssid.h b/wpa_supplicant/config_ssid.h
+index 5f8a1f2ae..530b5e963 100644
+--- a/wpa_supplicant/config_ssid.h
++++ b/wpa_supplicant/config_ssid.h
+@@ -991,6 +991,14 @@ struct wpa_ssid {
+ 	 */
+ 	int macsec_csindex;
+ 
++	/**
++	 * macsec_icv_indicator - Always include ICV Indicator
++	 * (for compatibility with older MACsec switches)
++	 *
++	 * Range: 0-1 (default: 0)
++	 */
++	int macsec_icv_indicator;
++
+ 	/**
+ 	 * mka_ckn - MKA pre-shared CKN
+ 	 */
+diff --git a/wpa_supplicant/wpa_supplicant.conf b/wpa_supplicant/wpa_supplicant.conf
+index 40c5ff57d..121ad3879 100644
+--- a/wpa_supplicant/wpa_supplicant.conf
++++ b/wpa_supplicant/wpa_supplicant.conf
+@@ -1256,6 +1256,10 @@ fast_reauth=1
+ # mka_priority (Priority of MKA Actor) is in 0..255 range with 255 being
+ # default priority
+ #
++# macsec_icv_indicator: Always include ICV indicator
++# 0 = ICV Indicator is not included when ICV has default length (default)
++# 1 = ICV Indicator is always included (compatibility mode)
++#
+ # mixed_cell: This option can be used to configure whether so called mixed
+ # cells, i.e., networks that use both plaintext and encryption in the same
+ # SSID, are allowed when selecting a BSS from scan results.
+diff --git a/wpa_supplicant/wpas_kay.c b/wpa_supplicant/wpas_kay.c
+index 600b3bc54..7893a39bc 100644
+--- a/wpa_supplicant/wpas_kay.c
++++ b/wpa_supplicant/wpas_kay.c
+@@ -249,6 +249,7 @@ int ieee802_1x_alloc_kay_sm(struct wpa_supplicant *wpa_s, struct wpa_ssid *ssid)
+ 				  ssid->macsec_replay_window,
+ 				  ssid->macsec_offload, ssid->macsec_port,
+ 				  ssid->mka_priority, ssid->macsec_csindex,
++				  ssid->macsec_icv_indicator,
+ 				  wpa_s->ifname, wpa_s->own_addr);
+ 	/* ieee802_1x_kay_init() frees kay_ctx on failure */
+ 	if (res == NULL)
+-- 
+2.43.0
+

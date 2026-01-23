@@ -1,0 +1,32 @@
+From c78295c35282d2d6d2f77d0c082b5c18d88341c5 Mon Sep 17 00:00:00 2001
+From: Sunil Ravi <sunilravi@google.com>
+Date: Wed, 8 Jan 2025 18:49:27 +0000
+Subject: [PATCH] nl80211: Fix compilation error when
+ CONFIG_DRIVER_NL80211_BRCM is enabled
+
+wpa_driver_do_broadcom_acs() does not use the bss variable, so it should
+not have been converted from nl80211_drv_msg() to nl80211_msg_bss().
+Revert that part of the earlier changes to fix compilation.
+
+Fixes: e3fe940ac2ce ("nl80211: Use nl80211_bss_msg() helper wherever BSS is accessible")
+Signed-off-by: Sunil Ravi <sunilravi@google.com>
+---
+ src/drivers/driver_nl80211.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/src/drivers/driver_nl80211.c b/src/drivers/driver_nl80211.c
+index c139cfef2..14d69206d 100644
+--- a/src/drivers/driver_nl80211.c
++++ b/src/drivers/driver_nl80211.c
+@@ -14011,7 +14011,7 @@ static int wpa_driver_do_broadcom_acs(struct wpa_driver_nl80211_data *drv,
+ 	wpa_printf(MSG_DEBUG, "%s: freq_list_len=%d",
+ 		   __func__, freq_list_len);
+ 
+-	msg = nl80211_bss_msg(bss, 0, NL80211_CMD_VENDOR);
++	msg = nl80211_drv_msg(drv, 0, NL80211_CMD_VENDOR);
+ 	if (!msg ||
+ 	    nla_put_u32(msg, NL80211_ATTR_VENDOR_ID, OUI_BRCM) ||
+ 	    nla_put_u32(msg, NL80211_ATTR_VENDOR_SUBCMD,
+-- 
+2.43.0
+

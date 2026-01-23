@@ -1,0 +1,224 @@
+From c97b35bd9c4887f7f576493e48019a7178dcd26f Mon Sep 17 00:00:00 2001
+From: Jouni Malinen <quic_jouni@quicinc.com>
+Date: Tue, 5 Nov 2024 18:42:51 +0200
+Subject: [PATCH] Wi-Fi Generational Capabilities Indication reception on AP
+
+Process the received generational capabilities indication on AP. This
+covers the Generational Capabilities Indication attribute parsing in
+both (Re)Association Request frames and W-Fi Capabilities frames.
+
+Signed-off-by: Jouni Malinen <quic_jouni@quicinc.com>
+---
+ src/ap/drv_callbacks.c         |  4 +++
+ src/ap/ieee802_11.c            | 45 ++++++++++++++++++++++++++++++++++
+ src/ap/ieee802_11.h            |  2 ++
+ src/ap/ieee802_11_shared.c     | 44 +++++++++++++++++++++++++++++++++
+ src/common/ieee802_11_common.c |  4 +++
+ src/common/ieee802_11_common.h |  2 ++
+ src/common/wpa_ctrl.h          |  5 ++++
+ 7 files changed, 106 insertions(+)
+
+diff --git a/src/ap/drv_callbacks.c b/src/ap/drv_callbacks.c
+index ba54fd792..28e2e6f46 100644
+--- a/src/ap/drv_callbacks.c
++++ b/src/ap/drv_callbacks.c
+@@ -958,6 +958,10 @@ skip_wpa_check:
+ 	}
+ #endif /* CONFIG_P2P */
+ 
++	if (elems.wfa_capab)
++		hostapd_wfa_capab(hapd, sta, elems.wfa_capab,
++				  elems.wfa_capab + elems.wfa_capab_len);
++
+ 	return 0;
+ 
+ fail:
+diff --git a/src/ap/ieee802_11.c b/src/ap/ieee802_11.c
+index 417a50056..052de0e92 100644
+--- a/src/ap/ieee802_11.c
++++ b/src/ap/ieee802_11.c
+@@ -4486,6 +4486,10 @@ static int __check_assoc_ies(struct hostapd_data *hapd, struct sta_info *sta,
+ 				hapd->conf->max_acceptable_idle_period;
+ 	}
+ 
++	if (elems->wfa_capab)
++		hostapd_wfa_capab(hapd, sta, elems->wfa_capab,
++				  elems->wfa_capab + elems->wfa_capab_len);
++
+ 	return WLAN_STATUS_SUCCESS;
+ }
+ 
+@@ -6047,6 +6051,39 @@ static void handle_beacon(struct hostapd_data *hapd,
+ }
+ 
+ 
++static int hostapd_action_vs(struct hostapd_data *hapd,
++			     struct sta_info *sta,
++			     const struct ieee80211_mgmt *mgmt, size_t len,
++			     unsigned int freq, bool protected)
++{
++	const u8 *pos, *end;
++	u32 oui_type;
++
++	pos = &mgmt->u.action.category;
++	end = ((const u8 *) mgmt) + len;
++
++	if (end - pos < 1 + 4)
++		return -1;
++	pos++;
++
++	oui_type = WPA_GET_BE32(pos);
++	pos += 4;
++
++	switch (oui_type) {
++	case WFA_CAPAB_VENDOR_TYPE:
++		hostapd_wfa_capab(hapd, sta, pos, end);
++		return 0;
++	default:
++		wpa_printf(MSG_DEBUG,
++			   "Ignore unknown Vendor Specific Action frame OUI/type %08x%s",
++			   oui_type, protected ? " (protected)" : "");
++		break;
++	}
++
++	return -1;
++}
++
++
+ static int robust_action_frame(u8 category)
+ {
+ 	return category != WLAN_ACTION_PUBLIC &&
+@@ -6227,6 +6264,14 @@ static int handle_action(struct hostapd_data *hapd,
+ 						   (u8 *) mgmt, len, freq) == 0)
+ 				return 1;
+ 		}
++		if (sta &&
++		    hostapd_action_vs(hapd, sta, mgmt, len, freq, false) == 0)
++			return 1;
++		break;
++	case WLAN_ACTION_VENDOR_SPECIFIC_PROTECTED:
++		if (sta &&
++		    hostapd_action_vs(hapd, sta, mgmt, len, freq, true) == 0)
++			return 1;
+ 		break;
+ #ifndef CONFIG_NO_RRM
+ 	case WLAN_ACTION_RADIO_MEASUREMENT:
+diff --git a/src/ap/ieee802_11.h b/src/ap/ieee802_11.h
+index abf48ab68..2bcc29eb1 100644
+--- a/src/ap/ieee802_11.h
++++ b/src/ap/ieee802_11.h
+@@ -130,6 +130,8 @@ u16 copy_sta_he_6ghz_capab(struct hostapd_data *hapd, struct sta_info *sta,
+ int hostapd_get_he_twt_responder(struct hostapd_data *hapd,
+ 				 enum ieee80211_op_mode mode);
+ bool hostapd_get_ht_vht_twt_responder(struct hostapd_data *hapd);
++void hostapd_wfa_capab(struct hostapd_data *hapd, struct sta_info *sta,
++		       const u8 *pos, const u8 *end);
+ u8 * hostapd_eid_cca(struct hostapd_data *hapd, u8 *eid);
+ void hostapd_tx_status(struct hostapd_data *hapd, const u8 *addr,
+ 		       const u8 *buf, size_t len, int ack);
+diff --git a/src/ap/ieee802_11_shared.c b/src/ap/ieee802_11_shared.c
+index 9566615eb..5e67216de 100644
+--- a/src/ap/ieee802_11_shared.c
++++ b/src/ap/ieee802_11_shared.c
+@@ -1234,3 +1234,47 @@ bool hostapd_get_ht_vht_twt_responder(struct hostapd_data *hapd)
+ 		(hapd->iface->drv_flags2 &
+ 		 WPA_DRIVER_FLAGS2_HT_VHT_TWT_RESPONDER);
+ }
++
++
++static void hostapd_wfa_gen_capab(struct hostapd_data *hapd,
++				  struct sta_info *sta,
++				  const u8 *capab, size_t len)
++{
++	char *hex;
++	size_t buflen;
++
++	wpa_printf(MSG_DEBUG,
++		   "WFA: Received indication of generational capabilities from "
++		   MACSTR, MAC2STR(sta->addr));
++	wpa_hexdump(MSG_DEBUG, "WFA: Generational Capabilities", capab, len);
++
++	buflen = 2 * len + 1;
++	hex = os_zalloc(buflen);
++	if (!hex)
++		return;
++	wpa_snprintf_hex(hex, buflen, capab, len);
++	wpa_msg(hapd->msg_ctx, MSG_INFO, WFA_GEN_CAPAB_RX MACSTR " %s",
++		MAC2STR(sta->addr), hex);
++	os_free(hex);
++}
++
++
++void hostapd_wfa_capab(struct hostapd_data *hapd, struct sta_info *sta,
++		       const u8 *pos, const u8 *end)
++{
++	u8 capab_len;
++	const u8 *gen_capa;
++
++	if (end - pos < 1)
++		return;
++	capab_len = *pos++;
++	if (capab_len > end - pos)
++		return;
++	pos += capab_len; /* skip the Capabilities field */
++
++	/* Wi-Fi Alliance Capabilities attributes use a header that is similar
++	 * to the one used in Information Elements. */
++	gen_capa = get_ie(pos, end - pos, WFA_CAPA_ATTR_GENERATIONAL_CAPAB);
++	if (gen_capa)
++		hostapd_wfa_gen_capab(hapd, sta, gen_capa + 2, gen_capa[1]);
++}
+diff --git a/src/common/ieee802_11_common.c b/src/common/ieee802_11_common.c
+index 22348b8c2..e859fbe21 100644
+--- a/src/common/ieee802_11_common.c
++++ b/src/common/ieee802_11_common.c
+@@ -140,6 +140,10 @@ static int ieee802_11_parse_vendor_specific(const u8 *pos, size_t elen,
+ 			elems->sae_pk = pos + 4;
+ 			elems->sae_pk_len = elen - 4;
+ 			break;
++		case WFA_CAPA_OUI_TYPE:
++			elems->wfa_capab = pos + 4;
++			elems->wfa_capab_len = elen - 4;
++			break;
+ 		case WFA_RSNE_OVERRIDE_OUI_TYPE:
+ 			elems->rsne_override = pos;
+ 			elems->rsne_override_len = elen;
+diff --git a/src/common/ieee802_11_common.h b/src/common/ieee802_11_common.h
+index b98617ea6..689a8f889 100644
+--- a/src/common/ieee802_11_common.h
++++ b/src/common/ieee802_11_common.h
+@@ -121,6 +121,7 @@ struct ieee802_11_elems {
+ 	const u8 *rsne_override;
+ 	const u8 *rsne_override_2;
+ 	const u8 *rsn_selection;
++	const u8 *wfa_capab;
+ 
+ 	u8 ssid_len;
+ 	u8 supp_rates_len;
+@@ -189,6 +190,7 @@ struct ieee802_11_elems {
+ 	size_t rsne_override_len;
+ 	size_t rsne_override_2_len;
+ 	size_t rsn_selection_len;
++	u8 wfa_capab_len;
+ 
+ 	struct mb_ies_info mb_ies;
+ 
+diff --git a/src/common/wpa_ctrl.h b/src/common/wpa_ctrl.h
+index 2ea8ab318..40628e81d 100644
+--- a/src/common/wpa_ctrl.h
++++ b/src/common/wpa_ctrl.h
+@@ -456,6 +456,11 @@ extern "C" {
+ /* Event triggered for received management frame */
+ #define AP_MGMT_FRAME_RECEIVED "AP-MGMT-FRAME-RECEIVED "
+ 
++/* Event triggerred on AP receiving Wi-Fi Alliance Generational Capabilities
++ * indication.
++ * Parameters: <STA addr> <Generational Capabilities Indication body> */
++#define WFA_GEN_CAPAB_RX "WFA-GEN-CAPAB "
++
+ #ifndef BIT
+ #define BIT(x) (1U << (x))
+ #endif
+-- 
+2.43.0
+

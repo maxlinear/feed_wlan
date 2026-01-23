@@ -1,0 +1,263 @@
+From 07c9f183ea744ac04585fb6dd10220c75a5e2e74 Mon Sep 17 00:00:00 2001
+From: Jouni Malinen <quic_jouni@quicinc.com>
+Date: Wed, 27 Mar 2024 23:26:00 +0200
+Subject: [PATCH] tests: Avoid control interface throttling in various test
+ cases
+
+These can cause unexpected test failures, so dump the pending monitor
+socket events more frequently in some cases where event throttling is
+seen.
+
+Signed-off-by: Jouni Malinen <quic_jouni@quicinc.com>
+---
+ tests/hwsim/test_ap_pmf.py    |  2 ++
+ tests/hwsim/test_dpp3.py      |  4 +++-
+ tests/hwsim/test_eap_proto.py | 14 ++++++++++++++
+ tests/hwsim/test_radius.py    | 12 ++++++++++++
+ tests/hwsim/test_sigma_dut.py |  7 ++++++-
+ tests/hwsim/test_wpas_ctrl.py | 30 ++++++++++++++++++++++--------
+ 6 files changed, 59 insertions(+), 10 deletions(-)
+
+diff --git a/tests/hwsim/test_ap_pmf.py b/tests/hwsim/test_ap_pmf.py
+index c9f09ee0e..4b2cc5bbd 100644
+--- a/tests/hwsim/test_ap_pmf.py
++++ b/tests/hwsim/test_ap_pmf.py
+@@ -1190,6 +1190,7 @@ def run_ap_pmf_inject_eap(dev, apdev, pmf=True):
+                 eap_start = True
+             if "CTRL-EVENT-EAP-FAILURE" in ev:
+                 eap_failure = True
++        dev[0].dump_monitor(mon=False)
+     dev[0].dump_monitor()
+     ev = hapd.wait_event(["AP-STA-DISCONNECTED"], timeout=0.1)
+     if ev:
+@@ -1232,6 +1233,7 @@ def run_ap_pmf_inject_eap(dev, apdev, pmf=True):
+                 eap_start = True
+             if "CTRL-EVENT-EAP-FAILURE" in ev:
+                 eap_failure = True
++        dev[0].dump_monitor(mon=False)
+     dev[0].dump_monitor()
+     ev = hapd.wait_event(["AP-STA-DISCONNECTED"], timeout=0.1)
+     if ev:
+diff --git a/tests/hwsim/test_dpp3.py b/tests/hwsim/test_dpp3.py
+index 276ec64da..a65a1281f 100644
+--- a/tests/hwsim/test_dpp3.py
++++ b/tests/hwsim/test_dpp3.py
+@@ -325,9 +325,11 @@ def test_dpp_push_button_unsupported_ap_conf(dev, apdev):
+     if ev is None or "failed" not in ev:
+         raise Exception("Push button bootstrapping did not fail on AP")
+     while True:
+-        ev = dev[0].wait_event(["DPP-PB-RESULT", "DPP-RX"], timeout=100)
++        ev = dev[0].wait_event(["DPP-PB-RESULT", "DPP-RX", "DPP-TX"],
++                               timeout=100)
+         if ev is None:
+             raise Exception("Push button result not reported on station")
++        dev[0].dump_monitor(mon=False)
+         if "DPP-PB-RESULT failed" in ev:
+             break
+         if "type=18" in ev:
+diff --git a/tests/hwsim/test_eap_proto.py b/tests/hwsim/test_eap_proto.py
+index e12548171..0aa292c37 100644
+--- a/tests/hwsim/test_eap_proto.py
++++ b/tests/hwsim/test_eap_proto.py
+@@ -771,6 +771,7 @@ def test_eap_proto_sake(dev, apdev):
+                 raise Exception("Timeout on EAP start")
+             time.sleep(0.1)
+             dev[0].request("REMOVE_NETWORK all")
++            dev[0].dump_monitor()
+ 
+         logger.info("Too short password")
+         dev[0].connect("eap-test", key_mgmt="WPA-EAP", scan_freq="2412",
+@@ -780,7 +781,20 @@ def test_eap_proto_sake(dev, apdev):
+         ev = dev[0].wait_event(["CTRL-EVENT-EAP-PROPOSED-METHOD"], timeout=15)
+         if ev is None:
+             raise Exception("Timeout on EAP start")
++        start = os.times()[4]
++        while True:
++            ev = dev[0].wait_event(["CTRL-EVENT-EAP-PROPOSED-METHOD"],
++                                   timeout=0.1)
++            if ev is None:
++                break
++            now = os.times()[4]
++            if now - start > 0.1:
++                break
++            dev[0].dump_monitor()
++
++        dev[0].request("REMOVE_NETWORK all")
+         time.sleep(0.1)
++        dev[0].dump_monitor()
+     finally:
+         stop_radius_server(srv)
+ 
+diff --git a/tests/hwsim/test_radius.py b/tests/hwsim/test_radius.py
+index 20b28b84f..4ecb6599b 100644
+--- a/tests/hwsim/test_radius.py
++++ b/tests/hwsim/test_radius.py
+@@ -597,6 +597,7 @@ def test_radius_das_disconnect(dev, apdev):
+     ev = dev[0].wait_event(["CTRL-EVENT-DISCONNECTED"], timeout=1)
+     if ev is not None:
+         raise Exception("Unexpected disconnection")
++    dev[0].dump_monitor()
+ 
+     logger.info("Disconnect-Request with mismatching NAS-IP-Address")
+     req = radius_das.DisconnectPacket(dict=dict, secret=b"secret",
+@@ -615,6 +616,7 @@ def test_radius_das_disconnect(dev, apdev):
+     ev = dev[0].wait_event(["CTRL-EVENT-DISCONNECTED"], timeout=1)
+     if ev is not None:
+         raise Exception("Unexpected disconnection")
++    dev[0].dump_monitor()
+ 
+     logger.info("Disconnect-Request with matching Acct-Session-Id")
+     req = radius_das.DisconnectPacket(dict=dict, secret=b"secret",
+@@ -628,6 +630,7 @@ def test_radius_das_disconnect(dev, apdev):
+     hapd.wait_sta_disconnect(addr=dev[0].own_addr())
+     dev[0].wait_connected(timeout=10, error="Re-connection timed out")
+     hapd.wait_sta(addr=dev[0].own_addr())
++    dev[0].dump_monitor()
+ 
+     logger.info("Disconnect-Request with matching Acct-Multi-Session-Id")
+     sta = hapd.get_sta(addr)
+@@ -643,6 +646,7 @@ def test_radius_das_disconnect(dev, apdev):
+     hapd.wait_sta_disconnect(addr=dev[0].own_addr())
+     dev[0].wait_connected(timeout=10, error="Re-connection timed out")
+     hapd.wait_sta(addr=dev[0].own_addr())
++    dev[0].dump_monitor()
+ 
+     logger.info("Disconnect-Request with matching User-Name")
+     req = radius_das.DisconnectPacket(dict=dict, secret=b"secret",
+@@ -655,6 +659,7 @@ def test_radius_das_disconnect(dev, apdev):
+     hapd.wait_sta_disconnect(addr=dev[0].own_addr())
+     dev[0].wait_connected(timeout=10, error="Re-connection timed out")
+     hapd.wait_sta(addr=dev[0].own_addr())
++    dev[0].dump_monitor()
+ 
+     logger.info("Disconnect-Request with matching Calling-Station-Id")
+     req = radius_das.DisconnectPacket(dict=dict, secret=b"secret",
+@@ -672,6 +677,7 @@ def test_radius_das_disconnect(dev, apdev):
+         raise Exception("Unexpected skipping of EAP authentication in reconnection")
+     dev[0].wait_connected(timeout=10, error="Re-connection timed out")
+     hapd.wait_sta(addr=dev[0].own_addr())
++    dev[0].dump_monitor()
+ 
+     logger.info("Disconnect-Request with matching Calling-Station-Id and non-matching CUI")
+     req = radius_das.DisconnectPacket(dict=dict, secret=b"secret",
+@@ -704,6 +710,7 @@ def test_radius_das_disconnect(dev, apdev):
+ 
+     connect(dev[2], "radius-das")
+     hapd.wait_sta(addr=dev[2].own_addr())
++    dev[0].dump_monitor()
+ 
+     logger.info("Disconnect-Request with matching User-Name - multiple sessions matching")
+     req = radius_das.DisconnectPacket(dict=dict, secret=b"secret",
+@@ -724,6 +731,7 @@ def test_radius_das_disconnect(dev, apdev):
+     hapd.wait_sta_disconnect(addr=dev[0].own_addr())
+     dev[0].wait_connected(timeout=10, error="Re-connection timed out")
+     hapd.wait_sta(addr=dev[0].own_addr())
++    dev[0].dump_monitor()
+ 
+     ev = dev[2].wait_event(["CTRL-EVENT-DISCONNECTED"], timeout=1)
+     if ev is not None:
+@@ -748,10 +756,12 @@ def test_radius_das_disconnect(dev, apdev):
+         raise Exception("Timeout on EAP start")
+     dev[0].wait_connected(timeout=15)
+     hapd.wait_sta(addr=dev[0].own_addr())
++    dev[0].dump_monitor()
+ 
+     logger.info("Disconnect-Request with matching User-Name after disassociation")
+     dev[0].request("DISCONNECT")
+     dev[0].wait_disconnected(timeout=10)
++    dev[0].dump_monitor()
+     hapd.wait_sta_disconnect(addr=dev[0].own_addr())
+     dev[2].request("DISCONNECT")
+     dev[2].wait_disconnected(timeout=10)
+@@ -780,9 +790,11 @@ def test_radius_das_disconnect(dev, apdev):
+         raise Exception("Timeout on EAP start")
+     dev[0].wait_connected(timeout=15)
+     hapd.wait_sta(addr=dev[0].own_addr())
++    dev[0].dump_monitor()
+     dev[0].request("DISCONNECT")
+     dev[0].wait_disconnected(timeout=10)
+     hapd.wait_sta_disconnect(addr=dev[0].own_addr())
++    dev[0].dump_monitor()
+     req = radius_das.DisconnectPacket(dict=dict, secret=b"secret",
+                                       NAS_IP_Address="127.0.0.1",
+                                       NAS_Identifier="nas.example.com",
+diff --git a/tests/hwsim/test_sigma_dut.py b/tests/hwsim/test_sigma_dut.py
+index c007d213d..bac450268 100644
+--- a/tests/hwsim/test_sigma_dut.py
++++ b/tests/hwsim/test_sigma_dut.py
+@@ -788,10 +788,13 @@ def test_sigma_dut_suite_b_rsa(dev, apdev, params):
+             dut.cmd_check(cmd + extra)
+             dut.cmd_check("sta_associate,interface,%s,ssid,%s,channel,1" % (ifname, "test-suite-b"),
+                                 timeout=10)
++            dev[0].dump_monitor()
+             dut.wait_connected()
++            dev[0].dump_monitor()
+             dut.cmd_check("sta_get_ip_config,interface," + ifname)
+             dut.cmd_check("sta_disconnect,interface," + ifname)
+             dut.cmd_check("sta_reset_default,interface," + ifname)
++            dev[0].dump_monitor()
+ 
+ def test_sigma_dut_ap_suite_b(dev, apdev, params):
+     """sigma_dut controlled AP Suite B"""
+@@ -5284,7 +5287,9 @@ def test_sigma_dut_ap_beacon_prot(dev, apdev, params):
+         dev[0].connect("test-psk", key_mgmt="WPA-PSK-SHA256",
+                        psk="12345678", scan_freq="2412",
+                        ieee80211w="2", beacon_prot="1")
+-        time.sleep(1)
++        for i in range(10):
++            dev[0].dump_monitor()
++            time.sleep(0.1)
+ 
+     valid_bip = wt.get_bss_counter('valid_bip_mmie', bssid)
+     invalid_bip = wt.get_bss_counter('invalid_bip_mmie', bssid)
+diff --git a/tests/hwsim/test_wpas_ctrl.py b/tests/hwsim/test_wpas_ctrl.py
+index e40aecda1..44eb00444 100644
+--- a/tests/hwsim/test_wpas_ctrl.py
++++ b/tests/hwsim/test_wpas_ctrl.py
+@@ -301,8 +301,10 @@ def test_wpas_ctrl_network_oom(dev):
+ @remote_compatible
+ def test_wpas_ctrl_many_networks(dev, apdev):
+     """wpa_supplicant ctrl_iface LIST_NETWORKS with huge number of networks"""
+-    for i in range(1000):
+-        id = dev[0].add_network()
++    for i in range(999):
++        dev[0].add_network()
++        dev[0].dump_monitor()
++    id = dev[0].add_network()
+     ev = dev[0].wait_event(["CTRL-EVENT-NETWORK-ADDED %d" % id])
+     if ev is None:
+         raise Exception("Network added event not seen for the last network")
+@@ -320,12 +322,24 @@ def test_wpas_ctrl_many_networks(dev, apdev):
+     # power CPU, so increase the command timeout significantly to avoid issues
+     # with the test case failing and following reset operation timing out.
+     dev[0].request("REMOVE_NETWORK all", timeout=60)
+-    ev = dev[0].wait_event(["CTRL-EVENT-NETWORK-REMOVED %d" % id])
+-    if ev is None:
+-        raise Exception("Network removed event not seen for the last network")
+-    ev = dev[0].wait_global_event(["CTRL-EVENT-NETWORK-REMOVED %d" % id], timeout=10)
+-    if ev is None:
+-        raise Exception("Network removed event (global) not seen for the last network")
++    seen = seen_global = False
++
++    for i in range(1000):
++        ev = dev[0].wait_event(["CTRL-EVENT-NETWORK-REMOVED"])
++        if ev is None:
++            raise Exception("Network removed event not seen for the last network")
++        if str(id) in ev:
++            seen = True
++        ev = dev[0].wait_global_event(["CTRL-EVENT-NETWORK-REMOVED"],
++                                      timeout=10)
++        if ev is None:
++            raise Exception("Network removed event (global) not seen for the last network")
++        if str(id) in ev:
++            seen_global = True
++    if not seen:
++            raise Exception("Network removed event not seen for the last network")
++    if not seen_global:
++            raise Exception("Network removed event (global) not seen for the last network")
+     dev[0].dump_monitor()
+ 
+ @remote_compatible
+-- 
+2.43.0
+

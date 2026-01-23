@@ -1,0 +1,33 @@
+From 16abdac8092e4125dd8b83de0493636bd9b31f70 Mon Sep 17 00:00:00 2001
+From: Mujibur Rahiman K <mujiburrahimank@maxlinear.com>
+Date: Wed, 14 Feb 2024 15:33:25 +0530
+Subject: [PATCH] Fix INTERFACES command buffer size to allow more data
+
+reply_size instead sizeof(buffer) should be provided to
+hostapd_global_ctrl_iface_interfaces() when processing INTERFACES
+commands. The previous use of sizeof(buffer) used a significantly
+shorter limit (256 vs. 4096 bytes) for the output and this could have
+resulted in unnecessary truncation of the output.
+
+Fixes: 618f5d01b0cf ("hostapd: Add INTERFACES ctrl_iface command")
+Signed-Off-By : Mujibur Rahiman K mujiburrahimank@maxlinear.com
+---
+ hostapd/ctrl_iface.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/hostapd/ctrl_iface.c b/hostapd/ctrl_iface.c
+index 84d2e83e4..23ede0c5a 100644
+--- a/hostapd/ctrl_iface.c
++++ b/hostapd/ctrl_iface.c
+@@ -5359,7 +5359,7 @@ static void hostapd_global_ctrl_iface_receive(int sock, void *eloop_ctx,
+ 			reply_len = -1;
+ 	} else if (os_strncmp(buf, "INTERFACES", 10) == 0) {
+ 		reply_len = hostapd_global_ctrl_iface_interfaces(
+-			interfaces, buf + 10, reply, sizeof(buffer));
++			interfaces, buf + 10, reply, reply_size);
+ 	} else if (os_strcmp(buf, "TERMINATE") == 0) {
+ 		eloop_terminate();
+ 	} else {
+-- 
+2.43.0
+

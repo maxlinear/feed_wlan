@@ -1,0 +1,27 @@
+From 67edd4260254703516de5c86a16a06f099124bb5 Mon Sep 17 00:00:00 2001
+From: Juliusz Sosinowicz <juliusz@wolfssl.com>
+Date: Thu, 4 Apr 2024 20:16:17 +0200
+Subject: [PATCH] tests: ap_wpa2_eap_fast_cipher_suites: Allow wolfSSL to skip
+ RC4 test
+
+Signed-off-by: Juliusz Sosinowicz <juliusz@wolfssl.com>
+---
+ tests/hwsim/test_ap_eap.py | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/tests/hwsim/test_ap_eap.py b/tests/hwsim/test_ap_eap.py
+index a74011e14..ae67b870a 100644
+--- a/tests/hwsim/test_ap_eap.py
++++ b/tests/hwsim/test_ap_eap.py
+@@ -4340,7 +4340,7 @@ def test_ap_wpa2_eap_fast_cipher_suites(dev, apdev):
+             if cipher == "RC4-SHA" and \
+                ("Could not select EAP method" in str(e) or \
+                 "EAP failed" in str(e)):
+-                if "run=OpenSSL" in tls:
++                if "run=OpenSSL" in tls or "wolfSSL" in tls:
+                     logger.info("Allow failure due to missing TLS library support")
+                     dev[0].request("REMOVE_NETWORK all")
+                     dev[0].wait_disconnected()
+-- 
+2.43.0
+

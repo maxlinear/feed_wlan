@@ -1,0 +1,135 @@
+From 222d4439505395ed9cf5570837814be966367e88 Mon Sep 17 00:00:00 2001
+From: Janusz Dziedzic <janusz.dziedzic@gmail.com>
+Date: Thu, 30 May 2024 21:19:04 +0200
+Subject: [PATCH] tests: Use remote_cli in remote testing
+
+This allows to use remote wpa_cli/hostapd_cli for:
+ - hwsim wrapper
+ - example test case
+
+For example,
+ modprobe mac80211_hwsim radios=8
+ ./run-tests.py -d hwsim0 -d hwsim1 -d hwsim2 -r hwsim3 -r hwsim4 -h ap_wpa2_psk -v
+
+Signed-off-by: Janusz Dziedzic <janusz.dziedzic@gmail.com>
+---
+ tests/remote/config.py        |  1 +
+ tests/remote/hwsim_wrapper.py |  6 ++++--
+ tests/remote/rutils.py        | 36 +++++++++++++++++++++++++++++++++--
+ tests/remote/test_example.py  |  5 +++--
+ 4 files changed, 42 insertions(+), 6 deletions(-)
+
+diff --git a/tests/remote/config.py b/tests/remote/config.py
+index 1ac362ead..f051ddcd8 100644
+--- a/tests/remote/config.py
++++ b/tests/remote/config.py
+@@ -24,6 +24,7 @@ setup_params = {"setup_hw" : "./tests/setup_hw.sh",
+                 "wlantest_cli" : "./tests/wlantest_cli",
+                 "country" : "US",
+                 "log_dir" : "/tmp/",
++                "remote_cli" : True,
+                 "ipv4_test_net" : "192.168.12.0",
+                 "trace_start" : "./tests/trace_start.sh",
+                 "trace_stop" : "./tests/trace_stop.sh",
+diff --git a/tests/remote/hwsim_wrapper.py b/tests/remote/hwsim_wrapper.py
+index 38f927f6e..6f786c270 100644
+--- a/tests/remote/hwsim_wrapper.py
++++ b/tests/remote/hwsim_wrapper.py
+@@ -58,8 +58,10 @@ def run_hwsim_test(devices, setup_params, refs, duts, monitors, hwsim_test):
+         # run hostapd/wpa_supplicant
+         for ref_host in ref_hosts:
+             rutils.run_wpasupplicant(ref_host, setup_params)
+-            wpas = WpaSupplicant(hostname=ref_host.host, global_iface="udp",
+-                                 global_port=ref_host.port)
++            wpas = WpaSupplicant(hostname=ref_host.host,
++                                 global_iface=ref_host.global_iface,
++                                 global_port=ref_host.port,
++                                 remote_cli=ref_host.remote_cli)
+             wpas.interface_add(ref_host.ifname)
+             dev.append(wpas)
+         for dut_host in dut_hosts:
+diff --git a/tests/remote/rutils.py b/tests/remote/rutils.py
+index 690299112..8a0e6f921 100644
+--- a/tests/remote/rutils.py
++++ b/tests/remote/rutils.py
+@@ -106,6 +106,7 @@ def perf_start_stop(host, setup_params, start):
+ # hostapd/wpa_supplicant helpers
+ def run_hostapd(host, setup_params):
+     log_file = None
++    remote_cli = False
+     try:
+         tc_name = setup_params['tc_name']
+         log_dir = setup_params['log_dir']
+@@ -118,12 +119,28 @@ def run_hostapd(host, setup_params):
+     if log_file:
+         host.add_log(log_file)
+     pidfile = setup_params['log_dir'] + "hostapd_" + host.ifname + "_" + setup_params['tc_name'] + ".pid"
+-    status, buf = host.execute([setup_params['hostapd'], "-B", "-ddt", "-g", "udp:" + host.port, "-P", pidfile, log])
++
++    if 'remote_cli' in setup_params:
++        remote_cli = setup_params['remote_cli']
++
++    if remote_cli:
++        ctrl_global_path = '/var/run/hapd-global' + '-' + host.ifname
++        host.global_iface = ctrl_global_path
++        host.dev['remote_cli'] = True
++        host.dev['global_ctrl_override'] = ctrl_global_path
++    else:
++        ctrl_global_path = "udp:" + host.port
++        host.global_iface = "udp"
++        host.dev['remote_cli'] = False
++
++    status, buf = host.execute([setup_params['hostapd'], "-B", "-ddt", "-g",
++                                ctrl_global_path, "-P", pidfile, log])
+     if status != 0:
+         raise Exception("Could not run hostapd: " + buf)
+ 
+ def run_wpasupplicant(host, setup_params):
+     log_file = None
++    remote_cli = False
+     try:
+         tc_name = setup_params['tc_name']
+         log_dir = setup_params['log_dir']
+@@ -136,7 +153,22 @@ def run_wpasupplicant(host, setup_params):
+     if log_file:
+         host.add_log(log_file)
+     pidfile = setup_params['log_dir'] + "wpa_supplicant_" + host.ifname + "_" + setup_params['tc_name'] + ".pid"
+-    status, buf = host.execute([setup_params['wpa_supplicant'], "-B", "-ddt", "-g", "udp:" + host.port, "-P", pidfile, log])
++
++    if 'remote_cli' in setup_params:
++        remote_cli = setup_params['remote_cli']
++
++    if remote_cli:
++        ctrl_global_path = '/var/run/wpas-global' + "-" + host.ifname
++        host.global_iface = ctrl_global_path
++        host.remote_cli = True
++
++    if not remote_cli:
++        ctrl_global_path = "udp:" + host.port
++        host.global_iface = "udp"
++        host.remote_cli = False
++
++    status, buf = host.execute([setup_params['wpa_supplicant'], "-B", "-ddt",
++                                "-g", ctrl_global_path, "-P", pidfile, log])
+     if status != 0:
+         raise Exception("Could not run wpa_supplicant: " + buf)
+ 
+diff --git a/tests/remote/test_example.py b/tests/remote/test_example.py
+index 1550665c3..65bc01bc4 100644
+--- a/tests/remote/test_example.py
++++ b/tests/remote/test_example.py
+@@ -58,8 +58,9 @@ def test_example(devices, setup_params, refs, duts, monitors):
+         # connect to hostapd/wpa_supplicant UDP CTRL iface
+         hapd = hostapd.add_ap(ap.dev, ap_params)
+         freq = hapd.get_status_field("freq")
+-        wpas = WpaSupplicant(hostname=sta.host, global_iface="udp",
+-                             global_port=sta.port)
++
++        wpas = WpaSupplicant(hostname=sta.host, global_iface=sta.global_iface,
++                             global_port=sta.port, remote_cli=sta.remote_cli)
+         wpas.interface_add(sta.ifname)
+ 
+         # setup standalone monitor based on hapd; could be multi interface
+-- 
+2.43.0
+

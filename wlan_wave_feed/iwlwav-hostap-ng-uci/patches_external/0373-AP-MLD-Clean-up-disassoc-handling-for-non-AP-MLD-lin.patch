@@ -1,0 +1,37 @@
+From d084ef36b3e9de5f2c34fe89a2db59ef52ea2652 Mon Sep 17 00:00:00 2001
+From: Jouni Malinen <quic_jouni@quicinc.com>
+Date: Wed, 28 Feb 2024 22:16:09 +0200
+Subject: [PATCH] AP MLD: Clean up disassoc handling for non-AP MLD link
+ validity check
+
+The check for the non-AP MLD link being valid can be done one level
+outside the loop that tries to find a matching AP link.
+
+Signed-off-by: Jouni Malinen <quic_jouni@quicinc.com>
+---
+ src/ap/sta_info.c | 6 +++---
+ 1 file changed, 3 insertions(+), 3 deletions(-)
+
+diff --git a/src/ap/sta_info.c b/src/ap/sta_info.c
+index 042a5a286..9de5b0a1c 100644
+--- a/src/ap/sta_info.c
++++ b/src/ap/sta_info.c
+@@ -970,12 +970,12 @@ static bool ap_sta_ml_disconnect(struct hostapd_data *hapd,
+ 	interfaces = assoc_hapd->iface->interfaces;
+ 
+ 	for (link_id = 0; link_id < MAX_NUM_MLD_LINKS; link_id++) {
++		if (!assoc_sta->mld_info.links[link_id].valid)
++			continue;
++
+ 		for (i = 0; i < interfaces->count; i++) {
+ 			struct sta_info *tmp_sta;
+ 
+-			if (!assoc_sta->mld_info.links[link_id].valid)
+-				continue;
+-
+ 			tmp_hapd = interfaces->iface[i]->bss[0];
+ 
+ 			if (!tmp_hapd->conf->mld_ap ||
+-- 
+2.43.0
+

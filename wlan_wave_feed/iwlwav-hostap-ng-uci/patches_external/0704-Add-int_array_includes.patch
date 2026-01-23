@@ -1,0 +1,52 @@
+From 5f83f4db0b40f12ac5321fe1360a5af3e9ee6f35 Mon Sep 17 00:00:00 2001
+From: Andrei Otcheretianski <andrei.otcheretianski@intel.com>
+Date: Wed, 8 May 2024 16:42:12 +0300
+Subject: [PATCH] Add int_array_includes()
+
+This is a convenient helper function for using int_array instances.
+
+Signed-off-by: Andrei Otcheretianski <andrei.otcheretianski@intel.com>
+---
+ src/utils/common.c | 13 +++++++++++++
+ src/utils/common.h |  1 +
+ 2 files changed, 14 insertions(+)
+
+diff --git a/src/utils/common.c b/src/utils/common.c
+index 6acfcbd89..d62dec721 100644
+--- a/src/utils/common.c
++++ b/src/utils/common.c
+@@ -990,6 +990,19 @@ void int_array_add_unique(int **res, int a)
+ }
+ 
+ 
++bool int_array_includes(int *arr, int val)
++{
++	int i;
++
++	for (i = 0; arr && arr[i]; i++) {
++		if (val == arr[i])
++			return true;
++	}
++
++	return false;
++}
++
++
+ void str_clear_free(char *str)
+ {
+ 	if (str) {
+diff --git a/src/utils/common.h b/src/utils/common.h
+index 7d99b2919..dc2177537 100644
+--- a/src/utils/common.h
++++ b/src/utils/common.h
+@@ -577,6 +577,7 @@ size_t int_array_len(const int *a);
+ void int_array_concat(int **res, const int *a);
+ void int_array_sort_unique(int *a);
+ void int_array_add_unique(int **res, int a);
++bool int_array_includes(int *arr, int val);
+ 
+ #define ARRAY_SIZE(a) (sizeof(a) / sizeof((a)[0]))
+ 
+-- 
+2.43.0
+

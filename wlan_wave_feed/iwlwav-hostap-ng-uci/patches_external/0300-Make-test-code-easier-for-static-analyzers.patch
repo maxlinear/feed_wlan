@@ -1,0 +1,30 @@
+From 5ae8838a06565be2127284f238fb5645e1e5a205 Mon Sep 17 00:00:00 2001
+From: Jouni Malinen <quic_jouni@quicinc.com>
+Date: Mon, 22 Jan 2024 22:02:39 +0200
+Subject: [PATCH] Make test code easier for static analyzers
+
+The previous os_strncmp() calls have already verified that there is a
+space in the string, so this os_strchr() call cannot really return NULL.
+Anyway, make this easier for static analyzers to understand.
+
+Signed-off-by: Jouni Malinen <quic_jouni@quicinc.com>
+---
+ wpa_supplicant/ctrl_iface.c | 2 ++
+ 1 file changed, 2 insertions(+)
+
+diff --git a/wpa_supplicant/ctrl_iface.c b/wpa_supplicant/ctrl_iface.c
+index 92b46a897..f3a31160f 100644
+--- a/wpa_supplicant/ctrl_iface.c
++++ b/wpa_supplicant/ctrl_iface.c
+@@ -11235,6 +11235,8 @@ static int wpas_ctrl_iface_pasn_driver(struct wpa_supplicant *wpa_s,
+ 		return -1;
+ 
+ 	pos = os_strchr(pos, ' ');
++	if (!pos)
++		return -1;
+ 	pos++;
+ 	while (hwaddr_aton(pos, addr) == 0) {
+ 		struct pasn_peer *peer;
+-- 
+2.43.0
+

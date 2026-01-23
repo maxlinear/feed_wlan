@@ -1,0 +1,93 @@
+From 71b443a9847a39f220fc4262dbd7cce73a176b84 Mon Sep 17 00:00:00 2001
+From: Shivani Baranwal <quic_shivbara@quicinc.com>
+Date: Tue, 2 Jul 2024 00:41:48 +0530
+Subject: [PATCH] P2P2: Indication on whether P2P2 is used with P2P_INVITE
+
+Add a new parameter "p2p2" to the P2P_INVITE control interface
+command. This can be used to indicate that the operation is for a P2P2
+group.
+
+Signed-off-by: Shivani Baranwal <quic_shivbara@quicinc.com>
+---
+ wpa_supplicant/ctrl_iface.c                 | 5 ++++-
+ wpa_supplicant/dbus/dbus_new_handlers_p2p.c | 2 +-
+ wpa_supplicant/p2p_supplicant.c             | 3 ++-
+ wpa_supplicant/p2p_supplicant.h             | 3 ++-
+ 4 files changed, 9 insertions(+), 4 deletions(-)
+
+diff --git a/wpa_supplicant/ctrl_iface.c b/wpa_supplicant/ctrl_iface.c
+index 03ee107c3..074d28a17 100644
+--- a/wpa_supplicant/ctrl_iface.c
++++ b/wpa_supplicant/ctrl_iface.c
+@@ -7075,6 +7075,7 @@ static int p2p_ctrl_invite_persistent(struct wpa_supplicant *wpa_s, char *cmd)
+ 	int ht40, vht, he, max_oper_chwidth, chwidth = 0, freq2 = 0;
+ 	int edmg;
+ 	bool allow_6ghz;
++	bool p2p2;
+ 
+ 	id = atoi(cmd);
+ 	pos = os_strstr(cmd, " peer=");
+@@ -7131,9 +7132,11 @@ static int p2p_ctrl_invite_persistent(struct wpa_supplicant *wpa_s, char *cmd)
+ 	if (allow_6ghz && chwidth == 40)
+ 		max_oper_chwidth = CONF_OPER_CHWIDTH_40MHZ_6GHZ;
+ 
++	p2p2 = os_strstr(cmd, " p2p2") != NULL;
++
+ 	return wpas_p2p_invite(wpa_s, _peer, ssid, NULL, freq, freq2, ht40, vht,
+ 			       max_oper_chwidth, pref_freq, he, edmg,
+-			       allow_6ghz);
++			       allow_6ghz, p2p2);
+ }
+ 
+ 
+diff --git a/wpa_supplicant/dbus/dbus_new_handlers_p2p.c b/wpa_supplicant/dbus/dbus_new_handlers_p2p.c
+index 65bd478c1..c3bd04b64 100644
+--- a/wpa_supplicant/dbus/dbus_new_handlers_p2p.c
++++ b/wpa_supplicant/dbus/dbus_new_handlers_p2p.c
+@@ -866,7 +866,7 @@ DBusMessage * wpas_dbus_handler_p2p_invite(DBusMessage *message,
+ 			goto err;
+ 
+ 		if (wpas_p2p_invite(wpa_s, peer_addr, ssid, NULL, 0, 0, 0, 0, 0,
+-				    0, 0, 0, false) < 0) {
++				    0, 0, 0, false, false) < 0) {
+ 			reply = wpas_dbus_error_unknown_error(
+ 				message,
+ 				"Failed to reinvoke a persistent group");
+diff --git a/wpa_supplicant/p2p_supplicant.c b/wpa_supplicant/p2p_supplicant.c
+index 7b00c88c1..faee2f0a9 100644
+--- a/wpa_supplicant/p2p_supplicant.c
++++ b/wpa_supplicant/p2p_supplicant.c
+@@ -8060,7 +8060,7 @@ int wpas_p2p_reject(struct wpa_supplicant *wpa_s, const u8 *addr)
+ int wpas_p2p_invite(struct wpa_supplicant *wpa_s, const u8 *peer_addr,
+ 		    struct wpa_ssid *ssid, const u8 *go_dev_addr, int freq,
+ 		    int vht_center_freq2, int ht40, int vht, int max_chwidth,
+-		    int pref_freq, int he, int edmg, bool allow_6ghz)
++		    int pref_freq, int he, int edmg, bool allow_6ghz, bool p2p2)
+ {
+ 	enum p2p_invite_role role;
+ 	u8 *bssid = NULL;
+@@ -8086,6 +8086,7 @@ int wpas_p2p_invite(struct wpa_supplicant *wpa_s, const u8 *peer_addr,
+ 	wpa_s->p2p_go_max_oper_chwidth = max_chwidth;
+ 	wpa_s->p2p_go_vht_center_freq2 = vht_center_freq2;
+ 	wpa_s->p2p_go_edmg = !!edmg;
++	wpa_s->p2p2 = p2p2;
+ 	if (ssid->mode == WPAS_MODE_P2P_GO) {
+ 		role = P2P_INVITE_ROLE_GO;
+ 		if (peer_addr == NULL) {
+diff --git a/wpa_supplicant/p2p_supplicant.h b/wpa_supplicant/p2p_supplicant.h
+index 7a07ab0b6..d87442916 100644
+--- a/wpa_supplicant/p2p_supplicant.h
++++ b/wpa_supplicant/p2p_supplicant.h
+@@ -122,7 +122,8 @@ int wpas_p2p_reject(struct wpa_supplicant *wpa_s, const u8 *addr);
+ int wpas_p2p_invite(struct wpa_supplicant *wpa_s, const u8 *peer_addr,
+ 		    struct wpa_ssid *ssid, const u8 *go_dev_addr, int freq,
+ 		    int vht_center_freq2, int ht40, int vht, int max_chwidth,
+-		    int pref_freq, int he, int edmg, bool allow_6ghz);
++		    int pref_freq, int he, int edmg, bool allow_6ghz,
++		    bool p2p2);
+ int wpas_p2p_invite_group(struct wpa_supplicant *wpa_s, const char *ifname,
+ 			  const u8 *peer_addr, const u8 *go_dev_addr,
+ 			  bool allow_6ghz);
+-- 
+2.43.0
+

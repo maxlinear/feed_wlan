@@ -1,0 +1,94 @@
+From 319c4b4e9b85f6ac40b1a33e94fc4f1504bc4736 Mon Sep 17 00:00:00 2001
+From: Shivani Baranwal <quic_shivbara@quicinc.com>
+Date: Mon, 5 Aug 2024 03:42:08 +0530
+Subject: [PATCH] P2P2: Configure PMK/PMKID to the driver on the GO
+
+In P2P2, the PMKSA is generated through the PASN frame exchange during
+the pairing process. Once pairing and group negotiation are successful,
+the P2P Client initiates a connection with the P2P GO using the PMKID
+derived during the pairing process. In the case of AP SME offload to the
+driver, the driver handles the Association Request and Response frames
+and needs to be able to determine whether the provided PMKID is known.
+Therefore, configure the PMKID to the driver on the P2P GO to allow
+association with the P2P Client.
+
+Signed-off-by: Shivani Baranwal <quic_shivbara@quicinc.com>
+---
+ src/ap/ap_drv_ops.c             | 24 ++++++++++++++++++++++++
+ src/ap/ap_drv_ops.h             |  5 +++++
+ wpa_supplicant/p2p_supplicant.c |  6 ++++++
+ 3 files changed, 35 insertions(+)
+
+diff --git a/src/ap/ap_drv_ops.c b/src/ap/ap_drv_ops.c
+index dc1f7480c..6fa5f2779 100644
+--- a/src/ap/ap_drv_ops.c
++++ b/src/ap/ap_drv_ops.c
+@@ -1289,3 +1289,27 @@ hostapd_get_multi_hw_info(struct hostapd_data *hapd,
+ 
+ 	return hapd->driver->get_multi_hw_info(hapd->drv_priv, num_multi_hws);
+ }
++
++
++int hostapd_drv_add_pmkid(struct hostapd_data *hapd,
++			  struct wpa_pmkid_params *params)
++{
++	if (!hapd->driver || !hapd->driver->add_pmkid || !hapd->drv_priv)
++		return 0;
++	return hapd->driver->add_pmkid(hapd->drv_priv, params);
++}
++
++
++int hostapd_add_pmkid(struct hostapd_data *hapd, const u8 *bssid, const u8 *pmk,
++		      size_t pmk_len, const u8 *pmkid, int akmp)
++{
++	struct wpa_pmkid_params params;
++
++	os_memset(&params, 0, sizeof(params));
++	params.bssid = bssid;
++	params.pmkid = pmkid;
++	params.pmk = pmk;
++	params.pmk_len = pmk_len;
++
++	return hostapd_drv_add_pmkid(hapd, &params);
++}
+diff --git a/src/ap/ap_drv_ops.h b/src/ap/ap_drv_ops.h
+index 34f7fb77c..7b5525347 100644
+--- a/src/ap/ap_drv_ops.h
++++ b/src/ap/ap_drv_ops.h
+@@ -487,4 +487,9 @@ struct hostapd_multi_hw_info *
+ hostapd_get_multi_hw_info(struct hostapd_data *hapd,
+ 			  unsigned int *num_multi_hws);
+ 
++int hostapd_drv_add_pmkid(struct hostapd_data *hapd,
++			  struct wpa_pmkid_params *params);
++int hostapd_add_pmkid(struct hostapd_data *hapd, const u8 *bssid, const u8 *pmk,
++		      size_t pmk_len, const u8 *pmkid, int akmp);;
++
+ #endif /* AP_DRV_OPS */
+diff --git a/wpa_supplicant/p2p_supplicant.c b/wpa_supplicant/p2p_supplicant.c
+index 0f3512d6f..60223926d 100644
+--- a/wpa_supplicant/p2p_supplicant.c
++++ b/wpa_supplicant/p2p_supplicant.c
+@@ -2092,6 +2092,9 @@ static void p2p_go_configured(void *ctx, void *data)
+ 				       params->peer_device_addr,
+ 				       params->pmk, params->pmk_len,
+ 				       params->pmkid, WPA_KEY_MGMT_SAE);
++		hostapd_add_pmkid(hapd, params->peer_device_addr,
++				  params->pmk, params->pmk_len,
++				  params->pmkid, WPA_KEY_MGMT_SAE);
+ 	}
+ 
+ 	p2p_go_save_group_common_freqs(wpa_s, params);
+@@ -2733,6 +2736,9 @@ static void wpas_set_go_security_config(void *ctx,
+ 				       params->peer_device_addr,
+ 				       params->pmk, params->pmk_len,
+ 				       params->pmkid, WPA_KEY_MGMT_SAE);
++		hostapd_add_pmkid(hapd, params->peer_device_addr,
++				  params->pmk, params->pmk_len,
++				  params->pmkid, WPA_KEY_MGMT_SAE);
+ 	}
+ }
+ 
+-- 
+2.43.0
+

@@ -1,0 +1,33 @@
+From 714734135e42f3b035638fb5611085fb8af0eb10 Mon Sep 17 00:00:00 2001
+From: Jouni Malinen <j@w1.fi>
+Date: Sun, 23 Feb 2025 11:36:03 +0200
+Subject: [PATCH] Check network configuration availability before use in MAC
+ randomization
+
+wpas_update_random_addr_disassoc() could call wpas_update_random_addr()
+with ssid == NULL, so need to be more careful here when comparing the
+pregenerated address.
+
+Fixes: bdbb6e0035ae ("wpa_supplicant: Handle MAC address randomization changes for same ESS")
+Signed-off-by: Jouni Malinen <j@w1.fi>
+---
+ wpa_supplicant/wpa_supplicant.c | 3 ++-
+ 1 file changed, 2 insertions(+), 1 deletion(-)
+
+diff --git a/wpa_supplicant/wpa_supplicant.c b/wpa_supplicant/wpa_supplicant.c
+index 31e6bf97a..e54ad8bea 100644
+--- a/wpa_supplicant/wpa_supplicant.c
++++ b/wpa_supplicant/wpa_supplicant.c
+@@ -2557,7 +2557,8 @@ int wpas_update_random_addr(struct wpa_supplicant *wpa_s,
+ 		if (style == WPAS_MAC_ADDR_STYLE_DEDICATED_PER_ESS) {
+ 			/* Pregenerated addresses do not expire but their value
+ 			 * might have changed, so let's check that. */
+-			if (ether_addr_equal(wpa_s->own_addr, ssid->mac_value))
++			if (ssid &&
++			    ether_addr_equal(wpa_s->own_addr, ssid->mac_value))
+ 				return 0;
+ 		} else if ((wpa_s->last_mac_addr_change.sec != 0 ||
+ 			    wpa_s->last_mac_addr_change.usec != 0) &&
+-- 
+2.43.0
+

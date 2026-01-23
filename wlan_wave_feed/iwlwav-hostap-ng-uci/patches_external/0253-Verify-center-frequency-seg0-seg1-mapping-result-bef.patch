@@ -1,0 +1,40 @@
+From 38719f113e0cc1ae9f8ccb0c9793b935b054a6f8 Mon Sep 17 00:00:00 2001
+From: Jouni Malinen <j@w1.fi>
+Date: Sun, 14 Jan 2024 20:21:26 +0200
+Subject: [PATCH] Verify center frequency seg0/seg1 mapping result before use
+
+Handle the center frequency to channel mapping more cleanly by skipping
+the cases where the center frequencies are not set and verifying that
+the mapping succeeds when they are set.
+
+Signed-off-by: Jouni Malinen <j@w1.fi>
+---
+ src/ap/hostapd.c | 12 ++++++++----
+ 1 file changed, 8 insertions(+), 4 deletions(-)
+
+diff --git a/src/ap/hostapd.c b/src/ap/hostapd.c
+index d6e3e4ede..c2cb8afda 100644
+--- a/src/ap/hostapd.c
++++ b/src/ap/hostapd.c
+@@ -3907,10 +3907,14 @@ static int hostapd_change_config_freq(struct hostapd_data *hapd,
+ 	conf->ieee80211n = params->ht_enabled;
+ 	conf->ieee80211ac = params->vht_enabled;
+ 	conf->secondary_channel = params->sec_channel_offset;
+-	ieee80211_freq_to_chan(params->center_freq1,
+-			       &seg0);
+-	ieee80211_freq_to_chan(params->center_freq2,
+-			       &seg1);
++	if (params->center_freq1 &&
++	    ieee80211_freq_to_chan(params->center_freq1, &seg0) ==
++	    NUM_HOSTAPD_MODES)
++		return -1;
++	if (params->center_freq2 &&
++	    ieee80211_freq_to_chan(params->center_freq2,
++				   &seg1) == NUM_HOSTAPD_MODES)
++		return -1;
+ 	hostapd_set_oper_centr_freq_seg0_idx(conf, seg0);
+ 	hostapd_set_oper_centr_freq_seg1_idx(conf, seg1);
+ 
+-- 
+2.43.0
+

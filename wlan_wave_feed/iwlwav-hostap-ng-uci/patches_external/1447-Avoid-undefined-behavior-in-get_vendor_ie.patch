@@ -1,0 +1,32 @@
+From 616d85a42d33f8d114e13ff833b510b3f88cd310 Mon Sep 17 00:00:00 2001
+From: Jouni Malinen <quic_jouni@quicinc.com>
+Date: Tue, 25 Feb 2025 23:19:30 +0200
+Subject: [PATCH] Avoid undefined behavior in get_vendor_ie()
+
+This might be called with ies == NULL and for_each_element_id() would
+try to calculate NULL + 0 in that case. That would be undefined
+behavior. Avoid that by checking for ies == NULL just like the other
+get_ie*() functions already did.
+
+Signed-off-by: Jouni Malinen <quic_jouni@quicinc.com>
+---
+ src/common/ieee802_11_common.c | 3 +++
+ 1 file changed, 3 insertions(+)
+
+diff --git a/src/common/ieee802_11_common.c b/src/common/ieee802_11_common.c
+index 14750b481..1d28437fe 100644
+--- a/src/common/ieee802_11_common.c
++++ b/src/common/ieee802_11_common.c
+@@ -2570,6 +2570,9 @@ const u8 * get_vendor_ie(const u8 *ies, size_t len, u32 vendor_type)
+ {
+ 	const struct element *elem;
+ 
++	if (!ies)
++		return NULL;
++
+ 	for_each_element_id(elem, WLAN_EID_VENDOR_SPECIFIC, ies, len) {
+ 		if (elem->datalen >= 4 &&
+ 		    vendor_type == WPA_GET_BE32(elem->data))
+-- 
+2.43.0
+

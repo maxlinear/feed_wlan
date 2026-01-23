@@ -1,0 +1,31 @@
+From 39fefeada621ecc1e229c6993b10571d7e8da64a Mon Sep 17 00:00:00 2001
+From: Ilan Peer <ilan.peer@intel.com>
+Date: Mon, 8 Apr 2024 16:06:57 +0300
+Subject: [PATCH] SME: MLD: Deauthenticate when failing to parse ML element
+
+If parsing the basic ML element in the Authenticate frame fails,
+instead of only disassociating, completely deauthenticate so all
+state machines would be in a consistent state.
+
+Signed-off-by: Ilan Peer <ilan.peer@intel.com>
+---
+ wpa_supplicant/sme.c | 3 ++-
+ 1 file changed, 2 insertions(+), 1 deletion(-)
+
+diff --git a/wpa_supplicant/sme.c b/wpa_supplicant/sme.c
+index f08184f98..0115caf8c 100644
+--- a/wpa_supplicant/sme.c
++++ b/wpa_supplicant/sme.c
+@@ -2156,7 +2156,8 @@ void sme_event_auth(struct wpa_supplicant *wpa_s, union wpa_event_data *data)
+ 			MAC2STR(wpa_s->pending_bssid),
+ 			WLAN_REASON_DEAUTH_LEAVING);
+ 		wpas_connection_failed(wpa_s, wpa_s->pending_bssid, NULL);
+-		wpa_supplicant_mark_disassoc(wpa_s);
++		wpa_supplicant_deauthenticate(wpa_s,
++					      WLAN_REASON_DEAUTH_LEAVING);
+ 		return;
+ 	}
+ 
+-- 
+2.43.0
+

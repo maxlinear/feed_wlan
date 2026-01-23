@@ -1,0 +1,47 @@
+From a58a0c592e20978b834291f15dcfeba1ef49332f Mon Sep 17 00:00:00 2001
+From: Jouni Malinen <quic_jouni@quicinc.com>
+Date: Sat, 8 Feb 2025 18:00:06 +0200
+Subject: [PATCH] MLD: Fix Multi-Link element parsing for association failures
+
+The Common Info and STA Info fields are supposed to be extensible and as
+such, their length fields need to be verified to be large enough, but if
+there are unknown extra fields after the known fields, those need to be
+silently ignored instead of rejecting the element.
+
+Fixes: 5af986c75af4 ("MLD: Also mark links as failed after association failure")
+Signed-off-by: Jouni Malinen <quic_jouni@quicinc.com>
+---
+ wpa_supplicant/events.c | 5 +++--
+ 1 file changed, 3 insertions(+), 2 deletions(-)
+
+diff --git a/wpa_supplicant/events.c b/wpa_supplicant/events.c
+index 3ae17ace4..a6b25a86f 100644
+--- a/wpa_supplicant/events.c
++++ b/wpa_supplicant/events.c
+@@ -3991,7 +3991,7 @@ static unsigned int wpas_ml_parse_assoc(struct wpa_supplicant *wpa_s,
+ 	}
+ 
+ 	common_info = (struct eht_ml_basic_common_info *) ml->variable;
+-	if (common_info->len != expected_common_info_len) {
++	if (common_info->len < expected_common_info_len) {
+ 		wpa_printf(MSG_DEBUG,
+ 			   "MLD: Invalid common info len=%u. expected=%u",
+ 			   common_info->len, expected_common_info_len);
+@@ -4132,12 +4132,13 @@ static unsigned int wpas_ml_parse_assoc(struct wpa_supplicant *wpa_s,
+ 		sta_info_len = 1 + ETH_ALEN + 8 + 2 + 2 + 1 + nstr_bitmap_len;
+ 		if (sta_info_len > ml_len || sta_info_len > end - pos ||
+ 		    sta_info_len + 2 > sub_elem_len ||
+-		    sta_info_len != *pos) {
++		    sta_info_len > *pos) {
+ 			wpa_printf(MSG_DEBUG,
+ 				   "MLD: Invalid STA info len=%u, len=%u",
+ 				   sta_info_len, *pos);
+ 			goto out;
+ 		}
++		sta_info_len = *pos;
+ 
+ 		/* Get the link address */
+ 		wpa_printf(MSG_DEBUG,
+-- 
+2.43.0
+

@@ -1,0 +1,129 @@
+From 0d71e041b5b18f90328e841a0d112702ac1fd127 Mon Sep 17 00:00:00 2001
+From: Chenming Huang <quic_chenhuan@quicinc.com>
+Date: Wed, 26 Feb 2025 20:02:23 +0530
+Subject: [PATCH] AP MLD: Store OWE/FILS PMKSA into the MLD-level PMKSA cache
+ for MLO
+
+For an ML association using OWE or FILS, store the PMKSA into the
+MLD-level PMKSA cache instead of the per-link one.
+
+Signed-off-by: Chenming Huang <quic_chenhuan@quicinc.com>
+---
+ src/ap/ctrl_iface_ap.c |  2 +-
+ src/ap/dpp_hostapd.c   |  4 ++--
+ src/ap/ieee802_11.c    |  5 +++--
+ src/ap/wpa_auth.c      | 18 ++++++++++++++----
+ src/ap/wpa_auth.h      |  3 ++-
+ 5 files changed, 22 insertions(+), 10 deletions(-)
+
+diff --git a/src/ap/ctrl_iface_ap.c b/src/ap/ctrl_iface_ap.c
+index 4a51e6333..88ec28f26 100644
+--- a/src/ap/ctrl_iface_ap.c
++++ b/src/ap/ctrl_iface_ap.c
+@@ -1234,7 +1234,7 @@ int hostapd_ctrl_iface_pmksa_add(struct hostapd_data *hapd, char *cmd)
+ 		return -1;
+ 
+ 	return wpa_auth_pmksa_add2(hapd->wpa_auth, spa, pmk, pmk_len,
+-				   pmkid, expiration, akmp, NULL);
++				   pmkid, expiration, akmp, NULL, false);
+ }
+ 
+ 
+diff --git a/src/ap/dpp_hostapd.c b/src/ap/dpp_hostapd.c
+index 3725a294d..a5853f8d3 100644
+--- a/src/ap/dpp_hostapd.c
++++ b/src/ap/dpp_hostapd.c
+@@ -2160,7 +2160,7 @@ static void hostapd_dpp_rx_peer_disc_req(struct hostapd_data *hapd,
+ 
+ 	if (wpa_auth_pmksa_add2(hapd->wpa_auth, src, intro.pmk, intro.pmk_len,
+ 				intro.pmkid, expiration,
+-				WPA_KEY_MGMT_DPP, pkhash) < 0) {
++				WPA_KEY_MGMT_DPP, pkhash, false) < 0) {
+ 		wpa_printf(MSG_ERROR, "DPP: Failed to add PMKSA cache entry");
+ 		goto done;
+ 	}
+@@ -2934,7 +2934,7 @@ hostapd_dpp_rx_priv_peer_intro_update(struct hostapd_data *hapd, const u8 *src,
+ 
+ 	if (wpa_auth_pmksa_add2(hapd->wpa_auth, src, intro.pmk, intro.pmk_len,
+ 				intro.pmkid, expiration,
+-				WPA_KEY_MGMT_DPP, pkhash) < 0) {
++				WPA_KEY_MGMT_DPP, pkhash, false) < 0) {
+ 		wpa_printf(MSG_ERROR, "DPP: Failed to add PMKSA cache entry");
+ 		goto done;
+ 	}
+diff --git a/src/ap/ieee802_11.c b/src/ap/ieee802_11.c
+index 49fb2820e..172a9a12a 100644
+--- a/src/ap/ieee802_11.c
++++ b/src/ap/ieee802_11.c
+@@ -2402,7 +2402,7 @@ prepare_auth_resp_fils(struct hostapd_data *hapd,
+ 				    sta->fils_erp_pmkid,
+ 				    session_timeout,
+ 				    wpa_auth_sta_key_mgmt(sta->wpa_sm),
+-				    NULL) < 0) {
++				    NULL, ap_sta_is_mld(hapd, sta)) < 0) {
+ 				wpa_printf(MSG_ERROR,
+ 					   "FILS: Failed to add PMKSA cache entry based on ERP");
+ 			}
+@@ -3979,7 +3979,8 @@ static u16 owe_process_assoc_req(struct hostapd_data *hapd,
+ 	wpa_hexdump_key(MSG_DEBUG, "OWE: PMK", sta->owe_pmk, sta->owe_pmk_len);
+ 	wpa_hexdump(MSG_DEBUG, "OWE: PMKID", pmkid, PMKID_LEN);
+ 	wpa_auth_pmksa_add2(hapd->wpa_auth, sta->addr, sta->owe_pmk,
+-			    sta->owe_pmk_len, pmkid, 0, WPA_KEY_MGMT_OWE, NULL);
++			    sta->owe_pmk_len, pmkid, 0, WPA_KEY_MGMT_OWE,
++			    NULL, ap_sta_is_mld(hapd, sta));
+ 
+ 	return WLAN_STATUS_SUCCESS;
+ }
+diff --git a/src/ap/wpa_auth.c b/src/ap/wpa_auth.c
+index 4a8218ab6..48c12320b 100644
+--- a/src/ap/wpa_auth.c
++++ b/src/ap/wpa_auth.c
+@@ -6571,17 +6571,27 @@ void wpa_auth_add_sae_pmkid(struct wpa_state_machine *sm, const u8 *pmkid)
+ 
+ int wpa_auth_pmksa_add2(struct wpa_authenticator *wpa_auth, const u8 *addr,
+ 			const u8 *pmk, size_t pmk_len, const u8 *pmkid,
+-			int session_timeout, int akmp, const u8 *dpp_pkhash)
++			int session_timeout, int akmp, const u8 *dpp_pkhash,
++			bool is_ml)
+ {
++	struct rsn_pmksa_cache *pmksa;
++	const u8 *aa;
+ 	struct rsn_pmksa_cache_entry *entry;
+ 
+ 	if (!wpa_auth || wpa_auth->conf.disable_pmksa_caching)
+ 		return -1;
+ 
+ 	wpa_hexdump_key(MSG_DEBUG, "RSN: Cache PMK (3)", pmk, PMK_LEN);
+-	entry = pmksa_cache_auth_add(wpa_auth->pmksa, pmk, pmk_len, pmkid,
+-				 NULL, 0, wpa_auth->addr, addr, session_timeout,
+-				 NULL, akmp);
++	pmksa = wpa_auth->pmksa;
++	aa = wpa_auth->addr;
++#ifdef CONFIG_IEEE80211BE
++	if (is_ml) {
++		pmksa = wpa_auth->ml_pmksa;
++		aa = wpa_auth->mld_addr;
++	}
++#endif /* CONFIG_IEEE80211BE */
++	entry = pmksa_cache_auth_add(pmksa, pmk, pmk_len, pmkid, NULL, 0, aa,
++				     addr, session_timeout, NULL, akmp);
+ 	if (!entry)
+ 		return -1;
+ 
+diff --git a/src/ap/wpa_auth.h b/src/ap/wpa_auth.h
+index 560a2cc55..140eeac79 100644
+--- a/src/ap/wpa_auth.h
++++ b/src/ap/wpa_auth.h
+@@ -515,7 +515,8 @@ int wpa_auth_pmksa_add_sae(struct wpa_authenticator *wpa_auth, const u8 *addr,
+ void wpa_auth_add_sae_pmkid(struct wpa_state_machine *sm, const u8 *pmkid);
+ int wpa_auth_pmksa_add2(struct wpa_authenticator *wpa_auth, const u8 *addr,
+ 			const u8 *pmk, size_t pmk_len, const u8 *pmkid,
+-			int session_timeout, int akmp, const u8 *dpp_pkhash);
++			int session_timeout, int akmp, const u8 *dpp_pkhash,
++			bool is_ml);
+ void wpa_auth_pmksa_remove(struct wpa_authenticator *wpa_auth,
+ 			   const u8 *sta_addr);
+ int wpa_auth_pmksa_list(struct wpa_authenticator *wpa_auth, char *buf,
+-- 
+2.43.0
+

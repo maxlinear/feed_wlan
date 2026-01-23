@@ -1,0 +1,36 @@
+From 3b4f12708497f81881fa24663708b4e1fd62cf7d Mon Sep 17 00:00:00 2001
+From: Sascha Hauer <s.hauer@pengutronix.de>
+Date: Thu, 30 May 2024 14:31:05 +0200
+Subject: [PATCH] nl80211: Use actual number of supported AKMs for AP setup
+
+Since 0ce1545dcb8 ("nl80211: Determine maximum number of supported
+AKMs") we get the maximum number of supported AKMs from the kernel.
+Let's use that instead of the legacy NL80211_MAX_NR_AKM_SUITES when
+setting up AP mode operation.
+
+Signed-off-by: Sascha Hauer <s.hauer@pengutronix.de>
+---
+ src/drivers/driver_nl80211.c | 6 +++---
+ 1 file changed, 3 insertions(+), 3 deletions(-)
+
+diff --git a/src/drivers/driver_nl80211.c b/src/drivers/driver_nl80211.c
+index 32007ca59..2063d5aca 100644
+--- a/src/drivers/driver_nl80211.c
++++ b/src/drivers/driver_nl80211.c
+@@ -5168,10 +5168,10 @@ static int wpa_driver_nl80211_set_ap(void *priv,
+ 		   params->key_mgmt_suites);
+ 	num_suites = wpa_key_mgmt_to_suites(params->key_mgmt_suites,
+ 					    suites, ARRAY_SIZE(suites));
+-	if (num_suites > NL80211_MAX_NR_AKM_SUITES)
++	if ((unsigned int) num_suites > drv->capa.max_num_akms)
+ 		wpa_printf(MSG_DEBUG,
+-			   "nl80211: Not enough room for all AKM suites (num_suites=%d > NL80211_MAX_NR_AKM_SUITES)",
+-			   num_suites);
++			   "nl80211: Not enough room for all AKM suites (num_suites=%d > %d)",
++			   num_suites, drv->capa.max_num_akms);
+ 	else if (num_suites &&
+ 		 nla_put(msg, NL80211_ATTR_AKM_SUITES, num_suites * sizeof(u32),
+ 			 suites))
+-- 
+2.43.0
+

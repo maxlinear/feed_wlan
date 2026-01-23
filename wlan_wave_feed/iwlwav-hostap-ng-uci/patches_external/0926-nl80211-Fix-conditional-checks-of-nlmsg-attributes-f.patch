@@ -1,0 +1,30 @@
+From 9edd8b441e8a2a14c98ed30745aa75d5a872aab7 Mon Sep 17 00:00:00 2001
+From: Shivani Baranwal <quic_shivbara@quicinc.com>
+Date: Sat, 7 Sep 2024 19:15:42 +0530
+Subject: [PATCH] nl80211: Fix conditional checks of nlmsg attributes for NAN
+ publish
+
+Some of the cleanup changes had lost the "goto fail" and broken the
+logic. Restore correct behavior.
+
+Fixes: 58f04221fdef ("nl80211: NAN USD commands for offloading")
+Signed-off-by: Shivani Baranwal <quic_shivbara@quicinc.com>
+---
+ src/drivers/driver_nl80211.c | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/src/drivers/driver_nl80211.c b/src/drivers/driver_nl80211.c
+index c8ca9f251..5c2a721d1 100644
+--- a/src/drivers/driver_nl80211.c
++++ b/src/drivers/driver_nl80211.c
+@@ -13682,6 +13682,7 @@ static int nl80211_nan_publish(void *priv, const u8 *src, int publish_id,
+ 			params->freq) ||
+ 	    add_freq_list(msg, QCA_WLAN_VENDOR_ATTR_USD_CHAN_CONFIG_FREQ_LIST,
+ 			  params->freq_list))
++		goto fail;
+ 	nla_nest_end(msg, attr);
+ 
+ 	nla_nest_end(msg, container);
+-- 
+2.43.0
+

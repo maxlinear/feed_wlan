@@ -1,0 +1,157 @@
+From b1e463374e6bc7624a480aeb3ebcedf20512ce2b Mon Sep 17 00:00:00 2001
+From: Aditya Kumar Singh <quic_adisi@quicinc.com>
+Date: Thu, 28 Mar 2024 23:46:48 +0530
+Subject: [PATCH] AP MLD: Link-specific flushing of stations
+
+Whenever a BSS was set up,hostapd flushed all stations via the flush()
+driver operation which maps to NL80211_CMD_DEL_STATION in the nl80211
+interface. However, in case of MLO, a station could have been connected
+to other links by the time this link is coming up. Since link ID was not
+passed to flush(), all those stations entries were also removed in the
+driver which is wrong.
+
+Include the link ID along with the command in AP MLD so that the driver
+can use this link ID and flush only the stations that use the passed
+link ID as one of their links.
+
+Signed-off-by: Aditya Kumar Singh <quic_adisi@quicinc.com>
+---
+ src/ap/ap_drv_ops.c          | 10 +++++++++-
+ src/drivers/driver.h         |  4 +++-
+ src/drivers/driver_atheros.c |  2 +-
+ src/drivers/driver_bsd.c     |  2 +-
+ src/drivers/driver_hostap.c  |  2 +-
+ src/drivers/driver_nl80211.c | 18 +++++++++++++++---
+ 6 files changed, 30 insertions(+), 8 deletions(-)
+
+diff --git a/src/ap/ap_drv_ops.c b/src/ap/ap_drv_ops.c
+index d09d678ef..c47349110 100644
+--- a/src/ap/ap_drv_ops.c
++++ b/src/ap/ap_drv_ops.c
+@@ -627,9 +627,17 @@ int hostapd_get_seqnum(const char *ifname, struct hostapd_data *hapd,
+ 
+ int hostapd_flush(struct hostapd_data *hapd)
+ {
++	int link_id = -1;
++
+ 	if (hapd->driver == NULL || hapd->driver->flush == NULL)
+ 		return 0;
+-	return hapd->driver->flush(hapd->drv_priv);
++
++#ifdef CONFIG_IEEE80211BE
++	if (hapd->conf && hapd->conf->mld_ap)
++		link_id = hapd->mld_link_id;
++#endif /* CONFIG_IEEE80211BE */
++
++	return hapd->driver->flush(hapd->drv_priv, link_id);
+ }
+ 
+ 
+diff --git a/src/drivers/driver.h b/src/drivers/driver.h
+index 628b7f181..52632154e 100644
+--- a/src/drivers/driver.h
++++ b/src/drivers/driver.h
+@@ -3588,13 +3588,15 @@ struct wpa_driver_ops {
+ 	/**
+ 	 * flush - Flush all association stations (AP only)
+ 	 * @priv: Private driver interface data
++	 * @link_id: In case of MLO, valid link ID on which all associated
++	 *	stations will be flushed, -1 otherwise.
+ 	 * Returns: 0 on success, -1 on failure
+ 	 *
+ 	 * This function requests the driver to disassociate all associated
+ 	 * stations. This function does not need to be implemented if the
+ 	 * driver does not process association frames internally.
+ 	 */
+-	int (*flush)(void *priv);
++	int (*flush)(void *priv, int link_id);
+ 
+ 	/**
+ 	 * set_generic_elem - Add IEs into Beacon/Probe Response frames (AP)
+diff --git a/src/drivers/driver_atheros.c b/src/drivers/driver_atheros.c
+index ae7f0e535..71863306a 100644
+--- a/src/drivers/driver_atheros.c
++++ b/src/drivers/driver_atheros.c
+@@ -632,7 +632,7 @@ atheros_get_seqnum(const char *ifname, void *priv, const u8 *addr, int idx,
+ 
+ 
+ static int
+-atheros_flush(void *priv)
++atheros_flush(void *priv, int link_id)
+ {
+ 	u8 allsta[IEEE80211_ADDR_LEN];
+ 	os_memset(allsta, 0xff, IEEE80211_ADDR_LEN);
+diff --git a/src/drivers/driver_bsd.c b/src/drivers/driver_bsd.c
+index 850637f0d..82d8a0186 100644
+--- a/src/drivers/driver_bsd.c
++++ b/src/drivers/driver_bsd.c
+@@ -946,7 +946,7 @@ bsd_get_seqnum(const char *ifname, void *priv, const u8 *addr, int idx,
+ 
+ 
+ static int
+-bsd_flush(void *priv)
++bsd_flush(void *priv, int link_id)
+ {
+ 	u8 allsta[IEEE80211_ADDR_LEN];
+ 
+diff --git a/src/drivers/driver_hostap.c b/src/drivers/driver_hostap.c
+index d3520aacc..3aa5860bc 100644
+--- a/src/drivers/driver_hostap.c
++++ b/src/drivers/driver_hostap.c
+@@ -572,7 +572,7 @@ static int hostap_set_ssid(void *priv, const u8 *buf, int len)
+ }
+ 
+ 
+-static int hostap_flush(void *priv)
++static int hostap_flush(void *priv, int link_id)
+ {
+ 	struct hostap_driver_data *drv = priv;
+ 	struct prism2_hostapd_param param;
+diff --git a/src/drivers/driver_nl80211.c b/src/drivers/driver_nl80211.c
+index bf38eea68..c6af0f02f 100644
+--- a/src/drivers/driver_nl80211.c
++++ b/src/drivers/driver_nl80211.c
+@@ -7724,25 +7724,37 @@ static int i802_set_frag(void *priv, int frag)
+ }
+ 
+ 
+-static int i802_flush(void *priv)
++static int i802_flush(void *priv, int link_id)
+ {
+ 	struct i802_bss *bss = priv;
+ 	struct nl_msg *msg;
+ 	int res;
+ 
+-	wpa_printf(MSG_DEBUG, "nl80211: flush -> DEL_STATION %s (all)",
+-		   bss->ifname);
++	if (link_id == NL80211_DRV_LINK_ID_NA)
++		wpa_printf(MSG_DEBUG, "nl80211: flush -> DEL_STATION %s (all)",
++			   bss->ifname);
++	else
++		wpa_printf(MSG_DEBUG,
++			   "nl80211: flush -> DEL_STATION %s (with link %d)",
++			   bss->ifname, link_id);
+ 
+ 	/*
+ 	 * XXX: FIX! this needs to flush all VLANs too
+ 	 */
+ 	msg = nl80211_bss_msg(bss, 0, NL80211_CMD_DEL_STATION);
++	if (link_id >= 0 && (bss->valid_links & BIT(link_id)) &&
++	    nla_put_u8(msg, NL80211_ATTR_MLO_LINK_ID, link_id))
++		goto fail;
++
+ 	res = send_and_recv_cmd(bss->drv, msg);
+ 	if (res) {
+ 		wpa_printf(MSG_DEBUG, "nl80211: Station flush failed: ret=%d "
+ 			   "(%s)", res, strerror(-res));
+ 	}
+ 	return res;
++fail:
++	nlmsg_free(msg);
++	return -1;
+ }
+ 
+ 
+-- 
+2.43.0
+

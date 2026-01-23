@@ -1,0 +1,34 @@
+From 88984bbb947369844a4db8b1afa800e5e5cadfdf Mon Sep 17 00:00:00 2001
+From: Veerendranath Jakkam <quic_vjakkam@quicinc.com>
+Date: Fri, 15 Dec 2023 19:53:59 +0530
+Subject: [PATCH] MLD STA: Update SAE PWE derivation in hunting-and-pecking
+ loop case
+
+Use AP MLD address instead of BSSID for PWE derivation during MLO
+connection. This was already done for H2E in commit e869fdfeefa5
+("wpa_supplicant: Use MLD address in SAE authentication"). While IEEE
+P802.11be requires H2E to be used, there are deployed AP MLDs that do
+not follow that requirement. This change to the hunting-and-pecking loop
+case is needed for interoperability workarounds with such APs.
+
+Signed-off-by: Veerendranath Jakkam <quic_vjakkam@quicinc.com>
+---
+ wpa_supplicant/sme.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/wpa_supplicant/sme.c b/wpa_supplicant/sme.c
+index 648d08549..23f151a4d 100644
+--- a/wpa_supplicant/sme.c
++++ b/wpa_supplicant/sme.c
+@@ -243,7 +243,7 @@ static struct wpabuf * sme_auth_build_sae_commit(struct wpa_supplicant *wpa_s,
+ 				  wpa_s->sme.sae_rejected_groups, NULL) < 0)
+ 		goto fail;
+ 	if (!use_pt &&
+-	    sae_prepare_commit(wpa_s->own_addr, bssid,
++	    sae_prepare_commit(wpa_s->own_addr, addr,
+ 			       (u8 *) password, os_strlen(password),
+ 			       &wpa_s->sme.sae) < 0) {
+ 		wpa_printf(MSG_DEBUG, "SAE: Could not pick PWE");
+-- 
+2.43.0
+

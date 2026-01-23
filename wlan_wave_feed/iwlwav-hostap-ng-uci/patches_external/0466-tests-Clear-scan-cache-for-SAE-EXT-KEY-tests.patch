@@ -1,0 +1,29 @@
+From b83797a3eb591fd83349ca8f152038edf2b09840 Mon Sep 17 00:00:00 2001
+From: Jouni Malinen <quic_jouni@quicinc.com>
+Date: Wed, 20 Mar 2024 18:13:08 +0200
+Subject: [PATCH] tests: Clear scan cache for SAE-EXT-KEY tests
+
+These test cases check the BSS entry information and if the kernel scan
+cache maintains an old BSS entry for a previous test case for the same
+BSSID this can result in a false failure.
+
+Signed-off-by: Jouni Malinen <quic_jouni@quicinc.com>
+---
+ tests/hwsim/test_sae.py | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/tests/hwsim/test_sae.py b/tests/hwsim/test_sae.py
+index b3837d6ac..aceb92751 100644
+--- a/tests/hwsim/test_sae.py
++++ b/tests/hwsim/test_sae.py
+@@ -2910,6 +2910,7 @@ def run_sae_ext_key(dev, apdev, group, cipher="CCMP", group_cipher="CCMP"):
+     if key_mgmt.split(' ')[0] != "SAE-EXT-KEY":
+         raise Exception("Unexpected GET_CONFIG(key_mgmt): " + key_mgmt)
+ 
++    dev[0].flush_scan_cache()
+     dev[0].set("sae_groups", str(group))
+     id = dev[0].connect("test-sae", psk="12345678", key_mgmt="SAE-EXT-KEY",
+                         pairwise=cipher, group=group_cipher,
+-- 
+2.43.0
+

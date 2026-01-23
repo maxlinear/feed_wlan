@@ -1,0 +1,37 @@
+From e625b46a9d97c0ebbd90cc069d4cf27a697b84dc Mon Sep 17 00:00:00 2001
+From: Jouni Malinen <j@w1.fi>
+Date: Fri, 8 Mar 2024 10:03:41 +0200
+Subject: [PATCH] Revert "tests: Remove eht_5ghz_80mhz_puncturing_override_1
+ for now"
+
+This reverts commit eecaceed8f03cee676d47dd9fb70efd25d50e3e9. This test
+case can now be restored since hostapd is modified to allow test cases
+changes to be done to cover the special impact from EHT puncturing to
+available HT/VHT/HE channel bandwidth in this particular case.
+
+Signed-off-by: Jouni Malinen <quic_jouni@quicinc.com>
+---
+ tests/hwsim/test_eht.py | 7 +++++++
+ 1 file changed, 7 insertions(+)
+
+diff --git a/tests/hwsim/test_eht.py b/tests/hwsim/test_eht.py
+index 1804c2250..18ade87e3 100644
+--- a/tests/hwsim/test_eht.py
++++ b/tests/hwsim/test_eht.py
+@@ -1253,6 +1253,13 @@ def test_eht_5ghz_80mhz_2(dev, apdev):
+     """EHT with 80 MHz channel width on 5 GHz - primary=149"""
+     _test_eht_5ghz(dev, apdev, 149, 1, 155, 0)
+ 
++def test_eht_5ghz_80mhz_puncturing_override_1(dev, apdev):
++    """EHT with 80 MHz channel width on 5 GHz - primary=36 - puncturing override (2nd)"""
++
++    # The 2nd 20 MHz is punctured
++    _test_eht_5ghz(dev, apdev, 36, 1, 42, 0,
++                   eht_oper_puncturing_override="0x0002")
++
+ def test_eht_5ghz_80mhz_puncturing_override_2(dev, apdev):
+     """EHT with 80 MHz channel width on 5 GHz - primary=149 - puncturing override (3rd)"""
+ 
+-- 
+2.43.0
+

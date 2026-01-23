@@ -1,0 +1,251 @@
+From 61dfd7ae356026029baea135db41ffbbecdf9d89 Mon Sep 17 00:00:00 2001
+From: Karthikeyan Kathirvel <quic_kathirve@quicinc.com>
+Date: Tue, 13 Aug 2024 14:08:47 +0530
+Subject: [PATCH] AP MLD: Create link based hostapd control sockets
+
+Create link based control sockets to access the link based commands
+through hostapd_cli. This will create the link interfaces in the name of
+<ifname>_link<X>
+
+Example:
+To fetch link 0 status from wlan0, below command can be used -
+    $ hostapd_cli -i wlan0 -l 0 status
+
+On failure of link/interface selection, below error will be observed
+    $ hostapd_cli -i wlan0 -l 2 status
+    Failed to connect to hostapd - wpa_ctrl_open: No such file or directory
+
+Signed-off-by: Karthikeyan Kathirvel <quic_kathirve@quicinc.com>
+Co-developed-by: Aditya Kumar Singh <quic_adisi@quicinc.com>
+Signed-off-by: Aditya Kumar Singh <quic_adisi@quicinc.com>
+---
+ hostapd/ctrl_iface.c  | 20 +++++++++++++++++---
+ hostapd/hostapd_cli.c | 40 +++++++++++++++++++++++++++++++++++++---
+ src/ap/hostapd.c      | 28 ++++++++++++++++++++++++++++
+ src/ap/hostapd.h      |  4 ++++
+ src/common/wpa_ctrl.h |  2 ++
+ 5 files changed, 88 insertions(+), 6 deletions(-)
+
+diff --git a/hostapd/ctrl_iface.c b/hostapd/ctrl_iface.c
+index 8ef1cb282..b9cfe4423 100644
+--- a/hostapd/ctrl_iface.c
++++ b/hostapd/ctrl_iface.c
+@@ -4739,18 +4739,26 @@ static char * hostapd_ctrl_iface_path(struct hostapd_data *hapd)
+ {
+ 	char *buf;
+ 	size_t len;
++	const char *ctrl_sock_iface;
++
++#ifdef CONFIG_IEEE80211BE
++	ctrl_sock_iface = hapd->ctrl_sock_iface;
++#else /* CONFIG_IEEE80211BE */
++	ctrl_sock_iface = hapd->conf->iface;
++#endif /* CONFIG_IEEE80211BE */
+ 
+ 	if (hapd->conf->ctrl_interface == NULL)
+ 		return NULL;
+ 
+ 	len = os_strlen(hapd->conf->ctrl_interface) +
+-		os_strlen(hapd->conf->iface) + 2;
++		os_strlen(ctrl_sock_iface) + 2;
++
+ 	buf = os_malloc(len);
+ 	if (buf == NULL)
+ 		return NULL;
+ 
+ 	os_snprintf(buf, len, "%s/%s",
+-		    hapd->conf->ctrl_interface, hapd->conf->iface);
++		    hapd->conf->ctrl_interface, ctrl_sock_iface);
+ 	buf[len - 1] = '\0';
+ 	return buf;
+ }
+@@ -4866,6 +4874,7 @@ fail:
+ 	struct sockaddr_un addr;
+ 	int s = -1;
+ 	char *fname = NULL;
++	size_t iflen;
+ 
+ 	if (hapd->ctrl_sock > -1) {
+ 		wpa_printf(MSG_DEBUG, "ctrl_iface already exists!");
+@@ -4920,8 +4929,13 @@ fail:
+ 	}
+ #endif /* ANDROID */
+ 
++#ifdef CONFIG_IEEE80211BE
++	iflen = os_strlen(hapd->ctrl_sock_iface);
++#else /* CONFIG_IEEE80211BE */
++	iflen = os_strlen(hapd->conf->iface);
++#endif /* CONFIG_IEEE80211BE */
+ 	if (os_strlen(hapd->conf->ctrl_interface) + 1 +
+-	    os_strlen(hapd->conf->iface) >= sizeof(addr.sun_path))
++	    iflen >= sizeof(addr.sun_path))
+ 		goto fail;
+ 
+ 	s = socket(PF_UNIX, SOCK_DGRAM, 0);
+diff --git a/hostapd/hostapd_cli.c b/hostapd/hostapd_cli.c
+index eb8a38350..57702d93b 100644
+--- a/hostapd/hostapd_cli.c
++++ b/hostapd/hostapd_cli.c
+@@ -54,7 +54,11 @@ static void usage(void)
+ 	fprintf(stderr, "%s\n", hostapd_cli_version);
+ 	fprintf(stderr,
+ 		"\n"
+-		"usage: hostapd_cli [-p<path>] [-i<ifname>] [-hvBr] "
++		"usage: hostapd_cli [-p<path>] [-i<ifname>] "
++#ifdef CONFIG_IEEE80211BE
++		"[-l<link_id>] "
++#endif /* CONFIG_IEEE80211BE */
++		"[-hvBr] "
+ 		"[-a<path>] \\\n"
+ 		"                   [-P<pid file>] [-G<ping interval>] [command..]\n"
+ 		"\n"
+@@ -74,7 +78,11 @@ static void usage(void)
+ 		"   -B           run a daemon in the background\n"
+ 		"   -i<ifname>   Interface to listen on (default: first "
+ 		"interface found in the\n"
+-		"                socket path)\n\n");
++		"                socket path)\n"
++#ifdef CONFIG_IEEE80211BE
++		"   -l<link_id>  Link ID of the interface in case of Multi-Link Operation\n"
++#endif /* CONFIG_IEEE80211BE */
++		"\n");
+ 	print_help(stderr, NULL);
+ }
+ 
+@@ -2212,12 +2220,15 @@ int main(int argc, char *argv[])
+ 	int c;
+ 	int daemonize = 0;
+ 	int reconnect = 0;
++#ifdef CONFIG_IEEE80211BE
++	int link_id = -1;
++#endif /* CONFIG_IEEE80211BE */
+ 
+ 	if (os_program_init())
+ 		return -1;
+ 
+ 	for (;;) {
+-		c = getopt(argc, argv, "a:BhG:i:p:P:rs:v");
++		c = getopt(argc, argv, "a:BhG:i:l:p:P:rs:v");
+ 		if (c < 0)
+ 			break;
+ 		switch (c) {
+@@ -2252,6 +2263,11 @@ int main(int argc, char *argv[])
+ 		case 's':
+ 			client_socket_dir = optarg;
+ 			break;
++#ifdef CONFIG_IEEE80211BE
++		case 'l':
++			link_id = atoi(optarg);
++			break;
++#endif /* CONFIG_IEEE80211BE */
+ 		default:
+ 			usage();
+ 			return -1;
+@@ -2285,6 +2301,24 @@ int main(int argc, char *argv[])
+ 				closedir(dir);
+ 			}
+ 		}
++
++#ifdef CONFIG_IEEE80211BE
++		if (link_id >= 0 && ctrl_ifname) {
++			int ret;
++			char buf[300];
++
++			ret = os_snprintf(buf, sizeof(buf), "%s_%s%d",
++					  ctrl_ifname, WPA_CTRL_IFACE_LINK_NAME,
++					  link_id);
++			if (os_snprintf_error(sizeof(buf), ret))
++				return -1;
++
++			os_free(ctrl_ifname);
++			ctrl_ifname = os_strdup(buf);
++			link_id = -1;
++		}
++#endif /* CONFIG_IEEE80211BE */
++
+ 		hostapd_cli_reconnect(ctrl_ifname);
+ 		if (ctrl_conn) {
+ 			if (warning_displayed)
+diff --git a/src/ap/hostapd.c b/src/ap/hostapd.c
+index bf40f389d..bf076916d 100644
+--- a/src/ap/hostapd.c
++++ b/src/ap/hostapd.c
+@@ -1824,12 +1824,36 @@ int hostapd_set_acl(struct hostapd_data *hapd)
+ }
+ 
+ 
++static int hostapd_set_ctrl_sock_iface(struct hostapd_data *hapd)
++{
++#ifdef CONFIG_IEEE80211BE
++	int ret;
++
++	if (hapd->conf->mld_ap) {
++		ret = os_snprintf(hapd->ctrl_sock_iface,
++				  sizeof(hapd->ctrl_sock_iface), "%s_%s%d",
++				  hapd->conf->iface, WPA_CTRL_IFACE_LINK_NAME,
++				  hapd->mld_link_id);
++		if (os_snprintf_error(sizeof(hapd->ctrl_sock_iface), ret))
++			return -1;
++	} else {
++		os_strlcpy(hapd->ctrl_sock_iface, hapd->conf->iface,
++			   sizeof(hapd->ctrl_sock_iface));
++	}
++#endif /* CONFIG_IEEE80211BE */
++	return 0;
++}
++
++
+ static int start_ctrl_iface_bss(struct hostapd_data *hapd)
+ {
+ 	if (!hapd->iface->interfaces ||
+ 	    !hapd->iface->interfaces->ctrl_iface_init)
+ 		return 0;
+ 
++	if (hostapd_set_ctrl_sock_iface(hapd))
++		return -1;
++
+ 	if (hapd->iface->interfaces->ctrl_iface_init(hapd)) {
+ 		wpa_printf(MSG_ERROR,
+ 			   "Failed to setup control interface for %s",
+@@ -1850,6 +1874,10 @@ static int start_ctrl_iface(struct hostapd_iface *iface)
+ 
+ 	for (i = 0; i < iface->num_bss; i++) {
+ 		struct hostapd_data *hapd = iface->bss[i];
++
++		if (hostapd_set_ctrl_sock_iface(hapd))
++			return -1;
++
+ 		if (iface->interfaces->ctrl_iface_init(hapd)) {
+ 			wpa_printf(MSG_ERROR,
+ 				   "Failed to setup control interface for %s",
+diff --git a/src/ap/hostapd.h b/src/ap/hostapd.h
+index 898dc0d75..02f7d5b29 100644
+--- a/src/ap/hostapd.h
++++ b/src/ap/hostapd.h
+@@ -495,6 +495,10 @@ struct hostapd_data {
+ 	/* Cached partner info for ML probe response */
+ 	struct mld_link_info partner_links[MAX_NUM_MLD_LINKS];
+ 
++	/* 5 characters for "_link", up to 2 characters for <link ID>, so in
++	 * total, additional 7 characters required. */
++	char ctrl_sock_iface[IFNAMSIZ + 7 + 1];
++
+ #ifdef CONFIG_TESTING_OPTIONS
+ 	u8 eht_mld_link_removal_count;
+ #endif /* CONFIG_TESTING_OPTIONS */
+diff --git a/src/common/wpa_ctrl.h b/src/common/wpa_ctrl.h
+index f6142501e..1bfe7a2c3 100644
+--- a/src/common/wpa_ctrl.h
++++ b/src/common/wpa_ctrl.h
+@@ -13,6 +13,8 @@
+ extern "C" {
+ #endif
+ 
++#define WPA_CTRL_IFACE_LINK_NAME	"link"
++
+ /* wpa_supplicant control interface - fixed message prefixes */
+ 
+ /** Interactive request for identity/password/pin */
+-- 
+2.43.0
+

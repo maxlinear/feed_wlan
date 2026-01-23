@@ -1,0 +1,47 @@
+From a80dcf0e2460b5cdcaf7b946b7e12ee25f87a712 Mon Sep 17 00:00:00 2001
+From: Benjamin Berg <benjamin.berg@intel.com>
+Date: Thu, 28 Dec 2023 15:19:22 +0200
+Subject: [PATCH] MLD: Read the correct BSSID from the RNR
+
+The previous implementation would find the correct TBTT record in the
+RNR but then always copied the BSSID from the first record out. Fix this
+to copy the BSSID from the current position.
+
+Fixes: de5e01010cb2 ("wpa_supplicant: Support ML probe request")
+Signed-off-by: Benjamin Berg <benjamin.berg@intel.com>
+---
+ wpa_supplicant/bss.c | 6 ++----
+ 1 file changed, 2 insertions(+), 4 deletions(-)
+
+diff --git a/wpa_supplicant/bss.c b/wpa_supplicant/bss.c
+index 2f3b2794a..22b694cf3 100644
+--- a/wpa_supplicant/bss.c
++++ b/wpa_supplicant/bss.c
+@@ -1529,13 +1529,12 @@ wpa_bss_parse_ml_rnr_ap_info(struct wpa_supplicant *wpa_s,
+ 				   "MLD: Reported link not part of MLD");
+ 		} else if (!(BIT(link_id) & *seen)) {
+ 			struct wpa_bss *neigh_bss =
+-				wpa_bss_get_bssid(wpa_s, ap_info->data + 1);
++				wpa_bss_get_bssid(wpa_s, pos + 1);
+ 
+ 			*seen |= BIT(link_id);
+ 			wpa_printf(MSG_DEBUG, "MLD: mld ID=%u, link ID=%u",
+ 				   *mld_params, link_id);
+ 
+-
+ 			if (!neigh_bss) {
+ 				*missing |= BIT(link_id);
+ 			} else if ((!ssid ||
+@@ -1549,8 +1548,7 @@ wpa_bss_parse_ml_rnr_ap_info(struct wpa_supplicant *wpa_s,
+ 
+ 				l = &bss->mld_links[bss->n_mld_links];
+ 				l->link_id = link_id;
+-				os_memcpy(l->bssid, ap_info->data + 1,
+-					  ETH_ALEN);
++				os_memcpy(l->bssid, pos + 1, ETH_ALEN);
+ 				l->freq = neigh_bss->freq;
+ 				l->disabled = mld_params[2] &
+ 					RNR_TBTT_INFO_MLD_PARAM2_LINK_DISABLED;
+-- 
+2.43.0
+

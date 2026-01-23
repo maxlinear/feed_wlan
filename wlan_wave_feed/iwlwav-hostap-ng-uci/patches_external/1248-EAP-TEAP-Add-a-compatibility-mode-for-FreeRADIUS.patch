@@ -1,0 +1,95 @@
+From 795075444fe847e11a04de541c95613335aad7a5 Mon Sep 17 00:00:00 2001
+From: Jouni Malinen <j@w1.fi>
+Date: Wed, 1 Jan 2025 11:17:31 +0200
+Subject: [PATCH] EAP-TEAP: Add a compatibility mode for FreeRADIUS
+
+FreeRADIUS (at least the current snapshot of the v3.2.x branch) uses
+different style for deriving S-IMCK[j]. It tracks S_IMCK_MSK[j] and
+S_IMCK_EMSK[j] variants through all inner methods instead of selecting a
+single S_IMCK[j] at the end of each inner method. IMHO, that does not
+match what is most likely described in RFC 7170bis, it is a potential
+interpretation of the draft and is closer to what wpa_supplicant used to
+do earlier. However, that design has a weakness in EMSK derivation from
+TEAP since it does not actually get any input from inner methods that do
+not derive an EMSK.
+
+Obviously, there should be only a single shared interpretation on how
+TEAPv1 is supposed to work, but until we get to that point, it is
+convenient to be able to test other parts of the protocol without having
+to modify source code to work around differences. Introduce a new
+phase1="teap_compat=freeradius" configuration parameter to
+wpa_supplicant to allow EAP-TEAP peer behavior to be modified to match
+what FreeRADIUS expects.
+
+This compatibility mode was now able to successfully authenticate (and
+also to derive matching MSK and EMSK) against FreeRADIUS v3.2.x branch
+snapshot with all four combinations of machine(EAP-TLS) and
+user(EAP-MSCHAPv2) authentication.
+
+Signed-off-by: Jouni Malinen <j@w1.fi>
+---
+ src/eap_peer/eap_teap.c | 34 ++++++++++++++++++++++++++++++----
+ 1 file changed, 30 insertions(+), 4 deletions(-)
+
+diff --git a/src/eap_peer/eap_teap.c b/src/eap_peer/eap_teap.c
+index d9f8cbddf..8ce7cb7e9 100644
+--- a/src/eap_peer/eap_teap.c
++++ b/src/eap_peer/eap_teap.c
+@@ -56,6 +56,11 @@ struct eap_teap_data {
+ 	struct wpabuf *pending_resp;
+ 	struct wpabuf *server_outer_tlvs;
+ 	struct wpabuf *peer_outer_tlvs;
++
++	enum teap_compat {
++		TEAP_DEFAULT,
++		TEAP_FREERADIUS,
++	} teap_compat;
+ };
+ 
+ 
+@@ -66,6 +71,9 @@ static void eap_teap_parse_phase1(struct eap_teap_data *data,
+ 	if (os_strstr(phase1, "teap_test_outer_tlvs=1"))
+ 		data->test_outer_tlvs = 1;
+ #endif /* CONFIG_TESTING_OPTIONS */
++
++	if (os_strstr(phase1, "teap_compat=freeradius"))
++		data->teap_compat = TEAP_FREERADIUS;
+ }
+ 
+ 
+@@ -613,10 +621,28 @@ static int eap_teap_get_cmk(struct eap_sm *sm, struct eap_teap_data *data,
+ 	}
+ 
+ out:
+-	res = eap_teap_derive_imck(data->tls_cs, data->simck,
+-				   msk, msk_len, emsk, emsk_len,
+-				   data->simck_msk, cmk_msk,
+-				   data->simck_emsk, cmk_emsk);
++	if (data->teap_compat == TEAP_FREERADIUS) {
++		u8 tmp_simck[EAP_TEAP_SIMCK_LEN];
++		u8 tmp_cmk[EAP_TEAP_CMK_LEN];
++
++		wpa_printf(MSG_DEBUG,
++			   "EAP-TEAP: FreeRADIUS compatibility: use S-IMCK_MSK[j-1] and S-IMCK_EMSK[j-1] based on MSK/EMSK derivations instead of a single selected S-IMCK[j-1]");
++		res = eap_teap_derive_imck(data->tls_cs, data->simck_msk,
++					   msk, msk_len, emsk, emsk_len,
++					   data->simck_msk, cmk_msk,
++					   tmp_simck, tmp_cmk);
++		if (emsk)
++			res = eap_teap_derive_imck(data->tls_cs,
++						   data->simck_emsk,
++						   msk, msk_len, emsk, emsk_len,
++						   tmp_simck, tmp_cmk,
++						   data->simck_emsk, cmk_emsk);
++	} else {
++		res = eap_teap_derive_imck(data->tls_cs, data->simck,
++					   msk, msk_len, emsk, emsk_len,
++					   data->simck_msk, cmk_msk,
++					   data->simck_emsk, cmk_emsk);
++	}
+ 	bin_clear_free(msk, msk_len);
+ 	bin_clear_free(emsk, emsk_len);
+ 	if (res == 0) {
+-- 
+2.43.0
+

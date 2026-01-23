@@ -1,0 +1,65 @@
+From 1efdba5fdc2c648a96d9322a30ba19e37ddee8b4 Mon Sep 17 00:00:00 2001
+From: Vinayak Yadawad <vinayak.yadawad@broadcom.com>
+Date: Fri, 15 Dec 2023 17:39:27 +0530
+Subject: [PATCH] Handle PMKSA flush in the driver for SAE/OWE offload cases
+
+For wpa_supplicant based SAE/OWE connection, the wpa_supplicant state
+machine is aware of the PMKID created for a connection and this gets
+removed when "REMOVE_NETWORK all" is called. However, when SAE/OWE
+offload is enabled, wpa_supplicant is not aware of the PMKID generated
+by the driver/firmware. So add PMKSA del indication to the driver from
+remove_network context so that the driver can free PMKs associated with
+the SSID.
+
+Signed-off-by: Vinayak Yadawad <vinayak.yadawad@broadcom.com>
+---
+ wpa_supplicant/notify.c         | 15 ++++++++++++++-
+ wpa_supplicant/wpa_supplicant.c |  5 +++++
+ 2 files changed, 19 insertions(+), 1 deletion(-)
+
+diff --git a/wpa_supplicant/notify.c b/wpa_supplicant/notify.c
+index 0f9616d38..a74fb621b 100644
+--- a/wpa_supplicant/notify.c
++++ b/wpa_supplicant/notify.c
+@@ -404,8 +404,21 @@ void wpas_notify_network_removed(struct wpa_supplicant *wpa_s,
+ 	if (wpa_s->sme.ext_auth_wpa_ssid == ssid)
+ 		wpa_s->sme.ext_auth_wpa_ssid = NULL;
+ #endif /* CONFIG_SME && CONFIG_SAE */
+-	if (wpa_s->wpa)
++	if (wpa_s->wpa) {
++		if ((wpa_key_mgmt_sae(ssid->key_mgmt) &&
++		     (wpa_s->drv_flags2 & WPA_DRIVER_FLAGS2_SAE_OFFLOAD_STA)) ||
++		    ((ssid->key_mgmt & WPA_KEY_MGMT_OWE) &&
++		     (wpa_s->drv_flags2 & WPA_DRIVER_FLAGS2_OWE_OFFLOAD_STA))) {
++			/* For cases when PMK is generated at the driver */
++			struct wpa_pmkid_params params;
++
++			os_memset(&params, 0, sizeof(params));
++			params.ssid = ssid->ssid;
++			params.ssid_len = ssid->ssid_len;
++			wpa_drv_remove_pmkid(wpa_s, &params);
++		}
+ 		wpa_sm_pmksa_cache_flush(wpa_s->wpa, ssid);
++	}
+ 	if (!ssid->p2p_group && wpa_s->global->p2p_group_formation != wpa_s &&
+ 	    !wpa_s->p2p_mgmt) {
+ 		wpas_dbus_unregister_network(wpa_s, ssid->id);
+diff --git a/wpa_supplicant/wpa_supplicant.c b/wpa_supplicant/wpa_supplicant.c
+index 139525cb1..732a2e132 100644
+--- a/wpa_supplicant/wpa_supplicant.c
++++ b/wpa_supplicant/wpa_supplicant.c
+@@ -4751,6 +4751,11 @@ int wpa_supplicant_remove_all_networks(struct wpa_supplicant *wpa_s)
+ {
+ 	struct wpa_ssid *ssid;
+ 
++	if (wpa_s->drv_flags2 &
++	    (WPA_DRIVER_FLAGS2_SAE_OFFLOAD_STA |
++	     WPA_DRIVER_FLAGS2_OWE_OFFLOAD_STA))
++		wpa_drv_flush_pmkid(wpa_s);
++
+ 	if (wpa_s->sched_scanning)
+ 		wpa_supplicant_cancel_sched_scan(wpa_s);
+ 
+-- 
+2.43.0
+

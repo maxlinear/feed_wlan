@@ -1,0 +1,25 @@
+From e847cfa493158cc48ab36902b7b61308e21b24d9 Mon Sep 17 00:00:00 2001
+From: Jouni Malinen <j@w1.fi>
+Date: Sun, 2 Mar 2025 17:57:59 +0200
+Subject: [PATCH] tests: Record RADIUS accounting entries in log
+
+Signed-off-by: Jouni Malinen <j@w1.fi>
+---
+ tests/hwsim/auth_serv/as.conf | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/tests/hwsim/auth_serv/as.conf b/tests/hwsim/auth_serv/as.conf
+index 805ad077e..485d05689 100644
+--- a/tests/hwsim/auth_serv/as.conf
++++ b/tests/hwsim/auth_serv/as.conf
+@@ -1,6 +1,7 @@
+ driver=none
+ radius_server_clients=auth_serv/radius_clients.conf
+ radius_server_acct_port=1813
++radius_server_acct_log=1
+ eap_server=1
+ eap_user_file=auth_serv/eap_user.conf
+ 
+-- 
+2.43.0
+

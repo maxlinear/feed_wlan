@@ -1,0 +1,32 @@
+From baeedceb0cd428528687b06810a38be142e1b4c7 Mon Sep 17 00:00:00 2001
+From: Allen Ye <allen.ye@mediatek.com>
+Date: Thu, 5 Sep 2024 13:55:30 +0800
+Subject: [PATCH] hostapd: Fix wrong puncturing bitmap in Bandwidth Indication
+ subelement
+
+The Bandwidth Indication subelement should present the puncturing bitmap
+of channel switch request, but the bitmap returned by
+hostapd_get_punct_bitmap() is the original one.
+
+Co-developed-by: Money Wang <money.wang@mediatek.com>
+Signed-off-by: Allen Ye <allen.ye@mediatek.com>
+---
+ src/ap/ieee802_11.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/src/ap/ieee802_11.c b/src/ap/ieee802_11.c
+index 35e3e710c..409f39916 100644
+--- a/src/ap/ieee802_11.c
++++ b/src/ap/ieee802_11.c
+@@ -7429,7 +7429,7 @@ static u8 * hostapd_eid_wb_channel_switch(struct hostapd_data *hapd, u8 *eid,
+ static u8 * hostapd_eid_bw_indication(struct hostapd_data *hapd, u8 *eid,
+ 				      u8 chan1, u8 chan2)
+ {
+-	u16 punct_bitmap = hostapd_get_punct_bitmap(hapd);
++	u16 punct_bitmap = hapd->cs_freq_params.punct_bitmap;
+ 	struct ieee80211_bw_ind_element *bw_ind_elem;
+ 	size_t elen = 4;
+ 
+-- 
+2.43.0
+

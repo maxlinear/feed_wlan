@@ -1,0 +1,35 @@
+From 093a0142222ca7c1d545efeff53f899f60d5fc2c Mon Sep 17 00:00:00 2001
+From: Jouni Malinen <j@w1.fi>
+Date: Thu, 26 Dec 2024 12:30:22 +0200
+Subject: [PATCH] OWE: Accept only BSS entries with an actual SSID for ROAM
+ command
+
+An AP in OWE transition mode shows up in the BSS table twice due to use
+of the hidden SSID. Since roaming requires the SSID to be known, don't
+select the BSS entry with an empty SSID to force the one with the actual
+SSID to be used when using the ROAM command to roam between APs that
+might use OWE transition mode.
+
+Fixes: 56e8f8bf3490 ("OWE: Enable roaming between OWE APs")
+Signed-off-by: Jouni Malinen <j@w1.fi>
+---
+ wpa_supplicant/bss.c | 3 ++-
+ 1 file changed, 2 insertions(+), 1 deletion(-)
+
+diff --git a/wpa_supplicant/bss.c b/wpa_supplicant/bss.c
+index c641b510c..10ebab020 100644
+--- a/wpa_supplicant/bss.c
++++ b/wpa_supplicant/bss.c
+@@ -316,7 +316,8 @@ struct wpa_bss * wpa_bss_get_connection(struct wpa_supplicant *wpa_s,
+ 					       &owe_ssid_len))
+ 			continue;
+ 
+-		if (owe_ssid_len == ssid_len &&
++		if (bss->ssid_len &&
++		    owe_ssid_len == ssid_len &&
+ 		    os_memcmp(owe_ssid, ssid, ssid_len) == 0)
+ 			return bss;
+ #endif /* CONFIG_OWE */
+-- 
+2.43.0
+

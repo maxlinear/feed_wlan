@@ -1,0 +1,32 @@
+From a971fa5b5bd73836d5f75ce418123df4d1d8f129 Mon Sep 17 00:00:00 2001
+From: Meng Yuan <quic_menyua@quicinc.com>
+Date: Wed, 8 Jan 2025 16:10:10 +0800
+Subject: [PATCH] P2P: Check IEs buffer before use more consistently
+
+Commit cab963e9f887 ("AP: Split check_assoc_ies()") added check for
+ies/ies_len before going through the P2P element. Add similar checks for
+p2p_group_notif_assoc() to be consistent and avoid potential risk of
+associated STA tracking for P2P groups dereferencing NULL pointers.
+
+Signed-off-by: Jouni Malinen <quic_jouni@quicinc.com>
+---
+ src/ap/ieee802_11.c | 3 ++-
+ 1 file changed, 2 insertions(+), 1 deletion(-)
+
+diff --git a/src/ap/ieee802_11.c b/src/ap/ieee802_11.c
+index 550531e5c..72910394c 100644
+--- a/src/ap/ieee802_11.c
++++ b/src/ap/ieee802_11.c
+@@ -4365,7 +4365,8 @@ static int __check_assoc_ies(struct hostapd_data *hapd, struct sta_info *sta,
+ 		wpa_auth_sta_no_wpa(sta->wpa_sm);
+ 
+ #ifdef CONFIG_P2P
+-	p2p_group_notif_assoc(hapd->p2p_group, sta->addr, ies, ies_len);
++	if (ies && ies_len)
++		p2p_group_notif_assoc(hapd->p2p_group, sta->addr, ies, ies_len);
+ #endif /* CONFIG_P2P */
+ 
+ #ifdef CONFIG_HS20
+-- 
+2.43.0
+

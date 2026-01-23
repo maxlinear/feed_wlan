@@ -1,0 +1,45 @@
+From 48797ff87cfbbbe7fe90af7a2dd4594bdacb0b60 Mon Sep 17 00:00:00 2001
+From: Jouni Malinen <quic_jouni@quicinc.com>
+Date: Mon, 18 Dec 2023 17:00:55 +0200
+Subject: [PATCH] tests: Avoid a race condition in DPP retry validation
+
+Wait a bit to allow stopping of the DPP_LISTEN operation to be completed
+before issuing the DPP_QR_CODE command that would send the frame that
+these test cases expect to not get ACKed.
+
+Signed-off-by: Jouni Malinen <quic_jouni@quicinc.com>
+---
+ tests/hwsim/test_dpp.py | 10 ++++++++++
+ 1 file changed, 10 insertions(+)
+
+diff --git a/tests/hwsim/test_dpp.py b/tests/hwsim/test_dpp.py
+index bcd100ed2..49da060ad 100644
+--- a/tests/hwsim/test_dpp.py
++++ b/tests/hwsim/test_dpp.py
+@@ -607,6 +607,11 @@ def test_dpp_auth_resp_retries(dev, apdev):
+     # DPP Authentication Response frame with Status=0
+     dev[1].request("DPP_STOP_LISTEN")
+ 
++    ev = dev[0].wait_event(["DPP-TX-STATUS"], timeout=1)
++    if ev is None:
++        raise Exception("No TX status reported for response")
++    time.sleep(0.1)
++
+     dev[1].dump_monitor()
+     dev[0].dump_monitor()
+ 
+@@ -4551,6 +4556,11 @@ def test_dpp_hostapd_auth_resp_retries(dev, apdev):
+     # DPP Authentication Response frame with Status=0
+     dev[0].request("DPP_STOP_LISTEN")
+ 
++    ev = hapd.wait_event(["DPP-TX-STATUS"], timeout=1)
++    if ev is None:
++        raise Exception("No TX status reported for response")
++    time.sleep(0.1)
++
+     hapd.dump_monitor()
+     dev[0].dump_monitor()
+ 
+-- 
+2.43.0
+

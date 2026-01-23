@@ -1,0 +1,32 @@
+From 0a4d90827cca0ef82237fc4eaa15cafa66b6c6a2 Mon Sep 17 00:00:00 2001
+From: Jouni Malinen <quic_jouni@quicinc.com>
+Date: Thu, 31 Oct 2024 11:11:46 +0200
+Subject: [PATCH] tests: Enable SAE Pw Id on AP in
+ sae_proto_hostapd_valid_commit_after_fail
+
+This is in preparation to implementation changes that use knowledge of
+whether SAE Password Identifiers have been enabled to reject unexpected
+commit messages.
+
+Signed-off-by: Jouni Malinen <quic_jouni@quicinc.com>
+---
+ tests/hwsim/test_sae.py | 3 ++-
+ 1 file changed, 2 insertions(+), 1 deletion(-)
+
+diff --git a/tests/hwsim/test_sae.py b/tests/hwsim/test_sae.py
+index 04f43352a..c119271c4 100644
+--- a/tests/hwsim/test_sae.py
++++ b/tests/hwsim/test_sae.py
+@@ -1256,7 +1256,8 @@ def test_sae_proto_hostapd_status_127(dev, apdev):
+ 
+ def test_sae_proto_hostapd_valid_commit_after_fail(dev, apdev):
+     """SAE protocol testing with hostapd and valid commit after failed one"""
+-    params = hostapd.wpa2_params(ssid="test-sae", passphrase="foofoofoo")
++    params = hostapd.wpa2_params(ssid="test-sae")
++    params['sae_password'] = ["foofoofoo", "another|id=pw id"]
+     params['wpa_key_mgmt'] = 'SAE'
+     params['sae_groups'] = "19"
+     hapd = hostapd.add_ap(apdev[0], params)
+-- 
+2.43.0
+

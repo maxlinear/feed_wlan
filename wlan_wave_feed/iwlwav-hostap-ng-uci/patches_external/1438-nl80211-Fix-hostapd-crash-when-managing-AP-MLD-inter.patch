@@ -1,0 +1,47 @@
+From b49542f42c459eb831b896a6a7c9d0f95b48ac1c Mon Sep 17 00:00:00 2001
+From: Ramasamy Kaliappan <quic_rkaliapp@quicinc.com>
+Date: Tue, 18 Feb 2025 16:17:15 +0530
+Subject: [PATCH] nl80211: Fix hostapd crash when managing AP MLD interfaces
+
+hostapd crash has been observed in the following scenario: bring up
+multiple AP MLD interfaces, delete all AP MLD interfaces using another
+user space application like 'iw', and then remove all interfaces in
+hostapd.
+
+When deleting an AP MLD interface using another user space application,
+the kernel sends the NL80211_CMD_STOP_AP event for each link to hostapd,
+hostapd resets valid_links, and sends a remove link command to the
+kernel. valid_links will become zero after all the links are removed,
+but bss interface will not be removed in hostapd.
+
+In the current design, when removing the link bss interface, the
+interface is not removed if the link is not available. When the
+interface, which was not removed, is added, it accesses a dangling
+pointer of the AP MLD interface and causes the crash.
+
+Fix this by removing the interface even if there are no more links. This
+ensures that the AP MLD interface is properly removed, preventing access
+to a dangling pointer and avoiding the crash.
+
+Signed-off-by: Ramasamy Kaliappan <quic_rkaliapp@quicinc.com>
+---
+ src/drivers/driver_nl80211.c | 3 +--
+ 1 file changed, 1 insertion(+), 2 deletions(-)
+
+diff --git a/src/drivers/driver_nl80211.c b/src/drivers/driver_nl80211.c
+index 60a7ae5ea..398ee5c0a 100644
+--- a/src/drivers/driver_nl80211.c
++++ b/src/drivers/driver_nl80211.c
+@@ -10958,8 +10958,7 @@ static int driver_nl80211_link_remove(void *priv, enum wpa_driver_if_type type,
+ 	struct wpa_driver_nl80211_data *drv = bss->drv;
+ 	int ret;
+ 
+-	if (type != WPA_IF_AP_BSS ||
+-	    !nl80211_link_valid(bss->valid_links, link_id))
++	if (type != WPA_IF_AP_BSS)
+ 		return -1;
+ 
+ 	wpa_printf(MSG_DEBUG,
+-- 
+2.43.0
+

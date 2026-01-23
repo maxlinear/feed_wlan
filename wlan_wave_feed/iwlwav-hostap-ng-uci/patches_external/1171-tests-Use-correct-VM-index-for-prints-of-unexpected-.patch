@@ -1,0 +1,29 @@
+From 99179228091d4ddacf10e7d70a5b49900f4971e8 Mon Sep 17 00:00:00 2001
+From: Jouni Malinen <j@w1.fi>
+Date: Sun, 22 Dec 2024 13:09:15 +0200
+Subject: [PATCH] tests: Use correct VM index for prints of unexpected messages
+
+Signed-off-by: Jouni Malinen <j@w1.fi>
+---
+ tests/hwsim/vm/parallel-vm.py | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/tests/hwsim/vm/parallel-vm.py b/tests/hwsim/vm/parallel-vm.py
+index 1f571df20..89fad635b 100755
+--- a/tests/hwsim/vm/parallel-vm.py
++++ b/tests/hwsim/vm/parallel-vm.py
+@@ -806,9 +806,9 @@ def main():
+             if not known_output(tests, line):
+                 unknown += line + "\n"
+         if unknown:
+-            print("\nVM %d - unexpected stdout output:\n%s" % (i, unknown))
++            print("\nVM %d - unexpected stdout output:\n%s" % (i + 1, unknown))
+         if vm[i]['err']:
+-            print("\nVM %d - unexpected stderr output:\n%s\n" % (i, vm[i]['err']))
++            print("\nVM %d - unexpected stderr output:\n%s\n" % (i + 1, vm[i]['err']))
+ 
+     if codecov:
+         print("Code coverage - preparing report")
+-- 
+2.43.0
+

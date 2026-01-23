@@ -1,0 +1,66 @@
+From 83ffe68fa969a6566850a34ab016128bdc09111e Mon Sep 17 00:00:00 2001
+From: Jouni Malinen <quic_jouni@quicinc.com>
+Date: Mon, 4 Nov 2024 22:57:12 +0200
+Subject: [PATCH] tests: NAN USD and more complex Follow-up message sequences
+
+Signed-off-by: Jouni Malinen <quic_jouni@quicinc.com>
+---
+ tests/hwsim/test_nan_usd.py | 35 +++++++++++++++++++++++++++++++++++
+ 1 file changed, 35 insertions(+)
+
+diff --git a/tests/hwsim/test_nan_usd.py b/tests/hwsim/test_nan_usd.py
+index 3853997bb..e09332f53 100644
+--- a/tests/hwsim/test_nan_usd.py
++++ b/tests/hwsim/test_nan_usd.py
+@@ -230,6 +230,7 @@ def run_nan_usd_followup(dev0, dev1, multi_chan=False):
+         raise Exception("Unexpected ssi in Follow-up: " + ev)
+ 
+     # Follow-up from subscriber to publisher
++    time.sleep(0.2)
+     cmd = "NAN_TRANSMIT handle={} req_instance_id={} address={} ssi=8899".format(vals['subscribe_id'], vals['publish_id'], addr1)
+     if "FAIL" in dev0.request(cmd):
+         raise Exception("NAN_TRANSMIT failed")
+@@ -262,6 +263,40 @@ def run_nan_usd_followup(dev0, dev1, multi_chan=False):
+     if vals['peer_instance_id'] != id1:
+         raise Exception("Unexpected peer_instance_id: " + ev)
+ 
++    # Another Follow-up message from publisher to subscriber
++    cmd = "NAN_TRANSMIT handle={} req_instance_id={} address={} ssi=eeff".format(id1, vals['peer_instance_id'], addr0)
++    if "FAIL" in dev1.request(cmd):
++        raise Exception("NAN_TRANSMIT failed")
++
++    ev = dev0.wait_event(["NAN-RECEIVE"], timeout=5)
++    if ev is None:
++        raise Exception("Receive event not seen")
++    vals = split_nan_event(ev)
++    if vals['ssi'] != 'eeff':
++        raise Exception("Unexpected ssi in Follow-up: " + ev)
++    if vals['id'] != id0:
++        raise Exception("Unexpected id: " + ev)
++    if vals['peer_instance_id'] != id1:
++        raise Exception("Unexpected peer_instance_id: " + ev)
++
++    # And one more Follow-up message from publisher to subscriber after some
++    # delay.
++    time.sleep(0.5)
++    cmd = "NAN_TRANSMIT handle={} req_instance_id={} address={} ssi=22334455".format(id1, vals['peer_instance_id'], addr0)
++    if "FAIL" in dev1.request(cmd):
++        raise Exception("NAN_TRANSMIT failed")
++
++    ev = dev0.wait_event(["NAN-RECEIVE"], timeout=5)
++    if ev is None:
++        raise Exception("Receive event not seen")
++    vals = split_nan_event(ev)
++    if vals['ssi'] != '22334455':
++        raise Exception("Unexpected ssi in Follow-up: " + ev)
++    if vals['id'] != id0:
++        raise Exception("Unexpected id: " + ev)
++    if vals['peer_instance_id'] != id1:
++        raise Exception("Unexpected peer_instance_id: " + ev)
++
+     dev0.request("NAN_CANCEL_SUBSCRIBE id=" + id0)
+     dev1.request("NAN_CANCEL_PUBLISH id=" + id1)
+ 
+-- 
+2.43.0
+

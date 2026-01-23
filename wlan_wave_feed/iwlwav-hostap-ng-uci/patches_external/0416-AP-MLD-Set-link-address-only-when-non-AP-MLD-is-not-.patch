@@ -1,0 +1,47 @@
+From b653420a239baac023cc4242ff18179ba73b771c Mon Sep 17 00:00:00 2001
+From: Michael-CY Lee <michael-cy.lee@mediatek.com>
+Date: Thu, 15 Feb 2024 15:36:41 +0800
+Subject: [PATCH] AP MLD: Set link address only when non-AP MLD is not added to
+ driver
+
+Once the non-AP MLD is added to the driver, the driver handles the
+address translation so that hostapd receives Management frames with
+SA/DA being translated into MLD MAC addresses.
+
+If the Authentication frmae is retransmitted with transaction being 1,
+SA of the retransmitted Authentication frame is translated into the MLD
+MAC address by the driver, and then in the function handle_auth(),
+sta->mld_info.links[].peer_addr would be replaced by the MLD MAC address
+even though it is supposed to be the link address.
+
+Therefore, update the MLD information only when the STA has not yet been
+added into the driver to avoid replacing the previously determined link
+address with the MLD MAC address.
+
+Fixes: bcbe80a66 ("AP: MLO: Handle Multi-Link element during authentication")
+Signed-off-by: Michael-CY Lee <michael-cy.lee@mediatek.com>
+---
+ src/ap/ieee802_11.c | 7 ++++++-
+ 1 file changed, 6 insertions(+), 1 deletion(-)
+
+diff --git a/src/ap/ieee802_11.c b/src/ap/ieee802_11.c
+index 8b8c1f095..41508ff50 100644
+--- a/src/ap/ieee802_11.c
++++ b/src/ap/ieee802_11.c
+@@ -3078,7 +3078,12 @@ static void handle_auth(struct hostapd_data *hapd,
+ 	}
+ 
+ #ifdef CONFIG_IEEE80211BE
+-	if (auth_transaction == 1) {
++	/* Set the non-AP MLD information based on the initial Authentication
++	 * frame. Once the STA entry has been added to the driver, the driver
++	 * will translate addresses in the frame and we need to avoid overriding
++	 * peer_addr based on mgmt->sa which would have been translated to the
++	 * MLD MAC address. */
++	if (!sta->added_unassoc && auth_transaction == 1) {
+ 		ap_sta_free_sta_profile(&sta->mld_info);
+ 		os_memset(&sta->mld_info, 0, sizeof(sta->mld_info));
+ 
+-- 
+2.43.0
+

@@ -1,0 +1,72 @@
+From d0213ad1e443976dd92fc45bbc04bab96f185e51 Mon Sep 17 00:00:00 2001
+From: Aditya Kumar Singh <quic_adisi@quicinc.com>
+Date: Wed, 5 Mar 2025 21:00:28 +0530
+Subject: [PATCH] AP MLD: Fix hostapd crash during interface deinit with non-ML
+ BSS
+
+Currently a single drv object (wpa_driver_nl80211_data) is shared across
+different hostapd interfaces (struct hostapd_iface) if all the
+interfaces belong to same underlying wiphy. When hostapd process is
+killed, interfaces are deinitialized one after other in a loop. If the
+first BSS of an interface is a non-ML BSS, in hostapd_cleanup_driver()
+the shared drv is freed up while cleaning up the first interface itself
+and the rest of the interfaces try to access/free the same drv object
+resulting in segmentation fault.
+
+To fix this, check if the drv is still shared with any other interface
+regardless of MLO (currently this check is done only if the first BSS of
+an interface is an ML BSS). If drv is shared, reset its reference and
+allow the last interfaces that is using the drv to free the same.
+
+Fixes: 00c2c20d74ee ("hostapd: Maintain single wpa_driver_nl80211_data (drv) object across interfaces")
+Signed-off-by: Aditya Kumar Singh <quic_adisi@quicinc.com>
+Signed-off-by: Rameshkumar Sundaram <quic_ramess@quicinc.com>
+---
+ src/ap/hostapd.c | 29 ++++++++++++++++-------------
+ 1 file changed, 16 insertions(+), 13 deletions(-)
+
+diff --git a/src/ap/hostapd.c b/src/ap/hostapd.c
+index 5b7af044f..65dc14d60 100644
+--- a/src/ap/hostapd.c
++++ b/src/ap/hostapd.c
+@@ -3476,21 +3476,24 @@ static void hostapd_cleanup_driver(const struct wpa_driver_ops *driver,
+ 		return;
+ 
+ #ifdef CONFIG_IEEE80211BE
+-	/* In case of non-ML operation, de-init. But if ML operation exist,
+-	 * even if that's the last BSS in the interface, the driver (drv) could
+-	 * be in use for a different AP MLD. Hence, need to check if drv is
+-	 * still being used by some other BSS before de-initiallizing. */
+-	if (!iface->bss[0]->conf->mld_ap) {
+-		driver->hapd_deinit(drv_priv);
+-	} else if (driver->is_drv_shared &&
+-		   !driver->is_drv_shared(drv_priv,
+-					  iface->bss[0]->mld_link_id)) {
++	if (!driver->is_drv_shared ||
++	    !driver->is_drv_shared(drv_priv, iface->bss[0]->mld_link_id)) {
+ 		driver->hapd_deinit(drv_priv);
+ 		hostapd_mld_interface_freed(iface->bss[0]);
+-	} else if (hostapd_if_link_remove(iface->bss[0],
+-					  WPA_IF_AP_BSS,
+-					  iface->bss[0]->conf->iface,
+-					  iface->bss[0]->mld_link_id)) {
++		iface->bss[0]->drv_priv = NULL;
++		return;
++	}
++
++	if (iface->bss[0]->conf->mld_ap) {
++		if (hostapd_if_link_remove(iface->bss[0],
++					WPA_IF_AP_BSS,
++					iface->bss[0]->conf->iface,
++					iface->bss[0]->mld_link_id))
++			wpa_printf(MSG_WARNING,
++				   "Failed to remove link BSS interface %s",
++				   iface->bss[0]->conf->iface);
++	} else if (hostapd_if_remove(iface->bss[0], WPA_IF_AP_BSS,
++				     iface->bss[0]->conf->iface)) {
+ 		wpa_printf(MSG_WARNING, "Failed to remove BSS interface %s",
+ 			   iface->bss[0]->conf->iface);
+ 	}
+-- 
+2.43.0
+

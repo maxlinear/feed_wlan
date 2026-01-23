@@ -1,0 +1,31 @@
+From 9ba372a23d67055bda7a8f25fafd53ca05148b54 Mon Sep 17 00:00:00 2001
+From: Benjamin Berg <benjamin.berg@intel.com>
+Date: Fri, 14 Jun 2024 10:13:47 +0200
+Subject: [PATCH] tests: Remove duplicate fail test check
+
+The wpas_p2p_nfc_handover failure test and the more specific
+wps_build_nfc_handover_req_p2p were effectively the same as the matching
+currently does a prefix match. The code-path tested in these two cases
+only hit a single TEST_FAIL macro in openssl_digest_vector.
+
+Signed-off-by: Benjamin Berg <benjamin.berg@intel.com>
+---
+ tests/hwsim/test_wpas_ctrl.py | 2 --
+ 1 file changed, 2 deletions(-)
+
+diff --git a/tests/hwsim/test_wpas_ctrl.py b/tests/hwsim/test_wpas_ctrl.py
+index 44eb00444..cf6d3211e 100644
+--- a/tests/hwsim/test_wpas_ctrl.py
++++ b/tests/hwsim/test_wpas_ctrl.py
+@@ -1880,8 +1880,6 @@ def test_wpas_ctrl_error(dev):
+               1, 'wpa_supplicant_ctrl_iface_wps_nfc_token'),
+              ('WPS_NFC_TOKEN NDEF', 'FAIL',
+               2, 'wpa_supplicant_ctrl_iface_wps_nfc_token'),
+-             ('NFC_GET_HANDOVER_REQ NDEF P2P-CR', None,
+-              1, 'wpas_p2p_nfc_handover'),
+              ('NFC_GET_HANDOVER_REQ NDEF P2P-CR', None,
+               1, 'wps_build_nfc_handover_req_p2p')]
+     for cmd, exp, count, func in tests:
+-- 
+2.43.0
+

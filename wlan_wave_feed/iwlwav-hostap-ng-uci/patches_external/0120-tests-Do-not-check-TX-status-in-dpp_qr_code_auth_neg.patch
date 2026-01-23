@@ -1,0 +1,47 @@
+From 54ab50d658440ceb68584b8274caa336ce2821e2 Mon Sep 17 00:00:00 2001
+From: Jouni Malinen <quic_jouni@quicinc.com>
+Date: Wed, 20 Dec 2023 12:46:05 +0200
+Subject: [PATCH] tests: Do not check TX status in dpp_qr_code_auth_neg_chan
+
+This avoids race conditions with UML time-travel where some cases ended
+up not reporting the DPP-TX-STATUS event and that resulted in discarding
+events that are more important to verify for correct behavior.
+
+Signed-off-by: Jouni Malinen <quic_jouni@quicinc.com>
+---
+ tests/hwsim/test_dpp.py | 12 ------------
+ 1 file changed, 12 deletions(-)
+
+diff --git a/tests/hwsim/test_dpp.py b/tests/hwsim/test_dpp.py
+index 7d3581759..909d63c92 100644
+--- a/tests/hwsim/test_dpp.py
++++ b/tests/hwsim/test_dpp.py
+@@ -879,12 +879,6 @@ def test_dpp_qr_code_auth_neg_chan(dev, apdev):
+     if "freq=2462 type=1" not in ev:
+         raise Exception("Unexpected RX data for Authentication Response: " + ev)
+ 
+-    ev = dev[0].wait_event(["DPP-TX-STATUS"], timeout=5)
+-    if ev is None:
+-        raise Exception("TX status for DPP Authentication Response not reported")
+-    if "freq=2462 result=SUCCESS" not in ev:
+-        raise Exception("Unexpected TX status for Authentication Response: " + ev)
+-
+     ev = dev[1].wait_event(["DPP-TX "], timeout=5)
+     if ev is None:
+         raise Exception("DPP Authentication Confirm not sent")
+@@ -897,12 +891,6 @@ def test_dpp_qr_code_auth_neg_chan(dev, apdev):
+     if "freq=2462 type=2" not in ev:
+         raise Exception("Unexpected RX data for Authentication Confirm: " + ev)
+ 
+-    ev = dev[1].wait_event(["DPP-TX-STATUS"], timeout=5)
+-    if ev is None:
+-        raise Exception("TX status for DPP Authentication Confirm not reported")
+-    if "freq=2462 result=SUCCESS" not in ev:
+-        raise Exception("Unexpected TX status for Authentication Confirm: " + ev)
+-
+     wait_auth_success(dev[0], dev[1], configurator=dev[1], enrollee=dev[0],
+                       stop_responder=True)
+ 
+-- 
+2.43.0
+

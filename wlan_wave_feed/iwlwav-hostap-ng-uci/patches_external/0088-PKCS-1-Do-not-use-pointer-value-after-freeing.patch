@@ -1,0 +1,45 @@
+From 33b5fc076341148c5a0d8094af301336f9f5a980 Mon Sep 17 00:00:00 2001
+From: Jouni Malinen <j@w1.fi>
+Date: Sun, 17 Dec 2023 12:10:13 +0200
+Subject: [PATCH] PKCS#1: Do not use pointer value after freeing
+
+The check for extra data was not dereferencing the pointer, but avoid
+complaints about such uses by freeing the decrypted data only after the
+check. The hexdump could have read freed memory, so that needs to be
+before the freeing.
+
+Fixes: 54ac6ff8c4a2 ("PKCS 1: Add function for checking v1.5 RSA signature")
+Signed-off-by: Jouni Malinen <j@w1.fi>
+---
+ src/tls/pkcs1.c | 6 ++++--
+ 1 file changed, 4 insertions(+), 2 deletions(-)
+
+diff --git a/src/tls/pkcs1.c b/src/tls/pkcs1.c
+index 49e439d02..7ea9cc7f3 100644
+--- a/src/tls/pkcs1.c
++++ b/src/tls/pkcs1.c
+@@ -322,8 +322,6 @@ int pkcs1_v15_sig_ver(struct crypto_public_key *pk,
+ 		return -1;
+ 	}
+ 
+-	os_free(decrypted);
+-
+ 	if (hdr.payload + hdr.length != decrypted + decrypted_len) {
+ 		wpa_printf(MSG_INFO,
+ 			   "PKCS #1: Extra data after signature - reject");
+@@ -332,8 +330,12 @@ int pkcs1_v15_sig_ver(struct crypto_public_key *pk,
+ 			    hdr.payload + hdr.length,
+ 			    decrypted + decrypted_len - hdr.payload -
+ 			    hdr.length);
++
++		os_free(decrypted);
+ 		return -1;
+ 	}
+ 
++	os_free(decrypted);
++
+ 	return 0;
+ }
+-- 
+2.43.0
+

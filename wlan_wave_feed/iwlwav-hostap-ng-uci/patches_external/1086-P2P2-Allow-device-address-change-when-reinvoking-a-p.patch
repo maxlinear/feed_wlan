@@ -1,0 +1,126 @@
+From 4ebca723f90dec3c27492ff89bd650a4c58f90a2 Mon Sep 17 00:00:00 2001
+From: Shivani Baranwal <quic_shivbara@quicinc.com>
+Date: Mon, 5 Aug 2024 12:03:44 +0530
+Subject: [PATCH] P2P2: Allow device address change when reinvoking a
+ persistent group
+
+In P2P-R2 while reinvoking a persistent group, the devices of the group
+can have a different P2P device address for the invite session.  As
+devices supports MAC randomization, we should identify the peers based
+on the device identity key. Hence, remove the ether_addr_equal() check.
+
+Signed-off-by: Shivani Baranwal <quic_shivbara@quicinc.com>
+---
+ src/p2p/p2p.c                   | 3 ++-
+ src/p2p/p2p.h                   | 4 +++-
+ src/p2p/p2p_i.h                 | 2 +-
+ src/p2p/p2p_invitation.c        | 7 ++++---
+ wpa_supplicant/p2p_supplicant.c | 4 ++--
+ 5 files changed, 12 insertions(+), 8 deletions(-)
+
+diff --git a/src/p2p/p2p.c b/src/p2p/p2p.c
+index 15a344091..9159bf4a5 100644
+--- a/src/p2p/p2p.c
++++ b/src/p2p/p2p.c
+@@ -6625,7 +6625,8 @@ static int p2p_pasn_handle_action_wrapper(struct p2p_data *p2p,
+ 
+ 			resp = p2p_process_invitation_req(p2p, mgmt->sa,
+ 							  data + 1,
+-							  data_len - 1, freq);
++							  data_len - 1, freq,
++							  true);
+ 			if (!resp)
+ 				p2p_dbg(p2p, "No Invitation Response found");
+ 
+diff --git a/src/p2p/p2p.h b/src/p2p/p2p.h
+index 256c169e0..96fd85bd0 100644
+--- a/src/p2p/p2p.h
++++ b/src/p2p/p2p.h
+@@ -1077,6 +1077,8 @@ struct p2p_config {
+ 	 * @channels: Available operating channels for the group
+ 	 * @dev_pw_id: Device Password ID for NFC static handover or -1 if not
+ 	 *	used
++	 * @p2p2: Whether invitation request was wrapped in PASN authentication
++	 * received from a P2P2 device
+ 	 * Returns: Status code (P2P_SC_*)
+ 	 *
+ 	 * This optional callback can be used to implement persistent reconnect
+@@ -1099,7 +1101,7 @@ struct p2p_config {
+ 				 size_t ssid_len, int *go, u8 *group_bssid,
+ 				 int *force_freq, int persistent_group,
+ 				 const struct p2p_channels *channels,
+-				 int dev_pw_id);
++				 int dev_pw_id, bool p2p2);
+ 
+ 	/**
+ 	 * invitation_received - Callback on Invitation Request RX
+diff --git a/src/p2p/p2p_i.h b/src/p2p/p2p_i.h
+index 17fa8cf86..135920b38 100644
+--- a/src/p2p/p2p_i.h
++++ b/src/p2p/p2p_i.h
+@@ -1003,7 +1003,7 @@ void p2p_handle_invitation_resp(struct p2p_data *p2p, const u8 *sa,
+ 				const u8 *data, size_t len);
+ struct wpabuf * p2p_process_invitation_req(struct p2p_data *p2p, const u8 *sa,
+ 					   const u8 *data, size_t len,
+-					   int rx_freq);
++					   int rx_freq, bool p2p2);
+ void p2p_process_invitation_resp(struct p2p_data *p2p, const u8 *sa,
+ 				 const u8 *data, size_t len);
+ int p2p_invite_send(struct p2p_data *p2p, struct p2p_device *dev,
+diff --git a/src/p2p/p2p_invitation.c b/src/p2p/p2p_invitation.c
+index be6139ac7..816d6e2f3 100644
+--- a/src/p2p/p2p_invitation.c
++++ b/src/p2p/p2p_invitation.c
+@@ -186,7 +186,7 @@ static struct wpabuf * p2p_build_invitation_resp(struct p2p_data *p2p,
+ 
+ struct wpabuf * p2p_process_invitation_req(struct p2p_data *p2p, const u8 *sa,
+ 					   const u8 *data, size_t len,
+-					   int rx_freq)
++					   int rx_freq, bool p2p2)
+ {
+ 	struct p2p_device *dev;
+ 	struct p2p_message msg;
+@@ -271,7 +271,8 @@ struct wpabuf * p2p_process_invitation_req(struct p2p_data *p2p, const u8 *sa,
+ 			p2p->cfg->cb_ctx, sa, msg.group_bssid, msg.group_id,
+ 			msg.group_id + ETH_ALEN, msg.group_id_len - ETH_ALEN,
+ 			&go, group_bssid, &op_freq, persistent, &intersection,
+-			msg.dev_password_id_present ? msg.dev_password_id : -1);
++			msg.dev_password_id_present ? msg.dev_password_id : -1,
++			p2p2);
+ 	}
+ 
+ 	if (go) {
+@@ -425,7 +426,7 @@ void p2p_handle_invitation_req(struct p2p_data *p2p, const u8 *sa,
+ 	int freq;
+ 	struct wpabuf *resp;
+ 
+-	resp = p2p_process_invitation_req(p2p, sa, data, len, rx_freq);
++	resp = p2p_process_invitation_req(p2p, sa, data, len, rx_freq, false);
+ 	if (!resp)
+ 		return;
+ 
+diff --git a/wpa_supplicant/p2p_supplicant.c b/wpa_supplicant/p2p_supplicant.c
+index 114fd5545..191d4bf69 100644
+--- a/wpa_supplicant/p2p_supplicant.c
++++ b/wpa_supplicant/p2p_supplicant.c
+@@ -3603,7 +3603,7 @@ static u8 wpas_invitation_process(void *ctx, const u8 *sa, const u8 *bssid,
+ 				  size_t ssid_len, int *go, u8 *group_bssid,
+ 				  int *force_freq, int persistent_group,
+ 				  const struct p2p_channels *channels,
+-				  int dev_pw_id)
++				  int dev_pw_id, bool p2p2)
+ {
+ 	struct wpa_supplicant *wpa_s = ctx;
+ 	struct wpa_ssid *s;
+@@ -3667,7 +3667,7 @@ static u8 wpas_invitation_process(void *ctx, const u8 *sa, const u8 *bssid,
+ 
+ 	for (s = wpa_s->conf->ssid; s; s = s->next) {
+ 		if (s->disabled == 2 &&
+-		    ether_addr_equal(s->bssid, go_dev_addr) &&
++		    (p2p2 || ether_addr_equal(s->bssid, go_dev_addr)) &&
+ 		    s->ssid_len == ssid_len &&
+ 		    os_memcmp(ssid, s->ssid, ssid_len) == 0)
+ 			break;
+-- 
+2.43.0
+

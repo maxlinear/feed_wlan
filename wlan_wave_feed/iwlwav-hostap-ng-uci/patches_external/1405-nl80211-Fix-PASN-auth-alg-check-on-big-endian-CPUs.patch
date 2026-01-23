@@ -1,0 +1,31 @@
+From 3e592a1a7d63ba2cd1fcada63ca52a96b99ca3c9 Mon Sep 17 00:00:00 2001
+From: Jouni Malinen <j@w1.fi>
+Date: Sat, 22 Feb 2025 11:25:31 +0200
+Subject: [PATCH] nl80211: Fix PASN auth alg check on big-endian CPUs
+
+auth_type is set to a value that is already converted to host byte order
+and as such the following comparison must not convert the defined value
+to little-endian byte order.
+
+Fixes: 58a96187eed8 ("nl80211: Allow PASN Authentication frames with random (foreign) MAC address")
+Signed-off-by: Jouni Malinen <j@w1.fi>
+---
+ src/drivers/driver_nl80211_event.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/src/drivers/driver_nl80211_event.c b/src/drivers/driver_nl80211_event.c
+index 354f18d28..a58fff202 100644
+--- a/src/drivers/driver_nl80211_event.c
++++ b/src/drivers/driver_nl80211_event.c
+@@ -1721,7 +1721,7 @@ static void mlme_event(struct i802_bss *bss,
+ 	}
+ 
+ 	if (cmd == NL80211_CMD_FRAME && stype == WLAN_FC_STYPE_AUTH &&
+-	    auth_type == host_to_le16(WLAN_AUTH_PASN)) {
++	    auth_type == WLAN_AUTH_PASN) {
+ 		wpa_printf(MSG_DEBUG,
+ 			   "nl80211: %s: Allow PASN frame for foreign address",
+ 			   bss->ifname);
+-- 
+2.43.0
+

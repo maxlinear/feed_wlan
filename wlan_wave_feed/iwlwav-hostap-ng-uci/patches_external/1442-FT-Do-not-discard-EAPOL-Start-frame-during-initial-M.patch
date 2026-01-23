@@ -1,0 +1,45 @@
+From 47ff1b68f9c4b49a486b2dea44c16815a8ec32c9 Mon Sep 17 00:00:00 2001
+From: Jouni Malinen <quic_jouni@quicinc.com>
+Date: Tue, 25 Feb 2025 11:42:02 +0200
+Subject: [PATCH] FT: Do not discard EAPOL-Start frame during initial MD
+ association
+
+Commit c97168f58ae9 ("FT: Discard EAPOL-Start frames when FT was used
+for association") started discard EAPOL-Start frames in all cases where
+FT is used, including the initial MD association. The exact IEEE 802.11
+standard language requiring the STA to perform a new FT initial MD
+association when its Supplicant triggers sending of an EAPOL-Start frame
+has a condition on this being "after a successful initial mobility
+domain association domain", so this would not really apply during the
+initial MD association itself.
+
+Relax the conditions on processing EAPOL-Start frames so that they are
+still processed during the FT initial mobility domain association, but
+are then discarded after that succeeds (i.e., during rest of that
+association and any future association started using FT protocol).
+
+Signed-off-by: Jouni Malinen <quic_jouni@quicinc.com>
+---
+ src/ap/ieee802_1x.c | 6 ++++--
+ 1 file changed, 4 insertions(+), 2 deletions(-)
+
+diff --git a/src/ap/ieee802_1x.c b/src/ap/ieee802_1x.c
+index e5dc7cb49..95ae24d80 100644
+--- a/src/ap/ieee802_1x.c
++++ b/src/ap/ieee802_1x.c
+@@ -1250,8 +1250,10 @@ void ieee802_1x_receive(struct hostapd_data *hapd, const u8 *sa, const u8 *buf,
+ 			       HOSTAPD_LEVEL_DEBUG,
+ 			       "received EAPOL-Start from STA");
+ #ifdef CONFIG_IEEE80211R_AP
+-		if (hapd->conf->wpa && sta->wpa_sm &&
+-		    (wpa_key_mgmt_ft(wpa_auth_sta_key_mgmt(sta->wpa_sm)) ||
++		if (hapd->conf->wpa &&
++		    wpa_key_mgmt_ft(hapd->conf->wpa_key_mgmt) && sta->wpa_sm &&
++		    ((wpa_key_mgmt_ft(wpa_auth_sta_key_mgmt(sta->wpa_sm)) &&
++		      (sta->flags & WLAN_STA_AUTHORIZED)) ||
+ 		     sta->auth_alg == WLAN_AUTH_FT)) {
+ 			/* When FT is used, reauthentication to generate a new
+ 			 * PMK-R0 would be complicated since the current AP
+-- 
+2.43.0
+

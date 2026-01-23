@@ -1,0 +1,44 @@
+From 594f85e30b98c0718388241447d8083e9aaaa5ed Mon Sep 17 00:00:00 2001
+From: Benjamin Berg <benjamin.berg@intel.com>
+Date: Tue, 26 Dec 2023 11:06:24 +0200
+Subject: [PATCH] mesh: Set the mld_link_id to -1 when adding a station
+
+As otherwise the mld_link_id would be 0, which the driver would
+consider a valid link id and would return an error.
+
+Signed-off-by: Benjamin Berg <benjamin.berg@intel.com>
+---
+ wpa_supplicant/mesh_mpm.c | 3 +++
+ 1 file changed, 3 insertions(+)
+
+diff --git a/wpa_supplicant/mesh_mpm.c b/wpa_supplicant/mesh_mpm.c
+index 138c01399..41707759e 100644
+--- a/wpa_supplicant/mesh_mpm.c
++++ b/wpa_supplicant/mesh_mpm.c
+@@ -468,6 +468,7 @@ void wpa_mesh_set_plink_state(struct wpa_supplicant *wpa_s,
+ 	params.plink_state = state;
+ 	params.peer_aid = sta->peer_aid;
+ 	params.set = 1;
++	params.mld_link_id = -1;
+ 
+ 	ret = wpa_drv_sta_add(wpa_s, &params);
+ 	if (ret) {
+@@ -697,6 +698,7 @@ void mesh_mpm_auth_peer(struct wpa_supplicant *wpa_s, const u8 *addr)
+ 	params.addr = sta->addr;
+ 	params.flags = WPA_STA_AUTHENTICATED | WPA_STA_AUTHORIZED;
+ 	params.set = 1;
++	params.mld_link_id = -1;
+ 
+ 	wpa_msg(wpa_s, MSG_DEBUG, "MPM authenticating " MACSTR,
+ 		MAC2STR(sta->addr));
+@@ -816,6 +818,7 @@ static struct sta_info * mesh_mpm_add_peer(struct wpa_supplicant *wpa_s,
+ 	params.eht_capab_len = sta->eht_capab_len;
+ 	params.flags |= WPA_STA_WMM;
+ 	params.flags_mask |= WPA_STA_AUTHENTICATED;
++	params.mld_link_id = -1;
+ 	if (conf->security == MESH_CONF_SEC_NONE) {
+ 		params.flags |= WPA_STA_AUTHORIZED;
+ 		params.flags |= WPA_STA_AUTHENTICATED;
+-- 
+2.43.0
+

@@ -1,0 +1,279 @@
+From 20ed289a785c32fc4dc3a90307f827e10a8f0725 Mon Sep 17 00:00:00 2001
+From: Benjamin Berg <benjamin.berg@intel.com>
+Date: Tue, 20 Feb 2024 14:18:16 +0100
+Subject: [PATCH] WNM: Clean up old scan data processing
+
+When receiving a BTM request, wpa_supplicant would try to fetch new
+results from the driver, and, independently of that, would also process
+the latest scan results that were partially updated by the previous
+fetch.
+
+Simplify the logic by using wpa_supplicant_get_scan_results() directly
+and then process the old scan data as usual. However, this data may be
+outdated, so add a new heuristic to avoid roaming to a BSS if it is
+either outdated or bad.
+
+Doing this moves all scan data processing into wnm_scan_process() and
+removes duplicated functionality for scan result processing in scan.c.
+
+Signed-off-by: Benjamin Berg <benjamin.berg@intel.com>
+---
+ wpa_supplicant/events.c  |   2 +-
+ wpa_supplicant/scan.c    |   4 +-
+ wpa_supplicant/scan.h    |   2 -
+ wpa_supplicant/wnm_sta.c | 148 ++++++++++++---------------------------
+ wpa_supplicant/wnm_sta.h |   2 +-
+ 5 files changed, 49 insertions(+), 109 deletions(-)
+
+diff --git a/wpa_supplicant/events.c b/wpa_supplicant/events.c
+index 9346a4f61..d61512124 100644
+--- a/wpa_supplicant/events.c
++++ b/wpa_supplicant/events.c
+@@ -2493,7 +2493,7 @@ static int _wpa_supplicant_event_scan_results(struct wpa_supplicant *wpa_s,
+ 		return 0;
+ 	}
+ 
+-	if (wnm_scan_process(wpa_s, 1) > 0)
++	if (wnm_scan_process(wpa_s, false) > 0)
+ 		goto scan_work_done;
+ 
+ 	if (sme_proc_obss_scan(wpa_s) > 0)
+diff --git a/wpa_supplicant/scan.c b/wpa_supplicant/scan.c
+index e416bef99..5c6f71f9f 100644
+--- a/wpa_supplicant/scan.c
++++ b/wpa_supplicant/scan.c
+@@ -2603,8 +2603,8 @@ int wpa_supplicant_filter_bssid_match(struct wpa_supplicant *wpa_s,
+ }
+ 
+ 
+-void filter_scan_res(struct wpa_supplicant *wpa_s,
+-		     struct wpa_scan_results *res)
++static void filter_scan_res(struct wpa_supplicant *wpa_s,
++			    struct wpa_scan_results *res)
+ {
+ 	size_t i, j;
+ 
+diff --git a/wpa_supplicant/scan.h b/wpa_supplicant/scan.h
+index 8402e749e..cc9d1a3fa 100644
+--- a/wpa_supplicant/scan.h
++++ b/wpa_supplicant/scan.h
+@@ -86,8 +86,6 @@ int wpas_mac_addr_rand_scan_set(struct wpa_supplicant *wpa_s,
+ int wpas_mac_addr_rand_scan_get_mask(struct wpa_supplicant *wpa_s,
+ 				     unsigned int type, u8 *mask);
+ int wpas_abort_ongoing_scan(struct wpa_supplicant *wpa_s);
+-void filter_scan_res(struct wpa_supplicant *wpa_s,
+-		     struct wpa_scan_results *res);
+ void scan_snr(struct wpa_scan_res *res);
+ void scan_est_throughput(struct wpa_supplicant *wpa_s,
+ 			 struct wpa_scan_res *res);
+diff --git a/wpa_supplicant/wnm_sta.c b/wpa_supplicant/wnm_sta.c
+index b340fae06..9cec9e451 100644
+--- a/wpa_supplicant/wnm_sta.c
++++ b/wpa_supplicant/wnm_sta.c
+@@ -1172,7 +1172,7 @@ static void wnm_bss_tm_connect(struct wpa_supplicant *wpa_s,
+ }
+ 
+ 
+-int wnm_scan_process(struct wpa_supplicant *wpa_s, int reply_on_fail)
++int wnm_scan_process(struct wpa_supplicant *wpa_s, bool pre_scan_check)
+ {
+ 	struct wpa_bss *bss;
+ 	struct wpa_ssid *ssid = wpa_s->current_ssid;
+@@ -1185,7 +1185,8 @@ int wnm_scan_process(struct wpa_supplicant *wpa_s, int reply_on_fail)
+ 
+ 	wpa_dbg(wpa_s, MSG_DEBUG,
+ 		"WNM: Process scan results for BSS Transition Management");
+-	if (os_reltime_before(&wpa_s->wnm_cand_valid_until,
++	if (!pre_scan_check &&
++	    os_reltime_before(&wpa_s->wnm_cand_valid_until,
+ 			      &wpa_s->scan_trigger_time)) {
+ 		wpa_printf(MSG_DEBUG, "WNM: Previously stored BSS transition candidate list is not valid anymore - drop it");
+ 		wnm_deallocate_memory(wpa_s);
+@@ -1201,6 +1202,36 @@ int wnm_scan_process(struct wpa_supplicant *wpa_s, int reply_on_fail)
+ 
+ 	/* Compare the Neighbor Report and scan results */
+ 	bss = compare_scan_neighbor_results(wpa_s, 0, &reason);
++
++	/*
++	 * If this is a pre-scan check, returning 0 will trigger a scan and
++	 * another call. In that case, reject "bad" candidates in the hope of
++	 * finding a better candidate after scanning.
++	 *
++	 * Use a simple heuristic to check whether the selection is reasonable
++	 * or a scan is a good idea. For that, we need to have found a
++	 * candidate BSS (which might be the current one), it is up-to-date,
++	 * and we don't want to immediately roam back again.
++	 */
++	if (pre_scan_check) {
++		struct os_reltime age;
++
++		if (!bss)
++			return 0;
++
++		os_reltime_age(&bss->last_update, &age);
++		if (age.sec >= 10)
++			return 0;
++
++#ifndef CONFIG_NO_ROAMING
++		if (bss != wpa_s->current_bss &&
++		    wpa_supplicant_need_to_roam_within_ess(wpa_s,
++							   wpa_s->current_bss,
++							   bss))
++			return 0;
++#endif /* CONFIG_NO_ROAMING */
++	}
++
+ 	if (!bss) {
+ 		wpa_printf(MSG_DEBUG, "WNM: No BSS transition candidate match found");
+ 		status = WNM_BSS_TM_REJECT_NO_SUITABLE_CANDIDATES;
+@@ -1212,9 +1243,6 @@ int wnm_scan_process(struct wpa_supplicant *wpa_s, int reply_on_fail)
+ 	return 1;
+ 
+ send_bss_resp_fail:
+-	if (!reply_on_fail)
+-		return 0;
+-
+ 	/* Send reject response for all the failures */
+ 
+ 	if (wpa_s->wnm_reply) {
+@@ -1354,79 +1382,6 @@ static void wnm_set_scan_freqs(struct wpa_supplicant *wpa_s)
+ }
+ 
+ 
+-static int wnm_fetch_scan_results(struct wpa_supplicant *wpa_s)
+-{
+-	struct wpa_scan_results *scan_res;
+-	struct wpa_bss *bss;
+-	struct wpa_ssid *ssid = wpa_s->current_ssid;
+-	u8 i, found = 0;
+-	size_t j;
+-
+-	wpa_dbg(wpa_s, MSG_DEBUG,
+-		"WNM: Fetch current scan results from the driver for checking transition candidates");
+-	scan_res = wpa_drv_get_scan_results2(wpa_s);
+-	if (!scan_res) {
+-		wpa_dbg(wpa_s, MSG_DEBUG, "WNM: Failed to get scan results");
+-		return 0;
+-	}
+-
+-	if (scan_res->fetch_time.sec == 0)
+-		os_get_reltime(&scan_res->fetch_time);
+-
+-	filter_scan_res(wpa_s, scan_res);
+-
+-	for (i = 0; i < wpa_s->wnm_num_neighbor_report; i++) {
+-		struct neighbor_report *nei;
+-
+-		nei = &wpa_s->wnm_neighbor_report_elements[i];
+-		if (nei->preference_present && nei->preference == 0)
+-			continue;
+-
+-		for (j = 0; j < scan_res->num; j++) {
+-			struct wpa_scan_res *res;
+-			const u8 *ssid_ie;
+-
+-			res = scan_res->res[j];
+-			if (!ether_addr_equal(nei->bssid, res->bssid) ||
+-			    res->age > WNM_SCAN_RESULT_AGE * 1000)
+-				continue;
+-			bss = wpa_s->current_bss;
+-			ssid_ie = wpa_scan_get_ie(res, WLAN_EID_SSID);
+-			if (bss && ssid_ie && ssid_ie[1] &&
+-			    (bss->ssid_len != ssid_ie[1] ||
+-			     os_memcmp(bss->ssid, ssid_ie + 2,
+-				       bss->ssid_len) != 0))
+-				continue; /* Skip entries for other ESSs */
+-
+-			/* Potential candidate found */
+-			found = 1;
+-			scan_snr(res);
+-			scan_est_throughput(wpa_s, res);
+-			wpa_bss_update_scan_res(wpa_s, res,
+-						&scan_res->fetch_time);
+-		}
+-	}
+-
+-	wpa_scan_results_free(scan_res);
+-	if (!found) {
+-		wpa_dbg(wpa_s, MSG_DEBUG,
+-			"WNM: No transition candidate matches existing scan results");
+-		return 0;
+-	}
+-
+-	bss = compare_scan_neighbor_results(wpa_s, WNM_SCAN_RESULT_AGE, NULL);
+-	if (!bss) {
+-		wpa_dbg(wpa_s, MSG_DEBUG,
+-			"WNM: Comparison of scan results against transition candidates did not find matches");
+-		return 0;
+-	}
+-
+-	/* Associate to the network */
+-	wnm_bss_tm_connect(wpa_s, bss, ssid, 0);
+-	return 1;
+-}
+-
+-
+ static void ieee802_11_rx_bss_trans_mgmt_req(struct wpa_supplicant *wpa_s,
+ 					     const u8 *pos, const u8 *end,
+ 					     int reply)
+@@ -1634,32 +1589,19 @@ static void ieee802_11_rx_bss_trans_mgmt_req(struct wpa_supplicant *wpa_s,
+ 		os_memcpy(wpa_s->wnm_cand_from_bss, wpa_s->bssid, ETH_ALEN);
+ 
+ 		/*
+-		 * Fetch the latest scan results from the kernel and check for
+-		 * candidates based on those results first. This can help in
+-		 * finding more up-to-date information should the driver has
+-		 * done some internal scanning operations after the last scan
+-		 * result update in wpa_supplicant.
+-		 */
+-		if (wnm_fetch_scan_results(wpa_s) > 0)
++		* Try fetching the latest scan results from the kernel.
++		* This can help in finding more up-to-date information should
++		* the driver have done some internal scanning operations after
++		* the last scan result update in wpa_supplicant.
++		*
++		* It is not a new scan, this does not update the last_scan
++		* timestamp nor will it expire old BSSs.
++		*/
++		wpa_supplicant_update_scan_results(wpa_s);
++		if (wnm_scan_process(wpa_s, true) > 0)
+ 			return;
+-
+-		/*
+-		 * Try to use previously received scan results, if they are
+-		 * recent enough to use for a connection.
+-		 */
+-		if (wpa_s->last_scan_res_used > 0) {
+-			struct os_reltime now;
+-
+-			os_get_reltime(&now);
+-			if (!os_reltime_expired(&now, &wpa_s->last_scan, 10)) {
+-				wpa_printf(MSG_DEBUG,
+-					   "WNM: Try to use recent scan results");
+-				if (wnm_scan_process(wpa_s, 0) > 0)
+-					return;
+-				wpa_printf(MSG_DEBUG,
+-					   "WNM: No match in previous scan results - try a new scan");
+-			}
+-		}
++		wpa_printf(MSG_DEBUG,
++			   "WNM: No valid match in previous scan results - try a new scan");
+ 
+ 		wnm_set_scan_freqs(wpa_s);
+ 		if (wpa_s->wnm_num_neighbor_report == 1) {
+diff --git a/wpa_supplicant/wnm_sta.h b/wpa_supplicant/wnm_sta.h
+index 2a473db4e..2eaa2964f 100644
+--- a/wpa_supplicant/wnm_sta.h
++++ b/wpa_supplicant/wnm_sta.h
+@@ -75,7 +75,7 @@ bool wnm_is_bss_excluded(struct wpa_supplicant *wpa_s, struct wpa_bss *bss);
+ 
+ #ifdef CONFIG_WNM
+ 
+-int wnm_scan_process(struct wpa_supplicant *wpa_s, int reply_on_fail);
++int wnm_scan_process(struct wpa_supplicant *wpa_s, bool pre_scan_check);
+ void wnm_clear_coloc_intf_reporting(struct wpa_supplicant *wpa_s);
+ 
+ #else /* CONFIG_WNM */
+-- 
+2.43.0
+

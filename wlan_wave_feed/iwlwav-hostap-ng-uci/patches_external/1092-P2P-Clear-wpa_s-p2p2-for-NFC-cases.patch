@@ -1,0 +1,69 @@
+From 25d29d65aa6df173eb9f6b44d4dc0536df66b4ba Mon Sep 17 00:00:00 2001
+From: Jouni Malinen <quic_jouni@quicinc.com>
+Date: Wed, 20 Nov 2024 13:11:45 +0200
+Subject: [PATCH] P2P: Clear wpa_s->p2p2 for NFC cases
+
+wpa_s->p2p2 is used to track whether a new P2P connection is using P2P2.
+However, it was not cleared in some cases and that could result in
+unexpected behavior and failures, e.g., with NFC-initiated P2P.
+
+Clear wpa_s->p2p2 for the operations that start NFC-based P2P
+connection. In addition, clear it on the FLUSH control interface
+command.
+
+This showed up with the following test case sequence:
+p2p_pairing_opportunistic nfc_p2p_static_handover_tagdev_client
+
+Signed-off-by: Jouni Malinen <quic_jouni@quicinc.com>
+---
+ wpa_supplicant/ctrl_iface.c     | 2 ++
+ wpa_supplicant/p2p_supplicant.c | 6 ++++++
+ 2 files changed, 8 insertions(+)
+
+diff --git a/wpa_supplicant/ctrl_iface.c b/wpa_supplicant/ctrl_iface.c
+index 87da9636f..cfb51ca9f 100644
+--- a/wpa_supplicant/ctrl_iface.c
++++ b/wpa_supplicant/ctrl_iface.c
+@@ -7773,6 +7773,8 @@ static void p2p_ctrl_flush(struct wpa_supplicant *wpa_s)
+ 	wpa_s->parent->p2ps_method_config_any = 0;
+ 	if (wpa_s->global->p2p)
+ 		p2p_flush(wpa_s->global->p2p);
++
++	wpa_s->p2p2 = false;
+ }
+ 
+ 
+diff --git a/wpa_supplicant/p2p_supplicant.c b/wpa_supplicant/p2p_supplicant.c
+index 7f89cdb75..71c510f75 100644
+--- a/wpa_supplicant/p2p_supplicant.c
++++ b/wpa_supplicant/p2p_supplicant.c
+@@ -10157,6 +10157,8 @@ struct wpabuf * wpas_p2p_nfc_handover_req(struct wpa_supplicant *wpa_s,
+ 		return NULL;
+ 	}
+ 
++	wpa_s->p2p2 = false;
++
+ 	if (cli_freq == 0) {
+ 		wsc = wps_build_nfc_handover_req_p2p(
+ 			wpa_s->parent->wps, wpa_s->conf->wps_nfc_dh_pubkey);
+@@ -10186,6 +10188,8 @@ struct wpabuf * wpas_p2p_nfc_handover_sel(struct wpa_supplicant *wpa_s,
+ 			   &wpa_s->conf->wps_nfc_dh_privkey) < 0)
+ 		return NULL;
+ 
++	wpa_s->p2p2 = false;
++
+ 	if (cli_freq == 0) {
+ 		wsc = wps_build_nfc_handover_sel_p2p(
+ 			wpa_s->parent->wps,
+@@ -10454,6 +10458,8 @@ static int wpas_p2p_nfc_connection_handover(struct wpa_supplicant *wpa_s,
+ 		  params.oob_dev_pw, WPS_OOB_PUBKEY_HASH_LEN);
+ 	wpa_s->p2p_peer_oob_pk_hash_known = 1;
+ 
++	wpa_s->p2p2 = false;
++
+ 	if (tag) {
+ 		if (id < 0x10) {
+ 			wpa_printf(MSG_DEBUG, "P2P: Static handover - invalid "
+-- 
+2.43.0
+

@@ -1,0 +1,173 @@
+From edd85280ffe43231693ac056e9575aab4a24a2cc Mon Sep 17 00:00:00 2001
+From: Arowa Suliman <arowa@chromium.org>
+Date: Tue, 5 Nov 2024 05:36:11 +0000
+Subject: [PATCH] Check last scan SSIDs before triggering new scan for hidden
+ network
+
+Commit 92374d59d4ef ("Enhance select_network() to trigger new scans in
+some cases") introduced a redundant scan when selecting a hidden network
+that was previously scanned and found. This occurs because the code only
+checks for the condition `(wpa_s->no_suitable_network ||
+wpa_s->last_scan_external)`, which doesn't cover the case where the last
+scan successfully found the hidden SSID.
+
+Save the scanned SSIDs from the last scan and updates the condition to
+check if the hidden SSID was included. If the hidden SSID is not found
+in `last_scan_ssids`, the code checks if the SSID was found in earlier
+scan results. If not, it triggers a new scan. If the SSID is found, a
+new scan is avoided, resulting in faster connection times.
+
+Signed-off-by: Arowa Suliman <arowa@chromium.org>
+---
+ wpa_supplicant/events.c           | 22 +++++++++-
+ wpa_supplicant/wpa_supplicant.c   | 68 +++++++++++++++++++++++++++----
+ wpa_supplicant/wpa_supplicant_i.h |  7 ++++
+ 3 files changed, 89 insertions(+), 8 deletions(-)
+
+diff --git a/wpa_supplicant/events.c b/wpa_supplicant/events.c
+index 279838afa..77bc3c7a9 100644
+--- a/wpa_supplicant/events.c
++++ b/wpa_supplicant/events.c
+@@ -2560,7 +2560,27 @@ static int _wpa_supplicant_event_scan_results(struct wpa_supplicant *wpa_s,
+ 	}
+ #endif /* CONFIG_NO_RANDOM_POOL */
+ 
+-	wpa_s->last_scan_external = data && data->scan_info.external_scan;
++	if (data) {
++		size_t idx;
++
++		wpa_s->last_scan_external = data->scan_info.external_scan;
++		wpa_s->last_scan_num_ssids = data->scan_info.num_ssids;
++		for (idx = 0; idx < wpa_s->last_scan_num_ssids; idx++) {
++			/* Copy the SSID and its length */
++			if (idx >= WPAS_MAX_SCAN_SSIDS ||
++			    data->scan_info.ssids[idx].ssid_len > SSID_MAX_LEN)
++				continue;
++
++			os_memcpy(wpa_s->last_scan_ssids[idx].ssid,
++				  data->scan_info.ssids[idx].ssid,
++				  data->scan_info.ssids[idx].ssid_len);
++			wpa_s->last_scan_ssids[idx].ssid_len =
++				data->scan_info.ssids[idx].ssid_len;
++		}
++	} else {
++		wpa_s->last_scan_external = false;
++		wpa_s->last_scan_num_ssids = 0;
++	}
+ 
+ 	if (update_only) {
+ 		ret = 1;
+diff --git a/wpa_supplicant/wpa_supplicant.c b/wpa_supplicant/wpa_supplicant.c
+index cfa66da08..5267ffb30 100644
+--- a/wpa_supplicant/wpa_supplicant.c
++++ b/wpa_supplicant/wpa_supplicant.c
+@@ -5278,6 +5278,51 @@ void wpa_supplicant_disable_network(struct wpa_supplicant *wpa_s,
+ }
+ 
+ 
++static bool ssid_in_last_scan(struct wpa_supplicant *wpa_s,
++			      struct wpa_ssid *ssid)
++{
++	size_t i;
++
++	/* Check if the previous scan included the selected network */
++	if (wpa_s->last_scan_num_ssids <= 1 ||
++	    !ssid->ssid || ssid->ssid_len == 0)
++		return false;
++
++	/* Iterate through the previous scan SSIDs */
++	for (i = 0; i < wpa_s->last_scan_num_ssids;  i++) {
++		if (os_memcmp(wpa_s->last_scan_ssids[i].ssid, ssid->ssid,
++			      ssid->ssid_len) == 0)
++			return true;
++	}
++
++	return false;
++}
++
++
++/**
++ * Checks whether an SSID was discovered in the last scan.
++ * @wpa_s: wpa_supplicant structure for a network interface.
++ * @ssid: wpa_ssid structure for a configured network.
++ * Returns: true if ssid found, false otherwise.
++ */
++static bool ssid_in_last_scan_res(struct wpa_supplicant *wpa_s,
++				  struct wpa_ssid *ssid)
++{
++	size_t i;
++
++	if (!wpa_s->last_scan_res || !ssid->ssid || ssid->ssid_len == 0)
++		return false;
++
++	for (i = 0; i < wpa_s->last_scan_res_used; i++) {
++		if (os_memcmp(wpa_s->last_scan_res[i]->ssid,
++			      ssid->ssid, ssid->ssid_len) == 0)
++			return true;
++	}
++
++	return false;
++}
++
++
+ /**
+  * wpa_supplicant_select_network - Attempt association with a network
+  * @wpa_s: wpa_supplicant structure for a network interface
+@@ -5335,13 +5380,22 @@ void wpa_supplicant_select_network(struct wpa_supplicant *wpa_s,
+ 			(ssid->mode == WPAS_MODE_MESH ||
+ 			 ssid->mode == WPAS_MODE_AP) ? ssid : NULL;
+ 
+-		if (ssid->scan_ssid &&
+-		    (wpa_s->no_suitable_network || wpa_s->last_scan_external)) {
+-			wpa_printf(MSG_DEBUG,
+-				   "Request a new scan for hidden network");
+-			request_new_scan = true;
+-		} else if ((ssid->key_mgmt & WPA_KEY_MGMT_OWE) &&
+-			   !ssid->owe_only) {
++		if (ssid->scan_ssid) {
++			if (ssid_in_last_scan(wpa_s, ssid)) {
++				wpa_printf(MSG_DEBUG,
++					   "Hidden network was scanned for in last scan");
++			} else if (ssid_in_last_scan_res(wpa_s, ssid)) {
++				wpa_printf(MSG_DEBUG,
++					   "Hidden network was found in last scan results");
++			} else {
++				request_new_scan = true;
++				wpa_printf(MSG_DEBUG,
++					   "Request a new scan for hidden network");
++			}
++		}
++
++		if (!request_new_scan && (ssid->key_mgmt & WPA_KEY_MGMT_OWE) &&
++		    !ssid->owe_only) {
+ 			wpa_printf(MSG_DEBUG,
+ 				   "Request a new scan for OWE transition SSID");
+ 			request_new_scan = true;
+diff --git a/wpa_supplicant/wpa_supplicant_i.h b/wpa_supplicant/wpa_supplicant_i.h
+index 38ad4857c..726f7caec 100644
+--- a/wpa_supplicant/wpa_supplicant_i.h
++++ b/wpa_supplicant/wpa_supplicant_i.h
+@@ -676,6 +676,11 @@ enum local_hw_capab {
+ 	CAPAB_EHT,
+ };
+ 
++struct last_scan_ssid {
++	u8 ssid[SSID_MAX_LEN];
++	size_t ssid_len;
++};
++
+ /**
+  * struct wpa_supplicant - Internal data for wpa_supplicant interface
+  *
+@@ -813,6 +818,8 @@ struct wpa_supplicant {
+ 	size_t last_scan_res_size;
+ 	struct os_reltime last_scan;
+ 	bool last_scan_external;
++	struct last_scan_ssid last_scan_ssids[WPAS_MAX_SCAN_SSIDS];
++	size_t last_scan_num_ssids;
+ 
+ 	const struct wpa_driver_ops *driver;
+ 	int interface_removed; /* whether the network interface has been
+-- 
+2.43.0
+

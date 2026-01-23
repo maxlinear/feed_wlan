@@ -1,0 +1,62 @@
+From 58b27595514e0f838743a8463742ca9b92e81367 Mon Sep 17 00:00:00 2001
+From: Benjamin Berg <benjamin.berg@intel.com>
+Date: Fri, 14 Jun 2024 10:13:50 +0200
+Subject: [PATCH] trace: Only permit explicit prefix matching for functions
+
+The matching code currently only tests whether the prefix of a function
+matches. Make this more strict by ensuring that the function name is not
+longer.
+
+However, as this breaks some tests (due to inlining), add the ability to
+do an explicit prefix match by appending a '*' to the function name. Use
+this to change the eap_eke_prf match to eap_eke_prf_* in order to match
+one of the actual implementations.
+
+Signed-off-by: Benjamin Berg <benjamin.berg@intel.com>
+---
+ src/utils/os_unix.c           | 8 +++++++-
+ tests/hwsim/test_eap_proto.py | 2 +-
+ 2 files changed, 8 insertions(+), 2 deletions(-)
+
+diff --git a/src/utils/os_unix.c b/src/utils/os_unix.c
+index b665c79a2..679f3a0dc 100644
+--- a/src/utils/os_unix.c
++++ b/src/utils/os_unix.c
+@@ -598,6 +598,7 @@ int testing_test_fail(const char *tag, bool is_alloc)
+ 	while (i < res) {
+ 		int allow_skip = 1;
+ 		int maybe = 0;
++		bool prefix = false;
+ 
+ 		if (*pos == '=') {
+ 			allow_skip = 0;
+@@ -611,7 +612,12 @@ int testing_test_fail(const char *tag, bool is_alloc)
+ 			len = next - pos;
+ 		else
+ 			len = os_strlen(pos);
+-		if (os_strncmp(pos, func[i], len) != 0) {
++		if (len >= 1 && pos[len - 1] == '*') {
++			prefix = true;
++			len -= 1;
++		}
++		if (os_strncmp(pos, func[i], len) != 0 ||
++		    (!prefix && func[i][len] != '\0')) {
+ 			if (maybe && next) {
+ 				pos = next + 1;
+ 				continue;
+diff --git a/tests/hwsim/test_eap_proto.py b/tests/hwsim/test_eap_proto.py
+index 50d898a18..22e1b979c 100644
+--- a/tests/hwsim/test_eap_proto.py
++++ b/tests/hwsim/test_eap_proto.py
+@@ -2895,7 +2895,7 @@ def test_eap_proto_eke_errors(dev, apdev):
+     tests = [(1, "eap_eke_dh_init", None),
+              (1, "eap_eke_prf_hmac_sha1", "dhgroup=3 encr=1 prf=1 mac=1"),
+              (1, "eap_eke_prf_hmac_sha256", "dhgroup=5 encr=1 prf=2 mac=2"),
+-             (1, "eap_eke_prf", None),
++             (1, "eap_eke_prf_*", None),
+              (1, "os_get_random;eap_eke_dhcomp", None),
+              (1, "aes_128_cbc_encrypt;eap_eke_dhcomp", None),
+              (1, "aes_128_cbc_decrypt;eap_eke_shared_secret", None),
+-- 
+2.43.0
+

@@ -1,0 +1,39 @@
+From d97b5c6492795017819628f2a68038674e9066a7 Mon Sep 17 00:00:00 2001
+From: Nidhi Jain <quic_nidhjain@quicinc.com>
+Date: Thu, 6 Jun 2024 10:40:42 +0530
+Subject: [PATCH] Define Link Id attribute for secure ranging context vendor
+ command
+
+The Link Id attribute is required for secure ranging context to identify
+the link on which the command is received for an MLD.
+
+Signed-off-by: Nidhi Jain <quic_nidhjain@quicinc.com>
+---
+ src/common/qca-vendor.h | 4 +++-
+ 1 file changed, 3 insertions(+), 1 deletion(-)
+
+diff --git a/src/common/qca-vendor.h b/src/common/qca-vendor.h
+index 48b6c4a2b..980e0167b 100644
+--- a/src/common/qca-vendor.h
++++ b/src/common/qca-vendor.h
+@@ -14762,7 +14762,8 @@ enum qca_wlan_vendor_sha_type {
+  *	attribute, holds the LTF keyseed derived from KDK of PASN handshake.
+  *	The length of this attribute is dependent on the value of
+  *	%QCA_WLAN_VENDOR_ATTR_SECURE_RANGING_CTX_SHA_TYPE.
+-
++ * @QCA_WLAN_VENDOR_ATTR_SECURE_RANGING_CTX_LINK_ID: This u8 attribute is used
++ *	for secure ranging to identify a specific link affiliated to an AP MLD.
+  */
+ enum qca_wlan_vendor_attr_secure_ranging_ctx {
+ 	QCA_WLAN_VENDOR_ATTR_SECURE_RANGING_CTX_INVALID = 0,
+@@ -14773,6 +14774,7 @@ enum qca_wlan_vendor_attr_secure_ranging_ctx {
+ 	QCA_WLAN_VENDOR_ATTR_SECURE_RANGING_CTX_TK = 5,
+ 	QCA_WLAN_VENDOR_ATTR_SECURE_RANGING_CTX_CIPHER = 6,
+ 	QCA_WLAN_VENDOR_ATTR_SECURE_RANGING_CTX_LTF_KEYSEED = 7,
++	QCA_WLAN_VENDOR_ATTR_SECURE_RANGING_CTX_LINK_ID = 8,
+ 
+ 	/* keep last */
+ 	QCA_WLAN_VENDOR_ATTR_SECURE_RANGING_CTX_AFTER_LAST,
+-- 
+2.43.0
+

@@ -1,0 +1,42 @@
+From 526ea193c87d51381132831dd42e9d45fe018dfa Mon Sep 17 00:00:00 2001
+From: Veerendranath Jakkam <quic_vjakkam@quicinc.com>
+Date: Sun, 30 Jun 2024 02:49:21 +0530
+Subject: [PATCH] Fallback to RSNXE when AP is not using valid RSN Overrding
+
+wpa_supplicant was ignoring RSNXE also if the AP is not using valid
+RSN overriding combination when the STA supports RSN overriding. Fix
+this fallback to the RSNXE when AP is not using valid RSN overriding.
+
+Signed-off-by: Veerendranath Jakkam <quic_vjakkam@quicinc.com>
+---
+ wpa_supplicant/bss.c | 5 +++--
+ 1 file changed, 3 insertions(+), 2 deletions(-)
+
+diff --git a/wpa_supplicant/bss.c b/wpa_supplicant/bss.c
+index 8dcda7848..cf94d4be5 100644
+--- a/wpa_supplicant/bss.c
++++ b/wpa_supplicant/bss.c
+@@ -2056,7 +2056,7 @@ const u8 * wpa_bss_get_rsnxe(struct wpa_supplicant *wpa_s,
+ 			if (!tmp || tmp[0] == WLAN_EID_RSN) {
+ 				/* An acceptable RSNE override element was not
+ 				 * found, so need to ignore RSNXE overriding. */
+-				return NULL;
++				goto out;
+ 			}
+ 
+ 			return ie;
+@@ -2069,9 +2069,10 @@ const u8 * wpa_bss_get_rsnxe(struct wpa_supplicant *wpa_s,
+ 			wpa_printf(MSG_DEBUG, "BSS " MACSTR
+ 				   " advertises RSNXE Override element without RSNE Override 2 element - ignore RSNXE Override element for MLO",
+ 				   MAC2STR(bss->bssid));
+-			return NULL;
++			goto out;
+ 		}
+ 	}
+ 
++out:
+ 	return wpa_bss_get_ie(bss, WLAN_EID_RSNX);
+ }
+-- 
+2.43.0
+

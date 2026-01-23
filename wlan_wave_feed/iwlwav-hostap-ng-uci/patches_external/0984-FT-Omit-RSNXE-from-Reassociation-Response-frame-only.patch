@@ -1,0 +1,48 @@
+From a041777ffae33f5cd85023b731ee7c3b325a67b6 Mon Sep 17 00:00:00 2001
+From: Jouni Malinen <quic_jouni@quicinc.com>
+Date: Thu, 10 Oct 2024 11:29:01 +0300
+Subject: [PATCH] FT: Omit RSNXE from Reassociation Response frame only with FT
+ protocol
+
+The special case for having to omit the RSNXE from Reassociation
+Response frames applies only for FT protocol. This was incorrectly
+applied to all cases where the (Re)Association Request frame did not
+include an RSNXE. This should not have changed behavior for the FT initial
+mobility domain association or any non-FT association.
+
+Fix the conditions for omitting the RSNXE to apply only when actually
+going through FT protocol. While this does not really have much, if any,
+impact to most cases since non-AP STAs that do not include the RSNXE in
+Association Request frame are unlikely to do anything with this element
+(or its omission), this could have significant impact to FILS
+authentication. The current IEEE 802.11 standard does not actually say
+anything about validating the RSNXE in FILS (Re)Association Response
+frame, but it should really be verified in the same manner as the RSNE
+is (i.e., compared against the RSNXE in the Beacon frame) and that
+should happen even if the non-AP STA does not include the RSNXE.
+
+Fixes: b7366a942a58 ("FT: Omit RSNXE from FT protocol Reassociation Response when needed")
+Signed-off-by: Jouni Malinen <quic_jouni@quicinc.com>
+---
+ src/ap/ieee802_11.c | 5 ++++-
+ 1 file changed, 4 insertions(+), 1 deletion(-)
+
+diff --git a/src/ap/ieee802_11.c b/src/ap/ieee802_11.c
+index d26b9c546..18f3103f7 100644
+--- a/src/ap/ieee802_11.c
++++ b/src/ap/ieee802_11.c
+@@ -5613,7 +5613,10 @@ static void handle_assoc(struct hostapd_data *hapd,
+ 	resp = check_assoc_ies(hapd, sta, pos, left, reassoc);
+ 	if (resp != WLAN_STATUS_SUCCESS)
+ 		goto fail;
+-	omit_rsnxe = !get_ie(pos, left, WLAN_EID_RSNX);
++#ifdef CONFIG_IEEE80211R_AP
++	if (reassoc && sta->auth_alg == WLAN_AUTH_FT)
++		omit_rsnxe = !get_ie(pos, left, WLAN_EID_RSNX);
++#endif /* CONFIG_IEEE80211R_AP */
+ 
+ 	if (hostapd_get_aid(hapd, sta) < 0) {
+ 		hostapd_logger(hapd, mgmt->sa, HOSTAPD_MODULE_IEEE80211,
+-- 
+2.43.0
+

@@ -1,0 +1,35 @@
+From 92829d8bee63c0efc9849bdaa3e71a5201a2eb89 Mon Sep 17 00:00:00 2001
+From: Chien Wong <m@xv97.com>
+Date: Sat, 27 Apr 2024 16:19:44 +0800
+Subject: [PATCH] NAN: Reject undefined publish type
+
+The Wi-Fi Aware Specification v4.0 only defines unsolicited
+transmissions only, solicited transmissions only and both unsolicited
+and solicited transmissions publish. The other possibility is undefined
+so we should reject it.
+
+Signed-off-by: Chien Wong <m@xv97.com>
+---
+ src/common/nan_de.c | 6 ++++++
+ 1 file changed, 6 insertions(+)
+
+diff --git a/src/common/nan_de.c b/src/common/nan_de.c
+index e1999a06b..12fad3112 100644
+--- a/src/common/nan_de.c
++++ b/src/common/nan_de.c
+@@ -1209,6 +1209,12 @@ int nan_de_publish(struct nan_de *de, const char *service_name,
+ 		return -1;
+ 	}
+ 
++	if (!params->unsolicited && !params->solicited) {
++		wpa_printf(MSG_INFO,
++			   "NAN: Publish() - both unsolicited and solicited disabled is invalid");
++		return -1;
++	}
++
+ 	publish_id = nan_de_get_handle(de);
+ 	if (publish_id < 1)
+ 		return -1;
+-- 
+2.43.0
+

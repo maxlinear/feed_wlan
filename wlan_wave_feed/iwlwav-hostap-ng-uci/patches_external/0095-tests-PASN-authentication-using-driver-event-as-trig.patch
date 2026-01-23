@@ -1,0 +1,149 @@
+From 62141825f64414eda45ddf1eea71cf3d9e13a180 Mon Sep 17 00:00:00 2001
+From: Jouni Malinen <j@w1.fi>
+Date: Sun, 17 Dec 2023 18:01:31 +0200
+Subject: [PATCH] tests: PASN authentication using driver event as trigger
+
+Signed-off-by: Jouni Malinen <j@w1.fi>
+---
+ tests/hwsim/test_pasn.py    | 62 +++++++++++++++++++++++++++++++++++++
+ wpa_supplicant/ctrl_iface.c | 47 ++++++++++++++++++++++++++++
+ 2 files changed, 109 insertions(+)
+
+diff --git a/tests/hwsim/test_pasn.py b/tests/hwsim/test_pasn.py
+index 956d2b358..5139ce7c3 100644
+--- a/tests/hwsim/test_pasn.py
++++ b/tests/hwsim/test_pasn.py
+@@ -1024,3 +1024,65 @@ def test_pasn_noauth_0(dev, apdev):
+     hapd = start_pasn_ap(apdev[0], params)
+ 
+     check_pasn_akmp_cipher(dev[0], hapd, "PASN", "CCMP", status=1)
++
++def test_pasn_sae_driver(dev, apdev):
++    """PASN authentication using driver event as trigger"""
++    check_pasn_capab(dev[0])
++    check_sae_capab(dev[0])
++
++    params = hostapd.wpa2_params(ssid="test-pasn-sae",
++                                 passphrase="12345678")
++    params['ieee80211w'] = "2"
++    params['wpa_key_mgmt'] = 'SAE SAE-EXT-KEY PASN'
++    params['sae_pwe'] = "2"
++    hapd = start_pasn_ap(apdev[0], params)
++    bssid = hapd.own_addr()
++
++    params = hostapd.wpa2_params(ssid="test-pasn-sae",
++                                 passphrase="12345678")
++    params['wpa_key_mgmt'] = 'SAE PASN'
++    params['sae_pwe'] = "0"
++    hapd2 = start_pasn_ap(apdev[1], params)
++    bssid2 = hapd2.own_addr()
++
++    dev[0].scan_for_bss(bssid, freq=2412)
++    dev[0].scan_for_bss(bssid2, freq=2412)
++
++    try:
++        dev[0].set("sae_pwe", "2")
++        cmd = f"PASN_DRIVER auth {bssid} 02:11:22:33:44:55 {bssid2}"
++        if "OK" not in dev[0].request(cmd):
++            raise Exception("PASN_DRIVER failed")
++
++        ev = dev[0].wait_event(["PASN-AUTH-STATUS"], timeout=10)
++        if ev is None:
++            raise Exception("No PASN-AUTH-STATUS event (1)")
++        if f"{bssid} akmp=PASN, status=0" not in ev:
++            raise Exception("Unexpected event 1 contents: " + ev)
++
++        ev = dev[0].wait_event(["PASN-AUTH-STATUS"], timeout=10)
++        if ev is None:
++            raise Exception("No PASN-AUTH-STATUS event (2)")
++        if f"{bssid2} akmp=PASN, status=0" not in ev:
++            raise Exception("Unexpected event 2 contents: " + ev)
++
++        hapd2.disable()
++        time.sleep(1)
++        dev[0].dump_monitor()
++
++        if "OK" not in dev[0].request(cmd):
++            raise Exception("PASN_DRIVER failed")
++
++        ev = dev[0].wait_event(["PASN-AUTH-STATUS"], timeout=10)
++        if ev is None:
++            raise Exception("No PASN-AUTH-STATUS event (1b)")
++        if f"{bssid} akmp=PASN, status=0" not in ev:
++            raise Exception("Unexpected event 1b contents: " + ev)
++
++        ev = dev[0].wait_event(["PASN-AUTH-STATUS"], timeout=10)
++        if ev is None:
++            raise Exception("No PASN-AUTH-STATUS event (2b)")
++        if f"{bssid2} akmp=PASN, status=1" not in ev:
++            raise Exception("Unexpected event 2b contents: " + ev)
++    finally:
++        dev[0].set("sae_pwe", "0")
+diff --git a/wpa_supplicant/ctrl_iface.c b/wpa_supplicant/ctrl_iface.c
+index 32f964f9c..d05c9b845 100644
+--- a/wpa_supplicant/ctrl_iface.c
++++ b/wpa_supplicant/ctrl_iface.c
+@@ -11190,6 +11190,48 @@ static int wpas_ctrl_iface_pasn_deauthenticate(struct wpa_supplicant *wpa_s,
+ 	return wpas_pasn_deauthenticate(wpa_s, wpa_s->own_addr, bssid);
+ }
+ 
++
++#ifdef CONFIG_TESTING_OPTIONS
++static int wpas_ctrl_iface_pasn_driver(struct wpa_supplicant *wpa_s,
++				       const char *cmd)
++{
++	union wpa_event_data event;
++	const char *pos = cmd;
++	u8 addr[ETH_ALEN];
++
++	os_memset(&event, 0, sizeof(event));
++
++	if (os_strncmp(pos, "auth ", 5) == 0)
++		event.pasn_auth.action = PASN_ACTION_AUTH;
++	else if (os_strncmp(pos, "del ", 4) == 0)
++		event.pasn_auth.action =
++			PASN_ACTION_DELETE_SECURE_RANGING_CONTEXT;
++	else
++		return -1;
++
++	pos = os_strchr(pos, ' ');
++	pos++;
++	while (hwaddr_aton(pos, addr) == 0) {
++		struct pasn_peer *peer;
++
++		if (event.pasn_auth.num_peers == WPAS_MAX_PASN_PEERS)
++			return -1;
++		peer = &event.pasn_auth.peer[event.pasn_auth.num_peers];
++		os_memcpy(peer->own_addr, wpa_s->own_addr, ETH_ALEN);
++		os_memcpy(peer->peer_addr, addr, ETH_ALEN);
++		event.pasn_auth.num_peers++;
++
++		pos = os_strchr(pos, ' ');
++		if (!pos)
++			break;
++		pos++;
++	}
++
++	wpa_supplicant_event(wpa_s, EVENT_PASN_AUTH, &event);
++	return 0;
++}
++#endif /* CONFIG_TESTING_OPTIONS */
++
+ #endif /* CONFIG_PASN */
+ 
+ 
+@@ -13087,6 +13129,11 @@ char * wpa_supplicant_ctrl_iface_process(struct wpa_supplicant *wpa_s,
+ 	} else if (os_strncmp(buf, "PASN_DEAUTH ", 12) == 0) {
+ 		if (wpas_ctrl_iface_pasn_deauthenticate(wpa_s, buf + 12) < 0)
+ 			reply_len = -1;
++#ifdef CONFIG_TESTING_OPTIONS
++	} else if (os_strncmp(buf, "PASN_DRIVER ", 12) == 0) {
++		if (wpas_ctrl_iface_pasn_driver(wpa_s, buf + 12) < 0)
++			reply_len = -1;
++#endif /* CONFIG_TESTING_OPTIONS */
+ #endif /* CONFIG_PASN */
+ #ifndef CONFIG_NO_ROBUST_AV
+ 	} else if (os_strncmp(buf, "MSCS ", 5) == 0) {
+-- 
+2.43.0
+

@@ -1,0 +1,29 @@
+From abedecd14cefd7fe2cc029b53c1e3625f1b6ab9d Mon Sep 17 00:00:00 2001
+From: Andrei Otcheretianski <andrei.otcheretianski@intel.com>
+Date: Tue, 26 Nov 2024 11:10:13 +0200
+Subject: [PATCH] P2P2: Fix frequency selection for auto GO join
+
+When reusing an existing GO for pairing, force its frequency in GO
+negotiation.
+
+Signed-off-by: Andrei Otcheretianski <andrei.otcheretianski@intel.com>
+---
+ wpa_supplicant/p2p_supplicant.c | 2 ++
+ 1 file changed, 2 insertions(+)
+
+diff --git a/wpa_supplicant/p2p_supplicant.c b/wpa_supplicant/p2p_supplicant.c
+index 06c70c2d5..1d20ea3bc 100644
+--- a/wpa_supplicant/p2p_supplicant.c
++++ b/wpa_supplicant/p2p_supplicant.c
+@@ -6873,6 +6873,8 @@ int wpas_p2p_connect(struct wpa_supplicant *wpa_s, const u8 *peer_addr,
+ 					ssid = NULL;
+ 					continue;
+ 				}
++
++				force_freq = ifs->ap_iface->freq;
+ 				break;
+ 			}
+ 			p2p_set_go_role(wpa_s->global->p2p, true);
+-- 
+2.43.0
+

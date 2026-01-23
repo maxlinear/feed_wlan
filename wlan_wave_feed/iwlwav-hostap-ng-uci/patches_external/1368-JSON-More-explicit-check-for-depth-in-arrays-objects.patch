@@ -1,0 +1,31 @@
+From c3fefaf4121582e742df9225e96b672c4097a438 Mon Sep 17 00:00:00 2001
+From: Jouni Malinen <j@w1.fi>
+Date: Sun, 9 Feb 2025 18:17:39 +0200
+Subject: [PATCH] JSON: More explicit check for depth in arrays/objects
+
+Invalid state here was detected based on the parent token being in
+JSON_STARTED state, but to be clearer for static analyzers, also check
+explicitly that depth is not 0.
+
+Signed-off-by: Jouni Malinen <j@w1.fi>
+---
+ src/utils/json.c | 3 ++-
+ 1 file changed, 2 insertions(+), 1 deletion(-)
+
+diff --git a/src/utils/json.c b/src/utils/json.c
+index dd12f1b6e..5523f284d 100644
+--- a/src/utils/json.c
++++ b/src/utils/json.c
+@@ -269,7 +269,8 @@ struct json_token * json_parse(const char *data, size_t data_len)
+ 		case ']': /* end array */
+ 		case '}': /* end object */
+ 			if (!curr_token || !curr_token->parent ||
+-			    curr_token->parent->state != JSON_STARTED) {
++			    curr_token->parent->state != JSON_STARTED ||
++			    depth == 0) {
+ 				wpa_printf(MSG_DEBUG,
+ 					   "JSON: Invalid state for end array/object");
+ 				goto fail;
+-- 
+2.43.0
+

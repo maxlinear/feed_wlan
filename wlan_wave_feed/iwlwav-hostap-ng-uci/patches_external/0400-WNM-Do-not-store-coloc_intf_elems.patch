@@ -1,0 +1,79 @@
+From 261f7f9e51556961c147a8cec27031657eb0c500 Mon Sep 17 00:00:00 2001
+From: Benjamin Berg <benjamin.berg@intel.com>
+Date: Tue, 20 Feb 2024 14:18:23 +0100
+Subject: [PATCH] WNM: Do not store coloc_intf_elems
+
+The elements are (currently) not used except for sending an immediate
+response similar to COLOC_INTF_REPORT with the main difference being
+that the dialog token is included.
+
+Do not store the elements. It easy enough to re-add this should the
+implementation improve. And this fixes the fact that the variable is
+cleared at odd times as wnm_deallocate_memory() is used specifically to
+clear the neighbor report list of a BTM request.
+
+Signed-off-by: Benjamin Berg <benjamin.berg@intel.com>
+---
+ wpa_supplicant/wnm_sta.c          | 13 ++++++-------
+ wpa_supplicant/wpa_supplicant_i.h |  1 -
+ 2 files changed, 6 insertions(+), 8 deletions(-)
+
+diff --git a/wpa_supplicant/wnm_sta.c b/wpa_supplicant/wnm_sta.c
+index 749eda911..cd2c2903d 100644
+--- a/wpa_supplicant/wnm_sta.c
++++ b/wpa_supplicant/wnm_sta.c
+@@ -430,9 +430,6 @@ void wnm_deallocate_memory(struct wpa_supplicant *wpa_s)
+ 	wpa_s->wnm_num_neighbor_report = 0;
+ 	os_free(wpa_s->wnm_neighbor_report_elements);
+ 	wpa_s->wnm_neighbor_report_elements = NULL;
+-
+-	wpabuf_free(wpa_s->coloc_intf_elems);
+-	wpa_s->coloc_intf_elems = NULL;
+ }
+ 
+ 
+@@ -2009,14 +2006,14 @@ int wnm_send_coloc_intf_report(struct wpa_supplicant *wpa_s, u8 dialog_token,
+ void wnm_set_coloc_intf_elems(struct wpa_supplicant *wpa_s,
+ 			      struct wpabuf *elems)
+ {
+-	wpabuf_free(wpa_s->coloc_intf_elems);
+ 	if (elems && wpabuf_len(elems) == 0) {
+ 		wpabuf_free(elems);
+ 		elems = NULL;
+ 	}
+-	wpa_s->coloc_intf_elems = elems;
+ 
+-	if (wpa_s->conf->coloc_intf_reporting && wpa_s->coloc_intf_elems &&
++	/* NOTE: The elements are not stored as they are only send out once */
++
++	if (wpa_s->conf->coloc_intf_reporting && elems &&
+ 	    wpa_s->coloc_intf_dialog_token &&
+ 	    (wpa_s->coloc_intf_auto_report == 1 ||
+ 	     wpa_s->coloc_intf_auto_report == 3)) {
+@@ -2025,8 +2022,10 @@ void wnm_set_coloc_intf_elems(struct wpa_supplicant *wpa_s,
+ 		 */
+ 		wnm_send_coloc_intf_report(wpa_s,
+ 					   wpa_s->coloc_intf_dialog_token,
+-					   wpa_s->coloc_intf_elems);
++					   elems);
+ 	}
++
++	wpabuf_free(elems);
+ }
+ 
+ 
+diff --git a/wpa_supplicant/wpa_supplicant_i.h b/wpa_supplicant/wpa_supplicant_i.h
+index 513fcaadc..80ea515aa 100644
+--- a/wpa_supplicant/wpa_supplicant_i.h
++++ b/wpa_supplicant/wpa_supplicant_i.h
+@@ -1313,7 +1313,6 @@ struct wpa_supplicant {
+ 	struct wpa_bss *wnm_target_bss;
+ 	enum bss_trans_mgmt_status_code bss_tm_status;
+ 	bool bss_trans_mgmt_in_progress;
+-	struct wpabuf *coloc_intf_elems;
+ 	u8 coloc_intf_dialog_token;
+ 	u8 coloc_intf_auto_report;
+ 	u8 coloc_intf_timeout;
+-- 
+2.43.0
+

@@ -1,0 +1,28 @@
+From 39da3c7c63ee47b5447fea681d4b37f38bbd476b Mon Sep 17 00:00:00 2001
+From: Jouni Malinen <j@w1.fi>
+Date: Sun, 18 Feb 2024 11:03:55 +0200
+Subject: [PATCH] test: Clear country config param at the end of
+ kernel_reg_disconnect
+
+This is needed to avoid causing issues for following test cases.
+
+Signed-off-by: Jouni Malinen <j@w1.fi>
+---
+ tests/hwsim/test_kernel.py | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/tests/hwsim/test_kernel.py b/tests/hwsim/test_kernel.py
+index df563ebd2..75ae16402 100644
+--- a/tests/hwsim/test_kernel.py
++++ b/tests/hwsim/test_kernel.py
+@@ -150,6 +150,7 @@ def test_kernel_reg_disconnect(dev, apdev):
+     finally:
+         dev[0].request("DISCONNECT")
+         clear_regdom(hapd, dev)
++        dev[0].set("country", "00")
+ 
+ def test_kernel_kunit(dev, apdev):
+     """KUnit tests"""
+-- 
+2.43.0
+

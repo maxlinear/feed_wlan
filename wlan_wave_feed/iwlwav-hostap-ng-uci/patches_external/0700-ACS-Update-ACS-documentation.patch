@@ -1,0 +1,47 @@
+From 83cfeb8903027603bf4e8c9f4c96a719e579287d Mon Sep 17 00:00:00 2001
+From: Hari Naraayana Desikan Kannan <quic_hnaraaya@quicinc.com>
+Date: Tue, 30 Apr 2024 15:22:30 +0530
+Subject: [PATCH] ACS: Update ACS documentation
+
+Update the documentation to reflect the ACS algorithm used in the code.
+No functionality change.
+
+Signed-off-by: Hari Naraayana Desikan Kannan <quic_hnaraaya@quicinc.com>
+---
+ src/ap/acs.c | 6 +++---
+ 1 file changed, 3 insertions(+), 3 deletions(-)
+
+diff --git a/src/ap/acs.c b/src/ap/acs.c
+index 6003f0e38..c38d3632b 100644
+--- a/src/ap/acs.c
++++ b/src/ap/acs.c
+@@ -76,7 +76,7 @@
+  *
+  * This corresponds to:
+  * ---
+- * (busy time - tx time) / (active time - tx time) * 2^(chan_nf + band_min_nf)
++ * (busy time - tx time) / (active time - tx time) * 2^(chan_nf - band_min_nf)
+  * ---
+  *
+  * The coefficient of 2 reflects the way power in "far-field"
+@@ -93,7 +93,7 @@
+  * calculated easily.
+  * ---
+  * (busy time - tx time) / (active time - tx time) *
+- *    2^(10^(chan_nf/10) + 10^(band_min_nf/10))
++ *    2^(10^(chan_nf/10) - 10^(band_min_nf/10))
+  * ---
+  *
+  * However to account for cases where busy/rx time is 0 (channel load is then
+@@ -101,7 +101,7 @@
+  * channel with lower noise floor is preferred. The equation becomes:
+  * ---
+  * 10^(chan_nf/5) + (busy time - tx time) / (active time - tx time) *
+- *    2^(10^(chan_nf/10) + 10^(band_min_nf/10))
++ *    2^(10^(chan_nf/10) - 10^(band_min_nf/10))
+  * ---
+  *
+  * All this "interference factor" is purely subjective and only time
+-- 
+2.43.0
+

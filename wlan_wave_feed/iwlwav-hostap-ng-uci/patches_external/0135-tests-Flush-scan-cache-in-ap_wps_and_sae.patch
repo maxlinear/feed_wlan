@@ -1,0 +1,36 @@
+From 2ae3c61678a1dc79629f7c2b3fc431ed98dfb5e6 Mon Sep 17 00:00:00 2001
+From: Jouni Malinen <quic_jouni@quicinc.com>
+Date: Thu, 21 Dec 2023 20:49:21 +0200
+Subject: [PATCH] tests: Flush scan cache in ap_wps_and_sae
+
+This avoids issues with old scan results from a previous test causing
+incorrect association after WPS exchange.
+
+Signed-off-by: Jouni Malinen <quic_jouni@quicinc.com>
+---
+ tests/hwsim/test_ap_wps.py | 2 ++
+ 1 file changed, 2 insertions(+)
+
+diff --git a/tests/hwsim/test_ap_wps.py b/tests/hwsim/test_ap_wps.py
+index 035464ca7..883a735e4 100644
+--- a/tests/hwsim/test_ap_wps.py
++++ b/tests/hwsim/test_ap_wps.py
+@@ -10402,6 +10402,7 @@ def run_ap_wps_and_sae(dev, apdev):
+     pin = dev[0].wps_read_pin()
+     hapd.request("WPS_PIN any " + pin)
+ 
++    dev[0].flush_scan_cache()
+     dev[0].set("wps_cred_add_sae", "1")
+     dev[0].request("SET sae_groups ")
+     dev[0].scan_for_bss(apdev[0]['bssid'], freq="2412", force_scan=True)
+@@ -10413,6 +10414,7 @@ def run_ap_wps_and_sae(dev, apdev):
+     if 'pmf' not in status or status['pmf'] != "1":
+         raise Exception("PMF not enabled")
+ 
++    dev[1].flush_scan_cache()
+     pin = dev[1].wps_read_pin()
+     hapd.request("WPS_PIN any " + pin)
+     dev[1].scan_for_bss(apdev[0]['bssid'], freq="2412", force_scan=True)
+-- 
+2.43.0
+

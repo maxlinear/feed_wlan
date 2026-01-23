@@ -1,0 +1,30 @@
+From 06c5265f746de512e042b22350b5e0f052abe5e6 Mon Sep 17 00:00:00 2001
+From: Andrei Otcheretianski <andrei.otcheretianski@intel.com>
+Date: Thu, 19 Dec 2024 11:18:50 +0200
+Subject: [PATCH] NAN: Fix A3 for unicast P2P2 USD
+
+According to the Wi-Fi Direct spec draft, address 3 in unicast USD
+frames shall be set to the P2P Device Address of the sender (i.e., this
+differs from the Wi-Fi Aware specification). Fix it.
+
+Signed-off-by: Andrei Otcheretianski <andrei.otcheretianski@intel.com>
+---
+ src/common/nan_de.c | 2 ++
+ 1 file changed, 2 insertions(+)
+
+diff --git a/src/common/nan_de.c b/src/common/nan_de.c
+index 40ab91320..0e6b4d5fd 100644
+--- a/src/common/nan_de.c
++++ b/src/common/nan_de.c
+@@ -1027,6 +1027,8 @@ static void nan_de_rx_subscribe(struct nan_de *de, struct nan_de_service *srv,
+ 
+ 	if (srv->publish.solicited_multicast || !a3)
+ 		a3 = network_id;
++	else if (srv->is_p2p)
++		a3 = de->nmi;
+ 
+ 	nan_de_tx(de, srv->freq, 100,
+ 		  srv->publish.solicited_multicast ? network_id : peer_addr,
+-- 
+2.43.0
+

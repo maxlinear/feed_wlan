@@ -1,0 +1,189 @@
+From d7b8fc93a757d770bede539c8704b910ca95e96c Mon Sep 17 00:00:00 2001
+From: Jouni Malinen <j@w1.fi>
+Date: Sun, 2 Mar 2025 18:49:44 +0200
+Subject: [PATCH] tests: Fuzzing tester for RADIUS message parsing
+
+Signed-off-by: Jouni Malinen <j@w1.fi>
+---
+ tests/fuzzing/radius/.gitignore               |   1 +
+ tests/fuzzing/radius/Makefile                 |  29 +++++++++
+ .../radius/corpus/access-accept-eap.bin       | Bin 0 -> 195 bytes
+ .../radius/corpus/access-accept-tunnel-pw.bin | Bin 0 -> 59 bytes
+ .../radius/corpus/access-challenge-eap.bin    | Bin 0 -> 1459 bytes
+ tests/fuzzing/radius/radius.c                 |  60 ++++++++++++++++++
+ 6 files changed, 90 insertions(+)
+ create mode 100644 tests/fuzzing/radius/.gitignore
+ create mode 100644 tests/fuzzing/radius/Makefile
+ create mode 100644 tests/fuzzing/radius/corpus/access-accept-eap.bin
+ create mode 100644 tests/fuzzing/radius/corpus/access-accept-tunnel-pw.bin
+ create mode 100644 tests/fuzzing/radius/corpus/access-challenge-eap.bin
+ create mode 100644 tests/fuzzing/radius/radius.c
+
+diff --git a/tests/fuzzing/radius/.gitignore b/tests/fuzzing/radius/.gitignore
+new file mode 100644
+index 000000000..fa85644c1
+--- /dev/null
++++ b/tests/fuzzing/radius/.gitignore
+@@ -0,0 +1 @@
++radius
+diff --git a/tests/fuzzing/radius/Makefile b/tests/fuzzing/radius/Makefile
+new file mode 100644
+index 000000000..76246ef0d
+--- /dev/null
++++ b/tests/fuzzing/radius/Makefile
+@@ -0,0 +1,29 @@
++ALL=radius
++include ../rules.include
++
++CFLAGS += -DCONFIG_IPV6
++
++LIBS += $(SRC)/common/libcommon.a
++LIBS += $(SRC)/crypto/libcrypto.a
++LIBS += $(SRC)/utils/libutils.a
++
++ELIBS += $(SRC)/crypto/libcrypto.a
++
++OBJS += $(SRC)/radius/radius.o
++
++OBJS += radius.o
++
++_OBJS_VAR := OBJS
++include ../../../src/objs.mk
++
++_OBJS_VAR := LIBS
++include ../../../src/objs.mk
++
++_OBJS_VAR := ELIBS
++include ../../../src/objs.mk
++
++radius: $(OBJS) $(LIBS)
++	$(LDO) $(LDFLAGS) -o $@ $^ $(LIBS) $(ELIBS)
++
++clean: common-clean
++	rm -f radius *~ *.o *.d ../*~ ../*.o ../*.d
+diff --git a/tests/fuzzing/radius/corpus/access-accept-eap.bin b/tests/fuzzing/radius/corpus/access-accept-eap.bin
+new file mode 100644
+index 0000000000000000000000000000000000000000..aa2bff6826e86b1d4f6ff813bfcddff409642727
+GIT binary patch
+literal 195
+zcmV;!06hN!0|3KmXsk8h9Z`o5u_Zp}Qh1?I5^gbtzi}~b1Ke!~XQ1y_i%$jvmjDDB
+zIsgCxHxM-0bX7E{ci=r*!~T@SOeSN>^lR~2{HZUNp^V+hpw7bNnxT7!W1;Qf#F~NJ
+zrx+`gt{OT300B1<G}(14X07J0Z5jh2?u>m3K8`?A6c<Xzt5&PjaIQv@9$!Wb5%!HB
+xV5w?Yl^|`lA(OCXBQGo!Viv#4pWZX${WF}6ztz4;S_S4u2Pp@o?eRme|0ULORx$tp
+
+literal 0
+HcmV?d00001
+
+diff --git a/tests/fuzzing/radius/corpus/access-accept-tunnel-pw.bin b/tests/fuzzing/radius/corpus/access-accept-tunnel-pw.bin
+new file mode 100644
+index 0000000000000000000000000000000000000000..5909d96f4c9179f1666ab7b4752fe6a228538392
+GIT binary patch
+literal 59
+zcmV-B0L1?S0029Kq_y;kC-tNOi8gsAA2p*z6#%QvvVH0&kaSUO4P&Y<ES0+3P!g<#
+R9hxD7J^x}-GdeDBRXoG;7ncA4
+
+literal 0
+HcmV?d00001
+
+diff --git a/tests/fuzzing/radius/corpus/access-challenge-eap.bin b/tests/fuzzing/radius/corpus/access-challenge-eap.bin
+new file mode 100644
+index 0000000000000000000000000000000000000000..d25f309c375cfb7b240c59d21a19d4915f74086d
+GIT binary patch
+literal 1459
+zcmd;PV%@wu-BrYxk84Aqa<<s<C`p+Bq3atp7JgIs^WvG(g{(t5(g6}|3_#%jpRtd%
+zTJj(R1IHpUW@ZLkCI$veX67HW3tgmyZ}zsXJRE!VVMmLL#$$~~ygTGv{KNg+gIpLH
+z4j3>n2>xeeU}Rw6W?*4vU}RztXJ7!Dz^=&6z%I+cF2%sS!JvtGjX@LBlm*O8j7&_N
+z3^y)6UUvHN*>(e7HcqWJkGAi;jEvl@3<i#d+y<O%%%Lo7!c1<Sh5`nBAPzeZdq`<%
+zacNGXA)f&cNQ8@rwcJoIEfc1KnTI_nKfgr5+0j5woY%<2z{Jqp(89>n*gOizHAUhA
+znJ8Ak4D|mGGg8z*7-R)A4^MGwQCVt{9@r*>CPpP>*D|s)FgG#sGXTZ8n3@<F8UFIc
+zot4zda%{e-!)JDub3^~8lRYOcF<az?>~Vf~?nmUtm-e|=;vOF@mbB&Gqj~*8UMYj=
+zpYN#~xAC85^E|)O&-PG?w}c8;!H&F;I}_}4B>ryeSZ#i%+k5N7|8IA@vM&CxDp31l
+zC0o7z+1NkNy4FkYtUl#j$|&2Xds9%j?YE70!V*o-$CnfoPRH=hxirT>QE<=ZlKUwe
+zwx_?#y1(95f@%Amry-?Va~zIr=#oD6ceUKk_ZOQvc|&)Jclce{d*1(lv006V_qSCZ
+zS6=*9y&=2)WJd8Cw{@pqSDJ;dJzT&fn)_j?bMfjTmW^TwC4627`-3#3rq->#!1C>v
+z;4SHkGne?!d&|TOOa+S@Hybo=07s&%Fbk6bgMlnCG-df%#8^ZM)vDx+8mFrWt~yZq
+zYrmmDrssv{2J#?jWflnou?CSPe|K6+H*Q|_x<mF#<I1gq1!tB&G%#i3&}L&~Wo2h%
+zWYIKGH&BJ~4H(-bGfGMdtn~GfW6H_`2=ooaLFNjw0FzJ?YD9u!S5}pU$AAlF5Hq9y
+zf8@9YrbJ-eGBPakJ`(UU>72>hCs{0$pST^jm$?%=v)|@cp8RKRtKGh)*$<98i9CE=
+zJo!`TWk&T2D?FCGpSDRMP1%!Ef5sAlz^_3$*6%*#7zO=j6}#fJDEZ3K-4m2mmP_4S
+za(Q#N(0z?>hZi%H*IeM7bh+~D-iU8X{|--?vw&w6-_Foey@`(lPB&l9+xs`+uT#Bf
+z*Wumf*Vb>ncgVqX4{v2}#Pwj_3oa#Ft&|jvZyn$DR==m)KC{02gQw@}%az@xH>G+m
+zpSj=sT4Am2*=1YRFT4Jnz<I0Cz|BTrUDA|w>u#-E9&NFB;?Av~FDo^F*IBG)#pD0~
+zN2>I@Z}Zl-6c@eW^u3xPed^TZ4|@`hGBBqAvu*+~>v}-4u87n09D}~fKh;@}-_Mm;
+zQZlzYK0FvL?5LHC4Gc^Tj0`PJEKMwcx!Bmiz{J=9%B6-Chz#xD11^9tvh<!W?_84V
+zll&Jpy6rl$O75@Ug|{EwPpd|!Rkc}8Jhe4(d7ZvZa;@bKsd=Y!jf^JV^Ym=FCAv@h
+z?y)`cck&MCmVdfXt>Ylco)Eg>e@)<fi;Ew$Zml@;>RQN>_xr?Mq~;kHgfIEbw#N3I
+Qx9(FnRb6AwZ=Nfd0H^u?YXATM
+
+literal 0
+HcmV?d00001
+
+diff --git a/tests/fuzzing/radius/radius.c b/tests/fuzzing/radius/radius.c
+new file mode 100644
+index 000000000..34ca472a9
+--- /dev/null
++++ b/tests/fuzzing/radius/radius.c
+@@ -0,0 +1,60 @@
++/*
++ * hostapd - RADIUS fuzzer
++ * Copyright (c) 2025, Jouni Malinen <j@w1.fi>
++ *
++ * This software may be distributed under the terms of the BSD license.
++ * See README for more details.
++ */
++
++#include "utils/includes.h"
++
++#include "utils/common.h"
++#include "radius/radius.h"
++#include "../fuzzer-common.h"
++
++
++int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size)
++{
++	struct radius_msg *msg, *sent_msg;
++	struct wpabuf *eap;
++	u8 buf[10];
++	int untagged;
++	const unsigned int num_tagged = 5;
++	int tagged[num_tagged];
++	char *pw;
++	int keylen;
++
++	wpa_fuzzer_set_debug_level();
++
++	if (os_program_init())
++		return 0;
++
++	sent_msg = radius_msg_new(RADIUS_CODE_ACCESS_REQUEST, 123);
++	if (!sent_msg)
++		return -1;
++	radius_msg_finish(sent_msg, (const u8 *) "test", 4);
++
++	msg = radius_msg_parse(data, size);
++	if (msg) {
++		radius_msg_dump(msg);
++		radius_msg_get_attr(msg, RADIUS_ATTR_NAS_IP_ADDRESS,
++				    buf, sizeof(buf));
++		radius_msg_get_vlanid(msg, &untagged, num_tagged, tagged);
++		eap = radius_msg_get_eap(msg);
++		wpa_hexdump_buf(MSG_INFO, "EAP", eap);
++		wpabuf_free(eap);
++		pw = radius_msg_get_tunnel_password(msg, &keylen,
++						    (const u8 *) "test", 4,
++						    sent_msg, 1);
++		if (pw)
++			wpa_printf(MSG_INFO, "PW: %s", pw);
++		os_free(pw);
++		radius_msg_free(msg);
++	}
++
++	radius_msg_free(sent_msg);
++
++	os_program_deinit();
++
++	return 0;
++}
+-- 
+2.43.0
+

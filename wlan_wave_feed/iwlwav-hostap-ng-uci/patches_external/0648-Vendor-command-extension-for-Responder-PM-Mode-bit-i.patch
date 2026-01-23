@@ -1,0 +1,37 @@
+From 0cb42655fb06e2c3cdae148b4fddd8a1c634e470 Mon Sep 17 00:00:00 2001
+From: Purushottam Kushwaha <quic_pkushwah@quicinc.com>
+Date: Fri, 7 Jun 2024 16:40:16 +0530
+Subject: [PATCH] Vendor command extension for Responder PM Mode bit in TWT SET
+ Request
+
+Use the existing QCA_WLAN_VENDOR_ATTR_TWT_SETUP_RESPONDER_PM_MODE
+attribute for TWT setup request to configure the Responder PM Mode bit
+in the control field of the TWT element or broadcast TWT schedule.
+
+Signed-off-by: Purushottam Kushwaha <quic_pkushwah@quicinc.com>
+---
+ src/common/qca-vendor.h | 5 ++++-
+ 1 file changed, 4 insertions(+), 1 deletion(-)
+
+diff --git a/src/common/qca-vendor.h b/src/common/qca-vendor.h
+index 6ac31aa3e..f7bc107a2 100644
+--- a/src/common/qca-vendor.h
++++ b/src/common/qca-vendor.h
+@@ -10846,10 +10846,13 @@ enum qca_wlan_twt_setup_state {
+  *
+  * @QCA_WLAN_VENDOR_ATTR_TWT_SETUP_RESPONDER_PM_MODE: Optional (u8)
+  * This attribute contains the value of the Responder PM Mode subfield (0 or 1)
+- * from TWT response frame.
++ * from TWT response frame. During TWT setup request, this attribute is used to
++ * configure the Responder PM Mode bit in the control field of the TWT element
++ * for broadcast TWT schedule.
+  * This parameter is used for
+  * 1. TWT SET Response
+  * 2. TWT GET Response
++ * 3. TWT SET Request
+  *
+  * @QCA_WLAN_VENDOR_ATTR_TWT_SETUP_ANNOUNCE_TIMEOUT: Optional (u32)
+  * This attribute is used to configure the announce timeout value (in us) in
+-- 
+2.43.0
+

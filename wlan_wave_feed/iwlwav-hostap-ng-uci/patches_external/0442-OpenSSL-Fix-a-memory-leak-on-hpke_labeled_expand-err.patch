@@ -1,0 +1,46 @@
+From a438e52933f4e8967ae1e3398d49e626be6e17a1 Mon Sep 17 00:00:00 2001
+From: Chien Wong <m@xv97.com>
+Date: Tue, 5 Mar 2024 22:20:41 +0800
+Subject: [PATCH] OpenSSL: Fix a memory leak on hpke_labeled_expand() error
+ path
+
+Fixes: 786ea402bc5f ("HPKE base mode with single-shot API")
+Signed-off-by: Chien Wong <m@xv97.com>
+---
+ src/crypto/crypto_openssl.c | 6 +++---
+ 1 file changed, 3 insertions(+), 3 deletions(-)
+
+diff --git a/src/crypto/crypto_openssl.c b/src/crypto/crypto_openssl.c
+index 315c3feac..07455d91f 100644
+--- a/src/crypto/crypto_openssl.c
++++ b/src/crypto/crypto_openssl.c
+@@ -4881,7 +4881,7 @@ hpke_labeled_expand(struct hpke_context *ctx, bool kem, const u8 *prk,
+ #if OPENSSL_VERSION_NUMBER >= 0x30000000L
+ 	hmac = EVP_MAC_fetch(NULL, "HMAC", NULL);
+ 	if (!hmac)
+-		return -1;
++		goto fail;
+ 
+ 	params[0] = OSSL_PARAM_construct_utf8_string(
+ 		"digest",
+@@ -4890,7 +4890,7 @@ hpke_labeled_expand(struct hpke_context *ctx, bool kem, const u8 *prk,
+ #else /* OpenSSL version >= 3.0 */
+ 	hctx = HMAC_CTX_new();
+ 	if (!hctx)
+-		return -1;
++		goto fail;
+ #endif /* OpenSSL version >= 3.0 */
+ 
+ 	while (left > 0) {
+@@ -4899,7 +4899,7 @@ hpke_labeled_expand(struct hpke_context *ctx, bool kem, const u8 *prk,
+ 		EVP_MAC_CTX_free(hctx);
+ 		hctx = EVP_MAC_CTX_new(hmac);
+ 		if (!hctx)
+-			return -1;
++			goto fail;
+ 
+ 		if (EVP_MAC_init(hctx, prk, mdlen, params) != 1)
+ 			goto fail;
+-- 
+2.43.0
+

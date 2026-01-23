@@ -1,0 +1,38 @@
+From 9b4557565a51e679f279be46940db672869232e1 Mon Sep 17 00:00:00 2001
+From: Jouni Malinen <quic_jouni@quicinc.com>
+Date: Sat, 8 Feb 2025 12:58:49 +0200
+Subject: [PATCH] wlantest: Fix debug printing of extra STA Info field contents
+
+Use the correct end pointer to avoid negative length and program
+termination due to the hexdump.
+
+Signed-off-by: Jouni Malinen <quic_jouni@quicinc.com>
+---
+ wlantest/rx_mgmt.c | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/wlantest/rx_mgmt.c b/wlantest/rx_mgmt.c
+index 50346ec13..1c9309488 100644
+--- a/wlantest/rx_mgmt.c
++++ b/wlantest/rx_mgmt.c
+@@ -370,7 +370,7 @@ static void parse_basic_ml(const u8 *ie, size_t len, bool ap,
+ 		if (info_end > pos) {
+ 			wpa_hexdump(MSG_INFO,
+ 				    "Extra information at the end of STA Info",
+-				    pos, ci_end - pos);
++				    pos, info_end - pos);
+ 			pos = info_end;
+ 		}
+ 
+@@ -645,7 +645,7 @@ static void parse_reconfig_ml(const u8 *ie, size_t len,
+ 		if (info_end > pos) {
+ 			wpa_hexdump(MSG_INFO,
+ 				    "Extra information at the end of STA Info",
+-				    pos, ci_end - pos);
++				    pos, info_end - pos);
+ 			pos = info_end;
+ 		}
+ 
+-- 
+2.43.0
+

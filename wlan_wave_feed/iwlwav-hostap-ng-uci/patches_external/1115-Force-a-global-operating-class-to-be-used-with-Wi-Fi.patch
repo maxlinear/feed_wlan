@@ -1,0 +1,55 @@
+From 525f7d94ce1d3d02f107be4e1466d83c9b97dd79 Mon Sep 17 00:00:00 2001
+From: Amith A <quic_amitajit@quicinc.com>
+Date: Fri, 30 Aug 2024 10:06:59 +0530
+Subject: [PATCH] Force a global operating class to be used with Wi-Fi Agile
+ Multiband
+
+Wi-Fi Agile Multiband spec requires the AP to set the last octet of the
+Country String to 0x04, i.e., to use a global operating class from Table
+E-4. Enforce this similarly to the way the 6 GHz case was already done.
+
+Signed-off-by: Amith A <quic_amitajit@quicinc.com>
+---
+ src/ap/beacon.c | 15 ++++++++++++++-
+ 1 file changed, 14 insertions(+), 1 deletion(-)
+
+diff --git a/src/ap/beacon.c b/src/ap/beacon.c
+index c91d27219..542768daa 100644
+--- a/src/ap/beacon.c
++++ b/src/ap/beacon.c
+@@ -262,6 +262,7 @@ static u8 * hostapd_eid_country(struct hostapd_data *hapd, u8 *eid,
+ {
+ 	u8 *pos = eid;
+ 	u8 *end = eid + max_len;
++	bool force_global;
+ 
+ 	if (!hapd->iconf->ieee80211d || max_len < 6 ||
+ 	    hapd->iface->current_mode == NULL)
+@@ -272,11 +273,23 @@ static u8 * hostapd_eid_country(struct hostapd_data *hapd, u8 *eid,
+ 	os_memcpy(pos, hapd->iconf->country, 3); /* e.g., 'US ' */
+ 	pos += 3;
+ 
+-	if (is_6ghz_op_class(hapd->iconf->op_class)) {
++	/* The 6 GHz band uses global operating classes */
++	force_global = is_6ghz_op_class(hapd->iconf->op_class);
++
++#ifdef CONFIG_MBO
++	/* Wi-Fi Agile Muiltiband AP is required to use a global operating
++	 * class. */
++	if (hapd->conf->mbo_enabled)
++		force_global = true;
++#endif /* CONFIG_MBO */
++
++	if (force_global) {
+ 		/* Force the third octet of the country string to indicate
+ 		 * Global Operating Class (Table E-4) */
+ 		eid[4] = 0x04;
++	}
+ 
++	if (is_6ghz_op_class(hapd->iconf->op_class)) {
+ 		/* Operating Triplet field */
+ 		/* Operating Extension Identifier (>= 201 to indicate this is
+ 		 * not a Subband Triplet field) */
+-- 
+2.43.0
+

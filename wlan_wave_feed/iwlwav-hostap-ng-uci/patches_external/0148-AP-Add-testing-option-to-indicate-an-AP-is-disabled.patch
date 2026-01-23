@@ -1,0 +1,70 @@
+From 0b55b8da3cf0a283f7daccb0a99025a6da3cea2a Mon Sep 17 00:00:00 2001
+From: Ilan Peer <ilan.peer@intel.com>
+Date: Thu, 21 Dec 2023 13:08:22 +0200
+Subject: [PATCH] AP: Add testing option to indicate an AP is disabled
+
+Add a testing configuration such that the AP would be reported as
+disabled in the RNR TBTT information MLD parameters included by other
+affiliated APs of the AP MLD.
+
+Signed-off-by: Ilan Peer <ilan.peer@intel.com>
+---
+ hostapd/config_file.c | 2 ++
+ src/ap/ap_config.h    | 8 ++++++++
+ src/ap/ieee802_11.c   | 8 +++++++-
+ 3 files changed, 17 insertions(+), 1 deletion(-)
+
+diff --git a/hostapd/config_file.c b/hostapd/config_file.c
+index af324bb25..b1b7350df 100644
+--- a/hostapd/config_file.c
++++ b/hostapd/config_file.c
+@@ -4853,6 +4853,8 @@ static int hostapd_config_fill(struct hostapd_config *conf,
+ 	} else if (os_strcmp(buf, "eht_oper_puncturing_override") == 0) {
+ 		if (get_u16(pos, line, &bss->eht_oper_puncturing_override))
+ 			return 1;
++	} else if (os_strcmp(buf, "mld_indicate_disabled") == 0) {
++		bss->mld_indicate_disabled = atoi(pos);
+ #endif /* CONFIG_TESTING_OPTIONS */
+ #endif /* CONFIG_IEEE80211BE */
+ 	} else {
+diff --git a/src/ap/ap_config.h b/src/ap/ap_config.h
+index 5bf41b438..794b48b82 100644
+--- a/src/ap/ap_config.h
++++ b/src/ap/ap_config.h
+@@ -952,6 +952,14 @@ struct hostapd_bss_config {
+ 
+ 	/* The AP's MLD MAC address within the AP MLD */
+ 	u8 mld_addr[ETH_ALEN];
++
++#ifdef CONFIG_TESTING_OPTIONS
++	/*
++	 * If set indicate the AP as disabled in the RNR element included in the
++	 * other APs in the AP MLD.
++	 */
++	bool mld_indicate_disabled;
++#endif /* CONFIG_TESTING_OPTIONS */
+ #endif /* CONFIG_IEEE80211BE */
+ };
+ 
+diff --git a/src/ap/ieee802_11.c b/src/ap/ieee802_11.c
+index 597a5df3c..ffe167f90 100644
+--- a/src/ap/ieee802_11.c
++++ b/src/ap/ieee802_11.c
+@@ -7604,7 +7604,13 @@ static u8 * hostapd_eid_rnr_iface(struct hostapd_data *hapd,
+ 					*eid++ = hapd->conf->mld_id;
+ 
+ 				*eid++ = hapd->mld_link_id | (1 << 4);
+-				*eid++ = 0;
++				*eid = 0;
++#ifdef CONFIG_TESTING_OPTIONS
++				if (hapd->conf->mld_indicate_disabled)
++					*eid |= RNR_TBTT_INFO_MLD_PARAM2_LINK_DISABLED;
++#endif /* CONFIG_TESTING_OPTIONS */
++				eid++;
++
+ 				len += RNR_TBTT_INFO_MLD_LEN;
+ #endif /* CONFIG_IEEE80211BE */
+ 			}
+-- 
+2.43.0
+

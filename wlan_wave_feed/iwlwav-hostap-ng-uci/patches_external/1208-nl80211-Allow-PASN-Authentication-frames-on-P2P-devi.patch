@@ -1,0 +1,30 @@
+From 75b25ffbe0164d6a1923cb612fe080c52cb7fdaa Mon Sep 17 00:00:00 2001
+From: Andrei Otcheretianski <andrei.otcheretianski@intel.com>
+Date: Tue, 26 Nov 2024 11:10:14 +0200
+Subject: [PATCH] nl80211: Allow PASN Authentication frames on P2P device
+ interface
+
+This is required for PASN based pairing used in P2P2.
+
+Signed-off-by: Andrei Otcheretianski <andrei.otcheretianski@intel.com>
+---
+ src/drivers/driver_nl80211.c | 3 ++-
+ 1 file changed, 2 insertions(+), 1 deletion(-)
+
+diff --git a/src/drivers/driver_nl80211.c b/src/drivers/driver_nl80211.c
+index eb83c8eb6..705facfce 100644
+--- a/src/drivers/driver_nl80211.c
++++ b/src/drivers/driver_nl80211.c
+@@ -4400,7 +4400,8 @@ static int wpa_driver_nl80211_send_mlme(struct i802_bss *bss, const u8 *data,
+ 			encrypt = 0;
+ 	}
+ 
+-	if (is_sta_interface(drv->nlmode) &&
++	if ((is_sta_interface(drv->nlmode) ||
++	     drv->nlmode == NL80211_IFTYPE_P2P_DEVICE) &&
+ 	    WLAN_FC_GET_TYPE(fc) == WLAN_FC_TYPE_MGMT &&
+ 	    WLAN_FC_GET_STYPE(fc) == WLAN_FC_STYPE_AUTH) {
+ 		if (freq == 0 &&
+-- 
+2.43.0
+

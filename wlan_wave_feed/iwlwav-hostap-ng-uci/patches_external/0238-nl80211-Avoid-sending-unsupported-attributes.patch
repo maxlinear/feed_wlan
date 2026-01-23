@@ -1,0 +1,59 @@
+From 5ae010aae569844ec436a04d7d78982b12a66564 Mon Sep 17 00:00:00 2001
+From: Benjamin Berg <benjamin.berg@intel.com>
+Date: Thu, 28 Dec 2023 15:14:06 +0200
+Subject: [PATCH] nl80211: Avoid sending unsupported attributes
+
+The kernel will reject commands if newer attributes are included even
+though they should not be. Add appropriate checks in set_ap().
+
+Signed-off-by: Benjamin Berg <benjamin.berg@intel.com>
+---
+ src/drivers/driver_nl80211.c | 7 +++++--
+ src/drivers/driver_nl80211.h | 6 ++++++
+ 2 files changed, 11 insertions(+), 2 deletions(-)
+
+diff --git a/src/drivers/driver_nl80211.c b/src/drivers/driver_nl80211.c
+index 8313ac594..4167b707b 100644
+--- a/src/drivers/driver_nl80211.c
++++ b/src/drivers/driver_nl80211.c
+@@ -5194,7 +5194,9 @@ static int wpa_driver_nl80211_set_ap(void *priv,
+ 
+ 		flags |= NL80211_AP_SETTINGS_SA_QUERY_OFFLOAD_SUPPORT;
+ 
+-		if (nla_put_u32(msg, NL80211_ATTR_AP_SETTINGS_FLAGS, flags))
++		if (nl80211_attr_supported(drv,
++					   NL80211_ATTR_AP_SETTINGS_FLAGS) &&
++		    nla_put_u32(msg, NL80211_ATTR_AP_SETTINGS_FLAGS, flags))
+ 			goto fail;
+ 	}
+ 
+@@ -5328,7 +5330,8 @@ static int wpa_driver_nl80211_set_ap(void *priv,
+ 	if (params->freq && nl80211_put_freq_params(msg, params->freq) < 0)
+ 		goto fail;
+ 
+-	if (params->freq && params->freq->he_enabled) {
++	if (params->freq && params->freq->he_enabled &&
++	    nl80211_attr_supported(drv, NL80211_ATTR_HE_BSS_COLOR)) {
+ 		struct nlattr *bss_color;
+ 
+ 		bss_color = nla_nest_start(msg, NL80211_ATTR_HE_BSS_COLOR);
+diff --git a/src/drivers/driver_nl80211.h b/src/drivers/driver_nl80211.h
+index 1eb5656ff..845603256 100644
+--- a/src/drivers/driver_nl80211.h
++++ b/src/drivers/driver_nl80211.h
+@@ -353,6 +353,12 @@ const char * nl80211_iftype_str(enum nl80211_iftype mode);
+ void nl80211_restore_ap_mode(struct i802_bss *bss);
+ struct i802_link * nl80211_get_link(struct i802_bss *bss, s8 link_id);
+ 
++static inline bool
++nl80211_attr_supported(struct wpa_driver_nl80211_data *drv, unsigned int attr)
++{
++	return attr <= drv->global->nl80211_maxattr;
++}
++
+ #ifdef ANDROID
+ int android_nl_socket_set_nonblocking(struct nl_sock *handle);
+ int android_pno_start(struct i802_bss *bss,
+-- 
+2.43.0
+

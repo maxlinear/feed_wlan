@@ -1,0 +1,33 @@
+From b8a2d11ae04ec20aa6370af4d21150a2a1a5fc89 Mon Sep 17 00:00:00 2001
+From: Jouni Malinen <quic_jouni@quicinc.com>
+Date: Wed, 1 Nov 2023 15:27:31 +0200
+Subject: [PATCH] Allow RSNXE Override element to override RSNXE contents
+ during parsing
+
+Signed-off-by: Jouni Malinen <quic_jouni@quicinc.com>
+---
+ src/common/ieee802_11_common.c | 8 ++++++--
+ 1 file changed, 6 insertions(+), 2 deletions(-)
+
+diff --git a/src/common/ieee802_11_common.c b/src/common/ieee802_11_common.c
+index 40a38955d..3ca1ffe7e 100644
+--- a/src/common/ieee802_11_common.c
++++ b/src/common/ieee802_11_common.c
+@@ -3131,8 +3131,12 @@ bool ieee802_11_rsnx_capab_len(const u8 *rsnxe, size_t rsnxe_len,
+ 
+ bool ieee802_11_rsnx_capab(const u8 *rsnxe, unsigned int capab)
+ {
+-	return ieee802_11_rsnx_capab_len(rsnxe ? rsnxe + 2 : NULL,
+-					 rsnxe ? rsnxe[1] : 0, capab);
++	if (!rsnxe)
++		return false;
++	if (rsnxe[0] == WLAN_EID_VENDOR_SPECIFIC && rsnxe[1] >= 4 + 1)
++		return ieee802_11_rsnx_capab_len(rsnxe + 2 + 4, rsnxe[1] - 4,
++						 capab);
++	return ieee802_11_rsnx_capab_len(rsnxe + 2, rsnxe[1], capab);
+ }
+ 
+ 
+-- 
+2.43.0
+

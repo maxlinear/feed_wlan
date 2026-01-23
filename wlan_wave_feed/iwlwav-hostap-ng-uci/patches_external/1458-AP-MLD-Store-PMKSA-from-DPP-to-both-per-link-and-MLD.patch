@@ -1,0 +1,58 @@
+From 0de2f1865d3187c59a92f94f65c404a41c59a110 Mon Sep 17 00:00:00 2001
+From: Chenming Huang <quic_chenhuan@quicinc.com>
+Date: Wed, 26 Feb 2025 20:02:26 +0530
+Subject: [PATCH] AP MLD: Store PMKSA from DPP to both per-link and MLD-level
+ cache
+
+When we cannot determine whether the peer is non-AP MLD (which is the
+case with DPP AKM), store the PMKSA into both the MLD-level and per-link
+caches when operating as an AP MLD.
+
+Signed-off-by: Chenming Huang <quic_chenhuan@quicinc.com>
+---
+ src/ap/dpp_hostapd.c | 22 ++++++++++++++++++++++
+ 1 file changed, 22 insertions(+)
+
+diff --git a/src/ap/dpp_hostapd.c b/src/ap/dpp_hostapd.c
+index a5853f8d3..d94ca9e82 100644
+--- a/src/ap/dpp_hostapd.c
++++ b/src/ap/dpp_hostapd.c
+@@ -2165,6 +2165,17 @@ static void hostapd_dpp_rx_peer_disc_req(struct hostapd_data *hapd,
+ 		goto done;
+ 	}
+ 
++#ifdef CONFIG_IEEE80211BE
++	if (hapd->conf->mld_ap &&
++	    wpa_auth_pmksa_add2(hapd->wpa_auth, src, intro.pmk, intro.pmk_len,
++				intro.pmkid, expiration,
++				WPA_KEY_MGMT_DPP, pkhash, true) < 0) {
++		wpa_printf(MSG_ERROR,
++			   "DPP: Failed to add PMKSA cache entry (MLD)");
++		goto done;
++	}
++#endif /* CONFIG_IEEE80211BE */
++
+ 	hostapd_dpp_send_peer_disc_resp(hapd, src, freq, trans_id[0],
+ 					DPP_STATUS_OK);
+ done:
+@@ -2939,6 +2950,17 @@ hostapd_dpp_rx_priv_peer_intro_update(struct hostapd_data *hapd, const u8 *src,
+ 		goto done;
+ 	}
+ 
++#ifdef CONFIG_IEEE80211BE
++	if (hapd->conf->mld_ap &&
++	    wpa_auth_pmksa_add2(hapd->wpa_auth, src, intro.pmk, intro.pmk_len,
++				intro.pmkid, expiration,
++				WPA_KEY_MGMT_DPP, pkhash, true) < 0) {
++		wpa_printf(MSG_ERROR,
++			   "DPP: Failed to add PMKSA cache entry (MLD)");
++		goto done;
++	}
++#endif /* CONFIG_IEEE80211BE */
++
+ 	wpa_printf(MSG_DEBUG, "DPP: Private Peer Introduction completed with "
+ 		   MACSTR, MAC2STR(src));
+ 
+-- 
+2.43.0
+

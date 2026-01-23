@@ -1,0 +1,35 @@
+From 5942965955b7c87f852e8ca9406a80111e6494b1 Mon Sep 17 00:00:00 2001
+From: Shiva Sankar Gajula <quic_sgajula@quicinc.com>
+Date: Tue, 23 Jul 2024 10:46:04 +0530
+Subject: [PATCH] Add link ID attribute to ADD_STA_NODE QCA vendor command for
+ AP MLD
+
+Add QCA_WLAN_VENDOR_ATTR_ADD_STA_NODE_LINKID attribute to the
+ADD_STA_NODE command to identify a specific link affiliated to an AP
+MLD.
+
+Signed-off-by: Jouni Malinen <quic_jouni@quicinc.com>
+---
+ src/common/qca-vendor.h | 6 ++++++
+ 1 file changed, 6 insertions(+)
+
+diff --git a/src/common/qca-vendor.h b/src/common/qca-vendor.h
+index db0a0ce2e..41724d147 100644
+--- a/src/common/qca-vendor.h
++++ b/src/common/qca-vendor.h
+@@ -12484,6 +12484,12 @@ enum qca_wlan_vendor_attr_add_sta_node_params {
+ 	 */
+ 	QCA_WLAN_VENDOR_ATTR_ADD_STA_NODE_IS_ML = 3,
+ 
++	/*
++	 * This is u8 attribute used to identify a specific link affiliated
++	 * to an AP MLD.
++	 */
++	QCA_WLAN_VENDOR_ATTR_ADD_STA_NODE_LINK_ID = 4,
++
+ 	/* keep last */
+ 	QCA_WLAN_VENDOR_ATTR_ADD_STA_NODE_PARAM_AFTER_LAST,
+ 	QCA_WLAN_VENDOR_ATTR_ADD_STA_NODE_PARAM_MAX =
+-- 
+2.43.0
+

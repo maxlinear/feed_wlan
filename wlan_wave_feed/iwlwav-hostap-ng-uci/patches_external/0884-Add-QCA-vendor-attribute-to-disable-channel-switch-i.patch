@@ -1,0 +1,35 @@
+From b7963348cd475961088b287c24281e1b94ab52a7 Mon Sep 17 00:00:00 2001
+From: Shivani Baranwal <quic_shivbara@quicinc.com>
+Date: Fri, 16 Aug 2024 12:44:36 +0530
+Subject: [PATCH] Add QCA vendor attribute to disable channel switch initiation
+
+Add a test config u8 attribute to disable the channel switch
+initiation in P2P GO mode.
+
+Signed-off-by: Shivani Baranwal <quic_shivbara@quicinc.com>
+---
+ src/common/qca-vendor.h | 8 ++++++++
+ 1 file changed, 8 insertions(+)
+
+diff --git a/src/common/qca-vendor.h b/src/common/qca-vendor.h
+index 38d76c6cc..6148eac53 100644
+--- a/src/common/qca-vendor.h
++++ b/src/common/qca-vendor.h
+@@ -10457,6 +10457,14 @@ enum qca_wlan_vendor_attr_wifi_test_config {
+ 	 */
+ 	QCA_WLAN_VENDOR_ATTR_WIFI_TEST_CONFIG_EHT_SCS_TRAFFIC_SUPPORT = 73,
+ 
++	/* 8-bit unsigned value to disable or not disable the channel switch
++	 * initiation in P2P GO mode.
++	 * 0 - Not-disable, 1 - Disable
++	 *
++	 * This attribute is used for testing purposes.
++	 */
++	QCA_WLAN_VENDOR_ATTR_WIFI_TEST_CONFIG_DISABLE_CHAN_SWITCH_INITIATION = 74,
++
+ 	/* keep last */
+ 	QCA_WLAN_VENDOR_ATTR_WIFI_TEST_CONFIG_AFTER_LAST,
+ 	QCA_WLAN_VENDOR_ATTR_WIFI_TEST_CONFIG_MAX =
+-- 
+2.43.0
+

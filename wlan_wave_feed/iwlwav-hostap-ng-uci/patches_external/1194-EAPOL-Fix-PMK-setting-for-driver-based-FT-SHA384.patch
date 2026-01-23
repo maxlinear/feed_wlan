@@ -1,0 +1,34 @@
+From 44a0560f11aa6917794b6a49b06f3a11f92bbe51 Mon Sep 17 00:00:00 2001
+From: Vinayak Yadawad <vinayak.yadawad@broadcom.com>
+Date: Wed, 4 Dec 2024 14:43:59 +0530
+Subject: [PATCH] EAPOL: Fix PMK setting for driver-based FT-SHA384
+
+Currently in eapol callback PMK update for FT is done wrongly with the
+default PMK length even in case of SHA384. SHA384 needs longer 48-octet
+PMK. Accordingly, fix the offset and length of the PMK that is
+configured to the driver for driver-based FT.
+
+Signed-off-by: Vinayak Yadawad <vinayak.yadawad@broadcom.com>
+---
+ wpa_supplicant/wpas_glue.c | 5 ++++-
+ 1 file changed, 4 insertions(+), 1 deletion(-)
+
+diff --git a/wpa_supplicant/wpas_glue.c b/wpa_supplicant/wpas_glue.c
+index ec363c9bb..a1927374c 100644
+--- a/wpa_supplicant/wpas_glue.c
++++ b/wpa_supplicant/wpas_glue.c
+@@ -345,7 +345,10 @@ static void wpa_supplicant_eapol_cb(struct eapol_sm *eapol,
+ 			   "driver-based 4-way hs and FT");
+ 		res = eapol_sm_get_key(eapol, buf, 2 * PMK_LEN);
+ 		if (res == 0) {
+-			os_memcpy(pmk, buf + PMK_LEN, PMK_LEN);
++			if (wpa_key_mgmt_sha384(wpa_s->key_mgmt))
++				os_memcpy(pmk, buf, pmk_len);
++			else
++				os_memcpy(pmk, buf + PMK_LEN, PMK_LEN);
+ 			os_memset(buf, 0, sizeof(buf));
+ 		}
+ #else /* CONFIG_IEEE80211R */
+-- 
+2.43.0
+

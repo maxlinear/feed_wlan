@@ -1,0 +1,39 @@
+From bdb44a2936a932a61ae2fa5b537b6c27abe9ac17 Mon Sep 17 00:00:00 2001
+From: Jouni Malinen <j@w1.fi>
+Date: Sun, 10 Dec 2023 16:41:57 +0200
+Subject: [PATCH] tests: Fix the regdom wait in wpas_config_file
+
+In addition, print some more debug information to the log.
+
+Signed-off-by: Jouni Malinen <j@w1.fi>
+---
+ tests/hwsim/test_wpas_config.py | 6 ++++--
+ 1 file changed, 4 insertions(+), 2 deletions(-)
+
+diff --git a/tests/hwsim/test_wpas_config.py b/tests/hwsim/test_wpas_config.py
+index 631669617..a6b12e5fc 100644
+--- a/tests/hwsim/test_wpas_config.py
++++ b/tests/hwsim/test_wpas_config.py
+@@ -253,7 +253,9 @@ def test_wpas_config_file(dev, apdev, params):
+         wpas.interface_add("wlan5", config=config)
+         if len(wpas.list_networks()) != 2:
+             raise Exception("Unexpected number of networks")
+-        if len(wpas.request("LIST_CREDS").splitlines()) != 2:
++        res = wpas.request("LIST_CREDS")
++        logger.info("Credentials:\n" + res)
++        if len(res.splitlines()) != 2:
+             raise Exception("Unexpected number of credentials")
+ 
+         val = wpas.get_cred(0, "roaming_consortiums")
+@@ -304,7 +306,7 @@ def test_wpas_config_file(dev, apdev, params):
+             break
+         if "alpha2=FI" in ev:
+             country = True
+-        if country and "type=WORLD":
++        if country and "type=WORLD" in ev:
+             break
+ 
+ def test_wpas_config_file_wps(dev, apdev):
+-- 
+2.43.0
+

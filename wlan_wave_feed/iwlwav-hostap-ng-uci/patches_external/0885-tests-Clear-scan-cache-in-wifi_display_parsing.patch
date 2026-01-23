@@ -1,0 +1,29 @@
+From 8625001ce51b6581ceb94ffed199220c8b2a1443 Mon Sep 17 00:00:00 2001
+From: Jouni Malinen <quic_jouni@quicinc.com>
+Date: Thu, 29 Aug 2024 20:21:31 +0300
+Subject: [PATCH] tests: Clear scan cache in wifi_display_parsing
+
+This is needed to avoid false failures if an old BSS entry is still
+present for dev[0]. This could happen, e.g., with the following test
+case sequence: wpas_mesh_max_peering wifi_display_parsing
+
+Signed-off-by: Jouni Malinen <quic_jouni@quicinc.com>
+---
+ tests/hwsim/test_p2p_wifi_display.py | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/tests/hwsim/test_p2p_wifi_display.py b/tests/hwsim/test_p2p_wifi_display.py
+index c235181a6..7daf7b93a 100644
+--- a/tests/hwsim/test_p2p_wifi_display.py
++++ b/tests/hwsim/test_p2p_wifi_display.py
+@@ -428,6 +428,7 @@ def _test_wifi_display_parsing(dev):
+     dev[1].p2p_connect_group(dev[0].p2p_dev_addr(), pin, timeout=60,
+                              social=True, freq=2412)
+     bssid = dev[0].get_group_status_field('bssid')
++    dev[2].flush_scan_cache()
+     dev[2].scan_for_bss(bssid, freq=2412, force_scan=True)
+     bss = dev[2].get_bss(bssid)
+     if 'wfd_subelems' not in bss:
+-- 
+2.43.0
+

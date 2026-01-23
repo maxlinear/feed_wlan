@@ -1,0 +1,138 @@
+From 61960e6c6b427e8d07f6469e8527d2ccc6fd9f5b Mon Sep 17 00:00:00 2001
+From: Shivani Baranwal <quic_shivbara@quicinc.com>
+Date: Mon, 5 Aug 2024 02:43:59 +0530
+Subject: [PATCH] P2P2: Add alternative PASN RX handler
+
+This is needed for P2P2 pairing using PASN. The actual processing will
+be covered in separate commits.
+
+Signed-off-by: Shivani Baranwal <quic_shivbara@quicinc.com>
+---
+ src/p2p/p2p.c                   |  9 +++++++++
+ src/p2p/p2p.h                   |  2 ++
+ wpa_supplicant/events.c         | 35 +++++++++++++++++++++++++++++++--
+ wpa_supplicant/p2p_supplicant.c | 14 +++++++++++++
+ wpa_supplicant/p2p_supplicant.h |  3 +++
+ 5 files changed, 61 insertions(+), 2 deletions(-)
+
+diff --git a/src/p2p/p2p.c b/src/p2p/p2p.c
+index cdb443cda..923f0725c 100644
+--- a/src/p2p/p2p.c
++++ b/src/p2p/p2p.c
+@@ -5944,3 +5944,12 @@ void p2p_process_usd_elems(struct p2p_data *p2p, const u8 *ies, u16 ies_len,
+ 
+ 	p2p_parse_free(&msg);
+ }
++
++
++#ifdef CONFIG_PASN
++int p2p_pasn_auth_rx(struct p2p_data *p2p, const struct ieee80211_mgmt *mgmt,
++		     size_t len, int freq)
++{
++	return -1; /* TODO */
++}
++#endif /* CONFIG_PASN */
+diff --git a/src/p2p/p2p.h b/src/p2p/p2p.h
+index 7df2063f1..56a8f9e5f 100644
+--- a/src/p2p/p2p.h
++++ b/src/p2p/p2p.h
+@@ -2576,5 +2576,7 @@ int p2p_channel_to_freq(int op_class, int channel);
+ struct wpabuf * p2p_usd_elems(struct p2p_data *p2p);
+ void p2p_process_usd_elems(struct p2p_data *p2p, const u8 *ies, u16 ies_len,
+ 			   const u8 *peer_addr, unsigned int freq);
++int p2p_pasn_auth_rx(struct p2p_data *p2p, const struct ieee80211_mgmt *mgmt,
++		     size_t len, int freq);
+ 
+ #endif /* P2P_H */
+diff --git a/wpa_supplicant/events.c b/wpa_supplicant/events.c
+index 724f2413f..9e767e010 100644
+--- a/wpa_supplicant/events.c
++++ b/wpa_supplicant/events.c
+@@ -6099,6 +6099,37 @@ static void wpas_link_reconfig(struct wpa_supplicant *wpa_s)
+ }
+ 
+ 
++#ifdef CONFIG_PASN
++static int wpas_pasn_auth(struct wpa_supplicant *wpa_s,
++			  const struct ieee80211_mgmt *mgmt, size_t len,
++			  int freq)
++{
++#ifdef CONFIG_P2P
++	struct ieee802_11_elems elems;
++
++	if (len < 24) {
++		wpa_printf(MSG_DEBUG, "nl80211: Too short Management frame");
++		return -2;
++	}
++
++	if (ieee802_11_parse_elems(mgmt->u.auth.variable,
++				   len - offsetof(struct ieee80211_mgmt,
++						  u.auth.variable),
++				   &elems, 1) == ParseFailed) {
++		wpa_printf(MSG_DEBUG,
++			   "PASN: Failed parsing Authentication frame");
++		return -2;
++	}
++
++	if (elems.p2p2_ie && elems.p2p2_ie_len)
++		return wpas_p2p_pasn_auth_rx(wpa_s, mgmt, len, freq);
++#endif /* CONFIG_P2P */
++
++	return wpas_pasn_auth_rx(wpa_s, mgmt, len);
++}
++#endif /* CONFIG_PASN */
++
++
+ void wpa_supplicant_event(void *ctx, enum wpa_event_type event,
+ 			  union wpa_event_data *data)
+ {
+@@ -6605,8 +6636,8 @@ void wpa_supplicant_event(void *ctx, enum wpa_event_type event,
+ 			}
+ #ifdef CONFIG_PASN
+ 			if (stype == WLAN_FC_STYPE_AUTH &&
+-			    wpas_pasn_auth_rx(wpa_s, mgmt,
+-					      data->rx_mgmt.frame_len) != -2)
++			    wpas_pasn_auth(wpa_s, mgmt, data->rx_mgmt.frame_len,
++					   data->rx_mgmt.freq) != -2)
+ 				break;
+ #endif /* CONFIG_PASN */
+ 
+diff --git a/wpa_supplicant/p2p_supplicant.c b/wpa_supplicant/p2p_supplicant.c
+index 259ae47dd..2f0d77342 100644
+--- a/wpa_supplicant/p2p_supplicant.c
++++ b/wpa_supplicant/p2p_supplicant.c
+@@ -10380,3 +10380,17 @@ void wpas_p2p_process_usd_elems(struct wpa_supplicant *wpa_s, const u8 *buf,
+ 		return;
+ 	p2p_process_usd_elems(p2p, buf, buf_len, peer_addr, freq);
+ }
++
++
++#ifdef CONFIG_PASN
++int wpas_p2p_pasn_auth_rx(struct wpa_supplicant *wpa_s,
++			  const struct ieee80211_mgmt *mgmt, size_t len,
++			  int freq)
++{
++	struct p2p_data *p2p = wpa_s->global->p2p;
++
++	if (wpa_s->global->p2p_disabled || !p2p)
++		return -2;
++	return p2p_pasn_auth_rx(p2p, mgmt, len, freq);
++}
++#endif /* CONFIG_PASN */
+diff --git a/wpa_supplicant/p2p_supplicant.h b/wpa_supplicant/p2p_supplicant.h
+index a0fbddcea..0488de46b 100644
+--- a/wpa_supplicant/p2p_supplicant.h
++++ b/wpa_supplicant/p2p_supplicant.h
+@@ -230,6 +230,9 @@ int wpas_p2p_lo_start(struct wpa_supplicant *wpa_s, unsigned int freq,
+ int wpas_p2p_lo_stop(struct wpa_supplicant *wpa_s);
+ int wpas_p2p_mac_setup(struct wpa_supplicant *wpa_s);
+ struct wpabuf * wpas_p2p_usd_elems(struct wpa_supplicant *wpa_s);
++int wpas_p2p_pasn_auth_rx(struct wpa_supplicant *wpa_s,
++			  const struct ieee80211_mgmt *mgmt, size_t len,
++			  int freq);
+ 
+ #else /* CONFIG_P2P */
+ 
+-- 
+2.43.0
+

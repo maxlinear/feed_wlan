@@ -1,0 +1,189 @@
+From 70b8f64faf8733c4e45453e29f4632ebbe556600 Mon Sep 17 00:00:00 2001
+From: Veerendranath Jakkam <quic_vjakkam@quicinc.com>
+Date: Thu, 8 Aug 2024 19:02:30 +0530
+Subject: [PATCH] RSNO: Update RSN overriding capability indication to the
+ driver
+
+Modify wpa_supplicant code based on the updated driver interface for RSN
+overriding capability indication.
+
+Signed-off-by: Veerendranath Jakkam <quic_vjakkam@quicinc.com>
+---
+ src/drivers/driver.h              |  6 ++++
+ src/drivers/driver_nl80211.c      | 55 +++++++++++++++++++++++++++++++
+ src/drivers/driver_nl80211.h      |  1 +
+ src/drivers/driver_nl80211_capa.c |  3 ++
+ wpa_supplicant/wpa_supplicant.c   | 34 ++-----------------
+ 5 files changed, 67 insertions(+), 32 deletions(-)
+
+diff --git a/src/drivers/driver.h b/src/drivers/driver.h
+index e9c6a8325..1625bccaa 100644
+--- a/src/drivers/driver.h
++++ b/src/drivers/driver.h
+@@ -1384,6 +1384,12 @@ struct wpa_driver_associate_params {
+ 	 * mld_params - MLD association parameters
+ 	 */
+ 	struct wpa_driver_mld_params mld_params;
++
++
++	/**
++	 * rsn_overriding - wpa_supplicant RSN overriding support
++	 */
++	bool rsn_overriding;
+ };
+ 
+ enum hide_ssid {
+diff --git a/src/drivers/driver_nl80211.c b/src/drivers/driver_nl80211.c
+index ea2d739d7..f1a25cccc 100644
+--- a/src/drivers/driver_nl80211.c
++++ b/src/drivers/driver_nl80211.c
+@@ -7134,6 +7134,60 @@ static int nl80211_connect_common(struct wpa_driver_nl80211_data *drv,
+ }
+ 
+ 
++#ifdef CONFIG_DRIVER_NL80211_QCA
++static void connect_ext_feature_set(u8 *features,
++				    enum qca_wlan_connect_ext_features idx)
++{
++	u8 *idx_byte = &features[idx / 8];
++
++	*idx_byte |= BIT(idx % 8);
++}
++#endif /* CONFIG_DRIVER_NL80211_QCA */
++
++
++static int nl80211_connect_ext(struct wpa_driver_nl80211_data *drv,
++			       struct wpa_driver_associate_params *params)
++{
++#ifdef CONFIG_DRIVER_NL80211_QCA
++	struct nl_msg *msg;
++	struct nlattr *attr;
++	u8 features[(NUM_QCA_CONNECT_EXT_FEATURES + 7) / 8] = {};
++
++	if (!drv->connect_ext_vendor_cmd_avail)
++		return -1;
++
++	wpa_printf(MSG_DEBUG, "nl80211: Connect_ext (ifindex=%d)",
++		   drv->ifindex);
++
++	if (!(msg = nl80211_drv_msg(drv, 0, NL80211_CMD_VENDOR)) ||
++	    nla_put_u32(msg, NL80211_ATTR_VENDOR_ID, OUI_QCA) ||
++	    nla_put_u32(msg, NL80211_ATTR_VENDOR_SUBCMD,
++			QCA_NL80211_VENDOR_SUBCMD_CONNECT_EXT))
++		goto fail;
++
++	attr = nla_nest_start(msg, NL80211_ATTR_VENDOR_DATA);
++	if (!attr)
++		goto fail;
++
++	if (params->rsn_overriding) {
++		wpa_printf(MSG_DEBUG, "- RSN overriding");
++		connect_ext_feature_set(features, QCA_CONNECT_EXT_FEATURE_RSNO);
++	}
++
++	if (nla_put(msg, QCA_WLAN_VENDOR_ATTR_CONNECT_EXT_FEATURES,
++		    sizeof(features), features))
++		goto fail;
++
++	nla_nest_end(msg, attr);
++
++	return send_and_recv_cmd(drv, msg);
++fail:
++	nlmsg_free(msg);
++#endif /* CONFIG_DRIVER_NL80211_QCA */
++	return -1;
++}
++
++
+ static int wpa_driver_nl80211_try_connect(
+ 	struct wpa_driver_nl80211_data *drv,
+ 	struct wpa_driver_associate_params *params,
+@@ -7155,6 +7209,7 @@ static int wpa_driver_nl80211_try_connect(
+ 	}
+ #endif /* CONFIG_DRIVER_NL80211_QCA */
+ 
++	nl80211_connect_ext(drv, params);
+ 	wpa_printf(MSG_DEBUG, "nl80211: Connect (ifindex=%d)", drv->ifindex);
+ 	msg = nl80211_drv_msg(drv, 0, NL80211_CMD_CONNECT);
+ 	if (!msg)
+diff --git a/src/drivers/driver_nl80211.h b/src/drivers/driver_nl80211.h
+index 87bcc880b..40941ea7d 100644
+--- a/src/drivers/driver_nl80211.h
++++ b/src/drivers/driver_nl80211.h
+@@ -200,6 +200,7 @@ struct wpa_driver_nl80211_data {
+ 	unsigned int secure_ranging_ctx_vendor_cmd_avail:1;
+ 	unsigned int puncturing:1;
+ 	unsigned int qca_ap_allowed_freqs:1;
++	unsigned int connect_ext_vendor_cmd_avail:1;
+ 
+ 	u32 ignore_next_local_disconnect;
+ 	u32 ignore_next_local_deauth;
+diff --git a/src/drivers/driver_nl80211_capa.c b/src/drivers/driver_nl80211_capa.c
+index c84a9478c..753ec55ac 100644
+--- a/src/drivers/driver_nl80211_capa.c
++++ b/src/drivers/driver_nl80211_capa.c
+@@ -1120,6 +1120,9 @@ static int wiphy_info_handler(struct nl_msg *msg, void *arg)
+ 				case QCA_NL80211_VENDOR_SUBCMD_SECURE_RANGING_CONTEXT:
+ 					drv->secure_ranging_ctx_vendor_cmd_avail = 1;
+ 					break;
++				case QCA_NL80211_VENDOR_SUBCMD_CONNECT_EXT:
++					drv->connect_ext_vendor_cmd_avail = 1;
++					break;
+ #endif /* CONFIG_DRIVER_NL80211_QCA */
+ 				}
+ #ifdef CONFIG_DRIVER_NL80211_BRCM
+diff --git a/wpa_supplicant/wpa_supplicant.c b/wpa_supplicant/wpa_supplicant.c
+index 7f7665dc4..a15351e53 100644
+--- a/wpa_supplicant/wpa_supplicant.c
++++ b/wpa_supplicant/wpa_supplicant.c
+@@ -3967,8 +3967,7 @@ mscs_end:
+ 
+ 	wpa_sm_set_param(wpa_s->wpa, WPA_PARAM_RSN_OVERRIDE,
+ 			 RSN_OVERRIDE_NOT_USED);
+-	if (!wpas_driver_bss_selection(wpa_s) &&
+-	    wpas_rsn_overriding(wpa_s) &&
++	if (wpas_rsn_overriding(wpa_s) &&
+ 	    wpas_ap_supports_rsn_overriding(wpa_s, bss) &&
+ 	    wpa_ie_len + 2 + 4 + 1 <= max_wpa_ie_len) {
+ 		u8 *pos = wpa_ie + wpa_ie_len, *start = pos;
+@@ -4005,36 +4004,7 @@ mscs_end:
+ 		wpa_ie_len += pos - start;
+ 	}
+ 
+-	if (wpas_driver_bss_selection(wpa_s) &&
+-	    wpas_rsn_overriding(wpa_s)) {
+-		/* TODO: Replace this indication of support for RSN overriding
+-		 * to the driver in driver-based BSS selection cases with
+-		 * something cleaner. */
+-		if (wpa_ie_len + 2 + 4 <= max_wpa_ie_len) {
+-			u8 *pos = wpa_ie + wpa_ie_len;
+-
+-			*pos++ = WLAN_EID_VENDOR_SPECIFIC;
+-			*pos++ = 4;
+-			WPA_PUT_BE32(pos, RSNE_OVERRIDE_IE_VENDOR_TYPE);
+-			pos += 4;
+-			wpa_hexdump(MSG_MSGDUMP, "RSNE Override", wpa_ie,
+-				    pos - wpa_ie);
+-			wpa_ie_len += 2 + 4;
+-		}
+-
+-		if (wpa_ie_len + 2 + 4 <= max_wpa_ie_len) {
+-			u8 *pos = wpa_ie + wpa_ie_len;
+-
+-			*pos++ = WLAN_EID_VENDOR_SPECIFIC;
+-			*pos++ = 4;
+-			WPA_PUT_BE32(pos, RSNE_OVERRIDE_2_IE_VENDOR_TYPE);
+-			pos += 4;
+-			wpa_hexdump(MSG_MSGDUMP, "RSNE Override 2",
+-				    wpa_ie, pos - wpa_ie);
+-			wpa_ie_len += 2 + 4;
+-		}
+-	}
+-
++	params->rsn_overriding = wpas_rsn_overriding(wpa_s);
+ 	params->wpa_ie = wpa_ie;
+ 	params->wpa_ie_len = wpa_ie_len;
+ 	params->auth_alg = algs;
+-- 
+2.43.0
+

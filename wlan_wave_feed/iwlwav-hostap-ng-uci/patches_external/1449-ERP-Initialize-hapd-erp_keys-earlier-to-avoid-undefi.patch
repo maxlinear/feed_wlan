@@ -1,0 +1,45 @@
+From 870d13f97ebc5abc8d0b77be6ca7a2671442500e Mon Sep 17 00:00:00 2001
+From: Jouni Malinen <quic_jouni@quicinc.com>
+Date: Tue, 25 Feb 2025 23:44:47 +0200
+Subject: [PATCH] ERP: Initialize hapd->erp_keys earlier to avoid undefined
+ behavior
+
+This dl_list needs to be initialized earlier since
+ieee802_1x_erp_flush() is trying to clear it even in case of failed
+interface start that might not have made it all the way to the place
+which the dl_list was previously initialized.
+
+Signed-off-by: Jouni Malinen <quic_jouni@quicinc.com>
+---
+ src/ap/hostapd.c    | 1 +
+ src/ap/ieee802_1x.c | 2 --
+ 2 files changed, 1 insertion(+), 2 deletions(-)
+
+diff --git a/src/ap/hostapd.c b/src/ap/hostapd.c
+index 2e23239e5..5b7af044f 100644
+--- a/src/ap/hostapd.c
++++ b/src/ap/hostapd.c
+@@ -2965,6 +2965,7 @@ hostapd_alloc_bss_data(struct hostapd_iface *hapd_iface,
+ #ifdef CONFIG_SAE
+ 	dl_list_init(&hapd->sae_commit_queue);
+ #endif /* CONFIG_SAE */
++	dl_list_init(&hapd->erp_keys);
+ 
+ 	return hapd;
+ }
+diff --git a/src/ap/ieee802_1x.c b/src/ap/ieee802_1x.c
+index 95ae24d80..efdf607ee 100644
+--- a/src/ap/ieee802_1x.c
++++ b/src/ap/ieee802_1x.c
+@@ -2542,8 +2542,6 @@ int ieee802_1x_init(struct hostapd_data *hapd)
+ 	}
+ #endif /* CONFIG_IEEE80211BE */
+ 
+-	dl_list_init(&hapd->erp_keys);
+-
+ 	os_memset(&conf, 0, sizeof(conf));
+ 	conf.eap_cfg = hapd->eap_cfg;
+ 	conf.ctx = hapd;
+-- 
+2.43.0
+

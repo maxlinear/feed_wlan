@@ -1,0 +1,924 @@
+From 3a5d1a7e6d364220002c2a53e63338e947e67b35 Mon Sep 17 00:00:00 2001
+From: Jouni Malinen <quic_jouni@quicinc.com>
+Date: Thu, 15 Feb 2024 17:41:05 +0200
+Subject: [PATCH] NAN: USD in hostapd
+
+Add hostapd support for interacting with the NAN discovery engine to
+allow single-channel (i.e., the AP's operating channel) USD as Publisher
+or Subscriber.
+
+Signed-off-by: Jouni Malinen <quic_jouni@quicinc.com>
+---
+ hostapd/Android.mk        |   6 +
+ hostapd/Makefile          |   6 +
+ hostapd/android.config    |   3 +
+ hostapd/ctrl_iface.c      | 308 ++++++++++++++++++++++++++++++++++++++
+ hostapd/defconfig         |   3 +
+ src/ap/drv_callbacks.c    |  18 +++
+ src/ap/hostapd.c          |   9 ++
+ src/ap/hostapd.h          |   4 +
+ src/ap/ieee802_11.c       |  27 ++++
+ src/ap/nan_usd_ap.c       | 267 +++++++++++++++++++++++++++++++++
+ src/ap/nan_usd_ap.h       |  46 ++++++
+ wpa_supplicant/Android.mk |   3 +
+ wpa_supplicant/Makefile   |   3 +
+ 13 files changed, 703 insertions(+)
+ create mode 100644 src/ap/nan_usd_ap.c
+ create mode 100644 src/ap/nan_usd_ap.h
+
+diff --git a/hostapd/Android.mk b/hostapd/Android.mk
+index 3cc2b51b8..29579c526 100644
+--- a/hostapd/Android.mk
++++ b/hostapd/Android.mk
+@@ -581,6 +581,12 @@ L_CFLAGS += -DCONFIG_DPP3
+ endif
+ endif
+ 
++ifdef CONFIG_NAN_USD
++OBJS += src/common/nan_de.c
++OBJS += src/ap/nan_usd_ap.c
++L_CFLAGS += -DCONFIG_NAN_USD
++endif
++
+ ifdef CONFIG_PASN
+ L_CFLAGS += -DCONFIG_PASN
+ L_CFLAGS += -DCONFIG_PTKSA_CACHE
+diff --git a/hostapd/Makefile b/hostapd/Makefile
+index bfafe73b7..94421d43b 100644
+--- a/hostapd/Makefile
++++ b/hostapd/Makefile
+@@ -607,6 +607,12 @@ CFLAGS += -DCONFIG_DPP3
+ endif
+ endif
+ 
++ifdef CONFIG_NAN_USD
++OBJS += ../src/common/nan_de.o
++OBJS += ../src/ap/nan_usd_ap.o
++CFLAGS += -DCONFIG_NAN_USD
++endif
++
+ ifdef CONFIG_PASN
+ CFLAGS += -DCONFIG_PASN
+ CFLAGS += -DCONFIG_PTKSA_CACHE
+diff --git a/hostapd/android.config b/hostapd/android.config
+index c8b3afabe..34cc125c1 100644
+--- a/hostapd/android.config
++++ b/hostapd/android.config
+@@ -212,3 +212,6 @@ CONFIG_NO_RANDOM_POOL=y
+ # release under this optional build parameter. This functionality is subject to
+ # be completely removed in a future release.
+ CONFIG_WEP=y
++
++# Wi-Fi Aware unsynchronized service discovery (NAN USD)
++#CONFIG_NAN_USD=y
+diff --git a/hostapd/ctrl_iface.c b/hostapd/ctrl_iface.c
+index 015a67aea..5552cce6d 100644
+--- a/hostapd/ctrl_iface.c
++++ b/hostapd/ctrl_iface.c
+@@ -39,6 +39,7 @@
+ #include "common/wpa_ctrl.h"
+ #include "common/ptksa_cache.h"
+ #include "common/hw_features_common.h"
++#include "common/nan_de.h"
+ #include "crypto/tls.h"
+ #include "drivers/driver.h"
+ #include "eapol_auth/eapol_auth_sm.h"
+@@ -63,6 +64,7 @@
+ #include "ap/rrm.h"
+ #include "ap/dpp_hostapd.h"
+ #include "ap/dfs.h"
++#include "ap/nan_usd_ap.h"
+ #include "wps/wps_defs.h"
+ #include "wps/wps.h"
+ #include "fst/fst_ctrl_iface.h"
+@@ -3580,6 +3582,292 @@ static int hostapd_ctrl_iface_link_remove(struct hostapd_data *hapd, char *cmd,
+ #endif /* CONFIG_IEEE80211BE */
+ 
+ 
++#ifdef CONFIG_NAN_USD
++
++static int hostapd_ctrl_nan_publish(struct hostapd_data *hapd, char *cmd,
++				    char *buf, size_t buflen)
++{
++	char *token, *context = NULL;
++	int publish_id;
++	struct nan_publish_params params;
++	const char *service_name = NULL;
++	struct wpabuf *ssi = NULL;
++	int ret = -1;
++	enum nan_service_protocol_type srv_proto_type = 0;
++
++	os_memset(&params, 0, sizeof(params));
++	/* USD shall use both solicited and unsolicited transmissions */
++	params.unsolicited = true;
++	params.solicited = true;
++	/* USD shall require FSD without GAS */
++	params.fsd = true;
++
++	while ((token = str_token(cmd, " ", &context))) {
++		if (os_strncmp(token, "service_name=", 13) == 0) {
++			service_name = token + 13;
++			continue;
++		}
++
++		if (os_strncmp(token, "ttl=", 4) == 0) {
++			params.ttl = atoi(token + 4);
++			continue;
++		}
++
++		if (os_strncmp(token, "srv_proto_type=", 15) == 0) {
++			srv_proto_type = atoi(token + 15);
++			continue;
++		}
++
++		if (os_strncmp(token, "ssi=", 4) == 0) {
++			if (ssi)
++				goto fail;
++			ssi = wpabuf_parse_bin(token + 4);
++			if (!ssi)
++				goto fail;
++			continue;
++		}
++
++		if (os_strcmp(token, "solicited=0") == 0) {
++			params.solicited = false;
++			continue;
++		}
++
++		if (os_strcmp(token, "unsolicited=0") == 0) {
++			params.unsolicited = false;
++			continue;
++		}
++
++		if (os_strcmp(token, "fsd=0") == 0) {
++			params.fsd = false;
++			continue;
++		}
++
++		wpa_printf(MSG_INFO, "CTRL: Invalid NAN_PUBLISH parameter: %s",
++			   token);
++		goto fail;
++	}
++
++	publish_id = hostapd_nan_usd_publish(hapd, service_name, srv_proto_type,
++					     ssi, &params);
++	if (publish_id > 0)
++		ret = os_snprintf(buf, buflen, "%d", publish_id);
++fail:
++	wpabuf_free(ssi);
++	return ret;
++}
++
++
++static int hostapd_ctrl_nan_cancel_publish(struct hostapd_data *hapd,
++					   char *cmd)
++{
++	char *token, *context = NULL;
++	int publish_id = 0;
++
++	while ((token = str_token(cmd, " ", &context))) {
++		if (sscanf(token, "publish_id=%i", &publish_id) == 1)
++			continue;
++		wpa_printf(MSG_INFO,
++			   "CTRL: Invalid NAN_CANCEL_PUBLISH parameter: %s",
++			   token);
++		return -1;
++	}
++
++	if (publish_id <= 0) {
++		wpa_printf(MSG_INFO,
++			   "CTRL: Invalid or missing NAN_CANCEL_PUBLISH publish_id");
++		return -1;
++	}
++
++	hostapd_nan_usd_cancel_publish(hapd, publish_id);
++	return 0;
++}
++
++
++static int hostapd_ctrl_nan_update_publish(struct hostapd_data *hapd,
++					   char *cmd)
++{
++	char *token, *context = NULL;
++	int publish_id = 0;
++	struct wpabuf *ssi = NULL;
++	int ret = -1;
++
++	while ((token = str_token(cmd, " ", &context))) {
++		if (sscanf(token, "publish_id=%i", &publish_id) == 1)
++			continue;
++		if (os_strncmp(token, "ssi=", 4) == 0) {
++			if (ssi)
++				goto fail;
++			ssi = wpabuf_parse_bin(token + 4);
++			if (!ssi)
++				goto fail;
++			continue;
++		}
++		wpa_printf(MSG_INFO,
++			   "CTRL: Invalid NAN_UPDATE_PUBLISH parameter: %s",
++			   token);
++		goto fail;
++	}
++
++	if (publish_id <= 0) {
++		wpa_printf(MSG_INFO,
++			   "CTRL: Invalid or missing NAN_UPDATE_PUBLISH publish_id");
++		goto fail;
++	}
++
++	ret = hostapd_nan_usd_update_publish(hapd, publish_id, ssi);
++fail:
++	wpabuf_free(ssi);
++	return ret;
++}
++
++
++static int hostapd_ctrl_nan_subscribe(struct hostapd_data *hapd, char *cmd,
++				      char *buf, size_t buflen)
++{
++	char *token, *context = NULL;
++	int subscribe_id;
++	struct nan_subscribe_params params;
++	const char *service_name = NULL;
++	struct wpabuf *ssi = NULL;
++	int ret = -1;
++	enum nan_service_protocol_type srv_proto_type = 0;
++
++	os_memset(&params, 0, sizeof(params));
++
++	while ((token = str_token(cmd, " ", &context))) {
++		if (os_strncmp(token, "service_name=", 13) == 0) {
++			service_name = token + 13;
++			continue;
++		}
++
++		if (os_strcmp(token, "active=1") == 0) {
++			params.active = true;
++			continue;
++		}
++
++		if (os_strncmp(token, "ttl=", 4) == 0) {
++			params.ttl = atoi(token + 4);
++			continue;
++		}
++
++		if (os_strncmp(token, "srv_proto_type=", 15) == 0) {
++			srv_proto_type = atoi(token + 15);
++			continue;
++		}
++
++		if (os_strncmp(token, "ssi=", 4) == 0) {
++			if (ssi)
++				goto fail;
++			ssi = wpabuf_parse_bin(token + 4);
++			if (!ssi)
++				goto fail;
++			continue;
++		}
++
++		wpa_printf(MSG_INFO,
++			   "CTRL: Invalid NAN_SUBSCRIBE parameter: %s",
++			   token);
++		goto fail;
++	}
++
++	subscribe_id = hostapd_nan_usd_subscribe(hapd, service_name,
++						 srv_proto_type, ssi,
++						 &params);
++	if (subscribe_id > 0)
++		ret = os_snprintf(buf, buflen, "%d", subscribe_id);
++fail:
++	wpabuf_free(ssi);
++	return ret;
++}
++
++
++static int hostapd_ctrl_nan_cancel_subscribe(struct hostapd_data *hapd,
++					     char *cmd)
++{
++	char *token, *context = NULL;
++	int subscribe_id = 0;
++
++	while ((token = str_token(cmd, " ", &context))) {
++		if (sscanf(token, "subscribe_id=%i", &subscribe_id) == 1)
++			continue;
++		wpa_printf(MSG_INFO,
++			   "CTRL: Invalid NAN_CANCEL_SUBSCRIBE parameter: %s",
++			   token);
++		return -1;
++	}
++
++	if (subscribe_id <= 0) {
++		wpa_printf(MSG_INFO,
++			   "CTRL: Invalid or missing NAN_CANCEL_SUBSCRIBE subscribe_id");
++		return -1;
++	}
++
++	hostapd_nan_usd_cancel_subscribe(hapd, subscribe_id);
++	return 0;
++}
++
++
++static int hostapd_ctrl_nan_transmit(struct hostapd_data *hapd, char *cmd)
++{
++	char *token, *context = NULL;
++	int handle = 0;
++	int req_instance_id = 0;
++	struct wpabuf *ssi = NULL;
++	u8 peer_addr[ETH_ALEN];
++	int ret = -1;
++
++	os_memset(peer_addr, 0, ETH_ALEN);
++
++	while ((token = str_token(cmd, " ", &context))) {
++		if (sscanf(token, "handle=%i", &handle) == 1)
++			continue;
++
++		if (sscanf(token, "req_instance_id=%i", &req_instance_id) == 1)
++			continue;
++
++		if (os_strncmp(token, "address=", 8) == 0) {
++			if (hwaddr_aton(token + 8, peer_addr) < 0)
++				return -1;
++			continue;
++		}
++
++		if (os_strncmp(token, "ssi=", 4) == 0) {
++			if (ssi)
++				goto fail;
++			ssi = wpabuf_parse_bin(token + 4);
++			if (!ssi)
++				goto fail;
++			continue;
++		}
++
++		wpa_printf(MSG_INFO,
++			   "CTRL: Invalid NAN_TRANSMIT parameter: %s",
++			   token);
++		goto fail;
++	}
++
++	if (handle <= 0) {
++		wpa_printf(MSG_INFO,
++			   "CTRL: Invalid or missing NAN_TRANSMIT handle");
++		goto fail;
++	}
++
++	if (is_zero_ether_addr(peer_addr)) {
++		wpa_printf(MSG_INFO,
++			   "CTRL: Invalid or missing NAN_TRANSMIT address");
++		goto fail;
++	}
++
++	ret = hostapd_nan_usd_transmit(hapd, handle, ssi, NULL, peer_addr,
++				    req_instance_id);
++fail:
++	wpabuf_free(ssi);
++	return ret;
++}
++
++#endif /* CONFIG_NAN_USD */
++
++
+ static int hostapd_ctrl_iface_receive_process(struct hostapd_data *hapd,
+ 					      char *buf, char *reply,
+ 					      int reply_size,
+@@ -4124,6 +4412,26 @@ static int hostapd_ctrl_iface_receive_process(struct hostapd_data *hapd,
+ 			reply_len = -1;
+ #endif /* CONFIG_DPP3 */
+ #endif /* CONFIG_DPP */
++#ifdef CONFIG_NAN_USD
++	} else if (os_strncmp(buf, "NAN_PUBLISH ", 12) == 0) {
++		reply_len = hostapd_ctrl_nan_publish(hapd, buf + 12, reply,
++						     reply_size);
++	} else if (os_strncmp(buf, "NAN_CANCEL_PUBLISH ", 19) == 0) {
++		if (hostapd_ctrl_nan_cancel_publish(hapd, buf + 19) < 0)
++			reply_len = -1;
++	} else if (os_strncmp(buf, "NAN_UPDATE_PUBLISH ", 19) == 0) {
++		if (hostapd_ctrl_nan_update_publish(hapd, buf + 19) < 0)
++			reply_len = -1;
++	} else if (os_strncmp(buf, "NAN_SUBSCRIBE ", 14) == 0) {
++		reply_len = hostapd_ctrl_nan_subscribe(hapd, buf + 14, reply,
++						       reply_size);
++	} else if (os_strncmp(buf, "NAN_CANCEL_SUBSCRIBE ", 21) == 0) {
++		if (hostapd_ctrl_nan_cancel_subscribe(hapd, buf + 21) < 0)
++			reply_len = -1;
++	} else if (os_strncmp(buf, "NAN_TRANSMIT ", 13) == 0) {
++		if (hostapd_ctrl_nan_transmit(hapd, buf + 13) < 0)
++			reply_len = -1;
++#endif /* CONFIG_NAN_USD */
+ #ifdef RADIUS_SERVER
+ 	} else if (os_strncmp(buf, "DAC_REQUEST ", 12) == 0) {
+ 		if (radius_server_dac_request(hapd->radius_srv, buf + 12) < 0)
+diff --git a/hostapd/defconfig b/hostapd/defconfig
+index 36c147682..2f5f3f6d0 100644
+--- a/hostapd/defconfig
++++ b/hostapd/defconfig
+@@ -419,3 +419,6 @@ CONFIG_DPP2=y
+ # DPP version 3 support (experimental and still changing; do not enable for
+ # production use)
+ #CONFIG_DPP3=y
++
++# Wi-Fi Aware unsynchronized service discovery (NAN USD)
++#CONFIG_NAN_USD=y
+diff --git a/src/ap/drv_callbacks.c b/src/ap/drv_callbacks.c
+index 504e0f8bf..35522d2d1 100644
+--- a/src/ap/drv_callbacks.c
++++ b/src/ap/drv_callbacks.c
+@@ -42,6 +42,7 @@
+ #include "dpp_hostapd.h"
+ #include "fils_hlp.h"
+ #include "neighbor_db.h"
++#include "nan_usd_ap.h"
+ 
+ 
+ #ifdef CONFIG_FILS
+@@ -1622,6 +1623,23 @@ static void hostapd_action_rx(struct hostapd_data *hapd,
+ 		return;
+ 	}
+ #endif /* CONFIG_DPP */
++#ifdef CONFIG_NAN_USD
++	if (mgmt->u.action.category == WLAN_ACTION_PUBLIC && plen >= 5 &&
++	    mgmt->u.action.u.vs_public_action.action ==
++	    WLAN_PA_VENDOR_SPECIFIC &&
++	    WPA_GET_BE24(mgmt->u.action.u.vs_public_action.oui) ==
++	    OUI_WFA &&
++	    mgmt->u.action.u.vs_public_action.variable[0] == NAN_OUI_TYPE) {
++		const u8 *pos, *end;
++
++		pos = mgmt->u.action.u.vs_public_action.variable;
++		end = drv_mgmt->frame + drv_mgmt->frame_len;
++		pos++;
++		hostapd_nan_usd_rx_sdf(hapd, mgmt->sa, drv_mgmt->freq,
++				       pos, end - pos);
++		return;
++	}
++#endif /* CONFIG_NAN_USD */
+ }
+ #endif /* NEED_AP_MLME */
+ 
+diff --git a/src/ap/hostapd.c b/src/ap/hostapd.c
+index cb464f670..ddbcabc49 100644
+--- a/src/ap/hostapd.c
++++ b/src/ap/hostapd.c
+@@ -35,6 +35,7 @@
+ #include "wpa_auth.h"
+ #include "wps_hostapd.h"
+ #include "dpp_hostapd.h"
++#include "nan_usd_ap.h"
+ #include "gas_query_ap.h"
+ #include "hw_features.h"
+ #include "wpa_auth_glue.h"
+@@ -528,6 +529,9 @@ void hostapd_free_hapd_data(struct hostapd_data *hapd)
+ 	gas_query_ap_deinit(hapd->gas);
+ 	hapd->gas = NULL;
+ #endif /* CONFIG_DPP */
++#ifdef CONFIG_NAN_USD
++	hostapd_nan_usd_deinit(hapd);
++#endif /* CONFIG_NAN_USD */
+ 
+ 	authsrv_deinit(hapd);
+ 
+@@ -1516,6 +1520,11 @@ static int hostapd_setup_bss(struct hostapd_data *hapd, int first,
+ 		return -1;
+ #endif /* CONFIG_DPP */
+ 
++#ifdef CONFIG_NAN_USD
++	if (hostapd_nan_usd_init(hapd) < 0)
++		return -1;
++#endif /* CONFIG_NAN_USD */
++
+ 	if (authsrv_init(hapd) < 0)
+ 		return -1;
+ 
+diff --git a/src/ap/hostapd.h b/src/ap/hostapd.h
+index 3dba121c6..333955486 100644
+--- a/src/ap/hostapd.h
++++ b/src/ap/hostapd.h
+@@ -475,6 +475,10 @@ struct hostapd_data {
+ 	u8 eht_mld_link_removal_count;
+ #endif /* CONFIG_TESTING_OPTIONS */
+ #endif /* CONFIG_IEEE80211BE */
++
++#ifdef CONFIG_NAN_USD
++	struct nan_de *nan_de;
++#endif /* CONFIG_NAN_USD */
+ };
+ 
+ 
+diff --git a/src/ap/ieee802_11.c b/src/ap/ieee802_11.c
+index 7fb49a4b4..8b8c1f095 100644
+--- a/src/ap/ieee802_11.c
++++ b/src/ap/ieee802_11.c
+@@ -56,6 +56,7 @@
+ #include "dpp_hostapd.h"
+ #include "gas_query_ap.h"
+ #include "comeback_token.h"
++#include "nan_usd_ap.h"
+ #include "pasn/pasn_common.h"
+ 
+ 
+@@ -6034,6 +6035,25 @@ static int handle_action(struct hostapd_data *hapd,
+ 				return 1;
+ 		}
+ #endif /* CONFIG_DPP */
++#ifdef CONFIG_NAN_USD
++		if (mgmt->u.action.category == WLAN_ACTION_PUBLIC &&
++		    len >= IEEE80211_HDRLEN + 5 &&
++		    mgmt->u.action.u.vs_public_action.action ==
++		    WLAN_PA_VENDOR_SPECIFIC &&
++		    WPA_GET_BE24(mgmt->u.action.u.vs_public_action.oui) ==
++		    OUI_WFA &&
++		    mgmt->u.action.u.vs_public_action.variable[0] ==
++		    NAN_OUI_TYPE) {
++			const u8 *pos, *end;
++
++			pos = mgmt->u.action.u.vs_public_action.variable;
++			end = ((const u8 *) mgmt) + len;
++			pos++;
++			hostapd_nan_usd_rx_sdf(hapd, mgmt->sa, freq,
++					       pos, end - pos);
++			return 1;
++		}
++#endif /* CONFIG_NAN_USD */
+ 		if (hapd->public_action_cb) {
+ 			hapd->public_action_cb(hapd->public_action_cb_ctx,
+ 					       (u8 *) mgmt, len, freq);
+@@ -6141,6 +6161,10 @@ int ieee802_11_mgmt(struct hostapd_data *hapd, const u8 *buf, size_t len,
+ 	int ret = 0;
+ 	unsigned int freq;
+ 	int ssi_signal = fi ? fi->ssi_signal : 0;
++#ifdef CONFIG_NAN_USD
++	static const u8 nan_network_id[ETH_ALEN] =
++		{ 0x51, 0x6f, 0x9a, 0x01, 0x00, 0x00 };
++#endif /* CONFIG_NAN_USD */
+ 
+ 	if (len < 24)
+ 		return 0;
+@@ -6207,6 +6231,9 @@ int ieee802_11_mgmt(struct hostapd_data *hapd, const u8 *buf, size_t len,
+ 	    !(hapd->conf->mld_ap &&
+ 	      ether_addr_equal(hapd->mld_addr, mgmt->bssid)) &&
+ #endif /* CONFIG_IEEE80211BE */
++#ifdef CONFIG_NAN_USD
++	    !ether_addr_equal(mgmt->da, nan_network_id) &&
++#endif /* CONFIG_NAN_USD */
+ 	    !ether_addr_equal(mgmt->da, hapd->own_addr)) {
+ 		hostapd_logger(hapd, mgmt->sa, HOSTAPD_MODULE_IEEE80211,
+ 			       HOSTAPD_LEVEL_DEBUG,
+diff --git a/src/ap/nan_usd_ap.c b/src/ap/nan_usd_ap.c
+new file mode 100644
+index 000000000..52a967a4e
+--- /dev/null
++++ b/src/ap/nan_usd_ap.c
+@@ -0,0 +1,267 @@
++/*
++ * NAN unsynchronized service discovery (USD)
++ * Copyright (c) 2024, Qualcomm Innovation Center, Inc.
++ *
++ * This software may be distributed under the terms of the BSD license.
++ * See README for more details.
++ */
++
++#include "utils/includes.h"
++
++#include "utils/common.h"
++#include "common/wpa_ctrl.h"
++#include "common/nan_de.h"
++#include "hostapd.h"
++#include "ap_drv_ops.h"
++#include "nan_usd_ap.h"
++
++
++static int hostapd_nan_de_tx(void *ctx, unsigned int freq,
++			     unsigned int wait_time,
++			     const u8 *dst, const u8 *src, const u8 *bssid,
++			     const struct wpabuf *buf)
++{
++	struct hostapd_data *hapd = ctx;
++
++	wpa_printf(MSG_DEBUG, "NAN: TX NAN SDF A1=" MACSTR " A2=" MACSTR
++		   " A3=" MACSTR " len=%zu",
++		   MAC2STR(dst), MAC2STR(src), MAC2STR(bssid),
++		   wpabuf_len(buf));
++
++	/* TODO: Force use of OFDM */
++	return hostapd_drv_send_action(hapd, hapd->iface->freq, 0, dst,
++				       wpabuf_head(buf), wpabuf_len(buf));
++}
++
++
++static int hostapd_nan_de_listen(void *ctx, unsigned int freq,
++			      unsigned int duration)
++{
++	return 0;
++}
++
++
++static void
++hostapd_nan_de_discovery_result(void *ctx, int subscribe_id,
++				enum nan_service_protocol_type srv_proto_type,
++				const u8 *ssi, size_t ssi_len,
++				int peer_publish_id, const u8 *peer_addr,
++				bool fsd, bool fsd_gas)
++{
++	struct hostapd_data *hapd = ctx;
++	char *ssi_hex;
++
++	ssi_hex = os_zalloc(2 * ssi_len + 1);
++	if (!ssi_hex)
++		return;
++	if (ssi)
++		wpa_snprintf_hex(ssi_hex, 2 * ssi_len + 1, ssi, ssi_len);
++	wpa_msg(hapd->msg_ctx, MSG_INFO, NAN_DISCOVERY_RESULT
++		"subscribe_id=%d publish_id=%d address=" MACSTR
++		" fsd=%d fsd_gas=%d srv_proto_type=%u ssi=%s",
++		subscribe_id, peer_publish_id, MAC2STR(peer_addr),
++		fsd, fsd_gas, srv_proto_type, ssi_hex);
++	os_free(ssi_hex);
++}
++
++
++static void
++hostapd_nan_de_replied(void *ctx, int publish_id, const u8 *peer_addr,
++		       int peer_subscribe_id,
++		       enum nan_service_protocol_type srv_proto_type,
++		       const u8 *ssi, size_t ssi_len)
++{
++	struct hostapd_data *hapd = ctx;
++	char *ssi_hex;
++
++	ssi_hex = os_zalloc(2 * ssi_len + 1);
++	if (!ssi_hex)
++		return;
++	if (ssi)
++		wpa_snprintf_hex(ssi_hex, 2 * ssi_len + 1, ssi, ssi_len);
++	wpa_msg(hapd->msg_ctx, MSG_INFO, NAN_REPLIED
++		"publish_id=%d address=" MACSTR
++		" subscribe_id=%d srv_proto_type=%u ssi=%s",
++		publish_id, MAC2STR(peer_addr), peer_subscribe_id,
++		srv_proto_type, ssi_hex);
++	os_free(ssi_hex);
++}
++
++
++static const char * nan_reason_txt(enum nan_de_reason reason)
++{
++	switch (reason) {
++	case NAN_DE_REASON_TIMEOUT:
++		return "timeout";
++	case NAN_DE_REASON_USER_REQUEST:
++		return "user-request";
++	case NAN_DE_REASON_FAILURE:
++		return "failure";
++	}
++
++	return "unknown";
++}
++
++
++static void hostapd_nan_de_publish_terminated(void *ctx, int publish_id,
++					      enum nan_de_reason reason)
++{
++	struct hostapd_data *hapd = ctx;
++
++	wpa_msg(hapd->msg_ctx, MSG_INFO, NAN_PUBLISH_TERMINATED
++		"publish_id=%d reason=%s",
++		publish_id, nan_reason_txt(reason));
++}
++
++
++static void hostapd_nan_de_subscribe_terminated(void *ctx, int subscribe_id,
++						enum nan_de_reason reason)
++{
++	struct hostapd_data *hapd = ctx;
++
++	wpa_msg(hapd->msg_ctx, MSG_INFO, NAN_SUBSCRIBE_TERMINATED
++		"subscribe_id=%d reason=%s",
++		subscribe_id, nan_reason_txt(reason));
++}
++
++
++static void hostapd_nan_de_receive(void *ctx, int id, int peer_instance_id,
++				   const u8 *ssi, size_t ssi_len,
++				   const u8 *peer_addr)
++{
++	struct hostapd_data *hapd = ctx;
++	char *ssi_hex;
++
++	ssi_hex = os_zalloc(2 * ssi_len + 1);
++	if (!ssi_hex)
++		return;
++	if (ssi)
++		wpa_snprintf_hex(ssi_hex, 2 * ssi_len + 1, ssi, ssi_len);
++	wpa_msg(hapd->msg_ctx, MSG_INFO, NAN_RECEIVE
++		"id=%d peer_instance_id=%d address=" MACSTR " ssi=%s",
++		id, peer_instance_id, MAC2STR(peer_addr), ssi_hex);
++	os_free(ssi_hex);
++}
++
++
++int hostapd_nan_usd_init(struct hostapd_data *hapd)
++{
++	struct nan_callbacks cb;
++
++	os_memset(&cb, 0, sizeof(cb));
++	cb.ctx = hapd;
++	cb.tx = hostapd_nan_de_tx;
++	cb.listen = hostapd_nan_de_listen;
++	cb.discovery_result = hostapd_nan_de_discovery_result;
++	cb.replied = hostapd_nan_de_replied;
++	cb.publish_terminated = hostapd_nan_de_publish_terminated;
++	cb.subscribe_terminated = hostapd_nan_de_subscribe_terminated;
++	cb.receive = hostapd_nan_de_receive;
++
++	hapd->nan_de = nan_de_init(hapd->own_addr, true, &cb);
++	if (!hapd->nan_de)
++		return -1;
++	return 0;
++}
++
++
++void hostapd_nan_usd_deinit(struct hostapd_data *hapd)
++{
++	nan_de_deinit(hapd->nan_de);
++	hapd->nan_de = NULL;
++}
++
++
++void hostapd_nan_usd_rx_sdf(struct hostapd_data *hapd, const u8 *src,
++			    unsigned int freq, const u8 *buf, size_t len)
++{
++	if (!hapd->nan_de)
++		return;
++	nan_de_rx_sdf(hapd->nan_de, src, freq, buf, len);
++}
++
++
++void hostapd_nan_usd_flush(struct hostapd_data *hapd)
++{
++	if (!hapd->nan_de)
++		return;
++	nan_de_flush(hapd->nan_de);
++}
++
++
++int hostapd_nan_usd_publish(struct hostapd_data *hapd, const char *service_name,
++			    enum nan_service_protocol_type srv_proto_type,
++			    const struct wpabuf *ssi,
++			    struct nan_publish_params *params)
++{
++	int publish_id;
++	struct wpabuf *elems = NULL;
++
++	if (!hapd->nan_de)
++		return -1;
++
++	publish_id = nan_de_publish(hapd->nan_de, service_name, srv_proto_type,
++				    ssi, elems, params);
++	wpabuf_free(elems);
++	return publish_id;
++}
++
++
++void hostapd_nan_usd_cancel_publish(struct hostapd_data *hapd, int publish_id)
++{
++	if (!hapd->nan_de)
++		return;
++	nan_de_cancel_publish(hapd->nan_de, publish_id);
++}
++
++
++int hostapd_nan_usd_update_publish(struct hostapd_data *hapd, int publish_id,
++				   const struct wpabuf *ssi)
++{
++	int ret;
++
++	if (!hapd->nan_de)
++		return -1;
++	ret = nan_de_update_publish(hapd->nan_de, publish_id, ssi);
++	return ret;
++}
++
++
++int hostapd_nan_usd_subscribe(struct hostapd_data *hapd,
++			      const char *service_name,
++			      enum nan_service_protocol_type srv_proto_type,
++			      const struct wpabuf *ssi,
++			      struct nan_subscribe_params *params)
++{
++	int subscribe_id;
++	struct wpabuf *elems = NULL;
++
++	if (!hapd->nan_de)
++		return -1;
++
++	subscribe_id = nan_de_subscribe(hapd->nan_de, service_name,
++					srv_proto_type, ssi, elems, params);
++	wpabuf_free(elems);
++	return subscribe_id;
++}
++
++
++void hostapd_nan_usd_cancel_subscribe(struct hostapd_data *hapd,
++				      int subscribe_id)
++{
++	if (!hapd->nan_de)
++		return;
++	nan_de_cancel_subscribe(hapd->nan_de, subscribe_id);
++}
++
++
++int hostapd_nan_usd_transmit(struct hostapd_data *hapd, int handle,
++			     const struct wpabuf *ssi,
++			     const struct wpabuf *elems,
++			     const u8 *peer_addr, u8 req_instance_id)
++{
++	if (!hapd->nan_de)
++		return -1;
++	return nan_de_transmit(hapd->nan_de, handle, ssi, elems, peer_addr,
++			       req_instance_id);
++}
+diff --git a/src/ap/nan_usd_ap.h b/src/ap/nan_usd_ap.h
+new file mode 100644
+index 000000000..58ff5fc48
+--- /dev/null
++++ b/src/ap/nan_usd_ap.h
+@@ -0,0 +1,46 @@
++/*
++ * NAN unsynchronized service discovery (USD)
++ * Copyright (c) 2024, Qualcomm Innovation Center, Inc.
++ *
++ * This software may be distributed under the terms of the BSD license.
++ * See README for more details.
++ */
++
++#ifndef NAN_USD_AP_H
++#define NAN_USD_AP_H
++
++struct nan_subscribe_params;
++struct nan_publish_params;
++enum nan_service_protocol_type;
++
++int hostapd_nan_usd_init(struct hostapd_data *hapd);
++void hostapd_nan_usd_deinit(struct hostapd_data *hapd);
++void hostapd_nan_usd_rx_sdf(struct hostapd_data *hapd, const u8 *src,
++			    unsigned int freq, const u8 *buf, size_t len);
++void hostapd_nan_usd_flush(struct hostapd_data *hapd);
++int hostapd_nan_usd_publish(struct hostapd_data *hapd, const char *service_name,
++			    enum nan_service_protocol_type srv_proto_type,
++			    const struct wpabuf *ssi,
++			    struct nan_publish_params *params);
++void hostapd_nan_usd_cancel_publish(struct hostapd_data *hapd, int publish_id);
++int hostapd_nan_usd_update_publish(struct hostapd_data *hapd, int publish_id,
++				   const struct wpabuf *ssi);
++int hostapd_nan_usd_subscribe(struct hostapd_data *hapd,
++			      const char *service_name,
++			      enum nan_service_protocol_type srv_proto_type,
++			      const struct wpabuf *ssi,
++			      struct nan_subscribe_params *params);
++void hostapd_nan_usd_cancel_subscribe(struct hostapd_data *hapd,
++				      int subscribe_id);
++int hostapd_nan_usd_transmit(struct hostapd_data *hapd, int handle,
++			     const struct wpabuf *ssi,
++			     const struct wpabuf *elems,
++			     const u8 *peer_addr, u8 req_instance_id);
++void hostapd_nan_usd_remain_on_channel_cb(struct hostapd_data *hapd,
++					  unsigned int freq,
++					  unsigned int duration);
++void hostapd_nan_usd_cancel_remain_on_channel_cb(struct hostapd_data *hapd,
++						 unsigned int freq);
++void hostapd_nan_usd_tx_wait_expire(struct hostapd_data *hapd);
++
++#endif /* NAN_USD_AP_H */
+diff --git a/wpa_supplicant/Android.mk b/wpa_supplicant/Android.mk
+index b6fcebd69..307e18952 100644
+--- a/wpa_supplicant/Android.mk
++++ b/wpa_supplicant/Android.mk
+@@ -994,6 +994,9 @@ OBJS += src/ap/dpp_hostapd.c
+ OBJS += src/ap/gas_query_ap.c
+ NEED_AP_GAS_SERV=y
+ endif
++ifdef CONFIG_NAN_USD
++OBJS += src/ap/nan_usd_ap.c
++endif
+ ifdef CONFIG_INTERWORKING
+ NEED_AP_GAS_SERV=y
+ endif
+diff --git a/wpa_supplicant/Makefile b/wpa_supplicant/Makefile
+index 288f85536..976da5962 100644
+--- a/wpa_supplicant/Makefile
++++ b/wpa_supplicant/Makefile
+@@ -1068,6 +1068,9 @@ OBJS += ../src/ap/dpp_hostapd.o
+ OBJS += ../src/ap/gas_query_ap.o
+ NEED_AP_GAS_SERV=y
+ endif
++ifdef CONFIG_NAN_USD
++OBJS += ../src/ap/nan_usd_ap.o
++endif
+ ifdef CONFIG_INTERWORKING
+ NEED_AP_GAS_SERV=y
+ endif
+-- 
+2.43.0
+

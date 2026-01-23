@@ -1,0 +1,41 @@
+From bdcee7ddfc8186f6133c4e234162b249f9afd332 Mon Sep 17 00:00:00 2001
+From: Jouni Malinen <j@w1.fi>
+Date: Wed, 25 Dec 2024 19:11:11 +0200
+Subject: [PATCH] tests: Set obss_interval for the test that verifies return to
+ 40 MHz
+
+This is in preparation for changing hostapd to require obss_interval to
+be set to allow the channel bandwidth to be increased from 20 MHz to 40
+MHz on disassociation of the last 40 MHz intolerant STA.
+
+Signed-off-by: Jouni Malinen <j@w1.fi>
+---
+ tests/hwsim/test_ap_ht.py | 5 +++--
+ 1 file changed, 3 insertions(+), 2 deletions(-)
+
+diff --git a/tests/hwsim/test_ap_ht.py b/tests/hwsim/test_ap_ht.py
+index 86c8bdec8..4ae02234e 100644
+--- a/tests/hwsim/test_ap_ht.py
++++ b/tests/hwsim/test_ap_ht.py
+@@ -937,7 +937,8 @@ def test_ap_ht_40mhz_intolerant_sta(dev, apdev):
+     clear_scan_cache(apdev[0])
+     params = {"ssid": "intolerant",
+               "channel": "6",
+-              "ht_capab": "[HT40-]"}
++              "ht_capab": "[HT40-]",
++              "obss_interval": "2"}
+     hapd = hostapd.add_ap(apdev[0], params)
+     if hapd.get_status_field("num_sta_ht40_intolerant") != "0":
+         raise Exception("Unexpected num_sta_ht40_intolerant value")
+@@ -959,7 +960,7 @@ def test_ap_ht_40mhz_intolerant_sta(dev, apdev):
+         raise Exception("Unexpected secondary_channel (did not disable 40 MHz)")
+ 
+     dev[2].request("DISCONNECT")
+-    time.sleep(1)
++    time.sleep(12)
+     if hapd.get_status_field("num_sta_ht40_intolerant") != "0":
+         raise Exception("Unexpected num_sta_ht40_intolerant value (expected 0)")
+     if hapd.get_status_field("secondary_channel") != "-1":
+-- 
+2.43.0
+

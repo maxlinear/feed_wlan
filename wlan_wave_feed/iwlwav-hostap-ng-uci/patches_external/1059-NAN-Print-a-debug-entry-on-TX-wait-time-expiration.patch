@@ -1,0 +1,30 @@
+From 2817554a37136c6c5bf382b95009df812f92d047 Mon Sep 17 00:00:00 2001
+From: Jouni Malinen <quic_jouni@quicinc.com>
+Date: Mon, 4 Nov 2024 22:43:44 +0200
+Subject: [PATCH] NAN: Print a debug entry on TX wait time expiration
+
+This can be helpful for understanding NAN DE behavior.
+
+Signed-off-by: Jouni Malinen <quic_jouni@quicinc.com>
+---
+ src/common/nan_de.c | 4 ++++
+ 1 file changed, 4 insertions(+)
+
+diff --git a/src/common/nan_de.c b/src/common/nan_de.c
+index 045d66e24..844fc4434 100644
+--- a/src/common/nan_de.c
++++ b/src/common/nan_de.c
+@@ -675,6 +675,10 @@ void nan_de_tx_status(struct nan_de *de, unsigned int freq, const u8 *dst)
+ 
+ void nan_de_tx_wait_ended(struct nan_de *de)
+ {
++	if (de->tx_wait_end_freq)
++		wpa_printf(MSG_DEBUG,
++			   "NAN: TX wait for response ended (freq=%u)",
++			   de->tx_wait_end_freq);
+ 	de->tx_wait_end_freq = 0;
+ 	nan_de_run_timer(de);
+ }
+-- 
+2.43.0
+

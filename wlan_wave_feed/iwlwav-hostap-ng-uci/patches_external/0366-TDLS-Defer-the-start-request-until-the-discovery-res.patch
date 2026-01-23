@@ -1,0 +1,65 @@
+From 86c24217116b03c9276c7941ef0652b5c9c3b191 Mon Sep 17 00:00:00 2001
+From: Kiran Kumar Lokere <quic_klokere@quicinc.com>
+Date: Tue, 6 Feb 2024 15:57:53 -0800
+Subject: [PATCH] TDLS: Defer the start request until the discovery response RX
+ for MLO
+
+When the station (non-AP MLD) is associated with an AP MLD the link ID
+for TDLS setup is derived from the discovery response frame and the link
+ID is used in TDLS setup operation when acting as initiator. The driver
+sends the received discovery response frame followed by the TDLS setup
+request event. But the discovery response frame is received after the
+setup request event leading to use incorrect link ID value for TDLS
+setup operation causing the setup failure. Process the TDLS setup
+request if the discovery response frame is received, else defer the
+process until the discovery response frame is received and process the
+setup request after discovery response frame is processed.
+
+Signed-off-by: Jouni Malinen <quic_jouni@quicinc.com>
+---
+ src/rsn_supp/tdls.c | 15 +++++++++++++++
+ 1 file changed, 15 insertions(+)
+
+diff --git a/src/rsn_supp/tdls.c b/src/rsn_supp/tdls.c
+index 8a7509170..72ac9d947 100644
+--- a/src/rsn_supp/tdls.c
++++ b/src/rsn_supp/tdls.c
+@@ -161,6 +161,8 @@ struct wpa_tdls_peer {
+ 	int chan_switch_enabled;
+ 
+ 	int mld_link_id;
++	bool disc_resp_rcvd;
++	bool setup_req_rcvd;
+ };
+ 
+ 
+@@ -2868,6 +2870,12 @@ int wpa_tdls_start(struct wpa_sm *sm, const u8 *addr)
+ 		return 0;
+ 	}
+ 
++	if (sm->mlo.valid_links && !peer->disc_resp_rcvd) {
++		wpa_printf(MSG_DEBUG,
++			   "TDLS: MLO STA connection - defer the setup request since Discovery Resp not yet received");
++		peer->setup_req_rcvd = true;
++		return 0;
++	}
+ 	peer->initiator = 1;
+ 
+ 	/* add the peer to the driver as a "setup in progress" peer */
+@@ -3236,6 +3244,13 @@ int wpa_tdls_process_discovery_response(struct wpa_sm *sm, const u8 *addr,
+ 	wpa_printf(MSG_DEBUG, "TDLS: Link identifier BSS: " MACSTR
+ 		   " , link id: %u", MAC2STR(lnkid->bssid), link_id);
+ 
++	peer->disc_resp_rcvd = true;
++	if (peer->setup_req_rcvd) {
++		peer->setup_req_rcvd = false;
++		wpa_printf(MSG_DEBUG, "TDLS: Process the deferred TDLS start");
++		return wpa_tdls_start(sm, addr);
++	}
++
+ 	return 0;
+ }
+ 
+-- 
+2.43.0
+

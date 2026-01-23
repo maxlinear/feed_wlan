@@ -1,0 +1,104 @@
+From 92374d59d4efea5c8b61ed2ceef141c26bcd7f99 Mon Sep 17 00:00:00 2001
+From: Hu Wang <quic_huw@quicinc.com>
+Date: Tue, 25 Jun 2024 20:05:12 -0700
+Subject: [PATCH] Enhance select_network() to trigger new scans in some cases
+
+wpa_supplicant select_network() relies on fast_associate to reuse old
+scan results. However, this approach does not apply in some cases in
+Android:
+
+1 - If the selected network is hidden, and the SSID is in Chinese,
+Android switches between fallback SSIDs, necessitating a new scan for
+switching between different hidden SSIDs.
+
+2 - Similarly, if the selected SSID is OWE (Opportunistic Wireless
+Encryption), and the OWE SSID bands have been changed, select_network()
+requires a fresh scan to discover hidden OWE SSIDs.
+
+To address these, enhance select_network() to trigger new scans instead
+of relying on fast_associate. This improves network selection behavior
+in Android.
+
+Signed-off-by: Jouni Malinen <quic_jouni@quicinc.com>
+---
+ wpa_supplicant/events.c           |  2 ++
+ wpa_supplicant/wpa_supplicant.c   | 16 +++++++++++++++-
+ wpa_supplicant/wpa_supplicant_i.h |  1 +
+ 3 files changed, 18 insertions(+), 1 deletion(-)
+
+diff --git a/wpa_supplicant/events.c b/wpa_supplicant/events.c
+index 48a226a5f..698fb57ef 100644
+--- a/wpa_supplicant/events.c
++++ b/wpa_supplicant/events.c
+@@ -2483,6 +2483,8 @@ static int _wpa_supplicant_event_scan_results(struct wpa_supplicant *wpa_s,
+ 	}
+ #endif /* CONFIG_NO_RANDOM_POOL */
+ 
++	wpa_s->last_scan_external = data && data->scan_info.external_scan;
++
+ 	if (update_only) {
+ 		ret = 1;
+ 		goto scan_work_done;
+diff --git a/wpa_supplicant/wpa_supplicant.c b/wpa_supplicant/wpa_supplicant.c
+index 3203446f1..b04fcb987 100644
+--- a/wpa_supplicant/wpa_supplicant.c
++++ b/wpa_supplicant/wpa_supplicant.c
+@@ -4218,6 +4218,7 @@ static void wpas_start_assoc_cb(struct wpa_radio_work *work, int deinit)
+ #ifdef CONFIG_WNM
+ 	wpa_s->bss_trans_mgmt_in_progress = false;
+ #endif /* CONFIG_WNM */
++	wpa_s->no_suitable_network = 0;
+ 
+ 	if (deinit) {
+ 		if (work->started) {
+@@ -5085,6 +5086,7 @@ void wpa_supplicant_select_network(struct wpa_supplicant *wpa_s,
+ 
+ 	struct wpa_ssid *other_ssid;
+ 	int disconnected = 0;
++	bool request_new_scan = false;
+ 
+ 	if (ssid && ssid != wpa_s->current_ssid && wpa_s->current_ssid) {
+ 		if (wpa_s->wpa_state >= WPA_AUTHENTICATING)
+@@ -5130,6 +5132,18 @@ void wpa_supplicant_select_network(struct wpa_supplicant *wpa_s,
+ 			(ssid->mode == WPAS_MODE_MESH ||
+ 			 ssid->mode == WPAS_MODE_AP) ? ssid : NULL;
+ 
++		if (ssid->scan_ssid &&
++		    (wpa_s->no_suitable_network || wpa_s->last_scan_external)) {
++			wpa_printf(MSG_DEBUG,
++				   "Request a new scan for hidden network");
++			request_new_scan = true;
++		} else if ((ssid->key_mgmt & WPA_KEY_MGMT_OWE) &&
++			   !ssid->owe_only) {
++			wpa_printf(MSG_DEBUG,
++				   "Request a new scan for OWE transition SSID");
++			request_new_scan = true;
++		}
++
+ 		/*
+ 		 * Don't optimize next scan freqs since a new ESS has been
+ 		 * selected.
+@@ -5149,7 +5163,7 @@ void wpa_supplicant_select_network(struct wpa_supplicant *wpa_s,
+ 		wpa_s_setup_sae_pt(wpa_s->conf, ssid, false);
+ 	}
+ 
+-	if (wpa_s->connect_without_scan ||
++	if (wpa_s->connect_without_scan || request_new_scan ||
+ 	    wpa_supplicant_fast_associate(wpa_s) != 1) {
+ 		wpa_s->scan_req = NORMAL_SCAN_REQ;
+ 		wpas_scan_reset_sched_scan(wpa_s);
+diff --git a/wpa_supplicant/wpa_supplicant_i.h b/wpa_supplicant/wpa_supplicant_i.h
+index 3043bc654..48ec95fa5 100644
+--- a/wpa_supplicant/wpa_supplicant_i.h
++++ b/wpa_supplicant/wpa_supplicant_i.h
+@@ -805,6 +805,7 @@ struct wpa_supplicant {
+ 	size_t last_scan_res_used;
+ 	size_t last_scan_res_size;
+ 	struct os_reltime last_scan;
++	bool last_scan_external;
+ 
+ 	const struct wpa_driver_ops *driver;
+ 	int interface_removed; /* whether the network interface has been
+-- 
+2.43.0
+

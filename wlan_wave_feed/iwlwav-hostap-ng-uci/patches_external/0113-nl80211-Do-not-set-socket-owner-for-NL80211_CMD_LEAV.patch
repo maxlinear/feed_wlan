@@ -1,0 +1,29 @@
+From d2e6a395cc695af5095c5810efe2d6f7aa4cc286 Mon Sep 17 00:00:00 2001
+From: Jouni Malinen <quic_jouni@quicinc.com>
+Date: Tue, 19 Dec 2023 00:28:30 +0200
+Subject: [PATCH] nl80211: Do not set socket owner for NL80211_CMD_LEAVE_IBSS
+
+This operation terminates the IBSS and as such, does not really use
+NL80211_ATTR_SOCKET_OWNER.
+
+Signed-off-by: Jouni Malinen <quic_jouni@quicinc.com>
+---
+ src/drivers/driver_nl80211.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/src/drivers/driver_nl80211.c b/src/drivers/driver_nl80211.c
+index ec1c5c966..470e8edfd 100644
+--- a/src/drivers/driver_nl80211.c
++++ b/src/drivers/driver_nl80211.c
+@@ -6442,7 +6442,7 @@ static int nl80211_leave_ibss(struct wpa_driver_nl80211_data *drv,
+ 	int ret;
+ 
+ 	msg = nl80211_drv_msg(drv, 0, NL80211_CMD_LEAVE_IBSS);
+-	ret = send_and_recv_msgs_connect_handle(drv, msg, drv->first_bss, 1,
++	ret = send_and_recv_msgs_connect_handle(drv, msg, drv->first_bss, 0,
+ 						NULL);
+ 	if (ret) {
+ 		wpa_printf(MSG_DEBUG, "nl80211: Leave IBSS failed: ret=%d "
+-- 
+2.43.0
+

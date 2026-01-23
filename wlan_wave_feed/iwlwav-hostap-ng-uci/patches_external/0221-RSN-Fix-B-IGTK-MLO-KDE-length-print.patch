@@ -1,0 +1,38 @@
+From 76616a46b95272eb7c6147ad9ea4e222871ffd21 Mon Sep 17 00:00:00 2001
+From: Andrei Otcheretianski <andrei.otcheretianski@intel.com>
+Date: Wed, 10 Jan 2024 17:31:04 +0200
+Subject: [PATCH] RSN: Fix (B)IGTK MLO KDE length print
+
+Array pointer was mistakenly printed instead of actual length.
+Fix it.
+
+Signed-off-by: Andrei Otcheretianski <andrei.otcheretianski@intel.com>
+---
+ src/rsn_supp/wpa.c | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/src/rsn_supp/wpa.c b/src/rsn_supp/wpa.c
+index b3bc2bbed..5f222dd3d 100644
+--- a/src/rsn_supp/wpa.c
++++ b/src/rsn_supp/wpa.c
+@@ -2318,7 +2318,7 @@ static int wpa_validate_mlo_ieee80211w_kdes(struct wpa_sm *sm,
+ 	    (unsigned int) wpa_cipher_key_len(sm->mgmt_group_cipher)) {
+ 		wpa_msg(sm->ctx->msg_ctx, MSG_INFO,
+ 			"RSN MLO: Invalid IGTK KDE length %lu for link ID %u",
+-			(unsigned long) ie->mlo_igtk_len, link_id);
++			(unsigned long) ie->mlo_igtk_len[link_id], link_id);
+ 		return -1;
+ 	}
+ 
+@@ -2330,7 +2330,7 @@ static int wpa_validate_mlo_ieee80211w_kdes(struct wpa_sm *sm,
+ 	    (unsigned int) wpa_cipher_key_len(sm->mgmt_group_cipher)) {
+ 		wpa_msg(sm->ctx->msg_ctx, MSG_WARNING,
+ 			"RSN MLO: Invalid BIGTK KDE length %lu for link ID %u",
+-			(unsigned long) ie->mlo_bigtk_len, link_id);
++			(unsigned long) ie->mlo_bigtk_len[link_id], link_id);
+ 		return -1;
+ 	}
+ 
+-- 
+2.43.0
+

@@ -1,0 +1,41 @@
+From 0a321d173348589a9847dc74f59ff93334b6464b Mon Sep 17 00:00:00 2001
+From: Jouni Malinen <quic_jouni@quicinc.com>
+Date: Wed, 6 Mar 2024 17:36:10 +0200
+Subject: [PATCH] tests: Fix fuzzing tester for WNM
+
+Processing of WNM frames can results in a lookup of the current BSS
+table. As such, the testing tool needs to initialize the BSS table to
+avoid NULL pointer dereferences. This is not an issue that would show up
+with real production uses with wpa_supplicant since wpa_bss_init() is
+called there.
+
+Credit to OSS-Fuzz: https://bugs.chromium.org/p/oss-fuzz/issues/detail?id=67244
+Signed-off-by: Jouni Malinen <quic_jouni@quicinc.com>
+---
+ tests/fuzzing/wnm/wnm.c | 3 +++
+ 1 file changed, 3 insertions(+)
+
+diff --git a/tests/fuzzing/wnm/wnm.c b/tests/fuzzing/wnm/wnm.c
+index 1ae018994..ea2341006 100644
+--- a/tests/fuzzing/wnm/wnm.c
++++ b/tests/fuzzing/wnm/wnm.c
+@@ -53,6 +53,8 @@ static int init_wpa(struct arg_ctx *ctx)
+ 	ctx->wpa_s.driver = &ctx->driver;
+ 	ctx->wpa_s.wpa = &ctx->wpa;
+ 	ctx->wpa_s.conf = &ctx->conf;
++	if (wpa_bss_init(&ctx->wpa_s) < 0)
++		return -1;
+ 
+ 	return 0;
+ }
+@@ -61,6 +63,7 @@ static int init_wpa(struct arg_ctx *ctx)
+ static void deinit_wpa(struct arg_ctx *ctx)
+ {
+ 	wnm_btm_reset(&ctx->wpa_s);
++	wpa_bss_flush(&ctx->wpa_s);
+ }
+ 
+ 
+-- 
+2.43.0
+

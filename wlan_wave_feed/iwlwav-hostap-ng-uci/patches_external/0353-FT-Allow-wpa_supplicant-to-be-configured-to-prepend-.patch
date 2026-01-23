@@ -1,0 +1,275 @@
+From 8fa52a797496a01f50e728facce2a55d8c386959 Mon Sep 17 00:00:00 2001
+From: Jouni Malinen <j@w1.fi>
+Date: Sat, 3 Feb 2024 20:13:46 +0200
+Subject: [PATCH] FT: Allow wpa_supplicant to be configured to prepend
+ PMKR1Name
+
+The standard is somewhat unclear on whether the PMKIDs used in
+(Re)Association Request frame (i.e., potential PMKIDs that could be used
+for PMKSA caching during the initial mobility domain association) are to
+be retained or removed when generating EAPOL-Key msg 2/4.
+
+wpa_supplicant has replaced the PMKID List contents from (Re)Association
+Request frame with PMKR1Name when generating EAPOL-Key msg 2/4 for FT.
+Allow it to be configured (ft_prepend_pmkid=1) to prepend the PMKR1Name
+without removing the PMKIDs from (Re)Association Request frame.
+
+Signed-off-by: Jouni Malinen <j@w1.fi>
+---
+ src/ap/ieee802_11.c             |  2 +-
+ src/ap/wpa_auth.c               |  4 ++--
+ src/common/wpa_common.c         | 11 ++++++-----
+ src/common/wpa_common.h         |  2 +-
+ src/rsn_supp/wpa.c              |  5 ++++-
+ src/rsn_supp/wpa.h              |  1 +
+ src/rsn_supp/wpa_i.h            |  1 +
+ wlantest/rx_mgmt.c              |  3 ++-
+ wpa_supplicant/config.c         |  1 +
+ wpa_supplicant/config.h         |  9 +++++++++
+ wpa_supplicant/config_file.c    |  2 ++
+ wpa_supplicant/sme.c            |  2 +-
+ wpa_supplicant/wpa_supplicant.c |  7 +++++++
+ 13 files changed, 38 insertions(+), 12 deletions(-)
+
+diff --git a/src/ap/ieee802_11.c b/src/ap/ieee802_11.c
+index bf8a33166..7fb49a4b4 100644
+--- a/src/ap/ieee802_11.c
++++ b/src/ap/ieee802_11.c
+@@ -2028,7 +2028,7 @@ prepare_auth_resp_fils(struct hostapd_data *hapd,
+ 		}
+ 
+ 		os_memcpy(ie_buf, ie, ielen);
+-		if (wpa_insert_pmkid(ie_buf, &ielen, pmksa->pmkid) < 0) {
++		if (wpa_insert_pmkid(ie_buf, &ielen, pmksa->pmkid, true) < 0) {
+ 			*resp = WLAN_STATUS_UNSPECIFIED_FAILURE;
+ 			goto fail;
+ 		}
+diff --git a/src/ap/wpa_auth.c b/src/ap/wpa_auth.c
+index 0bb8b4872..afb0208e7 100644
+--- a/src/ap/wpa_auth.c
++++ b/src/ap/wpa_auth.c
+@@ -4448,7 +4448,7 @@ SM_STATE(WPA_PTK, PTKINITNEGOTIATING)
+ 		size_t elen;
+ 
+ 		elen = pos - kde;
+-		res = wpa_insert_pmkid(kde, &elen, sm->pmk_r1_name);
++		res = wpa_insert_pmkid(kde, &elen, sm->pmk_r1_name, true);
+ 		if (res < 0) {
+ 			wpa_printf(MSG_ERROR,
+ 				   "FT: Failed to insert PMKR1Name into RSN IE in EAPOL-Key data");
+@@ -6577,7 +6577,7 @@ int wpa_auth_resend_m3(struct wpa_state_machine *sm,
+ 		size_t elen;
+ 
+ 		elen = pos - kde;
+-		res = wpa_insert_pmkid(kde, &elen, sm->pmk_r1_name);
++		res = wpa_insert_pmkid(kde, &elen, sm->pmk_r1_name, true);
+ 		if (res < 0) {
+ 			wpa_printf(MSG_ERROR,
+ 				   "FT: Failed to insert PMKR1Name into RSN IE in EAPOL-Key data");
+diff --git a/src/common/wpa_common.c b/src/common/wpa_common.c
+index e4930a291..c82fd0e5d 100644
+--- a/src/common/wpa_common.c
++++ b/src/common/wpa_common.c
+@@ -2893,7 +2893,7 @@ int wpa_compare_rsn_ie(int ft_initial_assoc,
+ }
+ 
+ 
+-int wpa_insert_pmkid(u8 *ies, size_t *ies_len, const u8 *pmkid)
++int wpa_insert_pmkid(u8 *ies, size_t *ies_len, const u8 *pmkid, bool replace)
+ {
+ 	u8 *start, *end, *rpos, *rend;
+ 	int added = 0;
+@@ -2956,12 +2956,12 @@ int wpa_insert_pmkid(u8 *ies, size_t *ies_len, const u8 *pmkid)
+ 		if (rend - rpos < 2)
+ 			return -1;
+ 		num_pmkid = WPA_GET_LE16(rpos);
++		if (num_pmkid * PMKID_LEN > rend - rpos - 2)
++			return -1;
+ 		/* PMKID-Count was included; use it */
+-		if (num_pmkid != 0) {
++		if (replace && num_pmkid != 0) {
+ 			u8 *after;
+ 
+-			if (num_pmkid * PMKID_LEN > rend - rpos - 2)
+-				return -1;
+ 			/*
+ 			 * PMKID may have been included in RSN IE in
+ 			 * (Re)Association Request frame, so remove the old
+@@ -2974,8 +2974,9 @@ int wpa_insert_pmkid(u8 *ies, size_t *ies_len, const u8 *pmkid)
+ 			os_memmove(rpos + 2, after, end - after);
+ 			start[1] -= num_pmkid * PMKID_LEN;
+ 			added -= num_pmkid * PMKID_LEN;
++			num_pmkid = 0;
+ 		}
+-		WPA_PUT_LE16(rpos, 1);
++		WPA_PUT_LE16(rpos, num_pmkid + 1);
+ 		rpos += 2;
+ 		os_memmove(rpos + PMKID_LEN, rpos, end + added - rpos);
+ 		os_memcpy(rpos, pmkid, PMKID_LEN);
+diff --git a/src/common/wpa_common.h b/src/common/wpa_common.h
+index 1269bf95d..a2c7033c9 100644
+--- a/src/common/wpa_common.h
++++ b/src/common/wpa_common.h
+@@ -555,7 +555,7 @@ u32 wpa_akm_to_suite(int akm);
+ int wpa_compare_rsn_ie(int ft_initial_assoc,
+ 		       const u8 *ie1, size_t ie1len,
+ 		       const u8 *ie2, size_t ie2len);
+-int wpa_insert_pmkid(u8 *ies, size_t *ies_len, const u8 *pmkid);
++int wpa_insert_pmkid(u8 *ies, size_t *ies_len, const u8 *pmkid, bool replace);
+ 
+ #define MAX_NUM_MLO_LINKS 15
+ 
+diff --git a/src/rsn_supp/wpa.c b/src/rsn_supp/wpa.c
+index 1d20b5e2b..2109552c0 100644
+--- a/src/rsn_supp/wpa.c
++++ b/src/rsn_supp/wpa.c
+@@ -559,7 +559,7 @@ int wpa_supplicant_send_2_of_4(struct wpa_sm *sm, const unsigned char *dst,
+ 			return -1;
+ 		os_memcpy(rsn_ie_buf, wpa_ie, wpa_ie_len);
+ 		res = wpa_insert_pmkid(rsn_ie_buf, &wpa_ie_len,
+-				       sm->pmk_r1_name);
++				       sm->pmk_r1_name, !sm->ft_prepend_pmkid);
+ 		if (res < 0) {
+ 			os_free(rsn_ie_buf);
+ 			return -1;
+@@ -4695,6 +4695,9 @@ int wpa_sm_set_param(struct wpa_sm *sm, enum wpa_sm_conf_params param,
+ 	case WPA_PARAM_WMM_ENABLED:
+ 		sm->wmm_enabled = value;
+ 		break;
++	case WPA_PARAM_FT_PREPEND_PMKID:
++		sm->ft_prepend_pmkid = value;
++		break;
+ 	default:
+ 		break;
+ 	}
+diff --git a/src/rsn_supp/wpa.h b/src/rsn_supp/wpa.h
+index 3d2c2812e..ba5c3e1b4 100644
+--- a/src/rsn_supp/wpa.h
++++ b/src/rsn_supp/wpa.h
+@@ -134,6 +134,7 @@ enum wpa_sm_conf_params {
+ 	WPA_PARAM_DISABLE_EAPOL_G2_TX,
+ 	WPA_PARAM_ENCRYPT_EAPOL_M2,
+ 	WPA_PARAM_ENCRYPT_EAPOL_M4,
++	WPA_PARAM_FT_PREPEND_PMKID,
+ };
+ 
+ struct rsn_supp_config {
+diff --git a/src/rsn_supp/wpa_i.h b/src/rsn_supp/wpa_i.h
+index f326f43e9..ca97c1293 100644
+--- a/src/rsn_supp/wpa_i.h
++++ b/src/rsn_supp/wpa_i.h
+@@ -227,6 +227,7 @@ struct wpa_sm {
+ 
+ 	bool wmm_enabled;
+ 	bool driver_bss_selection;
++	bool ft_prepend_pmkid;
+ };
+ 
+ 
+diff --git a/wlantest/rx_mgmt.c b/wlantest/rx_mgmt.c
+index ac7ea6abc..93263258f 100644
+--- a/wlantest/rx_mgmt.c
++++ b/wlantest/rx_mgmt.c
+@@ -2207,7 +2207,8 @@ static void rx_mgmt_reassoc_resp(struct wlantest *wt, const u8 *data,
+ 
+ 				os_memcpy(rsne_buf, l_bss->rsnie, rsne_len);
+ 				if (wpa_insert_pmkid(rsne_buf, &rsne_len,
+-						     sta->pmk_r1_name) < 0) {
++						     sta->pmk_r1_name,
++						     true) < 0) {
+ 					wpa_printf(MSG_DEBUG,
+ 						   "FT: Could not insert PMKR1Name into AP RSNE for link ID %u ",
+ 						   link_id);
+diff --git a/wpa_supplicant/config.c b/wpa_supplicant/config.c
+index fca4320a1..f400b50cf 100644
+--- a/wpa_supplicant/config.c
++++ b/wpa_supplicant/config.c
+@@ -5545,6 +5545,7 @@ static const struct global_parse_data global_fields[] = {
+ 	{ INT_RANGE(mld_connect_band_pref, 0, MLD_CONNECT_BAND_PREF_MAX), 0 },
+ 	{ FUNC(mld_connect_bssid_pref), 0 },
+ #endif /* CONFIG_TESTING_OPTIONS */
++	{ INT_RANGE(ft_prepend_pmkid, 0, 1), CFG_CHANGED_FT_PREPEND_PMKID },
+ 	/* NOTE: When adding new parameters here, add_interface() in
+ 	 * wpa_supplicant/dbus_new_introspect.c may need to be modified to
+ 	 * increase the size of the iface->xml buffer. */
+diff --git a/wpa_supplicant/config.h b/wpa_supplicant/config.h
+index 02139e6b2..8981305c2 100644
+--- a/wpa_supplicant/config.h
++++ b/wpa_supplicant/config.h
+@@ -439,6 +439,7 @@ struct wpa_cred {
+ #define CFG_CHANGED_WOWLAN_TRIGGERS BIT(18)
+ #define CFG_CHANGED_DISABLE_BTM BIT(19)
+ #define CFG_CHANGED_BGSCAN BIT(20)
++#define CFG_CHANGED_FT_PREPEND_PMKID BIT(21)
+ 
+ /**
+  * struct wpa_config - wpa_supplicant configuration data
+@@ -712,6 +713,14 @@ struct wpa_config {
+ 	 */
+ 	unsigned int dot11RSNAConfigSATimeout;
+ 
++	/**
++	 * ft_prepend_pmkid - Whether to prepend PMKR1Name with PMKIDs
++	 *
++	 * This control whether PMKR1Name is prepended to the PMKID list
++	 * insread of replacing the full list when constructing RSNE for
++	 * EAPOL-Key msg 2/4 for FT cases. */
++	bool ft_prepend_pmkid;
++
+ 	/**
+ 	 * update_config - Is wpa_supplicant allowed to update configuration
+ 	 *
+diff --git a/wpa_supplicant/config_file.c b/wpa_supplicant/config_file.c
+index 4db85f9c0..ac1414ae2 100644
+--- a/wpa_supplicant/config_file.c
++++ b/wpa_supplicant/config_file.c
+@@ -1622,6 +1622,8 @@ static void wpa_config_write_global(FILE *f, struct wpa_config *config)
+ 		fprintf(f, "mld_connect_bssid_pref=" MACSTR "\n",
+ 			MAC2STR(config->mld_connect_bssid_pref));
+ #endif /* CONFIG_TESTING_OPTIONS */
++	if (config->ft_prepend_pmkid)
++		fprintf(f, "ft_prepend_pmkid=%d", config->ft_prepend_pmkid);
+ }
+ 
+ #endif /* CONFIG_NO_CONFIG_WRITE */
+diff --git a/wpa_supplicant/sme.c b/wpa_supplicant/sme.c
+index 706310b61..00e1117d5 100644
+--- a/wpa_supplicant/sme.c
++++ b/wpa_supplicant/sme.c
+@@ -1901,7 +1901,7 @@ static int sme_sae_set_pmk(struct wpa_supplicant *wpa_s, const u8 *bssid)
+ 		}
+ 		if (wpa_insert_pmkid(wpa_s->sme.assoc_req_ie,
+ 				     &wpa_s->sme.assoc_req_ie_len,
+-				     wpa_s->sme.sae.pmkid) < 0)
++				     wpa_s->sme.sae.pmkid, true) < 0)
+ 			return -1;
+ 		wpa_hexdump(MSG_DEBUG,
+ 			    "SME: Updated Association Request IEs",
+diff --git a/wpa_supplicant/wpa_supplicant.c b/wpa_supplicant/wpa_supplicant.c
+index b820773b8..172a863cb 100644
+--- a/wpa_supplicant/wpa_supplicant.c
++++ b/wpa_supplicant/wpa_supplicant.c
+@@ -7192,6 +7192,9 @@ static int wpa_supplicant_init_iface(struct wpa_supplicant *wpa_s,
+ 		return -1;
+ 	}
+ 
++	wpa_sm_set_param(wpa_s->wpa, WPA_PARAM_FT_PREPEND_PMKID,
++			 wpa_s->conf->ft_prepend_pmkid);
++
+ 	wpa_s->hw.modes = wpa_drv_get_hw_feature_data(wpa_s,
+ 						      &wpa_s->hw.num_modes,
+ 						      &wpa_s->hw.flags,
+@@ -8151,6 +8154,10 @@ void wpa_supplicant_update_config(struct wpa_supplicant *wpa_s)
+ 	if (wpa_s->conf->changed_parameters & CFG_CHANGED_DISABLE_BTM)
+ 		wpa_supplicant_set_default_scan_ies(wpa_s);
+ 
++	if (wpa_s->conf->changed_parameters & CFG_CHANGED_FT_PREPEND_PMKID)
++		wpa_sm_set_param(wpa_s->wpa, WPA_PARAM_FT_PREPEND_PMKID,
++				 wpa_s->conf->ft_prepend_pmkid);
++
+ #ifdef CONFIG_BGSCAN
+ 	/*
+ 	 * We default to global bgscan parameters only when per-network bgscan
+-- 
+2.43.0
+

@@ -1,0 +1,35 @@
+From 8270afcdeeccd7a5ce904bacf45801a5b3cf4f0e Mon Sep 17 00:00:00 2001
+From: Jouni Malinen <j@w1.fi>
+Date: Sat, 3 Feb 2024 20:13:25 +0200
+Subject: [PATCH] tests: FT and prepending PMKR1NAme to EAPOL-Key msg 2/4
+
+Signed-off-by: Jouni Malinen <j@w1.fi>
+---
+ tests/hwsim/test_ap_ft.py | 11 +++++++++++
+ 1 file changed, 11 insertions(+)
+
+diff --git a/tests/hwsim/test_ap_ft.py b/tests/hwsim/test_ap_ft.py
+index e791ed345..3d07d21f7 100644
+--- a/tests/hwsim/test_ap_ft.py
++++ b/tests/hwsim/test_ap_ft.py
+@@ -1494,6 +1494,17 @@ def test_ap_ft_sae_pmksa_caching_pwe(dev, apdev):
+ 
+ def test_ap_ft_sae_pmksa_caching_h2e(dev, apdev):
+     """WPA2-FT-SAE AP and PMKSA caching for initial mobility domain association (H2E)"""
++    run_ap_ft_sae_pmksa_caching_h2e(dev, apdev)
++
++def test_ap_ft_sae_pmksa_caching_h2e_prepend_pmkid(dev, apdev):
++    """FT-SAE and PMKSA caching for initial mobility domain association (H2E, prepend PMKID)"""
++    try:
++        dev[0].set("ft_prepend_pmkid", "1")
++        run_ap_ft_sae_pmksa_caching_h2e(dev, apdev)
++    finally:
++        dev[0].set("ft_prepend_pmkid", "0")
++
++def run_ap_ft_sae_pmksa_caching_h2e(dev, apdev):
+     check_sae_capab(dev[0])
+     ssid = "test-ft"
+     passphrase = "12345678"
+-- 
+2.43.0
+

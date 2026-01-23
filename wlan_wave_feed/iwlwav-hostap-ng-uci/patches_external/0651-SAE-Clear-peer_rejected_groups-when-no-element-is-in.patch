@@ -1,0 +1,53 @@
+From 21fe042815682670ff05c08148d7b869a1086929 Mon Sep 17 00:00:00 2001
+From: Jouni Malinen <j@w1.fi>
+Date: Sun, 7 Jul 2024 11:48:35 +0300
+Subject: [PATCH] SAE: Clear peer_rejected_groups when no element is included
+
+When parsing a SAE Commit message, the temporary peer_rejected_groups
+parameter was left to its old value in cases where the new SAE Commit
+message did not include the Rejected Groups element. This could result
+in unexpected behavior if a previously processed SAE Commit message
+included a Rejected Groups element that claimed one of the enabled
+groups to be rejected.
+
+Explicitly clear the peer_rejected_groups value when parsing an SAE
+Commit message without a Rejected Groups element to avoid rejecting the
+new message based on some previously received incorrect information.
+This avoids some potential denial-of-service issues during the lifetime
+of the SAE temporary data.
+
+Signed-off-by: Jouni Malinen <j@w1.fi>
+---
+ src/common/sae.c | 8 +++++++-
+ 1 file changed, 7 insertions(+), 1 deletion(-)
+
+diff --git a/src/common/sae.c b/src/common/sae.c
+index f1c164e13..a8fceb284 100644
+--- a/src/common/sae.c
++++ b/src/common/sae.c
+@@ -2103,8 +2103,11 @@ static int sae_parse_rejected_groups(struct sae_data *sae,
+ 
+ 	wpa_hexdump(MSG_DEBUG, "SAE: Possible elements at the end of the frame",
+ 		    *pos, end - *pos);
+-	if (!sae_is_rejected_groups_elem(*pos, end))
++	if (!sae_is_rejected_groups_elem(*pos, end)) {
++		wpabuf_free(sae->tmp->peer_rejected_groups);
++		sae->tmp->peer_rejected_groups = NULL;
+ 		return WLAN_STATUS_SUCCESS;
++	}
+ 
+ 	epos = *pos;
+ 	epos++; /* skip IE type */
+@@ -2196,6 +2199,9 @@ u16 sae_parse_commit(struct sae_data *sae, const u8 *data, size_t len,
+ 		res = sae_parse_rejected_groups(sae, &pos, end);
+ 		if (res != WLAN_STATUS_SUCCESS)
+ 			return res;
++	} else {
++		wpabuf_free(sae->tmp->peer_rejected_groups);
++		sae->tmp->peer_rejected_groups = NULL;
+ 	}
+ 
+ 	/* Optional Anti-Clogging Token Container element */
+-- 
+2.43.0
+

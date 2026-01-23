@@ -1,0 +1,32 @@
+From 4b755c967247934c288503f9d0c96d5c6b44dbf4 Mon Sep 17 00:00:00 2001
+From: Felix Fietkau <nbd@nbd.name>
+Date: Thu, 4 Apr 2024 15:03:27 +0200
+Subject: [PATCH] build: De-duplicate _DIRS before calling mkdir
+
+If the build path is long, the contents of the _DIRS variable can be
+very long, since it repeats the same directories very often. In some
+cases, this has triggered an "Argument list too long" build error.
+
+Reported-by: Robert Marko <robimarko@gmail.com>
+Suggested-by: Eneas U de Queiroz <cotequeiroz@gmail.com>
+Signed-off-by: Felix Fietkau <nbd@nbd.name>
+---
+ src/build.rules | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/src/build.rules b/src/build.rules
+index acda88472..c756ccb84 100644
+--- a/src/build.rules
++++ b/src/build.rules
+@@ -80,7 +80,7 @@ endif
+ _DIRS := $(BUILDDIR)/$(PROJ)
+ .PHONY: _make_dirs
+ _make_dirs:
+-	@mkdir -p $(_DIRS)
++	@mkdir -p $(sort $(_DIRS))
+ 
+ $(BUILDDIR)/$(PROJ)/src/%.o: $(ROOTDIR)src/%.c $(CONFIG_FILE) | _make_dirs
+ 	$(Q)$(CC) -c -o $@ $(CFLAGS) $<
+-- 
+2.43.0
+

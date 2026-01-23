@@ -1,0 +1,33 @@
+From c2f90ef35ba7c541641ba1d93693f3e989fa5704 Mon Sep 17 00:00:00 2001
+From: Jouni Malinen <quic_jouni@quicinc.com>
+Date: Fri, 1 Nov 2024 21:58:07 +0200
+Subject: [PATCH] Avoid undefined behavior in RSNXE capability bit checker
+
+Integer promotion converts u8 rsnxe[i] to an int which is not
+sufficiently large to be able to handle the maximum shift left of 24
+bits here. Type cast rsnxe[i] to u32 explicitly to get rid of the sign
+bit and avoid this undefined behavior from the shift operation.
+
+Credit to OSS-Fuzz: https://issues.oss-fuzz.com/issues/376786400
+Fixes: d675d3b15b40 ("Add helper functions for parsing RSNXE capabilities")
+Signed-off-by: Jouni Malinen <quic_jouni@quicinc.com>
+---
+ src/common/ieee802_11_common.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/src/common/ieee802_11_common.c b/src/common/ieee802_11_common.c
+index 4a35479fc..22348b8c2 100644
+--- a/src/common/ieee802_11_common.c
++++ b/src/common/ieee802_11_common.c
+@@ -3141,7 +3141,7 @@ bool ieee802_11_rsnx_capab_len(const u8 *rsnxe, size_t rsnxe_len,
+ 	if (flen > 4)
+ 		flen = 4;
+ 	for (i = 0; i < flen; i++)
+-		capabs |= rsnxe[i] << (8 * i);
++		capabs |= (u32) rsnxe[i] << (8 * i);
+ 
+ 	return !!(capabs & BIT(capab));
+ }
+-- 
+2.43.0
+

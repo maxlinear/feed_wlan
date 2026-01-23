@@ -1,0 +1,34 @@
+From 0df2c72c5486ca3f2c0b3c71862fba1fed4d3ecd Mon Sep 17 00:00:00 2001
+From: Ilan Peer <ilan.peer@intel.com>
+Date: Mon, 8 Apr 2024 16:06:55 +0300
+Subject: [PATCH] tests: Wait after removing a BSS
+
+When a BSS is removed, the flow continues without actually
+waiting for the AP to be stopped. This is racy in flows that
+actually expect the AP to be stopped, e.g., test_ap_bss_add_remove().
+
+Try to mitigate such cases by adding a short sleep after the
+AP is removed.
+
+Signed-off-by: Ilan Peer <ilan.peer@intel.com>
+---
+ tests/hwsim/hostapd.py | 3 +++
+ 1 file changed, 3 insertions(+)
+
+diff --git a/tests/hwsim/hostapd.py b/tests/hwsim/hostapd.py
+index 007812274..ebb2e328a 100644
+--- a/tests/hwsim/hostapd.py
++++ b/tests/hwsim/hostapd.py
+@@ -766,6 +766,9 @@ def remove_bss(apdev, ifname=None):
+     hapd_global = HostapdGlobal(apdev)
+     hapd_global.remove(ifname)
+ 
++    # wait little to make sure the AP stops beaconing
++    time.sleep(0.1)
++
+ def terminate(apdev):
+     try:
+         hostname = apdev['hostname']
+-- 
+2.43.0
+

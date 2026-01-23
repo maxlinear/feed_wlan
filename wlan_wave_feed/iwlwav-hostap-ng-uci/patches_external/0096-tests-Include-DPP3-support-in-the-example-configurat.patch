@@ -1,0 +1,37 @@
+From 9398586129468540e6480fd0abc2dafe5dc17469 Mon Sep 17 00:00:00 2001
+From: Jouni Malinen <j@w1.fi>
+Date: Sun, 17 Dec 2023 18:33:52 +0200
+Subject: [PATCH] tests: Include DPP3 support in the example configuration
+
+Signed-off-by: Jouni Malinen <j@w1.fi>
+---
+ tests/hwsim/example-hostapd.config        | 1 +
+ tests/hwsim/example-wpa_supplicant.config | 1 +
+ 2 files changed, 2 insertions(+)
+
+diff --git a/tests/hwsim/example-hostapd.config b/tests/hwsim/example-hostapd.config
+index e6f91fe38..04b424bf8 100644
+--- a/tests/hwsim/example-hostapd.config
++++ b/tests/hwsim/example-hostapd.config
+@@ -114,6 +114,7 @@ CONFIG_FILS_SK_PFS=y
+ CONFIG_OWE=y
+ CONFIG_DPP=y
+ CONFIG_DPP2=y
++CONFIG_DPP3=y
+ CONFIG_WEP=y
+ CONFIG_PASN=y
+ CONFIG_AIRTIME_POLICY=y
+diff --git a/tests/hwsim/example-wpa_supplicant.config b/tests/hwsim/example-wpa_supplicant.config
+index ea6ef7d27..02adeca98 100644
+--- a/tests/hwsim/example-wpa_supplicant.config
++++ b/tests/hwsim/example-wpa_supplicant.config
+@@ -159,5 +159,6 @@ CONFIG_PMKSA_CACHE_EXTERNAL=y
+ CONFIG_OWE=y
+ CONFIG_DPP=y
+ CONFIG_DPP2=y
++CONFIG_DPP3=y
+ CONFIG_WEP=y
+ CONFIG_PASN=y
+-- 
+2.43.0
+

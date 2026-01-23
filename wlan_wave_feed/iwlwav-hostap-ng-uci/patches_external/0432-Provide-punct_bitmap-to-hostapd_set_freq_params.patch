@@ -1,0 +1,143 @@
+From 9f43c1e26bc64cb42edf8a111562d92677611288 Mon Sep 17 00:00:00 2001
+From: Jouni Malinen <quic_jouni@quicinc.com>
+Date: Fri, 8 Mar 2024 10:01:30 +0200
+Subject: [PATCH] Provide punct_bitmap to hostapd_set_freq_params()
+
+This is needed to be able to check validity of the channel parameters
+for cases where EHT puncturing impacts what can be enabled for
+HT/VHT/HE.
+
+Signed-off-by: Jouni Malinen <quic_jouni@quicinc.com>
+---
+ src/ap/ap_drv_ops.c             | 5 +++--
+ src/ap/beacon.c                 | 3 ++-
+ src/ap/dfs.c                    | 3 ++-
+ src/ap/hostapd.c                | 3 ++-
+ src/common/hw_features_common.c | 3 ++-
+ src/common/hw_features_common.h | 3 ++-
+ wpa_supplicant/mesh.c           | 2 +-
+ wpa_supplicant/wpa_supplicant.c | 2 +-
+ 8 files changed, 15 insertions(+), 9 deletions(-)
+
+diff --git a/src/ap/ap_drv_ops.c b/src/ap/ap_drv_ops.c
+index 60d66e4c0..e89f53060 100644
+--- a/src/ap/ap_drv_ops.c
++++ b/src/ap/ap_drv_ops.c
+@@ -629,7 +629,7 @@ int hostapd_set_freq(struct hostapd_data *hapd, enum hostapd_hw_mode mode,
+ 				    &cmode->he_capab[IEEE80211_MODE_AP] : NULL,
+ 				    cmode ?
+ 				    &cmode->eht_capab[IEEE80211_MODE_AP] :
+-				    NULL))
++				    NULL, hostapd_get_punct_bitmap(hapd)))
+ 		return -1;
+ 
+ 	if (hapd->driver == NULL)
+@@ -977,7 +977,8 @@ int hostapd_start_dfs_cac(struct hostapd_iface *iface,
+ 				    center_segment1,
+ 				    cmode->vht_capab,
+ 				    &cmode->he_capab[IEEE80211_MODE_AP],
+-				    &cmode->eht_capab[IEEE80211_MODE_AP])) {
++				    &cmode->eht_capab[IEEE80211_MODE_AP],
++				    hostapd_get_punct_bitmap(hapd))) {
+ 		wpa_printf(MSG_ERROR, "Can't set freq params");
+ 		return -1;
+ 	}
+diff --git a/src/ap/beacon.c b/src/ap/beacon.c
+index e50f0a0c9..e339c2002 100644
+--- a/src/ap/beacon.c
++++ b/src/ap/beacon.c
+@@ -2616,7 +2616,8 @@ static int __ieee802_11_set_beacon(struct hostapd_data *hapd)
+ 				    hostapd_get_oper_centr_freq_seg1_idx(iconf),
+ 				    cmode->vht_capab,
+ 				    &cmode->he_capab[IEEE80211_MODE_AP],
+-				    &cmode->eht_capab[IEEE80211_MODE_AP]) == 0)
++				    &cmode->eht_capab[IEEE80211_MODE_AP],
++				    hostapd_get_punct_bitmap(hapd)) == 0)
+ 		params.freq = &freq;
+ 
+ 	for (i = 0; i < hapd->iface->num_hw_features; i++) {
+diff --git a/src/ap/dfs.c b/src/ap/dfs.c
+index 5e36cff10..fc2e8d83c 100644
+--- a/src/ap/dfs.c
++++ b/src/ap/dfs.c
+@@ -1010,7 +1010,8 @@ static int hostapd_dfs_request_channel_switch(struct hostapd_iface *iface,
+ 				      oper_centr_freq_seg1_idx,
+ 				      cmode->vht_capab,
+ 				      &cmode->he_capab[ieee80211_mode],
+-				      &cmode->eht_capab[ieee80211_mode]);
++				      &cmode->eht_capab[ieee80211_mode],
++				      hostapd_get_punct_bitmap(iface->bss[0]));
+ 
+ 	if (err) {
+ 		wpa_printf(MSG_ERROR,
+diff --git a/src/ap/hostapd.c b/src/ap/hostapd.c
+index 0b805ba10..577e6eaad 100644
+--- a/src/ap/hostapd.c
++++ b/src/ap/hostapd.c
+@@ -3915,7 +3915,8 @@ static int hostapd_change_config_freq(struct hostapd_data *hapd,
+ 				    mode ? &mode->he_capab[IEEE80211_MODE_AP] :
+ 				    NULL,
+ 				    mode ? &mode->eht_capab[IEEE80211_MODE_AP] :
+-				    NULL))
++				    NULL,
++				    hostapd_get_punct_bitmap(hapd)))
+ 		return -1;
+ 
+ 	switch (params->bandwidth) {
+diff --git a/src/common/hw_features_common.c b/src/common/hw_features_common.c
+index f45d2e9ed..ea547f7ea 100644
+--- a/src/common/hw_features_common.c
++++ b/src/common/hw_features_common.c
+@@ -391,7 +391,8 @@ int hostapd_set_freq_params(struct hostapd_freq_params *data,
+ 			    int center_segment0,
+ 			    int center_segment1, u32 vht_caps,
+ 			    struct he_capabilities *he_cap,
+-			    struct eht_capabilities *eht_cap)
++			    struct eht_capabilities *eht_cap,
++			    u16 punct_bitmap)
+ {
+ 	if (!he_cap || !he_cap->he_supported)
+ 		he_enabled = 0;
+diff --git a/src/common/hw_features_common.h b/src/common/hw_features_common.h
+index 82e028238..8ce31e4f0 100644
+--- a/src/common/hw_features_common.h
++++ b/src/common/hw_features_common.h
+@@ -45,7 +45,8 @@ int hostapd_set_freq_params(struct hostapd_freq_params *data,
+ 			    int center_segment0,
+ 			    int center_segment1, u32 vht_caps,
+ 			    struct he_capabilities *he_caps,
+-			    struct eht_capabilities *eht_cap);
++			    struct eht_capabilities *eht_cap,
++			    u16 punct_bitmap);
+ void set_disable_ht40(struct ieee80211_ht_capabilities *htcaps,
+ 		      int disabled);
+ int ieee80211ac_cap_check(u32 hw, u32 conf);
+diff --git a/wpa_supplicant/mesh.c b/wpa_supplicant/mesh.c
+index 486fc6a09..85c1ea8ba 100644
+--- a/wpa_supplicant/mesh.c
++++ b/wpa_supplicant/mesh.c
+@@ -231,7 +231,7 @@ static int wpas_mesh_update_freq_params(struct wpa_supplicant *wpa_s)
+ 		    hostapd_get_oper_centr_freq_seg0_idx(ifmsh->conf),
+ 		    hostapd_get_oper_centr_freq_seg1_idx(ifmsh->conf),
+ 		    ifmsh->conf->vht_capab,
+-		    he_capab, NULL)) {
++		    he_capab, NULL, 0)) {
+ 		wpa_printf(MSG_ERROR, "Error updating mesh frequency params");
+ 		wpa_supplicant_mesh_deinit(wpa_s, true);
+ 		return -1;
+diff --git a/wpa_supplicant/wpa_supplicant.c b/wpa_supplicant/wpa_supplicant.c
+index fe05e244d..98ecb7a74 100644
+--- a/wpa_supplicant/wpa_supplicant.c
++++ b/wpa_supplicant/wpa_supplicant.c
+@@ -3064,7 +3064,7 @@ skip_80mhz:
+ 				    freq->sec_channel_offset,
+ 				    chwidth, seg0, seg1, vht_caps,
+ 				    &mode->he_capab[ieee80211_mode],
+-				    &mode->eht_capab[ieee80211_mode]) != 0)
++				    &mode->eht_capab[ieee80211_mode], 0) != 0)
+ 		return false;
+ 
+ 	*freq = vht_freq;
+-- 
+2.43.0
+

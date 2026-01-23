@@ -1,0 +1,28 @@
+From 0cd4207b52dd3546a2cc40a17b9b10766b0c09df Mon Sep 17 00:00:00 2001
+From: Jouni Malinen <quic_jouni@quicinc.com>
+Date: Thu, 14 Dec 2023 11:03:45 +0200
+Subject: [PATCH] tests: Avoid a race in wpas_ap_lifetime_in_memory*
+
+Disconnect processing might require some more time with wpa_supplicant
+AP mode.
+
+Signed-off-by: Jouni Malinen <quic_jouni@quicinc.com>
+---
+ tests/hwsim/test_wpas_ap.py | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/tests/hwsim/test_wpas_ap.py b/tests/hwsim/test_wpas_ap.py
+index 4293469a4..7090f23e4 100644
+--- a/tests/hwsim/test_wpas_ap.py
++++ b/tests/hwsim/test_wpas_ap.py
+@@ -1087,6 +1087,7 @@ def run_wpas_ap_lifetime_in_memory(dev, apdev, params, raw):
+     dev[1].request("DISCONNECT")
+     dev[1].wait_disconnected()
+     dev[0].wait_sta_disconnect()
++    time.sleep(1)
+ 
+     buf2 = read_process_memory(pid, pmk)
+ 
+-- 
+2.43.0
+

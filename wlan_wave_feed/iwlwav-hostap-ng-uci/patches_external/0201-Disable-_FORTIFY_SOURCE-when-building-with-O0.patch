@@ -1,0 +1,71 @@
+From 9569315deab43d9ad4a00b7bf075cbf89977f43b Mon Sep 17 00:00:00 2001
+From: Andrei Otcheretianski <andrei.otcheretianski@intel.com>
+Date: Mon, 25 Dec 2023 12:21:04 +0200
+Subject: [PATCH] Disable _FORTIFY_SOURCE when building with -O0
+
+_FORTIFY_SOURCE requires at least -O2 optimization level.
+This may result in compilation warnings. Fix it.
+
+Signed-off-by: Andrei Otcheretianski <andrei.otcheretianski@intel.com>
+---
+ hostapd/Makefile                                 | 2 +-
+ tests/build/build-hostapd-internal.config        | 2 +-
+ tests/build/build-wpa_supplicant-internal.config | 2 +-
+ wpa_supplicant/Makefile                          | 2 +-
+ 4 files changed, 4 insertions(+), 4 deletions(-)
+
+diff --git a/hostapd/Makefile b/hostapd/Makefile
+index 51702439c..500098c8b 100644
+--- a/hostapd/Makefile
++++ b/hostapd/Makefile
+@@ -167,7 +167,7 @@ OBJS += ../src/eapol_auth/eapol_auth_sm.o
+ 
+ 
+ ifdef CONFIG_CODE_COVERAGE
+-CFLAGS += -O0 -fprofile-arcs -ftest-coverage
++CFLAGS += -O0 -fprofile-arcs -ftest-coverage -U_FORTIFY_SOURCE
+ LIBS += -lgcov
+ LIBS_c += -lgcov
+ LIBS_h += -lgcov
+diff --git a/tests/build/build-hostapd-internal.config b/tests/build/build-hostapd-internal.config
+index 421977eed..5b5d8037e 100644
+--- a/tests/build/build-hostapd-internal.config
++++ b/tests/build/build-hostapd-internal.config
+@@ -77,7 +77,7 @@ CONFIG_SUITEB=y
+ CONFIG_MBO=y
+ 
+ CONFIG_CODE_COVERAGE=y
+-CFLAGS += -O0 -Wsign-compare
++CFLAGS += -O0 -Wsign-compare -U_FORTIFY_SOURCE
+ 
+ CONFIG_TAXONOMY=y
+ #CONFIG_FILS=y
+diff --git a/tests/build/build-wpa_supplicant-internal.config b/tests/build/build-wpa_supplicant-internal.config
+index 574fb4b18..fb6a7b9dc 100644
+--- a/tests/build/build-wpa_supplicant-internal.config
++++ b/tests/build/build-wpa_supplicant-internal.config
+@@ -117,7 +117,7 @@ CONFIG_SUITEB=y
+ CONFIG_MBO=y
+ 
+ #CONFIG_CODE_COVERAGE=y
+-CFLAGS += -O0 -Wsign-compare
++CFLAGS += -O0 -Wsign-compare -U_FORTIFY_SOURCE
+ #CONFIG_FILS=y
+ #CONFIG_FILS_SK_PFS=y
+ CONFIG_PMKSA_CACHE_EXTERNAL=y
+diff --git a/wpa_supplicant/Makefile b/wpa_supplicant/Makefile
+index 46e20f44a..9b0c3c7c8 100644
+--- a/wpa_supplicant/Makefile
++++ b/wpa_supplicant/Makefile
+@@ -188,7 +188,7 @@ CFLAGS += -Werror -DEAPOL_TEST
+ endif
+ 
+ ifdef CONFIG_CODE_COVERAGE
+-CFLAGS += -O0 -fprofile-arcs -ftest-coverage
++CFLAGS += -O0 -fprofile-arcs -ftest-coverage -U_FORTIFY_SOURCE
+ LIBS += -lgcov
+ LIBS_c += -lgcov
+ LIBS_p += -lgcov
+-- 
+2.43.0
+

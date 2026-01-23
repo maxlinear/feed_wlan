@@ -1,0 +1,60 @@
+From 8d0bd7f9c802e5ed3c2329644b4915f91d520fab Mon Sep 17 00:00:00 2001
+From: Jouni Malinen <quic_jouni@quicinc.com>
+Date: Wed, 20 Mar 2024 11:08:16 +0200
+Subject: [PATCH] Update BSS entry on roaming only for actual BSS frequency
+ change
+
+Commit 117e812d06e6 ("Update BSS table entry if roaming event indicates
+frequency change") added wpa_supplicant BSS table update based on the
+latest driver scan results whenever processing an association event that
+results in the current operating channel changing. While that is needed
+to cover the case where an AP changes its own operating channel (and
+that is noticed as a roam or new connection instead of a channel switch
+event), this should not really be needed for cases where the
+wpa_supplicant entry for the new BSS is already up to date.
+
+Skip the full BSS table update on association event if the event is for
+a roaming case to a different BSS and the BSS entry for the target is
+already available and for the current operating channel. This avoids
+undesired latency when processing the association event.
+
+Signed-off-by: Jouni Malinen <quic_jouni@quicinc.com>
+---
+ wpa_supplicant/events.c | 21 +++++++++++++++------
+ 1 file changed, 15 insertions(+), 6 deletions(-)
+
+diff --git a/wpa_supplicant/events.c b/wpa_supplicant/events.c
+index f9ee7c0b6..c32610f9f 100644
+--- a/wpa_supplicant/events.c
++++ b/wpa_supplicant/events.c
+@@ -3622,12 +3622,21 @@ no_pfs:
+ 	if (wpa_found || rsn_found)
+ 		wpa_s->ap_ies_from_associnfo = 1;
+ 
+-	if (wpa_s->assoc_freq && data->assoc_info.freq &&
+-	    wpa_s->assoc_freq != data->assoc_info.freq) {
+-		wpa_printf(MSG_DEBUG, "Operating frequency changed from "
+-			   "%u to %u MHz",
+-			   wpa_s->assoc_freq, data->assoc_info.freq);
+-		wpa_supplicant_update_scan_results(wpa_s);
++	if (wpa_s->assoc_freq && data->assoc_info.freq) {
++		struct wpa_bss *bss;
++		unsigned int freq = 0;
++
++		if (bssid_known) {
++			bss = wpa_bss_get_bssid_latest(wpa_s, bssid);
++			if (bss)
++				freq = bss->freq;
++		}
++		if (freq != data->assoc_info.freq) {
++			wpa_printf(MSG_DEBUG,
++				   "Operating frequency changed from %u to %u MHz",
++				   wpa_s->assoc_freq, data->assoc_info.freq);
++			wpa_supplicant_update_scan_results(wpa_s);
++		}
+ 	}
+ 
+ 	wpa_s->assoc_freq = data->assoc_info.freq;
+-- 
+2.43.0
+

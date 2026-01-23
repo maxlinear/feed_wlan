@@ -1,0 +1,32 @@
+From ae36944a9c2a57900fac58f928cf3ccadcbf57db Mon Sep 17 00:00:00 2001
+From: Shivani Baranwal <quic_shivbara@quicinc.com>
+Date: Wed, 30 Oct 2024 18:56:14 +0530
+Subject: [PATCH] Control interface command to flush NAN publish and subscribe
+ sessions
+
+Add a control interface command for NAN_FLUSH to terminate all the
+publish and subscribe sessions. This was previously done as a part of
+the complete FLUSH operation, but it can be useful to be able to do this
+specifically for NAN services without impacting other areas.
+
+Signed-off-by: Shivani Baranwal <quic_shivbara@quicinc.com>
+---
+ wpa_supplicant/ctrl_iface.c | 2 ++
+ 1 file changed, 2 insertions(+)
+
+diff --git a/wpa_supplicant/ctrl_iface.c b/wpa_supplicant/ctrl_iface.c
+index 0ccccde01..15ff0f2b7 100644
+--- a/wpa_supplicant/ctrl_iface.c
++++ b/wpa_supplicant/ctrl_iface.c
+@@ -13669,6 +13669,8 @@ char * wpa_supplicant_ctrl_iface_process(struct wpa_supplicant *wpa_s,
+ 	} else if (os_strncmp(buf, "NAN_TRANSMIT ", 13) == 0) {
+ 		if (wpas_ctrl_nan_transmit(wpa_s, buf + 13) < 0)
+ 			reply_len = -1;
++	} else if (os_strcmp(buf, "NAN_FLUSH") == 0) {
++		wpas_nan_usd_flush(wpa_s);
+ #endif /* CONFIG_NAN_USD */
+ #ifdef CONFIG_PASN
+ 	} else if (os_strncmp(buf, "PASN_START ", 11) == 0) {
+-- 
+2.43.0
+

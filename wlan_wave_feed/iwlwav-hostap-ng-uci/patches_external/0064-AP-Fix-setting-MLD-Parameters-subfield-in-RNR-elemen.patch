@@ -1,0 +1,37 @@
+From a28ea8e517a9111288797f0985808112e6a7d0fb Mon Sep 17 00:00:00 2001
+From: Ilan Peer <ilan.peer@intel.com>
+Date: Tue, 12 Dec 2023 18:56:31 +0200
+Subject: [PATCH] AP: Fix setting MLD Parameters subfield in RNR element
+
+In case the TBTT information is reporting about an AP in the same AP MLD
+as the current AP, the AP MLD ID in the MLD Parameters subfield should
+be set to 0.
+
+Signed-off-by: Ilan Peer <ilan.peer@intel.com>
+Signed-off-by: Andrei Otcheretianski <andrei.otcheretianski@intel.com>
+---
+ src/ap/ieee802_11.c | 8 +++++++-
+ 1 file changed, 7 insertions(+), 1 deletion(-)
+
+diff --git a/src/ap/ieee802_11.c b/src/ap/ieee802_11.c
+index e85b0635f..2f8cb086a 100644
+--- a/src/ap/ieee802_11.c
++++ b/src/ap/ieee802_11.c
+@@ -7586,7 +7586,13 @@ static u8 * hostapd_eid_rnr_iface(struct hostapd_data *hapd,
+ 				len += RNR_TBTT_INFO_LEN;
+ 			} else {
+ #ifdef CONFIG_IEEE80211BE
+-				*eid++ = hapd->conf->mld_id;
++				if (reporting_hapd->conf->mld_ap &&
++				    bss->conf->mld_id ==
++				    reporting_hapd->conf->mld_id)
++					*eid++ = 0;
++				else
++					*eid++ = hapd->conf->mld_id;
++
+ 				*eid++ = hapd->mld_link_id | (1 << 4);
+ 				*eid++ = 0;
+ 				len += RNR_TBTT_INFO_MLD_LEN;
+-- 
+2.43.0
+

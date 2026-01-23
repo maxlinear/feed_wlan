@@ -1,0 +1,291 @@
+From 29f70292e58622a8ad09329874e80851bbd88ded Mon Sep 17 00:00:00 2001
+From: Shivani Baranwal <quic_shivbara@quicinc.com>
+Date: Mon, 5 Aug 2024 15:03:01 +0530
+Subject: [PATCH] P2P2: Add PCEA and PBMA attributes to P2P2 IE of NAN SDFs
+
+Add PCEA and PBMA attribute in P2P2 IE of NAN Subscribe and Publish frames
+to include the P2P2 capabilities and bootstrapping methods.
+
+Signed-off-by: Shivani Baranwal <quic_shivbara@quicinc.com>
+---
+ src/p2p/p2p.c       | 37 +++++++++++++++++++++
+ src/p2p/p2p.h       | 55 ++++++++++++++++++++++++++++++++
+ src/p2p/p2p_build.c | 78 +++++++++++++++++++++++++++++++++++++++++++++
+ src/p2p/p2p_i.h     | 16 ++++++++++
+ 4 files changed, 186 insertions(+)
+
+diff --git a/src/p2p/p2p.c b/src/p2p/p2p.c
+index 35406f0b9..eee6f8b87 100644
+--- a/src/p2p/p2p.c
++++ b/src/p2p/p2p.c
+@@ -2968,6 +2968,34 @@ bool is_p2p_6ghz_disabled(struct p2p_data *p2p)
+ }
+ 
+ 
++static void p2p_pairing_info_deinit(struct p2p_data *p2p)
++{
++	os_free(p2p->pairing_info);
++}
++
++
++static int p2p_pairing_info_init(struct p2p_data *p2p)
++{
++	struct p2p_pairing_info *pairing_info;
++
++	pairing_info = os_zalloc(sizeof(struct p2p_pairing_info));
++	if (!pairing_info)
++		return -1;
++
++	pairing_info->enable_pairing_setup =
++		p2p->cfg->pairing_config.enable_pairing_setup;
++	pairing_info->enable_pairing_cache =
++		p2p->cfg->pairing_config.enable_pairing_cache;
++	pairing_info->supported_bootstrap =
++		p2p->cfg->pairing_config.bootstrap_methods;
++
++	p2p_pairing_info_deinit(p2p);
++	p2p->pairing_info = pairing_info;
++
++	return 0;
++}
++
++
+ struct p2p_data * p2p_init(const struct p2p_config *cfg)
+ {
+ 	struct p2p_data *p2p;
+@@ -3023,6 +3051,7 @@ struct p2p_data * p2p_init(const struct p2p_config *cfg)
+ 	p2p->go_timeout = 100;
+ 	p2p->client_timeout = 20;
+ 	p2p->num_p2p_sd_queries = 0;
++	p2p_pairing_info_init(p2p);
+ 
+ 	p2p_dbg(p2p, "initialized");
+ 	p2p_channels_dump(p2p, "channels", &p2p->cfg->channels);
+@@ -3066,6 +3095,7 @@ void p2p_deinit(struct p2p_data *p2p)
+ 	p2p_remove_wps_vendor_extensions(p2p);
+ 	os_free(p2p->no_go_freq.range);
+ 	p2p_service_flush_asp(p2p);
++	p2p_pairing_info_deinit(p2p);
+ 
+ 	os_free(p2p);
+ }
+@@ -5724,6 +5754,13 @@ struct wpabuf * p2p_usd_elems(struct p2p_data *p2p)
+ 
+ 	len = p2p_buf_add_p2p2_ie_hdr(buf);
+ 
++	/* P2P Capability Extension attribute */
++	p2p_buf_add_pcea(buf, p2p);
++
++	/* P2P Pairing Bootstrapping Method attribute */
++	p2p_buf_add_pbma(buf, p2p->cfg->pairing_config.bootstrap_methods, NULL,
++			 0, 0);
++
+ 	p2p_buf_update_ie_hdr(buf, len);
+ 
+ 	return buf;
+diff --git a/src/p2p/p2p.h b/src/p2p/p2p.h
+index ab6e9ca0f..a3aca142b 100644
+--- a/src/p2p/p2p.h
++++ b/src/p2p/p2p.h
+@@ -320,6 +320,41 @@ enum p2p_scan_type {
+ 
+ #define P2P_MAX_WPS_VENDOR_EXT 10
+ 
++/**
++ * struct p2p_pairing_config - P2P pairing configuration
++ */
++struct p2p_pairing_config {
++	/**
++	 * Pairing capable
++	 */
++	bool pairing_capable;
++
++	/**
++	 * Enable P2P pairing setup
++	 */
++	bool enable_pairing_setup;
++
++	/**
++	 * Enable pairing cache to allow verification
++	 */
++	bool enable_pairing_cache;
++
++	/**
++	 * Enable P2P pairing verification with cached NIK/NPK
++	 */
++	bool enable_pairing_verification;
++
++	/**
++	 * P2P bootstrapping methods supported
++	 */
++	u16 bootstrap_methods;
++
++	/**
++	 * Bitmap of supported PASN types
++	 */
++	u8 pasn_type;
++};
++
+ /**
+  * struct p2p_peer_info - P2P peer information
+  */
+@@ -589,6 +624,26 @@ struct p2p_config {
+ 	 */
+ 	unsigned int passphrase_len;
+ 
++	/**
++	 * p2p_pairing_config - P2P pairing configuration
++	 */
++	struct p2p_pairing_config pairing_config;
++
++	/**
++	 * reg_info - Regulatory info encoding for operation in 6 GHz band
++	 */
++	u8 reg_info;
++
++	/**
++	 * dfs_owner - Enable P2P GO to act as DFS Owner
++	 */
++	bool dfs_owner;
++
++	/**
++	 * twt_power_mgmt - Enable TWT based power management for P2P
++	 */
++	bool twt_power_mgmt;
++
+ 	/**
+ 	 * cb_ctx - Context to use with callback functions
+ 	 */
+diff --git a/src/p2p/p2p_build.c b/src/p2p/p2p_build.c
+index 57f24f267..f088c01f0 100644
+--- a/src/p2p/p2p_build.c
++++ b/src/p2p/p2p_build.c
+@@ -722,6 +722,84 @@ void p2p_buf_add_persistent_group_info(struct wpabuf *buf, const u8 *dev_addr,
+ }
+ 
+ 
++void p2p_buf_add_pcea(struct wpabuf *buf, struct p2p_data *p2p)
++{
++	u8 *len;
++	u16 capability_info = 0;
++
++	/* P2P Capability Extension */
++	wpabuf_put_u8(buf, P2P_ATTR_CAPABILITY_EXTENSION);
++	/* Length to be filled */
++	len = wpabuf_put(buf, 2);
++
++	if (!p2p->cfg->p2p_6ghz_disable)
++		capability_info |= P2P_PCEA_6GHZ;
++
++	if (p2p->cfg->reg_info)
++		capability_info |= P2P_PCEA_REG_INFO;
++
++	if (p2p->cfg->dfs_owner)
++		capability_info |= P2P_PCEA_DFS_OWNER;
++
++	if (p2p->cfg->pairing_config.pairing_capable)
++		capability_info |= P2P_PCEA_PAIRING_CAPABLE;
++
++	if (p2p->cfg->pairing_config.enable_pairing_setup)
++		capability_info |= P2P_PCEA_PAIRING_SETUP_ENABLED;
++
++	if (p2p->cfg->pairing_config.enable_pairing_cache)
++		capability_info |= P2P_PCEA_PMK_CACHING;
++
++	if (p2p->cfg->pairing_config.pasn_type)
++		capability_info |= P2P_PCEA_PASN_TYPE;
++
++	if (p2p->cfg->twt_power_mgmt)
++		capability_info |= P2P_PCEA_TWT_POWER_MGMT;
++
++	/* Field length is (n-1), n in octets */
++	capability_info |= (2 - 1) & P2P_PCEA_LEN_MASK;
++	wpabuf_put_le16(buf, capability_info);
++
++	if (capability_info & P2P_PCEA_REG_INFO)
++		wpabuf_put_u8(buf, p2p->cfg->reg_info);
++
++	if (capability_info & P2P_PCEA_PASN_TYPE)
++		wpabuf_put_u8(buf, p2p->cfg->pairing_config.pasn_type);
++
++	/* Update attribute length */
++	WPA_PUT_LE16(len, (u8 *) wpabuf_put(buf, 0) - len - 2);
++
++	wpa_printf(MSG_DEBUG, "P2P: * Capability Extension info=0x%x",
++		   capability_info);
++}
++
++
++void p2p_buf_add_pbma(struct wpabuf *buf, u16 bootstrap, const u8 *cookie,
++		      size_t cookie_len, int comeback_after)
++{
++	u8 *len;
++
++	/* P2P Pairing and Bootstrapping methods */
++	wpabuf_put_u8(buf, P2P_ATTR_PAIRING_AND_BOOTSTRAPPING);
++	/* Length to be filled */
++	len = wpabuf_put(buf, 2);
++
++	if (cookie && cookie_len) {
++		if (comeback_after)
++			wpabuf_put_le16(buf, comeback_after);
++		wpabuf_put_u8(buf, cookie_len);
++		wpabuf_put_data(buf, cookie, cookie_len);
++	}
++	wpabuf_put_le16(buf, bootstrap);
++
++	/* Update attribute length */
++	WPA_PUT_LE16(len, (u8 *) wpabuf_put(buf, 0) - len - 2);
++
++	wpa_printf(MSG_DEBUG, "P2P: * Bootstrapping method=0x%x",
++		   bootstrap);
++}
++
++
+ static int p2p_add_wps_string(struct wpabuf *buf, enum wps_attribute attr,
+ 			      const char *val)
+ {
+diff --git a/src/p2p/p2p_i.h b/src/p2p/p2p_i.h
+index 02082c0fd..d1bef9101 100644
+--- a/src/p2p/p2p_i.h
++++ b/src/p2p/p2p_i.h
+@@ -160,6 +160,17 @@ struct p2p_sd_query {
+ 	struct wpabuf *tlvs;
+ };
+ 
++struct p2p_pairing_info {
++	/* P2P device own address */
++	u8 own_addr[ETH_ALEN];
++	/* device capability to enable pairing setup */
++	bool enable_pairing_setup;
++	/* device capability to enable pairing cache */
++	bool enable_pairing_cache;
++	/* device supported bootstrapping */
++	u16 supported_bootstrap;
++};
++
+ /**
+  * struct p2p_data - P2P module data (internal to P2P module)
+  */
+@@ -554,6 +565,8 @@ struct p2p_data {
+ 	bool p2p_6ghz_capable;
+ 	bool include_6ghz;
+ 	bool allow_6ghz;
++
++	struct p2p_pairing_info *pairing_info;
+ };
+ 
+ /**
+@@ -789,6 +802,9 @@ void p2p_buf_add_feature_capability(struct wpabuf *buf, u16 len,
+ 				    const u8 *mask);
+ void p2p_buf_add_persistent_group_info(struct wpabuf *buf, const u8 *dev_addr,
+ 				       const u8 *ssid, size_t ssid_len);
++void p2p_buf_add_pcea(struct wpabuf *buf, struct p2p_data *p2p);
++void p2p_buf_add_pbma(struct wpabuf *buf, u16 bootstrap, const u8 *cookie,
++		      size_t cookie_len, int comeback_after);
+ int p2p_build_wps_ie(struct p2p_data *p2p, struct wpabuf *buf, int pw_id,
+ 		     int all_attr);
+ void p2p_buf_add_pref_channel_list(struct wpabuf *buf,
+-- 
+2.43.0
+

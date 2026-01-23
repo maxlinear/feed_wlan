@@ -1,0 +1,49 @@
+From 1e08a8990dc26ea317b363a4228e0d52ebd62a29 Mon Sep 17 00:00:00 2001
+From: Benjamin Berg <benjamin.berg@intel.com>
+Date: Mon, 25 Dec 2023 12:21:03 +0200
+Subject: [PATCH] tests: Flag inside VM using an environment variable
+
+It is possible to execute the tests directly inside the a VM without
+necessarily running the repository wrapper script to do so. In these
+cases, passing the VM flag using an environment variable allows
+correctly flagging this fact to the tests.
+
+Signed-off-by: Benjamin Berg <benjamin.berg@intel.com>
+---
+ tests/hwsim/run-all.sh | 2 +-
+ tests/hwsim/utils.py   | 6 ++----
+ 2 files changed, 3 insertions(+), 5 deletions(-)
+
+diff --git a/tests/hwsim/run-all.sh b/tests/hwsim/run-all.sh
+index 75c3a58b5..bee753bb6 100755
+--- a/tests/hwsim/run-all.sh
++++ b/tests/hwsim/run-all.sh
+@@ -134,7 +134,7 @@ if [ "$(id -u)" != 0 ]; then
+ else
+ 	SUDO=
+ fi
+-${SUDO} ./run-tests.py -D --logdir "$LOGDIR" $TRACE_ARGS -q $DB $RUN_TEST_ARGS || errors=1
++${SUDO} env VM=$VM ./run-tests.py -D --logdir "$LOGDIR" $TRACE_ARGS -q $DB $RUN_TEST_ARGS || errors=1
+ 
+ ./stop.sh
+ 
+diff --git a/tests/hwsim/utils.py b/tests/hwsim/utils.py
+index d01e1fbbf..7e3608284 100644
+--- a/tests/hwsim/utils.py
++++ b/tests/hwsim/utils.py
+@@ -79,10 +79,8 @@ def wait_fail_trigger(dev, cmd, note="Failure not triggered", max_iter=40,
+         time.sleep(timeout)
+ 
+ def require_under_vm():
+-    with open('/proc/1/cmdline', 'r') as f:
+-        cmd = f.read()
+-        if "inside.sh" not in cmd:
+-            raise HwsimSkip("Not running under VM")
++    if os.getenv('VM') != 'VM':
++        raise HwsimSkip("Not running under VM")
+ 
+ def iface_is_in_bridge(bridge, ifname):
+     fname = "/sys/class/net/"+ifname+"/brport/bridge"
+-- 
+2.43.0
+

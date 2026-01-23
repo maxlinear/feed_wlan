@@ -1,0 +1,152 @@
+From 17a891fd5e690fcd8338d064509017b11371fdfd Mon Sep 17 00:00:00 2001
+From: Shivani Baranwal <quic_shivbara@quicinc.com>
+Date: Fri, 31 May 2024 01:23:51 +0530
+Subject: [PATCH] P2P2: Notify bootstrapping request and completed events
+
+Add support to notify P2P2 bootstrapping request and completed events to
+the user.
+
+Signed-off-by: Shivani Baranwal <quic_shivbara@quicinc.com>
+---
+ src/common/wpa_ctrl.h           |  4 ++++
+ src/p2p/p2p.h                   | 25 +++++++++++++++++++++++++
+ src/p2p/p2p_pd.c                | 10 ++++++++++
+ wpa_supplicant/p2p_supplicant.c | 29 +++++++++++++++++++++++++++++
+ 4 files changed, 68 insertions(+)
+
+diff --git a/src/common/wpa_ctrl.h b/src/common/wpa_ctrl.h
+index 1a3ad2fe1..2ea8ab318 100644
+--- a/src/common/wpa_ctrl.h
++++ b/src/common/wpa_ctrl.h
+@@ -308,6 +308,10 @@ extern "C" {
+ #define P2P_EVENT_P2PS_PROVISION_START "P2PS-PROV-START "
+ #define P2P_EVENT_P2PS_PROVISION_DONE "P2PS-PROV-DONE "
+ 
++#define P2P_EVENT_BOOTSTRAP_REQUEST "P2P-BOOTSTRAP-REQUEST "
++#define P2P_EVENT_BOOTSTRAP_SUCCESS "P2P-BOOTSTRAP-SUCCESS "
++#define P2P_EVENT_BOOTSTRAP_FAILURE "P2P-BOOTSTRAP-FAILURE "
++
+ #define INTERWORKING_AP "INTERWORKING-AP "
+ #define INTERWORKING_EXCLUDED "INTERWORKING-BLACKLISTED "
+ #define INTERWORKING_NO_MATCH "INTERWORKING-NO-MATCH "
+diff --git a/src/p2p/p2p.h b/src/p2p/p2p.h
+index 401ee3263..0127f32ca 100644
+--- a/src/p2p/p2p.h
++++ b/src/p2p/p2p.h
+@@ -1245,6 +1245,31 @@ struct p2p_config {
+ 	 */
+ 	void (*register_bootstrap_comeback)(void *ctx, const u8 *addr,
+ 					    u16 comeback_after);
++
++	/**
++	 * bootstrap_req_rx - Indicate bootstrap request from a P2P peer
++	 * @ctx: Callback context from cb_ctx
++	 * @addr: P2P device address from which bootstrap request was received
++	 * @bootstrap_method: Bootstrapping method request by the peer device
++	 *
++	 * This function can be used to notify that bootstrap request is
++	 * received from a P2P peer.
++	 */
++	void (*bootstrap_req_rx)(void *ctx, const u8 *addr,
++				 u16 bootstrap_method);
++
++	/**
++	 * bootstrap_completed - Indicate bootstrapping completed with P2P peer
++	 * @ctx: Callback context from cb_ctx
++	 * @addr: P2P device address with which bootstrapping is completed
++	 * @status: P2P Status Code of bootstrapping handshake
++	 * @freq: Frequency in which bootstrapping is done
++	 *
++	 * This function can be used to notify the status of bootstrapping
++	 * handshake.
++	 */
++	void (*bootstrap_completed)(void *ctx, const u8 *addr,
++				    enum p2p_status_code status, int freq);
+ };
+ 
+ 
+diff --git a/src/p2p/p2p_pd.c b/src/p2p/p2p_pd.c
+index 77338802b..0dd2260b4 100644
+--- a/src/p2p/p2p_pd.c
++++ b/src/p2p/p2p_pd.c
+@@ -781,6 +781,9 @@ static void p2p_process_prov_disc_bootstrap_req(struct p2p_data *p2p,
+ 
+ 		if (!dev->req_bootstrap_method) {
+ 			status = P2P_SC_COMEBACK;
++			if (p2p->cfg->bootstrap_req_rx)
++				p2p->cfg->bootstrap_req_rx(p2p->cfg->cb_ctx,
++							   sa, bootstrap);
+ 			goto out;
+ 		}
+ 	} else {
+@@ -807,6 +810,9 @@ static void p2p_process_prov_disc_bootstrap_req(struct p2p_data *p2p,
+ 			dev->bootstrap_params->comeback_after =
+ 				p2p->cfg->comeback_after;
+ 			status = P2P_SC_COMEBACK;
++			if (p2p->cfg->bootstrap_req_rx)
++				p2p->cfg->bootstrap_req_rx(p2p->cfg->cb_ctx,
++							   sa, bootstrap);
+ 			goto out;
+ 		}
+ 	}
+@@ -1707,6 +1713,10 @@ static void p2p_process_prov_disc_bootstrap_resp(struct p2p_data *p2p,
+ 	p2p->cfg->send_action_done(p2p->cfg->cb_ctx);
+ 	if (dev->flags & P2P_DEV_PD_BEFORE_GO_NEG)
+ 		dev->flags &= ~P2P_DEV_PD_BEFORE_GO_NEG;
++
++	if (p2p->cfg->bootstrap_completed)
++		p2p->cfg->bootstrap_completed(p2p->cfg->cb_ctx, sa, status,
++					      rx_freq);
+ }
+ 
+ 
+diff --git a/wpa_supplicant/p2p_supplicant.c b/wpa_supplicant/p2p_supplicant.c
+index 679d2df4f..51b5b2561 100644
+--- a/wpa_supplicant/p2p_supplicant.c
++++ b/wpa_supplicant/p2p_supplicant.c
+@@ -4859,6 +4859,33 @@ static void wpas_p2p_register_bootstrap_comeback(void *ctx, const u8 *addr,
+ }
+ 
+ 
++static void wpas_bootstrap_req_rx(void *ctx, const u8 *addr,
++				  u16 bootstrap_method)
++{
++	struct wpa_supplicant *wpa_s = ctx;
++
++	wpa_msg_global(wpa_s, MSG_INFO, P2P_EVENT_BOOTSTRAP_REQUEST MACSTR
++		       " bootstrap_method=%u", MAC2STR(addr), bootstrap_method);
++}
++
++
++static void wpas_bootstrap_completed(void *ctx, const u8 *addr,
++				     enum p2p_status_code status, int freq)
++{
++	struct wpa_supplicant *wpa_s = ctx;
++
++	if (status) {
++		wpa_msg_global(wpa_s, MSG_INFO,
++			       P2P_EVENT_BOOTSTRAP_FAILURE MACSTR " status=%d",
++			       MAC2STR(addr), status);
++	} else {
++		wpa_msg_global(wpa_s, MSG_INFO,
++			       P2P_EVENT_BOOTSTRAP_SUCCESS MACSTR " status=%d",
++			       MAC2STR(addr), status);
++	}
++}
++
++
+ int wpas_p2p_mac_setup(struct wpa_supplicant *wpa_s)
+ {
+ 	u8 addr[ETH_ALEN] = {0};
+@@ -4979,6 +5006,8 @@ int wpas_p2p_init(struct wpa_global *global, struct wpa_supplicant *wpa_s)
+ 	p2p.get_pref_freq_list = wpas_p2p_get_pref_freq_list;
+ 	p2p.p2p_6ghz_disable = wpa_s->conf->p2p_6ghz_disable;
+ 	p2p.register_bootstrap_comeback = wpas_p2p_register_bootstrap_comeback;
++	p2p.bootstrap_req_rx = wpas_bootstrap_req_rx;
++	p2p.bootstrap_completed = wpas_bootstrap_completed;
+ 
+ 	os_memcpy(wpa_s->global->p2p_dev_addr, wpa_s->own_addr, ETH_ALEN);
+ 	os_memcpy(p2p.dev_addr, wpa_s->global->p2p_dev_addr, ETH_ALEN);
+-- 
+2.43.0
+

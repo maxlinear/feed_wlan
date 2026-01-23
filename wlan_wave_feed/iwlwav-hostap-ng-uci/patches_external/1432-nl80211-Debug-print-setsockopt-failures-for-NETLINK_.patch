@@ -1,0 +1,46 @@
+From 41398a8737bccbd4e22e0f2cd2292f8a04e250ef Mon Sep 17 00:00:00 2001
+From: Jouni Malinen <j@w1.fi>
+Date: Sun, 23 Feb 2025 16:27:03 +0200
+Subject: [PATCH] nl80211: Debug print setsockopt() failures for
+ NETLINK_EXT_ACK
+
+Even though we explicitly ignore these errors, it is better to print
+them into the debug log if for no other reason than to get rid of some
+static analyzer warnings about unchecked reutrn values.
+
+Signed-off-by: Jouni Malinen <j@w1.fi>
+---
+ src/drivers/driver_nl80211.c | 14 ++++++++++----
+ 1 file changed, 10 insertions(+), 4 deletions(-)
+
+diff --git a/src/drivers/driver_nl80211.c b/src/drivers/driver_nl80211.c
+index bc92d45ae..60a7ae5ea 100644
+--- a/src/drivers/driver_nl80211.c
++++ b/src/drivers/driver_nl80211.c
+@@ -521,13 +521,19 @@ int send_and_recv_glb(struct nl80211_global *global,
+ 
+ 	/* try to set NETLINK_EXT_ACK to 1, ignoring errors */
+ 	opt = 1;
+-	setsockopt(nl_socket_get_fd(nl_handle), SOL_NETLINK,
+-		   NETLINK_EXT_ACK, &opt, sizeof(opt));
++	if (setsockopt(nl_socket_get_fd(nl_handle), SOL_NETLINK,
++		       NETLINK_EXT_ACK, &opt, sizeof(opt)) < 0)
++		wpa_printf(MSG_DEBUG,
++			   "nl80211: setsockopt(NETLINK_EXT_ACK) failed: %s (ignored)",
++			   strerror(errno));
+ 
+ 	/* try to set NETLINK_CAP_ACK to 1, ignoring errors */
+ 	opt = 1;
+-	setsockopt(nl_socket_get_fd(nl_handle), SOL_NETLINK,
+-		   NETLINK_CAP_ACK, &opt, sizeof(opt));
++	if (setsockopt(nl_socket_get_fd(nl_handle), SOL_NETLINK,
++		       NETLINK_CAP_ACK, &opt, sizeof(opt)) < 0)
++		wpa_printf(MSG_DEBUG,
++			   "nl80211: setsockopt(NETLINK_CAP_ACK) failed: %s (ignored)",
++			   strerror(errno));
+ 
+ 	err.err = nl_send_auto_complete(nl_handle, msg);
+ 	if (err.err < 0) {
+-- 
+2.43.0
+

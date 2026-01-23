@@ -1,0 +1,81 @@
+From fcc9649b54a4cce097972818a1f8b76028942324 Mon Sep 17 00:00:00 2001
+From: Jouni Malinen <quic_jouni@quicinc.com>
+Date: Tue, 5 Nov 2024 18:54:59 +0200
+Subject: [PATCH] tests: Wi-Fi Alliance Generational Capabilities Indication
+
+Signed-off-by: Jouni Malinen <quic_jouni@quicinc.com>
+---
+ tests/hwsim/test_wfa_capab.py | 61 +++++++++++++++++++++++++++++++++++
+ 1 file changed, 61 insertions(+)
+ create mode 100644 tests/hwsim/test_wfa_capab.py
+
+diff --git a/tests/hwsim/test_wfa_capab.py b/tests/hwsim/test_wfa_capab.py
+new file mode 100644
+index 000000000..2f783052e
+--- /dev/null
++++ b/tests/hwsim/test_wfa_capab.py
+@@ -0,0 +1,61 @@
++# Test cases for Wi-Fi Alliance capabilities indication
++# Copyright (c) 2024, Qualcomm Innovation Center, Inc.
++#
++# This software may be distributed under the terms of the BSD license.
++# See README for more details.
++
++import hostapd
++from utils import *
++
++def test_wfa_gen_capa_protected(dev, apdev):
++    """WFA generational capabilities indication (protected)"""
++    try:
++        dev[0].set("wfa_gen_capa", "1")
++        run_wfa_gen_capa(dev, apdev)
++    finally:
++        dev[0].set("wfa_gen_capa", "0")
++
++def test_wfa_gen_capa_unprotected(dev, apdev):
++    """WFA generational capabilities indication (unprotected)"""
++    try:
++        dev[0].set("wfa_gen_capa", "2")
++        run_wfa_gen_capa(dev, apdev)
++    finally:
++        dev[0].set("wfa_gen_capa", "0")
++
++def test_wfa_gen_capa_protected_cert(dev, apdev):
++    """WFA generational capabilities indication (protected, cert)"""
++    try:
++        dev[0].set("wfa_gen_capa", "1")
++        run_wfa_gen_capa(dev, apdev, cert=True)
++    finally:
++        dev[0].set("wfa_gen_capa", "0")
++
++def test_wfa_gen_capa_unprotected_cert(dev, apdev):
++    """WFA generational capabilities indication (unprotected, cert)"""
++    try:
++        dev[0].set("wfa_gen_capa", "2")
++        run_wfa_gen_capa(dev, apdev, cert=True)
++    finally:
++        dev[0].set("wfa_gen_capa", "0")
++
++def run_wfa_gen_capa(dev, apdev, cert=False):
++    check_sae_capab(dev[0])
++
++    params = hostapd.wpa3_params(ssid="wfa-capab", password="12345678")
++    hapd = hostapd.add_ap(apdev[0], params)
++
++    dev[0].set("sae_groups", "")
++    dev[0].set("wfa_gen_capa_supp", "07")
++    if cert:
++        dev[0].set("wfa_gen_capa_cert", "07")
++    dev[0].connect("wfa-capab", sae_password="12345678", key_mgmt="SAE",
++                   ieee80211w="2", scan_freq="2412")
++    ev = hapd.wait_event(["WFA-GEN-CAPAB"], timeout=10)
++    if ev is None:
++        raise Exception("Generational capabilities indication not received")
++    _, addr, val = ev.split()
++    if addr != dev[0].own_addr():
++        raise Exception("Unexpected STA address in the indication")
++    if val != ("01070107" if cert else "0107"):
++        raise Exception("Unexpected indication value: " + val)
+-- 
+2.43.0
+

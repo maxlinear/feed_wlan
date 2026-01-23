@@ -1,0 +1,44 @@
+From df59880042cd8d9b4bdd2dce6de0a6e233be1b64 Mon Sep 17 00:00:00 2001
+From: Jouni Malinen <quic_jouni@quicinc.com>
+Date: Mon, 22 Apr 2024 14:35:35 +0300
+Subject: [PATCH] AP MLD: Add MLO Link KDE for each affiliated link in
+ EAPOL-Key 3/4
+
+Previously, MLO Link KDE was added only for each link that was
+negotiated for the ML association. However, IEEE Std 802.11be/D5.0,
+12.7.6.1 defines the MLO Link KDE to be included "for each affiliated
+AP" which is not constrained by what the non-AP MLD might have requested
+or what the negotiation outcome for this particular ML association is.
+
+Signed-off-by: Jouni Malinen <quic_jouni@quicinc.com>
+---
+ src/ap/wpa_auth.c | 6 ------
+ 1 file changed, 6 deletions(-)
+
+diff --git a/src/ap/wpa_auth.c b/src/ap/wpa_auth.c
+index 6411b3275..f3da9367f 100644
+--- a/src/ap/wpa_auth.c
++++ b/src/ap/wpa_auth.c
+@@ -4424,9 +4424,6 @@ static size_t wpa_auth_ml_kdes_len(struct wpa_state_machine *sm)
+ 		struct wpa_authenticator *wpa_auth;
+ 		const u8 *ie;
+ 
+-		if (!sm->mld_links[link_id].valid)
+-			continue;
+-
+ 		wpa_auth = wpa_get_link_auth(sm->wpa_auth, link_id);
+ 		if (!wpa_auth)
+ 			continue;
+@@ -4467,9 +4464,6 @@ static u8 * wpa_auth_ml_kdes(struct wpa_state_machine *sm, u8 *pos)
+ 		const u8 *rsne, *rsnxe;
+ 		size_t rsne_len, rsnxe_len;
+ 
+-		if (!sm->mld_links[link_id].valid)
+-			continue;
+-
+ 		wpa_auth = wpa_get_link_auth(sm->wpa_auth, link_id);
+ 		if (!wpa_auth)
+ 			continue;
+-- 
+2.43.0
+

@@ -1,0 +1,38 @@
+From 0ae087994cafbdc31c0d076540b171f7326ae141 Mon Sep 17 00:00:00 2001
+From: Mukul Sharma <quic_mukul@quicinc.com>
+Date: Fri, 3 May 2024 15:57:14 +0530
+Subject: [PATCH] Add a new QCA vendor attribute to set reduced power scan mode
+
+Userspace can use QCA_WLAN_VENDOR_ATTR_CONFIG_REDUCED_POWER_SCAN_MODE to
+configure reduce power scan mode to the driver/firmware.
+
+Signed-off-by: Mukul Sharma <quic_mukul@quicinc.com>
+---
+ src/common/qca-vendor.h | 11 +++++++++++
+ 1 file changed, 11 insertions(+)
+
+diff --git a/src/common/qca-vendor.h b/src/common/qca-vendor.h
+index a72feebb2..d8f936b4a 100644
+--- a/src/common/qca-vendor.h
++++ b/src/common/qca-vendor.h
+@@ -3472,6 +3472,17 @@ enum qca_wlan_vendor_attr_config {
+ 	 */
+ 	QCA_WLAN_VENDOR_ATTR_CONFIG_KEEP_ALIVE_INTERVAL = 108,
+ 
++	/* 8-bit unsigned value to configure reduced power scan mode.
++	 *
++	 * This attribute is used to configure the driver to optimize power
++	 * during scan. For example, the driver can switch to 1x1 from 2x2 mode
++	 * for additional power save.
++	 *
++	 * 1 - Enable reduced power scan mode.
++	 * 0 - Disable reduced power scan mode.
++	 */
++	QCA_WLAN_VENDOR_ATTR_CONFIG_REDUCED_POWER_SCAN_MODE = 109,
++
+ 	/* keep last */
+ 	QCA_WLAN_VENDOR_ATTR_CONFIG_AFTER_LAST,
+ 	QCA_WLAN_VENDOR_ATTR_CONFIG_MAX =
+-- 
+2.43.0
+

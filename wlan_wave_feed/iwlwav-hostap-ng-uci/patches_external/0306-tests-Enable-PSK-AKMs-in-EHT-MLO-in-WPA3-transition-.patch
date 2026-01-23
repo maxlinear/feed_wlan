@@ -1,0 +1,38 @@
+From fee037d70dc8d6de0bc2e22fe6e62fa1e3a3ee22 Mon Sep 17 00:00:00 2001
+From: Jouni Malinen <quic_jouni@quicinc.com>
+Date: Thu, 25 Jan 2024 19:48:51 +0200
+Subject: [PATCH] tests: Enable PSK AKMs in EHT+MLO in WPA3 transition mode
+ test
+
+Signed-off-by: Jouni Malinen <quic_jouni@quicinc.com>
+---
+ tests/hwsim/test_eht.py | 6 +++++-
+ 1 file changed, 5 insertions(+), 1 deletion(-)
+
+diff --git a/tests/hwsim/test_eht.py b/tests/hwsim/test_eht.py
+index 6d0deaabc..28e06dc76 100644
+--- a/tests/hwsim/test_eht.py
++++ b/tests/hwsim/test_eht.py
+@@ -158,7 +158,7 @@ def start_eht_sae_ap(apdev, ml=False, transition_mode=False):
+     params['group_cipher'] = "CCMP" if transition_mode else "GCMP-256"
+     params["group_mgmt_cipher"] = "AES-128-CMAC" if transition_mode else "BIP-GMAC-256"
+     params['beacon_prot'] = '1'
+-    params['wpa_key_mgmt'] = "SAE SAE-EXT-KEY" if transition_mode else 'SAE-EXT-KEY'
++    params['wpa_key_mgmt'] = "SAE SAE-EXT-KEY WPA-PSK WPA-PSK-SHA256" if transition_mode else 'SAE-EXT-KEY'
+     params['sae_groups'] = "19 20" if transition_mode else "20"
+     params['sae_pwe'] = "2" if transition_mode else "1"
+     if ml:
+@@ -223,6 +223,10 @@ def test_eht_sae_mlo_tm(dev, apdev):
+                        pairwise="CCMP", group="CCMP",
+                        group_mgmt="AES-128-CMAC", scan_freq="2412",
+                        disable_eht="1")
++        dev[2].connect("eht", key_mgmt="WPA-PSK", psk="12345678",
++                       pairwise="CCMP", group="CCMP",
++                       group_mgmt="AES-128-CMAC", scan_freq="2412",
++                       disable_eht="1")
+     finally:
+         dev[0].set("sae_groups", "")
+         dev[0].set("sae_pwe", "0")
+-- 
+2.43.0
+

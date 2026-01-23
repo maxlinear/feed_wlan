@@ -1,0 +1,28 @@
+From 62e0c101932ef595e765883ba36129c2a8653a37 Mon Sep 17 00:00:00 2001
+From: Aditya Kumar Singh <quic_adisi@quicinc.com>
+Date: Thu, 28 Mar 2024 23:46:33 +0530
+Subject: [PATCH] nl80211: Print the interface name in debug during link add
+
+Signed-off-by: Aditya Kumar Singh <quic_adisi@quicinc.com>
+---
+ src/drivers/driver_nl80211.c | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/src/drivers/driver_nl80211.c b/src/drivers/driver_nl80211.c
+index d95e9f2df..2e0f06c70 100644
+--- a/src/drivers/driver_nl80211.c
++++ b/src/drivers/driver_nl80211.c
+@@ -13859,8 +13859,8 @@ static int nl80211_link_add(void *priv, u8 link_id, const u8 *addr,
+ 	bss->valid_links |= BIT(link_id);
+ 	bss->links[link_id].ctx = bss_ctx;
+ 
+-	wpa_printf(MSG_DEBUG, "nl80211: MLD: valid_links=0x%04x",
+-		   bss->valid_links);
++	wpa_printf(MSG_DEBUG, "nl80211: MLD: valid_links=0x%04x on %s",
++		   bss->valid_links, bss->ifname);
+ 	return 0;
+ }
+ 
+-- 
+2.43.0
+

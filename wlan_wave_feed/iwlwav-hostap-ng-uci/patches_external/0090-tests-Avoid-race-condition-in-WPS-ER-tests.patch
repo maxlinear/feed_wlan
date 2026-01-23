@@ -1,0 +1,36 @@
+From fc995d3130552e2dd52446ae72f666468b474f51 Mon Sep 17 00:00:00 2001
+From: Jouni Malinen <j@w1.fi>
+Date: Sun, 17 Dec 2023 12:48:31 +0200
+Subject: [PATCH] tests: Avoid race condition in WPS ER tests
+
+Wait for hostapd to complete STA authorization before running the
+connectivity test between two associated STAs.
+
+Signed-off-by: Jouni Malinen <j@w1.fi>
+---
+ tests/hwsim/test_ap_wps.py | 2 ++
+ 1 file changed, 2 insertions(+)
+
+diff --git a/tests/hwsim/test_ap_wps.py b/tests/hwsim/test_ap_wps.py
+index fae6317e6..035464ca7 100644
+--- a/tests/hwsim/test_ap_wps.py
++++ b/tests/hwsim/test_ap_wps.py
+@@ -1234,6 +1234,7 @@ def _test_ap_wps_er_add_enrollee(dev, apdev):
+     if ev is None:
+         raise Exception("WPS ER did not report success")
+     hapd.wait_sta(dev[1].own_addr())
++    hapd.wait_4way_hs()
+     hwsim_utils.test_connectivity_sta(dev[0], dev[1])
+ 
+     logger.info("Add a specific Enrollee using ER")
+@@ -1517,6 +1518,7 @@ def _test_ap_wps_er_add_enrollee_pbc(dev, apdev):
+     if ev is None:
+         raise Exception("WPS ER did not report success")
+     hapd.wait_sta(addr=dev[1].own_addr())
++    hapd.wait_4way_hs()
+     hwsim_utils.test_connectivity_sta(dev[0], dev[1])
+ 
+ def test_ap_wps_er_pbc_overlap(dev, apdev):
+-- 
+2.43.0
+

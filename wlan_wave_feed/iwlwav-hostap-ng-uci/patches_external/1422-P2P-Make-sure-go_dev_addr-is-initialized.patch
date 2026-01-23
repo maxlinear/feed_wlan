@@ -1,0 +1,36 @@
+From 741d23c3ce711de65d4bb55ff5c9adf3e98eb9b7 Mon Sep 17 00:00:00 2001
+From: Jouni Malinen <j@w1.fi>
+Date: Sun, 23 Feb 2025 11:53:36 +0200
+Subject: [PATCH] P2P: Make sure go_dev_addr is initialized
+
+wpas_p2p_persistent_group() does not set go_dev_addr if the group is no
+persistent. Initialize go_dev_addr explicitly to all zeroes before that
+call to make sure it cannot be uninitialized here.
+
+Signed-off-by: Jouni Malinen <j@w1.fi>
+---
+ wpa_supplicant/p2p_supplicant.c | 4 +++-
+ 1 file changed, 3 insertions(+), 1 deletion(-)
+
+diff --git a/wpa_supplicant/p2p_supplicant.c b/wpa_supplicant/p2p_supplicant.c
+index f43d0fe48..107e21695 100644
+--- a/wpa_supplicant/p2p_supplicant.c
++++ b/wpa_supplicant/p2p_supplicant.c
+@@ -1602,11 +1602,13 @@ static void wpas_group_formation_completed(struct wpa_supplicant *wpa_s,
+ 			persistent = ssid->p2p_persistent_group;
+ 			os_memcpy(go_dev_addr, wpa_s->global->p2p_dev_addr,
+ 				  ETH_ALEN);
+-		} else
++		} else {
++			os_memset(go_dev_addr, 0, ETH_ALEN);
+ 			persistent = wpas_p2p_persistent_group(wpa_s,
+ 							       go_dev_addr,
+ 							       ssid->ssid,
+ 							       ssid->ssid_len);
++		}
+ 	} else {
+ 		client = wpa_s->p2p_group_interface ==
+ 			P2P_GROUP_INTERFACE_CLIENT;
+-- 
+2.43.0
+

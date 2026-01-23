@@ -1,0 +1,69 @@
+From 38711a011f9e7b5eacc5b2d0d1de280b39ad2046 Mon Sep 17 00:00:00 2001
+From: Ilan Peer <ilan.peer@intel.com>
+Date: Mon, 25 Dec 2023 19:43:02 +0200
+Subject: [PATCH] AP MLD: Remove link stations on a new station authentication
+
+When a station tries to authenticate to an AP that is affiliated with an
+AP MLD, we need to remove all station instances from all the APs.
+
+Signed-off-by: Ilan Peer <ilan.peer@intel.com>
+Signed-off-by: Andrei Otcheretianski <andrei.otcheretianski@intel.com>
+---
+ src/ap/sta_info.c | 34 ++++++++++++++++++++++++++++++++++
+ 1 file changed, 34 insertions(+)
+
+diff --git a/src/ap/sta_info.c b/src/ap/sta_info.c
+index 4804b9959..519a89874 100644
+--- a/src/ap/sta_info.c
++++ b/src/ap/sta_info.c
+@@ -1715,6 +1715,34 @@ int ap_sta_pending_delayed_1x_auth_fail_disconnect(struct hostapd_data *hapd,
+ }
+ 
+ 
++#ifdef CONFIG_IEEE80211BE
++static void ap_sta_remove_link_sta(struct hostapd_data *hapd,
++				   struct sta_info *sta)
++{
++	struct hostapd_data *tmp_hapd;
++	unsigned int i, j;
++
++	for_each_mld_link(tmp_hapd, i, j, hapd->iface->interfaces,
++			  hapd->conf->mld_id) {
++		struct sta_info *tmp_sta;
++
++		if (hapd == tmp_hapd)
++			continue;
++
++		for (tmp_sta = tmp_hapd->sta_list; tmp_sta;
++		     tmp_sta = tmp_sta->next) {
++			if (tmp_sta == sta ||
++			    os_memcmp(tmp_sta->addr, sta->addr, ETH_ALEN) != 0)
++				continue;
++
++			ap_free_sta(tmp_hapd, tmp_sta);
++			break;
++		}
++	}
++}
++#endif /* CONFIG_IEEE80211BE */
++
++
+ int ap_sta_re_add(struct hostapd_data *hapd, struct sta_info *sta)
+ {
+ 	const u8 *mld_link_addr = NULL;
+@@ -1734,6 +1762,12 @@ int ap_sta_re_add(struct hostapd_data *hapd, struct sta_info *sta)
+ 
+ 		mld_link_sta = sta->mld_assoc_link_id != mld_link_id;
+ 		mld_link_addr = sta->mld_info.links[mld_link_id].peer_addr;
++
++		/*
++		 * In case the AP is affiliated with an AP MLD, we need to
++		 * remove the station from all relevant links/APs.
++		 */
++		ap_sta_remove_link_sta(hapd, sta);
+ 	}
+ #endif /* CONFIG_IEEE80211BE */
+ 
+-- 
+2.43.0
+

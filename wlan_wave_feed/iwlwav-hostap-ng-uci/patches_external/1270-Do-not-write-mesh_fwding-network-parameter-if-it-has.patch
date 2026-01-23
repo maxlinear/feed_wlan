@@ -1,0 +1,32 @@
+From b375b7630f5625c764b21896ac0ab3bd87b41739 Mon Sep 17 00:00:00 2001
+From: Jouni Malinen <quic_jouni@quicinc.com>
+Date: Fri, 24 Jan 2025 10:48:06 +0200
+Subject: [PATCH] Do not write mesh_fwding network parameter if it has default
+ value
+
+This is set to 1 by default but the condition for writing it into the
+configuration file used 0 as the default. Make these match so that there
+won't be confusing entries in network block for cases that do not have
+anything to do with mesh.
+
+Signed-off-by: Jouni Malinen <quic_jouni@quicinc.com>
+---
+ wpa_supplicant/config_file.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/wpa_supplicant/config_file.c b/wpa_supplicant/config_file.c
+index 02348a3e3..ea52d9cf2 100644
+--- a/wpa_supplicant/config_file.c
++++ b/wpa_supplicant/config_file.c
+@@ -867,7 +867,7 @@ static void wpa_config_write_network(FILE *f, struct wpa_ssid *ssid)
+ #endif /* IEEE8021X_EAPOL */
+ 	INT(mode);
+ 	INT(no_auto_peer);
+-	INT(mesh_fwding);
++	INT_DEF(mesh_fwding, DEFAULT_MESH_FWDING);
+ 	INT(frequency);
+ 	INT(enable_edmg);
+ 	INT(edmg_channel);
+-- 
+2.43.0
+

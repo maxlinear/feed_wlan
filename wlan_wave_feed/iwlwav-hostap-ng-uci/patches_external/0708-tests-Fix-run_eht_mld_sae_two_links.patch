@@ -1,0 +1,33 @@
+From b946a800f02aa5a0aaafd4e82acd66bc3e5e4872 Mon Sep 17 00:00:00 2001
+From: Ilan Peer <ilan.peer@intel.com>
+Date: Wed, 1 May 2024 10:19:53 +0300
+Subject: [PATCH] tests: Fix run_eht_mld_sae_two_links()
+
+In the case that the AP MLD is disabled and enabled again, flush
+the wpa_supplicant BSS table before reconnecting as otherwise
+the previous AP MLD BSSs would be in the BSS table and the wpa_supplicant
+would try to connect to them.
+
+Signed-off-by: Ilan Peer <ilan.peer@intel.com>
+---
+ tests/hwsim/test_eht.py | 4 ++++
+ 1 file changed, 4 insertions(+)
+
+diff --git a/tests/hwsim/test_eht.py b/tests/hwsim/test_eht.py
+index cc679682c..00d6adff7 100644
+--- a/tests/hwsim/test_eht.py
++++ b/tests/hwsim/test_eht.py
+@@ -526,6 +526,10 @@ def run_eht_mld_sae_two_links(dev, apdev, beacon_prot="1",
+             # fall back to full SAE from failed PMKSA caching attempt
+             # automatically.
+             wpas.request("PMKSA_FLUSH")
++
++            # flush the BSS table before reconnect as otherwise the old
++            # AP MLD BSSs would be in the BSS list
++            wpas.request("BSS_FLUSH 0")
+             wpas.request("RECONNECT")
+             wpas.wait_connected()
+             hapd0.wait_sta()
+-- 
+2.43.0
+

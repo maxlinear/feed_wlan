@@ -1,0 +1,49 @@
+From 010d8d10edb3148b0f599e5fb6619c7775345fcd Mon Sep 17 00:00:00 2001
+From: Jouni Malinen <quic_jouni@quicinc.com>
+Date: Wed, 6 Mar 2024 22:34:57 +0200
+Subject: [PATCH] EHT: Use eht_oper_puncturing_override when constructing VHT
+ elements
+
+The testing functionality for overriding EHT puncturing bitmap was
+applied only for the EHT elements. The mac80211 has been updated to
+enforce compartibility between EHT and HT/VHT information and that made
+the related test cases fail. Apply the override value for VHT element
+generation to avoid some of those issues.
+
+Signed-off-by: Jouni Malinen <quic_jouni@quicinc.com>
+---
+ src/ap/ieee802_11_vht.c | 11 +++++++++--
+ 1 file changed, 9 insertions(+), 2 deletions(-)
+
+diff --git a/src/ap/ieee802_11_vht.c b/src/ap/ieee802_11_vht.c
+index db615a38b..f942aa78c 100644
+--- a/src/ap/ieee802_11_vht.c
++++ b/src/ap/ieee802_11_vht.c
+@@ -79,6 +79,9 @@ u8 * hostapd_eid_vht_operation(struct hostapd_data *hapd, u8 *eid)
+ 		hostapd_get_oper_chwidth(hapd->iconf);
+ 	u8 seg0 = hapd->iconf->vht_oper_centr_freq_seg0_idx;
+ 	u8 seg1 = hapd->iconf->vht_oper_centr_freq_seg1_idx;
++#ifdef CONFIG_IEEE80211BE
++	u16 punct_bitmap = hapd->iconf->punct_bitmap;
++#endif /* CONFIG_IEEE80211BE */
+ 
+ 	if (is_6ghz_op_class(hapd->iconf->op_class))
+ 		return eid;
+@@ -90,8 +93,12 @@ u8 * hostapd_eid_vht_operation(struct hostapd_data *hapd, u8 *eid)
+ 	os_memset(oper, 0, sizeof(*oper));
+ 
+ #ifdef CONFIG_IEEE80211BE
+-	if (hapd->iconf->punct_bitmap) {
+-		punct_update_legacy_bw(hapd->iconf->punct_bitmap,
++#ifdef CONFIG_TESTING_OPTIONS
++	if (!punct_bitmap && hapd->conf->eht_oper_puncturing_override)
++		punct_bitmap = hapd->conf->eht_oper_puncturing_override;
++#endif /* CONFIG_TESTING_OPTIONS */
++	if (punct_bitmap) {
++		punct_update_legacy_bw(punct_bitmap,
+ 				       hapd->iconf->channel,
+ 				       &oper_chwidth, &seg0, &seg1);
+ 	}
+-- 
+2.43.0
+

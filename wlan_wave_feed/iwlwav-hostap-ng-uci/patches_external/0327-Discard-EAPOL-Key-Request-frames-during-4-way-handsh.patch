@@ -1,0 +1,39 @@
+From 09679408850ad1fa9eba6a979421b44b9544ecf4 Mon Sep 17 00:00:00 2001
+From: Jouni Malinen <j@w1.fi>
+Date: Sun, 28 Jan 2024 18:32:03 +0200
+Subject: [PATCH] Discard EAPOL-Key Request frames during 4-way handshake
+
+While the Authenticator state machine conditions are already checking
+for sm->EAPOLKeyRequest, it seems clearer to explicitly discard any
+EAPOL-Key Request frame that is received unexpectedly during a 4-way
+handshake.
+
+Signed-off-by: Jouni Malinen <j@w1.fi>
+---
+ src/ap/wpa_auth.c | 10 ++++++++++
+ 1 file changed, 10 insertions(+)
+
+diff --git a/src/ap/wpa_auth.c b/src/ap/wpa_auth.c
+index cc2f1393d..b07f13647 100644
+--- a/src/ap/wpa_auth.c
++++ b/src/ap/wpa_auth.c
+@@ -1437,6 +1437,16 @@ void wpa_receive(struct wpa_authenticator *wpa_auth,
+ 		}
+ 		break;
+ 	case REQUEST:
++		if (sm->wpa_ptk_state == WPA_PTK_PTKSTART ||
++		    sm->wpa_ptk_state == WPA_PTK_PTKCALCNEGOTIATING ||
++		    sm->wpa_ptk_state == WPA_PTK_PTKCALCNEGOTIATING2 ||
++		    sm->wpa_ptk_state == WPA_PTK_PTKINITNEGOTIATING) {
++			wpa_auth_vlogger(wpa_auth, wpa_auth_get_spa(sm),
++					 LOGGER_INFO,
++					 "received EAPOL-Key Request in invalid state (%d) - dropped",
++					 sm->wpa_ptk_state);
++			goto out;
++		}
+ 		break;
+ 	}
+ 
+-- 
+2.43.0
+

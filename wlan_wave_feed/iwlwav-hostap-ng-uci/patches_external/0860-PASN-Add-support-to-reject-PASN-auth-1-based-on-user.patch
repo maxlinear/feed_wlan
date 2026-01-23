@@ -1,0 +1,74 @@
+From 8f21cdf9d765f2d1462fef8f96dcf2e878f938dc Mon Sep 17 00:00:00 2001
+From: Shivam Rai <quic_shivamr@quicinc.com>
+Date: Mon, 12 Aug 2024 11:39:46 +0530
+Subject: [PATCH] PASN: Add support to reject PASN auth 1 based on user input
+
+When the PASN implementation is used as a library for Wi-Fi Aware
+applications there is need to reject the PASN auth 1 frame based on the
+user input. Add support to send PASN auth 2 with failure status for
+auth 1 frame received to address this need.
+
+Signed-off-by: Jouni Malinen <quic_jouni@quicinc.com>
+---
+ src/ap/ieee802_11.c       | 2 +-
+ src/pasn/pasn_common.h    | 3 ++-
+ src/pasn/pasn_responder.c | 9 ++++++++-
+ 3 files changed, 11 insertions(+), 3 deletions(-)
+
+diff --git a/src/ap/ieee802_11.c b/src/ap/ieee802_11.c
+index 5e484641a..230fdb7b2 100644
+--- a/src/ap/ieee802_11.c
++++ b/src/ap/ieee802_11.c
+@@ -2850,7 +2850,7 @@ static void handle_auth_pasn(struct hostapd_data *hapd, struct sta_info *sta,
+ 
+ 		hapd_pasn_update_params(hapd, sta, mgmt, len);
+ 		if (handle_auth_pasn_1(sta->pasn, hapd->own_addr,
+-				       sta->addr, mgmt, len) < 0)
++				       sta->addr, mgmt, len, false) < 0)
+ 			ap_free_sta(hapd, sta);
+ 	} else if (trans_seq == 3) {
+ 		if (!sta->pasn) {
+diff --git a/src/pasn/pasn_common.h b/src/pasn/pasn_common.h
+index 36710c2b7..bb54175b2 100644
+--- a/src/pasn/pasn_common.h
++++ b/src/pasn/pasn_common.h
+@@ -174,7 +174,8 @@ int wpa_pasn_auth_tx_status(struct pasn_data *pasn,
+ /* Responder */
+ int handle_auth_pasn_1(struct pasn_data *pasn,
+ 		       const u8 *own_addr, const u8 *peer_addr,
+-		       const struct ieee80211_mgmt *mgmt, size_t len);
++		       const struct ieee80211_mgmt *mgmt, size_t len,
++		       bool reject);
+ int handle_auth_pasn_3(struct pasn_data *pasn, const u8 *own_addr,
+ 		       const u8 *peer_addr,
+ 		       const struct ieee80211_mgmt *mgmt, size_t len);
+diff --git a/src/pasn/pasn_responder.c b/src/pasn/pasn_responder.c
+index b99136492..f6e44a53c 100644
+--- a/src/pasn/pasn_responder.c
++++ b/src/pasn/pasn_responder.c
+@@ -597,7 +597,8 @@ fail:
+ 
+ int handle_auth_pasn_1(struct pasn_data *pasn,
+ 		       const u8 *own_addr, const u8 *peer_addr,
+-		       const struct ieee80211_mgmt *mgmt, size_t len)
++		       const struct ieee80211_mgmt *mgmt, size_t len,
++		       bool reject)
+ {
+ 	struct ieee802_11_elems elems;
+ 	struct wpa_ie_data rsn_data;
+@@ -616,6 +617,12 @@ int handle_auth_pasn_1(struct pasn_data *pasn,
+ 	if (!groups)
+ 		groups = default_groups;
+ 
++	if (reject) {
++		wpa_printf(MSG_DEBUG, "PASN: Received Rejection");
++		status = WLAN_STATUS_UNSPECIFIED_FAILURE;
++		goto send_resp;
++	}
++
+ 	if (ieee802_11_parse_elems(mgmt->u.auth.variable,
+ 				   len - offsetof(struct ieee80211_mgmt,
+ 						  u.auth.variable),
+-- 
+2.43.0
+

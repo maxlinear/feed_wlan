@@ -1,0 +1,92 @@
+From e94a7d7940986fc490487221b72728e8fcb99108 Mon Sep 17 00:00:00 2001
+From: Dariusz Kopka <dariusz@plume.com>
+Date: Mon, 15 Jan 2024 14:16:00 +0100
+Subject: [PATCH] FT: Move RxKH configuration clearing into a helper function
+
+This can be used as a shared function for reloading RxKHs at runtime.
+
+Signed-off-by: Dariusz Kopka <dariusz@plume.com>
+---
+ src/ap/ap_config.c | 46 ++++++++++++++++++++++++++--------------------
+ src/ap/ap_config.h |  1 +
+ 2 files changed, 27 insertions(+), 20 deletions(-)
+
+diff --git a/src/ap/ap_config.c b/src/ap/ap_config.c
+index 429879189..26f644527 100644
+--- a/src/ap/ap_config.c
++++ b/src/ap/ap_config.c
+@@ -699,6 +699,31 @@ void hostapd_config_clear_wpa_psk(struct hostapd_wpa_psk **l)
+ }
+ 
+ 
++#ifdef CONFIG_IEEE80211R_AP
++void hostapd_config_clear_rxkhs(struct hostapd_bss_config *conf)
++{
++	struct ft_remote_r0kh *r0kh, *r0kh_prev;
++	struct ft_remote_r1kh *r1kh, *r1kh_prev;
++
++	r0kh = conf->r0kh_list;
++	conf->r0kh_list = NULL;
++	while (r0kh) {
++		r0kh_prev = r0kh;
++		r0kh = r0kh->next;
++		os_free(r0kh_prev);
++	}
++
++	r1kh = conf->r1kh_list;
++	conf->r1kh_list = NULL;
++	while (r1kh) {
++		r1kh_prev = r1kh;
++		r1kh = r1kh->next;
++		os_free(r1kh_prev);
++	}
++}
++#endif /* CONFIG_IEEE80211R_AP */
++
++
+ static void hostapd_config_free_anqp_elem(struct hostapd_bss_config *conf)
+ {
+ 	struct anqp_element *elem;
+@@ -831,26 +856,7 @@ void hostapd_config_free_bss(struct hostapd_bss_config *conf)
+ 	os_free(conf->time_zone);
+ 
+ #ifdef CONFIG_IEEE80211R_AP
+-	{
+-		struct ft_remote_r0kh *r0kh, *r0kh_prev;
+-		struct ft_remote_r1kh *r1kh, *r1kh_prev;
+-
+-		r0kh = conf->r0kh_list;
+-		conf->r0kh_list = NULL;
+-		while (r0kh) {
+-			r0kh_prev = r0kh;
+-			r0kh = r0kh->next;
+-			os_free(r0kh_prev);
+-		}
+-
+-		r1kh = conf->r1kh_list;
+-		conf->r1kh_list = NULL;
+-		while (r1kh) {
+-			r1kh_prev = r1kh;
+-			r1kh = r1kh->next;
+-			os_free(r1kh_prev);
+-		}
+-	}
++	hostapd_config_clear_rxkhs(conf);
+ #endif /* CONFIG_IEEE80211R_AP */
+ 
+ #ifdef CONFIG_WPS
+diff --git a/src/ap/ap_config.h b/src/ap/ap_config.h
+index 7e7c340cd..4c5401b2c 100644
+--- a/src/ap/ap_config.h
++++ b/src/ap/ap_config.h
+@@ -1348,6 +1348,7 @@ void hostapd_config_free_radius_attr(struct hostapd_radius_attr *attr);
+ void hostapd_config_free_eap_user(struct hostapd_eap_user *user);
+ void hostapd_config_free_eap_users(struct hostapd_eap_user *user);
+ void hostapd_config_clear_wpa_psk(struct hostapd_wpa_psk **p);
++void hostapd_config_clear_rxkhs(struct hostapd_bss_config *conf);
+ void hostapd_config_free_bss(struct hostapd_bss_config *conf);
+ void hostapd_config_free(struct hostapd_config *conf);
+ int hostapd_maclist_found(struct mac_acl_entry *list, int num_entries,
+-- 
+2.43.0
+

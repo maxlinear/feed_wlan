@@ -1,0 +1,28 @@
+From 26d64d737b569ae5e6d4fb7d5920b59531b7118d Mon Sep 17 00:00:00 2001
+From: Jouni Malinen <j@w1.fi>
+Date: Sat, 1 Feb 2025 18:49:15 +0200
+Subject: [PATCH] GnuTLS: Use standard comment for falling through switch case
+
+This gets rid of an implicit-fallthrough warning from the compiler.
+
+Signed-off-by: Jouni Malinen <j@w1.fi>
+---
+ src/crypto/tls_gnutls.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/src/crypto/tls_gnutls.c b/src/crypto/tls_gnutls.c
+index 378bebbd7..7d73b4f06 100644
+--- a/src/crypto/tls_gnutls.c
++++ b/src/crypto/tls_gnutls.c
+@@ -1516,7 +1516,7 @@ struct wpabuf * tls_connection_handshake(void *tls_ctx,
+ 				conn->global->event_cb(conn->global->cb_ctx,
+ 						       TLS_ALERT, &ev);
+ 			}
+-			/* continue */
++			/* fallthrough */
+ 		default:
+ 			wpa_printf(MSG_DEBUG, "%s - gnutls_handshake failed "
+ 				   "-> %s", __func__, gnutls_strerror(ret));
+-- 
+2.43.0
+

@@ -1,0 +1,37 @@
+From b745cd33efb463109f7f10e9018aaa8cb71097a7 Mon Sep 17 00:00:00 2001
+From: Sai Pratyusha Magam <quic_smagam@quicinc.com>
+Date: Thu, 9 May 2024 15:16:29 +0530
+Subject: [PATCH] PASN: Derive KDK on AP only when both ends support SecureLTF
+
+On the AP responder side, KDK was derived if the driver advertises
+WPA_DRIVER_FLAGS2_SEC_LTF_AP. That is not correct, i.e., this needs to
+also depend on the initiator indicating support for this in the RSNXE of
+PASN authentication frame 1.
+
+Signed-off-by: Sai Pratyusha Magam <quic_smagam@quicinc.com>
+---
+ src/ap/ieee802_11.c | 8 ++++++++
+ 1 file changed, 8 insertions(+)
+
+diff --git a/src/ap/ieee802_11.c b/src/ap/ieee802_11.c
+index 7592ba998..2d361fc59 100644
+--- a/src/ap/ieee802_11.c
++++ b/src/ap/ieee802_11.c
+@@ -2701,6 +2701,14 @@ static void hapd_pasn_update_params(struct hostapd_data *hapd,
+ 	pasn_set_akmp(pasn, rsn_data.key_mgmt);
+ 	pasn_set_cipher(pasn, rsn_data.pairwise_cipher);
+ 
++	if (pasn->derive_kdk &&
++	    !ieee802_11_rsnx_capab_len(elems.rsnxe, elems.rsnxe_len,
++				       WLAN_RSNX_CAPAB_SECURE_LTF))
++		pasn_disable_kdk_derivation(pasn);
++#ifdef CONFIG_TESTING_OPTIONS
++	if (hapd->conf->force_kdk_derivation)
++		pasn_enable_kdk_derivation(pasn);
++#endif /* CONFIG_TESTING_OPTIONS */
+ 	akmp = pasn_get_akmp(pasn);
+ 
+ 	if (wpa_key_mgmt_ft(akmp) && rsn_data.num_pmkid) {
+-- 
+2.43.0
+

@@ -1,0 +1,103 @@
+From 29912be145e1293d8606cb7cf2a4b50165b14cd0 Mon Sep 17 00:00:00 2001
+From: Aditya Kumar Singh <quic_adisi@quicinc.com>
+Date: Mon, 14 Oct 2024 09:59:45 +0530
+Subject: [PATCH] hostapd: Pass link ID for non-link agnostic Action frames
+
+With the recently added support for passing Link ID for transmitting
+Action frames, pass the Link ID is if the Action frame is not link
+agnostic.
+
+According to IEEE P802.11be/D7.0, 35.3.14 (MLD individually addressed
+Management frame delivery), between an AP MLD and a non-AP MLD, certain
+Action frames such as Block Ack Action frame, SA Query Action frame, and
+WNM Sleep Mode Request/Response frame, etc. which are individually
+addressed MMPDUs, are intended for an MLD. Therefore, there is no need
+to pass the Link ID for these types of frames.
+
+However, for rest of the Action frames since it is not said to be
+intended for an MLD, use the link ID.
+
+Signed-off-by: Aditya Kumar Singh <quic_adisi@quicinc.com>
+---
+ src/ap/ap_drv_ops.c | 47 ++++++++++++++++++++++++++++++++++++++++++++-
+ 1 file changed, 46 insertions(+), 1 deletion(-)
+
+diff --git a/src/ap/ap_drv_ops.c b/src/ap/ap_drv_ops.c
+index 6fa5f2779..f492a34cf 100644
+--- a/src/ap/ap_drv_ops.c
++++ b/src/ap/ap_drv_ops.c
+@@ -922,6 +922,46 @@ int hostapd_drv_wnm_oper(struct hostapd_data *hapd, enum wnm_oper oper,
+ }
+ 
+ 
++#ifdef CONFIG_IEEE80211BE
++static bool hostapd_is_action_frame_link_agnostic(u8 category, u8 sub_category)
++{
++	/* As per IEEE P802.11be/D7.0, 35.3.14 (MLD individually addressed
++	 * Management frame delivery), between an AP MLD and a non-AP MLD, the
++	 * following individually addressed MMPDUs shall be intended for an MLD.
++	 */
++	switch (category) {
++	case WLAN_ACTION_BLOCK_ACK:
++	case WLAN_ACTION_FT:
++	case WLAN_ACTION_SA_QUERY:
++	case WLAN_ACTION_WNM:
++		switch (sub_category) {
++		case WNM_BSS_TRANS_MGMT_REQ:
++		case WNM_BSS_TRANS_MGMT_RESP:
++		case WNM_SLEEP_MODE_REQ:
++		case WNM_SLEEP_MODE_RESP:
++			return true;
++		default:
++			return false;
++		}
++	case WLAN_ACTION_ROBUST_AV_STREAMING:
++		switch (sub_category) {
++		case ROBUST_AV_SCS_REQ:
++		case ROBUST_AV_SCS_RESP:
++		case ROBUST_AV_MSCS_REQ:
++		case ROBUST_AV_MSCS_RESP:
++			return true;
++		default:
++			return false;
++		}
++	/* TODO: Handle EHT/EPCS related action frames once the support is
++	 * added. */
++	default:
++		return false;
++	}
++}
++#endif /* CONFIG_IEEE80211BE */
++
++
+ static int hapd_drv_send_action(struct hostapd_data *hapd, unsigned int freq,
+ 				unsigned int wait, const u8 *dst,
+ 				const u8 *data, size_t len, bool addr3_ap,
+@@ -933,6 +973,7 @@ static int hapd_drv_send_action(struct hostapd_data *hapd, unsigned int freq,
+ 		0xff, 0xff, 0xff, 0xff, 0xff, 0xff
+ 	};
+ 	struct sta_info *sta;
++	int link_id = -1;
+ 
+ 	if (!hapd->driver || !hapd->driver->send_action || !hapd->drv_priv)
+ 		return 0;
+@@ -965,11 +1006,15 @@ static int hapd_drv_send_action(struct hostapd_data *hapd, unsigned int freq,
+ 			own_addr = hapd->mld->mld_addr;
+ 			bssid = own_addr;
+ 		}
++
++		if (!hostapd_is_action_frame_link_agnostic(data[0], data[1]))
++			link_id = hapd->mld_link_id;
+ #endif /* CONFIG_IEEE80211BE */
+ 	}
+ 
+ 	return hapd->driver->send_action(hapd->drv_priv, freq, wait, dst,
+-					 own_addr, bssid, data, len, 0, -1);
++					 own_addr, bssid, data, len, 0,
++					 link_id);
+ }
+ 
+ 
+-- 
+2.43.0
+

@@ -1,0 +1,48 @@
+From de40e08f70c8f3c08c7fb8d4691de3e3988232ea Mon Sep 17 00:00:00 2001
+From: Cermak Dominik <Dominik.Cermak@joynext.com>
+Date: Thu, 29 Aug 2024 08:01:21 +0000
+Subject: [PATCH] nl80211: Pass "global" events to all interfaces
+
+We got connection failures because of outdated channel information.
+That's because the NL80211_CMD_REG_CHANGE event is important for all
+interfaces.
+
+Commit f13683720239 ("nl80211: Pass wiphy events to all affected
+interfaces") skips the early termination for events directed to a wiphy,
+but that doesn't cover the regulatory change event because it doesn't
+have a wiphy set either. Therefore the early termination still kicks in
+and from three interfaces, only one got the updated channel list.
+
+Fix this by changing the early termination logic to only apply to events
+directed either to a specific interface index for wdev.
+
+Signed-off-by: Dominik Cermak <dominik.cermak@joynext.com>
+---
+ src/drivers/driver_nl80211_event.c | 11 ++++++++++-
+ 1 file changed, 10 insertions(+), 1 deletion(-)
+
+diff --git a/src/drivers/driver_nl80211_event.c b/src/drivers/driver_nl80211_event.c
+index 903207067..849666f5c 100644
+--- a/src/drivers/driver_nl80211_event.c
++++ b/src/drivers/driver_nl80211_event.c
+@@ -4257,7 +4257,16 @@ int process_global_event(struct nl_msg *msg, void *arg)
+ 			     wdev_id == bss->wdev_id)) {
+ 				processed = true;
+ 				do_process_drv_event(bss, gnlh->cmd, tb);
+-				if (!wiphy_idx_set)
++				/* There are two types of events that may need
++				 * to be delivered to multiple interfaces:
++				 * 1. Events for a wiphy, as it can have
++				 * multiple interfaces.
++				 * 2. "Global" events, like
++				 * NL80211_CMD_REG_CHANGE.
++				 *
++				 * Terminate early only if the event is directed
++				 * to a specific interface or wdev. */
++				if (ifidx != -1 || wdev_id_set)
+ 					return NL_SKIP;
+ 				/* The driver instance could have been removed,
+ 				 * e.g., due to NL80211_CMD_RADAR_DETECT event,
+-- 
+2.43.0
+

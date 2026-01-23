@@ -1,0 +1,36 @@
+From b27086e6ebe3a55eb4e68dc55df8e7bf3b9944fc Mon Sep 17 00:00:00 2001
+From: Jouni Malinen <j@w1.fi>
+Date: Sun, 28 Jan 2024 18:41:06 +0200
+Subject: [PATCH] Discard EAPOL-Key request without Secure=1
+
+EAPOL-Key request is accepted only if the MIC has been verified, so PTK
+must have already been derived and Secure=1 needs to be used. Check the
+Secure bit explicitly for completeness even though the MIC verification
+is already taking care of validating that the sender is in the
+possession of valid keys.
+
+Signed-off-by: Jouni Malinen <j@w1.fi>
+---
+ src/ap/wpa_auth.c | 6 ++++++
+ 1 file changed, 6 insertions(+)
+
+diff --git a/src/ap/wpa_auth.c b/src/ap/wpa_auth.c
+index b07f13647..79ecd4e5b 100644
+--- a/src/ap/wpa_auth.c
++++ b/src/ap/wpa_auth.c
+@@ -1516,6 +1516,12 @@ void wpa_receive(struct wpa_authenticator *wpa_auth,
+ 	}
+ 
+ 	if (key_info & WPA_KEY_INFO_REQUEST) {
++		if (!(key_info & WPA_KEY_INFO_SECURE)) {
++			wpa_auth_logger(wpa_auth, wpa_auth_get_spa(sm),
++					LOGGER_INFO,
++					"received EAPOL-Key request without Secure=1");
++			goto out;
++		}
+ 		if (sm->MICVerified) {
+ 			sm->req_replay_counter_used = 1;
+ 			os_memcpy(sm->req_replay_counter, key->replay_counter,
+-- 
+2.43.0
+

@@ -1,0 +1,67 @@
+From e422cc06b5ff5e57b9bde1f3b20b9b1cde1dfaf0 Mon Sep 17 00:00:00 2001
+From: Jouni Malinen <quic_jouni@quicinc.com>
+Date: Thu, 10 Oct 2024 11:16:30 +0300
+Subject: [PATCH] tests: SAE PWE derivation with both options
+
+Signed-off-by: Jouni Malinen <quic_jouni@quicinc.com>
+---
+ tests/hwsim/test_sae.py | 32 +++++++++++++++++++++++++++++++-
+ 1 file changed, 31 insertions(+), 1 deletion(-)
+
+diff --git a/tests/hwsim/test_sae.py b/tests/hwsim/test_sae.py
+index 32e16b9ac..04f43352a 100644
+--- a/tests/hwsim/test_sae.py
++++ b/tests/hwsim/test_sae.py
+@@ -2215,11 +2215,13 @@ def test_sae_pwe_group_24(dev, apdev):
+     """SAE PWE derivation options with group 24"""
+     run_sae_pwe_group(dev, apdev, 24)
+ 
+-def start_sae_pwe_ap(apdev, group, sae_pwe):
++def start_sae_pwe_ap(apdev, group, sae_pwe, pmf=False):
+     params = hostapd.wpa2_params(ssid="sae-pwe", passphrase="12345678")
+     params['wpa_key_mgmt'] = 'SAE'
+     params['sae_groups'] = str(group)
+     params['sae_pwe'] = str(sae_pwe)
++    if pmf:
++        params['ieee80211w'] = '2'
+     return hostapd.add_ap(apdev, params)
+ 
+ def run_sae_pwe_group(dev, apdev, group):
+@@ -2299,6 +2301,34 @@ def test_sae_pwe_loop_only_ap(dev, apdev):
+         dev[0].set("sae_groups", "")
+         dev[0].set("sae_pwe", "0")
+ 
++def test_sae_pwe_both(dev, apdev):
++    """SAE PWE derivation with both options"""
++    check_sae_capab(dev[0])
++    check_sae_capab(dev[1])
++    hapd = start_sae_pwe_ap(apdev[0], 19, 2, pmf=True)
++    try:
++        dev[0].set("sae_groups", "")
++        dev[0].set("sae_pwe", "1")
++        dev[0].connect("sae-pwe", psk="12345678", key_mgmt="SAE",
++                       ieee80211w="2", scan_freq="2412")
++        dev[1].set("sae_groups", "")
++        dev[1].connect("sae-pwe", psk="12345678", key_mgmt="SAE",
++                       ieee80211w="2", scan_freq="2412")
++        if dev[0].get_status_field("sae_h2e") != "1":
++            raise Exception("SAE H2E was not used on dev[0]")
++        if dev[1].get_status_field("sae_h2e") != "0":
++            raise Exception("SAE H2E was used on dev[1]")
++    finally:
++        dev[0].set("sae_groups", "")
++        dev[0].set("sae_pwe", "0")
++        dev[1].set("sae_groups", "")
++
++    dev[0].connect("sae-pwe", psk="12345678", key_mgmt="SAE", scan_freq="2412",
++                   wait_connect=False)
++    ev = dev[0].wait_event(["CTRL-EVENT-NETWORK-NOT-FOUND"], timeout=10)
++    if ev is None:
++        raise Exception("No indication of mismatching network seen")
++
+ def test_sae_h2e_rejected_groups(dev, apdev):
+     """SAE H2E and rejected groups indication"""
+     check_sae_capab(dev[0])
+-- 
+2.43.0
+

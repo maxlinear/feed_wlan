@@ -1,0 +1,84 @@
+From fac34688ad666192f7f7c2c1619262138f9574a3 Mon Sep 17 00:00:00 2001
+From: Aditya Kumar Singh <quic_adisi@quicinc.com>
+Date: Wed, 6 Mar 2024 12:07:52 +0530
+Subject: [PATCH] AP MLD: Assign link ID during BSS creation
+
+Link ID was assigned when BSS is going through setup and the driver
+interface init. Later if interface is disabled and enabled again, setup
+BSS is called which will give a new link ID to it. However, Link ID
+should be same for a BSS affliated to an AP MLD for the full lifetime of
+the BSS.
+
+Hence, assign the link ID during BSS creation itself. And it will remain
+until BSS entry is completely freed. Hence, link ID will not change as
+part of disable/enable.
+
+Also, since link ID would be decided now, it will help in creating link
+level control sockets in a subsequent patch.
+
+Signed-off-by: Aditya Kumar Singh <quic_adisi@quicinc.com>
+---
+ hostapd/main.c   |  2 --
+ src/ap/hostapd.c | 12 ++++++++++++
+ 2 files changed, 12 insertions(+), 2 deletions(-)
+
+diff --git a/hostapd/main.c b/hostapd/main.c
+index a0619c76c..119185726 100644
+--- a/hostapd/main.c
++++ b/hostapd/main.c
+@@ -212,7 +212,6 @@ static int hostapd_driver_init(struct hostapd_iface *iface)
+ 			os_memcpy(hapd->own_addr, b, ETH_ALEN);
+ 		}
+ 
+-		hapd->mld_link_id = hapd->mld->next_link_id++;
+ 		hostapd_mld_add_link(hapd);
+ 
+ 		goto setup_mld;
+@@ -297,7 +296,6 @@ static int hostapd_driver_init(struct hostapd_iface *iface)
+ 		else
+ 			os_memcpy(hapd->own_addr, b, ETH_ALEN);
+ 
+-		hapd->mld_link_id = hapd->mld->next_link_id++;
+ 		hostapd_mld_add_link(hapd);
+ 	}
+ 
+diff --git a/src/ap/hostapd.c b/src/ap/hostapd.c
+index cd78d1887..07bf91e70 100644
+--- a/src/ap/hostapd.c
++++ b/src/ap/hostapd.c
+@@ -2915,6 +2915,16 @@ struct hostapd_iface * hostapd_alloc_iface(void)
+ }
+ 
+ 
++#ifdef CONFIG_IEEE80211BE
++static void hostapd_bss_alloc_link_id(struct hostapd_data *hapd)
++{
++	hapd->mld_link_id = hapd->mld->next_link_id++;
++	wpa_printf(MSG_DEBUG, "AP MLD: %s: Link ID %d assigned.",
++		   hapd->mld->name, hapd->mld_link_id);
++}
++#endif /* CONFIG_IEEE80211BE */
++
++
+ static void hostapd_bss_setup_multi_link(struct hostapd_data *hapd,
+ 					 struct hapd_interfaces *interfaces)
+ {
+@@ -2936,6 +2946,7 @@ static void hostapd_bss_setup_multi_link(struct hostapd_data *hapd,
+ 			continue;
+ 
+ 		hapd->mld = mld;
++		hostapd_bss_alloc_link_id(hapd);
+ 		break;
+ 	}
+ 
+@@ -2952,6 +2963,7 @@ static void hostapd_bss_setup_multi_link(struct hostapd_data *hapd,
+ 	wpa_printf(MSG_DEBUG, "AP MLD %s created", mld->name);
+ 
+ 	hapd->mld = mld;
++	hostapd_bss_alloc_link_id(hapd);
+ 
+ 	all_mld = os_realloc_array(interfaces->mld, interfaces->mld_count + 1,
+ 				   sizeof(struct hostapd_mld *));
+-- 
+2.43.0
+

@@ -1,0 +1,29 @@
+From 27de11ca5c08684bdd487398fca619c2f51eac53 Mon Sep 17 00:00:00 2001
+From: Shivani Baranwal <quic_shivbara@quicinc.com>
+Date: Sun, 18 Aug 2024 16:05:20 +0530
+Subject: [PATCH] nl80211: Configure capability flag for NAN USD offload
+
+Configure the capability flag based on the nl80211 feature advertisement
+for NAN USD offload support.
+
+Signed-off-by: Shivani Baranwal <quic_shivbara@quicinc.com>
+---
+ src/drivers/driver_nl80211_capa.c | 2 ++
+ 1 file changed, 2 insertions(+)
+
+diff --git a/src/drivers/driver_nl80211_capa.c b/src/drivers/driver_nl80211_capa.c
+index 753ec55ac..1b3f82390 100644
+--- a/src/drivers/driver_nl80211_capa.c
++++ b/src/drivers/driver_nl80211_capa.c
+@@ -1451,6 +1451,8 @@ static void qca_nl80211_get_features(struct wpa_driver_nl80211_data *drv)
+ 			   "The driver supports RSN overriding in STA mode");
+ 		drv->capa.flags2 |= WPA_DRIVER_FLAGS2_RSN_OVERRIDE_STA;
+ 	}
++	if (check_feature(QCA_WLAN_VENDOR_FEATURE_NAN_USD_OFFLOAD, &info))
++		drv->capa.flags2 |= WPA_DRIVER_FLAGS2_NAN_OFFLOAD;
+ 
+ 	os_free(info.flags);
+ }
+-- 
+2.43.0
+

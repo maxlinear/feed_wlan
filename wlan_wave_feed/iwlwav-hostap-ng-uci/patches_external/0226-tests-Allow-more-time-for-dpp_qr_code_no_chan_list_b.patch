@@ -1,0 +1,30 @@
+From 6aa16abbe411acae13e93cdb127c77a591398612 Mon Sep 17 00:00:00 2001
+From: Jouni Malinen <j@w1.fi>
+Date: Sun, 14 Jan 2024 00:21:57 +0200
+Subject: [PATCH] tests: Allow more time for dpp_qr_code_no_chan_list_broadcast
+
+It looks like the first broadcast frame might be missed in some cases,
+so increase the timeout here to allow another round of frames to be
+attempted.
+
+Signed-off-by: Jouni Malinen <j@w1.fi>
+---
+ tests/hwsim/test_dpp.py | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/tests/hwsim/test_dpp.py b/tests/hwsim/test_dpp.py
+index 304753316..5543e20c6 100644
+--- a/tests/hwsim/test_dpp.py
++++ b/tests/hwsim/test_dpp.py
+@@ -4606,7 +4606,7 @@ def test_dpp_qr_code_chan_list_no_peer_unicast(dev, apdev):
+ 
+ def test_dpp_qr_code_no_chan_list_broadcast(dev, apdev):
+     """DPP QR Code and no channel list (broadcast)"""
+-    run_dpp_qr_code_chan_list(dev, apdev, False, 2412, None)
++    run_dpp_qr_code_chan_list(dev, apdev, False, 2412, None, timeout=20)
+ 
+ def test_dpp_qr_code_chan_list_broadcast(dev, apdev):
+     """DPP QR Code and some 2.4 GHz channels (broadcast)"""
+-- 
+2.43.0
+

@@ -1,0 +1,68 @@
+From 436f07d02bd2a33894463748880e5d798907b1d9 Mon Sep 17 00:00:00 2001
+From: Benjamin Berg <benjamin.berg@intel.com>
+Date: Tue, 20 Feb 2024 14:18:19 +0100
+Subject: [PATCH] WNM: Define a stub wnm_is_bss_excluded if WNM is disabled
+
+This removes the need to check for CONFIG_WNM.
+
+Signed-off-by: Benjamin Berg <benjamin.berg@intel.com>
+---
+ wpa_supplicant/events.c  | 2 --
+ wpa_supplicant/wnm_sta.h | 9 ++++++++-
+ 2 files changed, 8 insertions(+), 3 deletions(-)
+
+diff --git a/wpa_supplicant/events.c b/wpa_supplicant/events.c
+index d18f43628..fe77eb9f5 100644
+--- a/wpa_supplicant/events.c
++++ b/wpa_supplicant/events.c
+@@ -1692,13 +1692,11 @@ struct wpa_ssid * wpa_scan_res_match(struct wpa_supplicant *wpa_s,
+ 		return NULL;
+ 	}
+ 
+-#ifdef CONFIG_WNM
+ 	if (wnm_is_bss_excluded(wpa_s, bss)) {
+ 		if (debug_print)
+ 			wpa_dbg(wpa_s, MSG_DEBUG, "   skip - BSSID excluded");
+ 		return NULL;
+ 	}
+-#endif /* CONFIG_WNM */
+ 
+ 	for (ssid = group; ssid; ssid = only_first_ssid ? NULL : ssid->pnext) {
+ 		if (wpa_scan_res_ok(wpa_s, ssid, match_ssid, match_ssid_len,
+diff --git a/wpa_supplicant/wnm_sta.h b/wpa_supplicant/wnm_sta.h
+index 08662f433..e1bb6724d 100644
+--- a/wpa_supplicant/wnm_sta.h
++++ b/wpa_supplicant/wnm_sta.h
+@@ -70,7 +70,6 @@ int wnm_send_coloc_intf_report(struct wpa_supplicant *wpa_s, u8 dialog_token,
+ 			       const struct wpabuf *elems);
+ void wnm_set_coloc_intf_elems(struct wpa_supplicant *wpa_s,
+ 			      struct wpabuf *elems);
+-bool wnm_is_bss_excluded(struct wpa_supplicant *wpa_s, struct wpa_bss *bss);
+ 
+ int wnm_btm_resp_tx_status(struct wpa_supplicant *wpa_s, const u8 *data,
+ 			   size_t data_len);
+@@ -80,6 +79,8 @@ int wnm_btm_resp_tx_status(struct wpa_supplicant *wpa_s, const u8 *data,
+ int wnm_scan_process(struct wpa_supplicant *wpa_s, bool pre_scan_check);
+ void wnm_clear_coloc_intf_reporting(struct wpa_supplicant *wpa_s);
+ 
++bool wnm_is_bss_excluded(struct wpa_supplicant *wpa_s, struct wpa_bss *bss);
++
+ #else /* CONFIG_WNM */
+ 
+ static inline int wnm_scan_process(struct wpa_supplicant *wpa_s,
+@@ -92,6 +93,12 @@ static inline void wnm_clear_coloc_intf_reporting(struct wpa_supplicant *wpa_s)
+ {
+ }
+ 
++static inline bool
++wnm_is_bss_excluded(struct wpa_supplicant *wpa_s, struct wpa_bss *bss)
++{
++	return false;
++}
++
+ #endif /* CONFIG_WNM */
+ 
+ #endif /* WNM_STA_H */
+-- 
+2.43.0
+

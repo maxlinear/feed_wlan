@@ -1,0 +1,28 @@
+From 3b5b19e9cf314a5e5d4f7b5c3b1af0c3dbddcdd3 Mon Sep 17 00:00:00 2001
+From: Jouni Malinen <j@w1.fi>
+Date: Sat, 1 Mar 2025 20:15:08 +0200
+Subject: [PATCH] OpenSSL: Make debug log clearer on TLS initialization failure
+
+This might fail with some OpenSSL FIPS cases, so make the debug log
+clearer for such a failure.
+
+Signed-off-by: Jouni Malinen <j@w1.fi>
+---
+ src/crypto/tls_openssl.c | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/src/crypto/tls_openssl.c b/src/crypto/tls_openssl.c
+index 77f39c63d..aaf519be5 100644
+--- a/src/crypto/tls_openssl.c
++++ b/src/crypto/tls_openssl.c
+@@ -1236,6 +1236,7 @@ void * tls_init(const struct tls_config *conf)
+ 	else
+ 		ssl = NULL;
+ 	if (ssl == NULL) {
++		tls_show_errors(MSG_INFO, "SSL_CTX_new", "init");
+ 		tls_openssl_ref_count--;
+ 		if (context != tls_global)
+ 			os_free(context);
+-- 
+2.43.0
+

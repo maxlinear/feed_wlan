@@ -1,0 +1,61 @@
+From af6e21faa005220aacd26cd3f06adad0c3c9e44e Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?=E6=9C=B1=E6=B5=B7?= <zhuhai.mail@163.com>
+Date: Thu, 11 Jan 2024 15:49:00 +0800
+Subject: [PATCH] P2P: Fix a logical error of workaround of extended listen
+ failure
+
+When p2p->state == P2P_LISTEN_ONLY, the statement before it
+'p2p->cfg->is_p2p_in_progress(p2p->cfg->cb_ctx)' will be true, too, so
+this function will print a message "Operation in progress" and return;
+the workaround to handle listen failure will be never reached.
+
+I met such an error when the 'remain-on-channel' command failed, then
+the function p2p_ext_listen_timeout() just printed 'Operation in
+progress' again and again, and the listen operation was not started
+anymore.
+
+Fixes: 0f1034e3889e ("P2P: Refrain from performing extended listen during P2P connection")
+Signed-off-by: zhuhai <zhuhai.mail@163.com>
+---
+ src/p2p/p2p.c | 18 +++++++++---------
+ 1 file changed, 9 insertions(+), 9 deletions(-)
+
+diff --git a/src/p2p/p2p.c b/src/p2p/p2p.c
+index 7b17eb908..bb1938dc3 100644
+--- a/src/p2p/p2p.c
++++ b/src/p2p/p2p.c
+@@ -4658,15 +4658,6 @@ static void p2p_ext_listen_timeout(void *eloop_ctx, void *timeout_ctx)
+ 				       p2p_ext_listen_timeout, p2p, NULL);
+ 	}
+ 
+-	if ((p2p->cfg->is_p2p_in_progress &&
+-	     p2p->cfg->is_p2p_in_progress(p2p->cfg->cb_ctx)) ||
+-	    (p2p->pending_action_state == P2P_PENDING_PD &&
+-	     p2p->pd_retries > 0)) {
+-		p2p_dbg(p2p, "Operation in progress - skip Extended Listen timeout (%s)",
+-			p2p_state_txt(p2p->state));
+-		return;
+-	}
+-
+ 	if (p2p->state == P2P_LISTEN_ONLY && p2p->ext_listen_only) {
+ 		/*
+ 		 * This should not really happen, but it looks like the Listen
+@@ -4679,6 +4670,15 @@ static void p2p_ext_listen_timeout(void *eloop_ctx, void *timeout_ctx)
+ 		p2p_set_state(p2p, P2P_IDLE);
+ 	}
+ 
++	if ((p2p->cfg->is_p2p_in_progress &&
++	     p2p->cfg->is_p2p_in_progress(p2p->cfg->cb_ctx)) ||
++	    (p2p->pending_action_state == P2P_PENDING_PD &&
++	     p2p->pd_retries > 0)) {
++		p2p_dbg(p2p, "Operation in progress - skip Extended Listen timeout (%s)",
++			p2p_state_txt(p2p->state));
++		return;
++	}
++
+ 	if (p2p->state != P2P_IDLE) {
+ 		p2p_dbg(p2p, "Skip Extended Listen timeout in active state (%s)", p2p_state_txt(p2p->state));
+ 		return;
+-- 
+2.43.0
+

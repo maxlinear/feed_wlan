@@ -1,0 +1,31 @@
+From daeb5e1110add6fe1c7d3ac516456a25d45301f9 Mon Sep 17 00:00:00 2001
+From: Jouni Malinen <j@w1.fi>
+Date: Sun, 23 Feb 2025 17:00:09 +0200
+Subject: [PATCH] EAP-TEAP: Check session_id length explicitly to avoid
+ warnings
+
+Some static analyzers might expect tls_get_tls_unique() to be able to
+return arbitrarily large values and warn about integer overflow here.
+Avoid such incorrect warnings with an explicit check.
+
+Signed-off-by: Jouni Malinen <j@w1.fi>
+---
+ src/eap_peer/eap_teap.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/src/eap_peer/eap_teap.c b/src/eap_peer/eap_teap.c
+index 8ce7cb7e9..b9c1ece31 100644
+--- a/src/eap_peer/eap_teap.c
++++ b/src/eap_peer/eap_teap.c
+@@ -666,7 +666,7 @@ static int eap_teap_session_id(struct eap_teap_data *data)
+ 	data->session_id[0] = EAP_TYPE_TEAP;
+ 	res = tls_get_tls_unique(data->ssl.conn, data->session_id + 1,
+ 				 max_id_len - 1);
+-	if (res < 0) {
++	if (res < 0 || (size_t) res >= max_id_len) {
+ 		os_free(data->session_id);
+ 		data->session_id = NULL;
+ 		wpa_printf(MSG_ERROR, "EAP-TEAP: Failed to derive Session-Id");
+-- 
+2.43.0
+

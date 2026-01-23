@@ -1,0 +1,45 @@
+From 4d2f76fabff4b3b9d0549ad14987e956668346b3 Mon Sep 17 00:00:00 2001
+From: Ilan Peer <ilan.peer@intel.com>
+Date: Mon, 8 Apr 2024 16:06:59 +0300
+Subject: [PATCH] MLD: Use AP MLD MAC address with deauthenticate
+
+When the authentication is an MLD authentication need to use the AP MLD
+MAC address when requesting the driver to deauthenticate.
+
+Signed-off-by: Ilan Peer <ilan.peer@intel.com>
+---
+ wpa_supplicant/wpa_supplicant.c | 16 ++++++++++------
+ 1 file changed, 10 insertions(+), 6 deletions(-)
+
+diff --git a/wpa_supplicant/wpa_supplicant.c b/wpa_supplicant/wpa_supplicant.c
+index ab71e2f27..eeb667515 100644
+--- a/wpa_supplicant/wpa_supplicant.c
++++ b/wpa_supplicant/wpa_supplicant.c
+@@ -4583,14 +4583,18 @@ void wpa_supplicant_deauthenticate(struct wpa_supplicant *wpa_s,
+ 	int zero_addr = 0;
+ 
+ 	wpa_dbg(wpa_s, MSG_DEBUG, "Request to deauthenticate - bssid=" MACSTR
+-		" pending_bssid=" MACSTR " reason=%d (%s) state=%s",
++		" pending_bssid=" MACSTR
++		" reason=%d (%s) state=%s valid_links=0x%x ap_mld_addr=" MACSTR,
+ 		MAC2STR(wpa_s->bssid), MAC2STR(wpa_s->pending_bssid),
+ 		reason_code, reason2str(reason_code),
+-		wpa_supplicant_state_txt(wpa_s->wpa_state));
+-
+-	if (!is_zero_ether_addr(wpa_s->pending_bssid) &&
+-	    (wpa_s->wpa_state == WPA_AUTHENTICATING ||
+-	     wpa_s->wpa_state == WPA_ASSOCIATING))
++		wpa_supplicant_state_txt(wpa_s->wpa_state), wpa_s->valid_links,
++		MAC2STR(wpa_s->ap_mld_addr));
++
++	if (wpa_s->valid_links && !is_zero_ether_addr(wpa_s->ap_mld_addr))
++		addr = wpa_s->ap_mld_addr;
++	else if (!is_zero_ether_addr(wpa_s->pending_bssid) &&
++		 (wpa_s->wpa_state == WPA_AUTHENTICATING ||
++		  wpa_s->wpa_state == WPA_ASSOCIATING))
+ 		addr = wpa_s->pending_bssid;
+ 	else if (!is_zero_ether_addr(wpa_s->bssid))
+ 		addr = wpa_s->bssid;
+-- 
+2.43.0
+

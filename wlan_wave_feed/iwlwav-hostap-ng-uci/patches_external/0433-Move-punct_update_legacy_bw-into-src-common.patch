@@ -1,0 +1,229 @@
+From c96c3adc364d2fa0da2b78622c2740f1f250124f Mon Sep 17 00:00:00 2001
+From: Jouni Malinen <quic_jouni@quicinc.com>
+Date: Fri, 8 Mar 2024 10:10:41 +0200
+Subject: [PATCH] Move punct_update_legacy_bw() into src/common
+
+This function is needed for more common operations so move it to a more
+suitable location.
+
+Signed-off-by: Jouni Malinen <quic_jouni@quicinc.com>
+---
+ src/ap/ieee802_11.c             | 69 ---------------------------------
+ src/ap/ieee802_11.h             |  2 -
+ src/ap/ieee802_11_he.c          |  1 +
+ src/ap/ieee802_11_vht.c         |  1 +
+ src/common/hw_features_common.c | 69 +++++++++++++++++++++++++++++++++
+ src/common/hw_features_common.h |  2 +
+ 6 files changed, 73 insertions(+), 71 deletions(-)
+
+diff --git a/src/ap/ieee802_11.c b/src/ap/ieee802_11.c
+index 41508ff50..77c4d30ee 100644
+--- a/src/ap/ieee802_11.c
++++ b/src/ap/ieee802_11.c
+@@ -8067,73 +8067,4 @@ u8 * hostapd_eid_mbssid(struct hostapd_data *hapd, u8 *eid, u8 *end,
+ 	return eid;
+ }
+ 
+-
+-static void punct_update_legacy_bw_80(u8 bitmap, u8 pri_chan, u8 *seg0)
+-{
+-	u8 first_chan = *seg0 - 6, sec_chan;
+-
+-	switch (bitmap) {
+-	case 0x6:
+-		*seg0 = 0;
+-		return;
+-	case 0x8:
+-	case 0x4:
+-	case 0x2:
+-	case 0x1:
+-	case 0xC:
+-	case 0x3:
+-		if (pri_chan < *seg0)
+-			*seg0 -= 4;
+-		else
+-			*seg0 += 4;
+-		break;
+-	}
+-
+-	if (pri_chan < *seg0)
+-		sec_chan = pri_chan + 4;
+-	else
+-		sec_chan = pri_chan - 4;
+-
+-	if (bitmap & BIT((sec_chan - first_chan) / 4))
+-		*seg0 = 0;
+-}
+-
+-
+-static void punct_update_legacy_bw_160(u8 bitmap, u8 pri,
+-				       enum oper_chan_width *width, u8 *seg0)
+-{
+-	if (pri < *seg0) {
+-		*seg0 -= 8;
+-		if (bitmap & 0x0F) {
+-			*width = 0;
+-			punct_update_legacy_bw_80(bitmap & 0xF, pri, seg0);
+-		}
+-	} else {
+-		*seg0 += 8;
+-		if (bitmap & 0xF0) {
+-			*width = 0;
+-			punct_update_legacy_bw_80((bitmap & 0xF0) >> 4, pri,
+-						  seg0);
+-		}
+-	}
+-}
+-
+-
+-void punct_update_legacy_bw(u16 bitmap, u8 pri, enum oper_chan_width *width,
+-			    u8 *seg0, u8 *seg1)
+-{
+-	if (*width == CONF_OPER_CHWIDTH_80MHZ && (bitmap & 0xF)) {
+-		*width = CONF_OPER_CHWIDTH_USE_HT;
+-		punct_update_legacy_bw_80(bitmap & 0xF, pri, seg0);
+-	}
+-
+-	if (*width == CONF_OPER_CHWIDTH_160MHZ && (bitmap & 0xFF)) {
+-		*width = CONF_OPER_CHWIDTH_80MHZ;
+-		*seg1 = 0;
+-		punct_update_legacy_bw_160(bitmap & 0xFF, pri, width, seg0);
+-	}
+-
+-	/* TODO: 320 MHz */
+-}
+-
+ #endif /* CONFIG_NATIVE_WINDOWS */
+diff --git a/src/ap/ieee802_11.h b/src/ap/ieee802_11.h
+index 5fd380a95..a35486d46 100644
+--- a/src/ap/ieee802_11.h
++++ b/src/ap/ieee802_11.h
+@@ -248,8 +248,6 @@ u8 * hostapd_eid_mbssid(struct hostapd_data *hapd, u8 *eid, u8 *end,
+ 			u8 **elem_offset,
+ 			const u8 *known_bss, size_t known_bss_len, u8 *rnr_eid,
+ 			u8 *rnr_count, u8 **rnr_offset, size_t rnr_len);
+-void punct_update_legacy_bw(u16 bitmap, u8 pri_chan,
+-			    enum oper_chan_width *width, u8 *seg0, u8 *seg1);
+ bool hostapd_is_mld_ap(struct hostapd_data *hapd);
+ const char * sae_get_password(struct hostapd_data *hapd,
+ 			      struct sta_info *sta, const char *rx_id,
+diff --git a/src/ap/ieee802_11_he.c b/src/ap/ieee802_11_he.c
+index 4b693a7c5..3449326be 100644
+--- a/src/ap/ieee802_11_he.c
++++ b/src/ap/ieee802_11_he.c
+@@ -12,6 +12,7 @@
+ #include "utils/common.h"
+ #include "common/ieee802_11_defs.h"
+ #include "common/ieee802_11_common.h"
++#include "common/hw_features_common.h"
+ #include "hostapd.h"
+ #include "ap_config.h"
+ #include "beacon.h"
+diff --git a/src/ap/ieee802_11_vht.c b/src/ap/ieee802_11_vht.c
+index e92851af9..4dc325ce8 100644
+--- a/src/ap/ieee802_11_vht.c
++++ b/src/ap/ieee802_11_vht.c
+@@ -12,6 +12,7 @@
+ 
+ #include "utils/common.h"
+ #include "common/ieee802_11_defs.h"
++#include "common/hw_features_common.h"
+ #include "hostapd.h"
+ #include "ap_config.h"
+ #include "sta_info.h"
+diff --git a/src/common/hw_features_common.c b/src/common/hw_features_common.c
+index ea547f7ea..924370078 100644
+--- a/src/common/hw_features_common.c
++++ b/src/common/hw_features_common.c
+@@ -381,6 +381,75 @@ int check_40mhz_2g4(struct hostapd_hw_modes *mode,
+ }
+ 
+ 
++static void punct_update_legacy_bw_80(u8 bitmap, u8 pri_chan, u8 *seg0)
++{
++	u8 first_chan = *seg0 - 6, sec_chan;
++
++	switch (bitmap) {
++	case 0x6:
++		*seg0 = 0;
++		return;
++	case 0x8:
++	case 0x4:
++	case 0x2:
++	case 0x1:
++	case 0xC:
++	case 0x3:
++		if (pri_chan < *seg0)
++			*seg0 -= 4;
++		else
++			*seg0 += 4;
++		break;
++	}
++
++	if (pri_chan < *seg0)
++		sec_chan = pri_chan + 4;
++	else
++		sec_chan = pri_chan - 4;
++
++	if (bitmap & BIT((sec_chan - first_chan) / 4))
++		*seg0 = 0;
++}
++
++
++static void punct_update_legacy_bw_160(u8 bitmap, u8 pri,
++				       enum oper_chan_width *width, u8 *seg0)
++{
++	if (pri < *seg0) {
++		*seg0 -= 8;
++		if (bitmap & 0x0F) {
++			*width = 0;
++			punct_update_legacy_bw_80(bitmap & 0xF, pri, seg0);
++		}
++	} else {
++		*seg0 += 8;
++		if (bitmap & 0xF0) {
++			*width = 0;
++			punct_update_legacy_bw_80((bitmap & 0xF0) >> 4, pri,
++						  seg0);
++		}
++	}
++}
++
++
++void punct_update_legacy_bw(u16 bitmap, u8 pri, enum oper_chan_width *width,
++			    u8 *seg0, u8 *seg1)
++{
++	if (*width == CONF_OPER_CHWIDTH_80MHZ && (bitmap & 0xF)) {
++		*width = CONF_OPER_CHWIDTH_USE_HT;
++		punct_update_legacy_bw_80(bitmap & 0xF, pri, seg0);
++	}
++
++	if (*width == CONF_OPER_CHWIDTH_160MHZ && (bitmap & 0xFF)) {
++		*width = CONF_OPER_CHWIDTH_80MHZ;
++		*seg1 = 0;
++		punct_update_legacy_bw_160(bitmap & 0xFF, pri, width, seg0);
++	}
++
++	/* TODO: 320 MHz */
++}
++
++
+ int hostapd_set_freq_params(struct hostapd_freq_params *data,
+ 			    enum hostapd_hw_mode mode,
+ 			    int freq, int channel, int enable_edmg,
+diff --git a/src/common/hw_features_common.h b/src/common/hw_features_common.h
+index 8ce31e4f0..e791c33f1 100644
+--- a/src/common/hw_features_common.h
++++ b/src/common/hw_features_common.h
+@@ -35,6 +35,8 @@ int check_40mhz_5g(struct wpa_scan_results *scan_res,
+ int check_40mhz_2g4(struct hostapd_hw_modes *mode,
+ 		    struct wpa_scan_results *scan_res, int pri_chan,
+ 		    int sec_chan);
++void punct_update_legacy_bw(u16 bitmap, u8 pri_chan,
++			    enum oper_chan_width *width, u8 *seg0, u8 *seg1);
+ int hostapd_set_freq_params(struct hostapd_freq_params *data,
+ 			    enum hostapd_hw_mode mode,
+ 			    int freq, int channel, int edmg, u8 edmg_channel,
+-- 
+2.43.0
+

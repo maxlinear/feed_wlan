@@ -1,0 +1,38 @@
+From 22a592d119911003880f8fe72cf967660f8dce80 Mon Sep 17 00:00:00 2001
+From: Aditya Kumar Singh <quic_adisi@quicinc.com>
+Date: Thu, 11 Jul 2024 14:35:39 +0530
+Subject: [PATCH] hostapd: Fix updating Beacon frames during association
+ handling
+
+In function handle_assoc(), ieee802_11_update_beacons() was used to
+update the Beacon frames. However, with commit a5d0bb42a226 ("Reduce
+delay between Association Request and Association Response"), it was
+changed to ieee802_11_set_beacons() which basically overturned what
+commit e59d2a31cfb4 ("hostapd: Fix premature beacon set during
+association handling") did which is not correct.
+
+Fix this and use ieee802_11_update_beacons() instead of
+ieee802_11_set_beacons().
+
+Fixes: a5d0bb42a226 ("Reduce delay between Association Request and Association Response")
+Signed-off-by: Aditya Kumar Singh <quic_adisi@quicinc.com>
+---
+ src/ap/ieee802_11.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/src/ap/ieee802_11.c b/src/ap/ieee802_11.c
+index 9af586a7b..7592ba998 100644
+--- a/src/ap/ieee802_11.c
++++ b/src/ap/ieee802_11.c
+@@ -5622,7 +5622,7 @@ static void handle_assoc(struct hostapd_data *hapd,
+ #endif /* CONFIG_FILS */
+ 
+ 	if (set_beacon)
+-		ieee802_11_set_beacons(hapd->iface);
++		ieee802_11_update_beacons(hapd->iface);
+ 
+  fail:
+ 
+-- 
+2.43.0
+

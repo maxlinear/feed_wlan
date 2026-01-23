@@ -1,0 +1,28 @@
+From 0e4bff095bb07112c8cb523f776a1a3dea1a276c Mon Sep 17 00:00:00 2001
+From: Jouni Malinen <quic_jouni@quicinc.com>
+Date: Wed, 27 Mar 2024 22:33:38 +0200
+Subject: [PATCH] tests: Flush scan cache to make dbus_anqp_get more reliable
+
+This test could have failed if scan results from a previously executed
+test case were still the in the driver cache.
+
+Signed-off-by: Jouni Malinen <quic_jouni@quicinc.com>
+---
+ tests/hwsim/test_dbus.py | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/tests/hwsim/test_dbus.py b/tests/hwsim/test_dbus.py
+index f31b60eb9..2c2a2e44a 100644
+--- a/tests/hwsim/test_dbus.py
++++ b/tests/hwsim/test_dbus.py
+@@ -6283,6 +6283,7 @@ def test_dbus_anqp_get(dev, apdev):
+                                          "fin:Esimerkkioperaattori"]
+     hapd = hostapd.add_ap(apdev[0], params)
+ 
++    dev[0].flush_scan_cache()
+     dev[0].scan_for_bss(bssid, freq="2412", force_scan=True)
+     iface.ANQPGet({"addr": bssid,
+                    "ids": dbus.Array([257], dbus.Signature("q")),
+-- 
+2.43.0
+

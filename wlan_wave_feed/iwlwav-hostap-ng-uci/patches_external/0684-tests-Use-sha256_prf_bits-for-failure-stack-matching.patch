@@ -1,0 +1,45 @@
+From 918da644e17c24ca70cd192c6d1c5df566104090 Mon Sep 17 00:00:00 2001
+From: Benjamin Berg <benjamin.berg@intel.com>
+Date: Fri, 14 Jun 2024 10:13:48 +0200
+Subject: [PATCH] tests: Use sha256_prf_bits for failure stack matching
+
+It seems that sha256_prf may not always be in the stack trace for
+failure checking, possibly due to tail call optimization as it simply
+calls sha256_prf_bits with updated parameters. Simply match against
+sha256_prf_bits directly to avoid issues due to optimizations.
+
+Signed-off-by: Benjamin Berg <benjamin.berg@intel.com>
+---
+ tests/hwsim/test_ap_psk.py | 2 +-
+ tests/hwsim/test_sae.py    | 2 +-
+ 2 files changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/tests/hwsim/test_ap_psk.py b/tests/hwsim/test_ap_psk.py
+index 9e34e7b6d..085619f0d 100644
+--- a/tests/hwsim/test_ap_psk.py
++++ b/tests/hwsim/test_ap_psk.py
+@@ -3418,7 +3418,7 @@ def test_ap_wpa2_psk_local_error(dev, apdev):
+         dev[0].request("REMOVE_NETWORK all")
+         dev[0].dump_monitor()
+ 
+-    with fail_test(dev[0], 1, "sha256_prf;wpa_pmk_to_ptk"):
++    with fail_test(dev[0], 1, "sha256_prf_bits;wpa_pmk_to_ptk"):
+         id = dev[0].connect(ssid, key_mgmt="WPA-PSK-SHA256", psk=passphrase,
+                             scan_freq="2412", wait_connect=False)
+         ev = dev[0].wait_event(["CTRL-EVENT-DISCONNECTED"], timeout=5)
+diff --git a/tests/hwsim/test_sae.py b/tests/hwsim/test_sae.py
+index b55673493..aed52d0f7 100644
+--- a/tests/hwsim/test_sae.py
++++ b/tests/hwsim/test_sae.py
+@@ -1610,7 +1610,7 @@ def test_sae_bignum_failure(dev, apdev):
+              (2, "crypto_ec_point_mul;sae_derive_k_ecc"),
+              (1, "crypto_ec_point_to_bin;sae_derive_k_ecc"),
+              (1, "crypto_bignum_legendre;dragonfly_get_random_qr_qnr"),
+-             (1, "sha256_prf;sae_derive_keys"),
++             (1, "sha256_prf_bits;sae_derive_keys"),
+              (1, "crypto_bignum_init;sae_derive_keys"),
+              (1, "crypto_bignum_init_set;sae_parse_commit_scalar"),
+              (1, "crypto_bignum_to_bin;sae_parse_commit_element_ecc"),
+-- 
+2.43.0
+

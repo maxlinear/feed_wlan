@@ -1,0 +1,81 @@
+From d5c07aaab97eb4b1c3622af23515a958e086c905 Mon Sep 17 00:00:00 2001
+From: Shivani Baranwal <quic_shivbara@quicinc.com>
+Date: Mon, 5 Aug 2024 02:43:59 +0530
+Subject: [PATCH] P2P2: Parse new attributes
+
+Recognize new attributes when parsing P2P2 IE.
+
+Signed-off-by: Shivani Baranwal <quic_shivbara@quicinc.com>
+---
+ src/p2p/p2p_i.h     |  9 +++++++++
+ src/p2p/p2p_parse.c | 34 ++++++++++++++++++++++++++++++++++
+ 2 files changed, 43 insertions(+)
+
+diff --git a/src/p2p/p2p_i.h b/src/p2p/p2p_i.h
+index 2185f9b3e..8e257f9e1 100644
+--- a/src/p2p/p2p_i.h
++++ b/src/p2p/p2p_i.h
+@@ -738,6 +738,15 @@ struct p2p_message {
+ 
+ 	const u8 *pbma_info;
+ 	size_t pbma_info_len;
++
++	const u8 *action_frame_wrapper;
++	size_t action_frame_wrapper_len;
++
++	const u8 *dira;
++	size_t dira_len;
++
++	const u8 *wlan_ap_info;
++	size_t wlan_ap_info_len;
+ };
+ 
+ 
+diff --git a/src/p2p/p2p_parse.c b/src/p2p/p2p_parse.c
+index a70e18079..cd3332d6b 100644
+--- a/src/p2p/p2p_parse.c
++++ b/src/p2p/p2p_parse.c
+@@ -437,6 +437,40 @@ static int p2p_parse_attribute(u8 id, const u8 *data, u16 len,
+ 		msg->pbma_info_len = len;
+ 		wpa_printf(MSG_DEBUG, "P2P: * PBMA (length=%u)", len);
+ 		break;
++	case P2P_ATTR_ACTION_FRAME_WRAPPER:
++		if (len < 2) {
++			wpa_printf(MSG_DEBUG,
++				   "P2P: Too short Action Frame Wrapper attribute (length %d)",
++				   len);
++			return -1;
++		}
++		msg->action_frame_wrapper = data;
++		msg->action_frame_wrapper_len = len;
++		wpa_printf(MSG_DEBUG, "P2P: * Action frame wrapper (length=%u)",
++			   len);
++		break;
++	case P2P_ATTR_DEVICE_IDENTITY_RESOLUTION:
++		if (len < 1) {
++			wpa_printf(MSG_DEBUG, "P2P: Too short DIRA (length %d)",
++				   len);
++			return -1;
++		}
++		msg->dira = data;
++		msg->dira_len = len;
++		wpa_printf(MSG_DEBUG, "P2P: * DIRA (length=%u)", len);
++		break;
++	case P2P_ATTR_WLAN_AP_INFORMATION:
++		/* One or more AP Info fields (each being 12 octets) is required
++		 * to be included. */
++		if (len < 12) {
++			wpa_printf(MSG_DEBUG,
++				   "P2P: Too short WLAN AP info (length %d)",
++				   len);
++			return -1;
++		}
++		msg->wlan_ap_info = data;
++		msg->wlan_ap_info_len = len;
++		break;
+ 	default:
+ 		wpa_printf(MSG_DEBUG, "P2P: Skipped unknown attribute %d "
+ 			   "(length %d)", id, len);
+-- 
+2.43.0
+

@@ -1,0 +1,27 @@
+From b532201034dd1d63f52bafe51e54e6ce13d1b194 Mon Sep 17 00:00:00 2001
+From: Benjamin Berg <benjamin.berg@intel.com>
+Date: Tue, 20 Feb 2024 14:18:08 +0100
+Subject: [PATCH] tests: Add missing scan cache flush
+
+Otherwise a BSS from a previous test may still be in the cache.
+
+Signed-off-by: Benjamin Berg <benjamin.berg@intel.com>
+---
+ tests/hwsim/test_ap_hs20.py | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/tests/hwsim/test_ap_hs20.py b/tests/hwsim/test_ap_hs20.py
+index 81becf04f..c1aebaa85 100644
+--- a/tests/hwsim/test_ap_hs20.py
++++ b/tests/hwsim/test_ap_hs20.py
+@@ -502,6 +502,7 @@ def test_ap_hs20_select(dev, apdev):
+     params = hs20_ap_params()
+     params['hessid'] = bssid
+     hostapd.add_ap(apdev[0], params)
++    dev[0].flush_scan_cache()
+ 
+     dev[0].hs20_enable()
+     id = dev[0].add_cred_values({'realm': "example.com", 'username': "test",
+-- 
+2.43.0
+

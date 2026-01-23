@@ -1,0 +1,40 @@
+From e51f1109b08224ca412cf2a3858c6d790a889f71 Mon Sep 17 00:00:00 2001
+From: Aditya Kumar Singh <quic_adisi@quicinc.com>
+Date: Wed, 6 Mar 2024 12:06:56 +0530
+Subject: [PATCH] tests: AP MLD: Remove mld_id config
+
+mld_id config is not used anymore. Remove its use from test cases.
+
+Signed-off-by: Aditya Kumar Singh <quic_adisi@quicinc.com>
+---
+ tests/hwsim/hostapd.py  | 1 -
+ tests/hwsim/test_eht.py | 1 -
+ 2 files changed, 2 deletions(-)
+
+diff --git a/tests/hwsim/hostapd.py b/tests/hwsim/hostapd.py
+index 754faf623..007812274 100644
+--- a/tests/hwsim/hostapd.py
++++ b/tests/hwsim/hostapd.py
+@@ -1034,7 +1034,6 @@ def cfg_mld_link_file(ifname, params):
+     f.write("ieee80211be=1\n")
+     f.write("interface=%s\n" % ifname)
+     f.write("mld_ap=1\n")
+-    f.write("mld_id=0\n")
+ 
+     for k, v in list(params.items()):
+         f.write("{}={}\n".format(k,v))
+diff --git a/tests/hwsim/test_eht.py b/tests/hwsim/test_eht.py
+index c56001fd1..a012fe4e7 100644
+--- a/tests/hwsim/test_eht.py
++++ b/tests/hwsim/test_eht.py
+@@ -1651,7 +1651,6 @@ def test_eht_mld_rrm_beacon_req(dev, apdev):
+         other_ssid = "other"
+         params = eht_mld_ap_wpa2_params(other_ssid, key_mgmt="OWE", mfp="2")
+         params["channel"] = '6'
+-        params["mld_id"] = '1'
+         hapd1 = eht_mld_enable_ap(hapd1_iface, params)
+ 
+         # Issue a beacon request for the second AP
+-- 
+2.43.0
+

@@ -1,0 +1,80 @@
+From 74a25a66024673d48a254311b5b7cac985d7b208 Mon Sep 17 00:00:00 2001
+From: Jouni Malinen <j@w1.fi>
+Date: Sun, 28 Jan 2024 11:07:55 +0200
+Subject: [PATCH] Remove always true check on EAPOL-Key message in
+ authenticator
+
+This was practically dead code since no other msg value exist anymore.
+
+Signed-off-by: Jouni Malinen <j@w1.fi>
+---
+ src/ap/wpa_auth.c | 45 +++++++++++++++++++++------------------------
+ 1 file changed, 21 insertions(+), 24 deletions(-)
+
+diff --git a/src/ap/wpa_auth.c b/src/ap/wpa_auth.c
+index e0c9f30c1..03fd12ee3 100644
+--- a/src/ap/wpa_auth.c
++++ b/src/ap/wpa_auth.c
+@@ -1229,38 +1229,35 @@ void wpa_receive(struct wpa_authenticator *wpa_auth,
+ 		msgtxt = "2/4 Pairwise";
+ 	}
+ 
+-	if (msg == REQUEST || msg == PAIRWISE_2 || msg == PAIRWISE_4 ||
+-	    msg == GROUP_2) {
+-		if (sm->pairwise == WPA_CIPHER_CCMP ||
+-		    sm->pairwise == WPA_CIPHER_GCMP) {
+-			if (wpa_use_cmac(sm->wpa_key_mgmt) &&
+-			    !wpa_use_akm_defined(sm->wpa_key_mgmt) &&
+-			    ver != WPA_KEY_INFO_TYPE_AES_128_CMAC) {
+-				wpa_auth_logger(wpa_auth, wpa_auth_get_spa(sm),
+-						LOGGER_WARNING,
+-						"advertised support for AES-128-CMAC, but did not use it");
+-				goto out;
+-			}
+-
+-			if (!wpa_use_cmac(sm->wpa_key_mgmt) &&
+-			    !wpa_use_akm_defined(sm->wpa_key_mgmt) &&
+-			    ver != WPA_KEY_INFO_TYPE_HMAC_SHA1_AES) {
+-				wpa_auth_logger(wpa_auth, wpa_auth_get_spa(sm),
+-						LOGGER_WARNING,
+-						"did not use HMAC-SHA1-AES with CCMP/GCMP");
+-				goto out;
+-			}
++	if (sm->pairwise == WPA_CIPHER_CCMP ||
++	    sm->pairwise == WPA_CIPHER_GCMP) {
++		if (wpa_use_cmac(sm->wpa_key_mgmt) &&
++		    !wpa_use_akm_defined(sm->wpa_key_mgmt) &&
++		    ver != WPA_KEY_INFO_TYPE_AES_128_CMAC) {
++			wpa_auth_logger(wpa_auth, wpa_auth_get_spa(sm),
++					LOGGER_WARNING,
++					"advertised support for AES-128-CMAC, but did not use it");
++			goto out;
+ 		}
+ 
+-		if (wpa_use_akm_defined(sm->wpa_key_mgmt) &&
+-		    ver != WPA_KEY_INFO_TYPE_AKM_DEFINED) {
++		if (!wpa_use_cmac(sm->wpa_key_mgmt) &&
++		    !wpa_use_akm_defined(sm->wpa_key_mgmt) &&
++		    ver != WPA_KEY_INFO_TYPE_HMAC_SHA1_AES) {
+ 			wpa_auth_logger(wpa_auth, wpa_auth_get_spa(sm),
+ 					LOGGER_WARNING,
+-					"did not use EAPOL-Key descriptor version 0 as required for AKM-defined cases");
++					"did not use HMAC-SHA1-AES with CCMP/GCMP");
+ 			goto out;
+ 		}
+ 	}
+ 
++	if (wpa_use_akm_defined(sm->wpa_key_mgmt) &&
++	    ver != WPA_KEY_INFO_TYPE_AKM_DEFINED) {
++		wpa_auth_logger(wpa_auth, wpa_auth_get_spa(sm),
++				LOGGER_WARNING,
++				"did not use EAPOL-Key descriptor version 0 as required for AKM-defined cases");
++		goto out;
++	}
++
+ 	if (key_info & WPA_KEY_INFO_REQUEST) {
+ 		if (sm->req_replay_counter_used &&
+ 		    os_memcmp(key->replay_counter, sm->req_replay_counter,
+-- 
+2.43.0
+

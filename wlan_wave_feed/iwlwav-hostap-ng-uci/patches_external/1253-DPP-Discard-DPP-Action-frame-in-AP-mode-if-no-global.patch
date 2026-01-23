@@ -1,0 +1,36 @@
+From 9cb7b0bcea5cdbddb49e05ca4b917a4b3bd39b2e Mon Sep 17 00:00:00 2001
+From: Hu Wang <quic_huw@quicinc.com>
+Date: Sun, 5 Jan 2025 19:23:41 -0800
+Subject: [PATCH] DPP: Discard DPP Action frame in AP mode if no global DPP
+ context
+
+For AP mode in wpa_supplicant, e.g., for P2P GO interfaces, the global
+DPP context does not exist support DPP functionality and this could
+result in dereferencing a NULL pointer in wpa_supplicant if an
+unexpected frame is received. Discard the received DPP Action frames in
+such cases instead of trying to process them.
+
+Fixes: e00f780e2bdd ("DPP2: hostapd as TCP Relay")
+Signed-off-by: Jouni Malinen <quic_jouni@quicinc.com>
+---
+ src/ap/dpp_hostapd.c | 4 ++++
+ 1 file changed, 4 insertions(+)
+
+diff --git a/src/ap/dpp_hostapd.c b/src/ap/dpp_hostapd.c
+index 3dc463992..3725a294d 100644
+--- a/src/ap/dpp_hostapd.c
++++ b/src/ap/dpp_hostapd.c
+@@ -2958,6 +2958,10 @@ void hostapd_dpp_rx_action(struct hostapd_data *hapd, const u8 *src,
+ 	const u8 *hdr;
+ 	unsigned int pkex_t;
+ 
++	/* Discard DPP Action frames if there is no global DPP context */
++	if (!hapd->iface->interfaces || !hapd->iface->interfaces->dpp)
++		return;
++
+ 	if (len < DPP_HDR_LEN)
+ 		return;
+ 	if (WPA_GET_BE24(buf) != OUI_WFA || buf[3] != DPP_OUI_TYPE)
+-- 
+2.43.0
+

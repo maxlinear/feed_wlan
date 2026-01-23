@@ -1,0 +1,32 @@
+From 7bd855f3425c5720f22ebb0cc8c5ffe859b22efd Mon Sep 17 00:00:00 2001
+From: Juliusz Sosinowicz <juliusz@wolfssl.com>
+Date: Thu, 4 Apr 2024 20:16:25 +0200
+Subject: [PATCH] wolfssl: Verify that session ticket setup does not fail
+
+Signed-off-by: Juliusz Sosinowicz <juliusz@wolfssl.com>
+---
+ src/crypto/tls_wolfssl.c | 8 ++++++--
+ 1 file changed, 6 insertions(+), 2 deletions(-)
+
+diff --git a/src/crypto/tls_wolfssl.c b/src/crypto/tls_wolfssl.c
+index e1a264c12..f3589cfb3 100644
+--- a/src/crypto/tls_wolfssl.c
++++ b/src/crypto/tls_wolfssl.c
+@@ -1911,8 +1911,12 @@ int tls_global_set_params(void *tls_ctx,
+ 
+ #ifdef HAVE_SESSION_TICKET
+ 	/* Session ticket is off by default - can't disable once on. */
+-	if (!(params->flags & TLS_CONN_DISABLE_SESSION_TICKET))
+-		wolfSSL_CTX_UseSessionTicket(tls_ctx);
++	if (!(params->flags & TLS_CONN_DISABLE_SESSION_TICKET) &&
++	    wolfSSL_CTX_UseSessionTicket(tls_ctx) != WOLFSSL_SUCCESS) {
++		wpa_printf(MSG_ERROR,
++			   "wolfSSL: wolfSSL_CTX_UseSessionTicket failed");
++		return -1;
++	}
+ #endif /* HAVE_SESSION_TICKET */
+ 
+ #ifdef HAVE_OCSP
+-- 
+2.43.0
+

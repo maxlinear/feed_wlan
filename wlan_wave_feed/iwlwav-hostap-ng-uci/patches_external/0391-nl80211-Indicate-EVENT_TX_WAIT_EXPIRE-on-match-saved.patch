@@ -1,0 +1,42 @@
+From 963dbad7dc10b15c92733d57f4b47457e6077b08 Mon Sep 17 00:00:00 2001
+From: Jouni Malinen <j@w1.fi>
+Date: Sat, 2 Mar 2024 19:34:17 +0200
+Subject: [PATCH] nl80211: Indicate EVENT_TX_WAIT_EXPIRE on match-saved
+
+The event indicating expiration of an offchannel TX is useful for cases
+where the wait is for a frame that was explicitly requested to have the
+pending cookie to be saved.
+
+Signed-off-by: Jouni Malinen <j@w1.fi>
+---
+ src/drivers/driver_nl80211_event.c | 6 +++++-
+ 1 file changed, 5 insertions(+), 1 deletion(-)
+
+diff --git a/src/drivers/driver_nl80211_event.c b/src/drivers/driver_nl80211_event.c
+index 38a5fe1b9..02c6eae49 100644
+--- a/src/drivers/driver_nl80211_event.c
++++ b/src/drivers/driver_nl80211_event.c
+@@ -3736,8 +3736,11 @@ static void nl80211_frame_wait_cancel(struct wpa_driver_nl80211_data *drv,
+ 		   (long long unsigned int) cookie,
+ 		   match ? " (match)" : "",
+ 		   drv->send_frame_cookie == cookie ? " (match-saved)" : "");
+-	if (drv->send_frame_cookie == cookie)
++	if (drv->send_frame_cookie == cookie) {
+ 		drv->send_frame_cookie = (u64) -1;
++		if (!match)
++			goto send_event;
++	}
+ 	if (!match)
+ 		return;
+ 
+@@ -3747,6 +3750,7 @@ static void nl80211_frame_wait_cancel(struct wpa_driver_nl80211_data *drv,
+ 			   (drv->num_send_frame_cookies - i - 1) * sizeof(u64));
+ 	drv->num_send_frame_cookies--;
+ 
++send_event:
+ 	wpa_supplicant_event(drv->ctx, EVENT_TX_WAIT_EXPIRE, NULL);
+ }
+ 
+-- 
+2.43.0
+

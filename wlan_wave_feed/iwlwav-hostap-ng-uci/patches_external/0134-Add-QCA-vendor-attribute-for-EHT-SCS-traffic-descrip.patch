@@ -1,0 +1,36 @@
+From 6b7bb10016223a760fd48b0b73ed72f0665ca4bf Mon Sep 17 00:00:00 2001
+From: Gururaj Pandurangi <quic_panduran@quicinc.com>
+Date: Fri, 15 Dec 2023 11:48:06 -0800
+Subject: [PATCH] Add QCA vendor attribute for EHT SCS traffic description
+ support
+
+Add a vendor attribute for EHT testbed STA to configure the
+SCS traffic description support in the EHT capabilities of an
+Association Request frame.
+
+Signed-off-by: Jouni Malinen <quic_jouni@quicinc.com>
+---
+ src/common/qca-vendor.h | 7 +++++++
+ 1 file changed, 7 insertions(+)
+
+diff --git a/src/common/qca-vendor.h b/src/common/qca-vendor.h
+index f03bf4e8f..35333b500 100644
+--- a/src/common/qca-vendor.h
++++ b/src/common/qca-vendor.h
+@@ -10031,6 +10031,13 @@ enum qca_wlan_vendor_attr_wifi_test_config {
+ 	 */
+ 	QCA_WLAN_VENDOR_ATTR_WIFI_TEST_CONFIG_MLD_ID_ML_PROBE_REQ = 72,
+ 
++	/* 8-bit unsigned value to configure the SCS traffic description
++	 * support in the EHT capabilities of an Association Request frame.
++	 * 1-enable, 0-disable
++	 * This attribute is used to configure the testbed device.
++	 */
++	QCA_WLAN_VENDOR_ATTR_WIFI_TEST_CONFIG_EHT_SCS_TRAFFIC_SUPPORT = 73,
++
+ 	/* keep last */
+ 	QCA_WLAN_VENDOR_ATTR_WIFI_TEST_CONFIG_AFTER_LAST,
+ 	QCA_WLAN_VENDOR_ATTR_WIFI_TEST_CONFIG_MAX =
+-- 
+2.43.0
+

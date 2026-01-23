@@ -1,0 +1,70 @@
+From 1b448c8650bbf47fff34623e4d1642f48e8cad25 Mon Sep 17 00:00:00 2001
+From: Sai Pratyusha Magam <quic_smagam@quicinc.com>
+Date: Wed, 8 Nov 2023 09:40:21 +0530
+Subject: [PATCH] hostapd configuration file update using control interface
+
+Add support for reload_config hostapd_cli command as an alternative
+mechanism for SIGHUP on the hostapd process.
+
+When AP parameters such as ssid/encryption/password etc. are changed
+externally in hostapd.conf, RELOAD_CONFIG cli will re-read the .conf,
+update the in-memory contents and issue a change_beacon to update
+beacon_ies.
+
+For full config update, the following example sequence of commands can
+be used:
+
+hostapd_cli -i ath0 -p /var/run/hostapd-wifi0 disable
+hostapd_cli -i ath0 -p /var/run/hostapd-wifi0 reload_config
+hostapd_cli -i ath0 -p /var/run/hostapd-wifi0 enable
+
+Signed-off-by: Sai Pratyusha Magam <quic_smagam@quicinc.com>
+---
+ hostapd/ctrl_iface.c  | 3 +++
+ hostapd/hostapd_cli.c | 9 +++++++++
+ 2 files changed, 12 insertions(+)
+
+diff --git a/hostapd/ctrl_iface.c b/hostapd/ctrl_iface.c
+index 9d42b60ae..8b01eda6d 100644
+--- a/hostapd/ctrl_iface.c
++++ b/hostapd/ctrl_iface.c
+@@ -3596,6 +3596,9 @@ static int hostapd_ctrl_iface_receive_process(struct hostapd_data *hapd,
+ 	} else if (os_strcmp(buf, "RELOAD_BSS") == 0) {
+ 		if (hostapd_ctrl_iface_reload_bss(hapd))
+ 			reply_len = -1;
++	} else if (os_strcmp(buf, "RELOAD_CONFIG") == 0) {
++		if (hostapd_reload_config(hapd->iface))
++			reply_len = -1;
+ 	} else if (os_strncmp(buf, "RELOAD", 6) == 0) {
+ 		if (hostapd_ctrl_iface_reload(hapd->iface))
+ 			reply_len = -1;
+diff --git a/hostapd/hostapd_cli.c b/hostapd/hostapd_cli.c
+index 45497cd01..be3c23ca9 100644
+--- a/hostapd/hostapd_cli.c
++++ b/hostapd/hostapd_cli.c
+@@ -1235,6 +1235,13 @@ static int hostapd_cli_cmd_reload_bss(struct wpa_ctrl *ctrl, int argc,
+ }
+ 
+ 
++static int hostapd_cli_cmd_reload_config(struct wpa_ctrl *ctrl, int argc,
++					 char *argv[])
++{
++	return wpa_ctrl_command(ctrl, "RELOAD_CONFIG");
++}
++
++
+ static int hostapd_cli_cmd_disable(struct wpa_ctrl *ctrl, int argc,
+ 				      char *argv[])
+ {
+@@ -1710,6 +1717,8 @@ static const struct hostapd_cli_cmd hostapd_cli_commands[] = {
+ 	  "= reload configuration for current interface" },
+ 	{ "reload_bss", hostapd_cli_cmd_reload_bss, NULL,
+ 	  "= reload configuration for current BSS" },
++	{ "reload_config", hostapd_cli_cmd_reload_config, NULL,
++	  "= reload configuration for current interface" },
+ 	{ "disable", hostapd_cli_cmd_disable, NULL,
+ 	  "= disable hostapd on current interface" },
+ 	{ "update_beacon", hostapd_cli_cmd_update_beacon, NULL,
+-- 
+2.43.0
+

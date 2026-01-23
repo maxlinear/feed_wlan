@@ -1,0 +1,33 @@
+From ba6b3dc78e134e3ffe862535bd985c75e13411fa Mon Sep 17 00:00:00 2001
+From: Jouni Malinen <quic_jouni@quicinc.com>
+Date: Fri, 6 Sep 2024 00:47:29 +0300
+Subject: [PATCH] AP MLD: Fix link_id validity check for own links
+
+The check against MAX_NUM_MLD_LINKS was off by one for the loop that
+goes through hapd->partner_links[]. It does not look like this would
+actually result in any real issues since the loop is on own set of
+configured links. Anyway, it is better to have the bounds checking
+accurate.
+
+Fixes: 2042cae9b3a4 ("AP MLD: Generate and keep per STA profiles for each link")
+Signed-off-by: Jouni Malinen <quic_jouni@quicinc.com>
+---
+ src/ap/beacon.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/src/ap/beacon.c b/src/ap/beacon.c
+index 7359dfd3e..2e3d90466 100644
+--- a/src/ap/beacon.c
++++ b/src/ap/beacon.c
+@@ -3125,7 +3125,7 @@ static void hostapd_gen_per_sta_profiles(struct hostapd_data *hapd)
+ 			continue;
+ 
+ 		link_id = link_bss->mld_link_id;
+-		if (link_id > MAX_NUM_MLD_LINKS)
++		if (link_id >= MAX_NUM_MLD_LINKS)
+ 			continue;
+ 
+ 		sta_profile = NULL;
+-- 
+2.43.0
+

@@ -1,0 +1,30 @@
+From e619dcce3181b8b7cb8e043bc5d752c1ed0f6fe4 Mon Sep 17 00:00:00 2001
+From: Jouni Malinen <quic_jouni@quicinc.com>
+Date: Fri, 26 Jan 2024 12:18:32 +0200
+Subject: [PATCH] tests: Allow more time for chirping in dpp_chirp_ap_5g
+
+The full scan at the beginning of the chirping step can take over 15
+seconds when 6 GHz and S1G channels are included and the timeout here is
+not enough to handle that.
+
+Signed-off-by: Jouni Malinen <quic_jouni@quicinc.com>
+---
+ tests/hwsim/test_dpp.py | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/tests/hwsim/test_dpp.py b/tests/hwsim/test_dpp.py
+index dd3d8e375..af8eb0540 100644
+--- a/tests/hwsim/test_dpp.py
++++ b/tests/hwsim/test_dpp.py
+@@ -6963,7 +6963,7 @@ def test_dpp_chirp_ap_5g(dev, apdev):
+         if "OK" not in hapd.request("DPP_CHIRP own=%d iter=5" % id_h):
+             raise Exception("DPP_CHIRP failed")
+         wait_auth_success(hapd, dev[0], configurator=dev[0], enrollee=hapd,
+-                          timeout=20)
++                          timeout=40)
+         update_hapd_config(hapd)
+     finally:
+         clear_regdom(hapd, dev)
+-- 
+2.43.0
+

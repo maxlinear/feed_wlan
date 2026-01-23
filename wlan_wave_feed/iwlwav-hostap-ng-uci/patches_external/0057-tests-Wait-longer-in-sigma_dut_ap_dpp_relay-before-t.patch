@@ -1,0 +1,33 @@
+From 56a944586ad7fee026d6ab3903386aa75c3cc4c2 Mon Sep 17 00:00:00 2001
+From: Jouni Malinen <quic_jouni@quicinc.com>
+Date: Thu, 14 Dec 2023 11:09:53 +0200
+Subject: [PATCH] tests: Wait longer in sigma_dut_ap_dpp_relay before timing
+ out
+
+DPP initiator will try three channels in this sequence and it can take
+very close to the previously used five second timeout before being able
+to try on the actual operating channel of the AP. This could result in
+the test case failing unnecessarily. Increase the timeout to avoid this.
+
+Signed-off-by: Jouni Malinen <quic_jouni@quicinc.com>
+---
+ tests/hwsim/test_sigma_dut.py | 3 ++-
+ 1 file changed, 2 insertions(+), 1 deletion(-)
+
+diff --git a/tests/hwsim/test_sigma_dut.py b/tests/hwsim/test_sigma_dut.py
+index 00e585655..13a29ce3d 100644
+--- a/tests/hwsim/test_sigma_dut.py
++++ b/tests/hwsim/test_sigma_dut.py
+@@ -3595,7 +3595,8 @@ def run_sigma_dut_ap_dpp_relay(dev, apdev):
+     res = sigma_dut_cmd_check("dev_exec_action,program,DPP,DPPActionType,GetLocalBootstrap,DPPCryptoIdentifier,P-256,DPPBS,QR")
+ 
+     dev[0].dpp_auth_init(uri=uri_c, role="enrollee")
+-    wait_auth_success(dev[1], dev[0], configurator=dev[1], enrollee=dev[0])
++    wait_auth_success(dev[1], dev[0], configurator=dev[1], enrollee=dev[0],
++                      timeout=10)
+ 
+     sigma_dut_cmd_check("ap_reset_default")
+ 
+-- 
+2.43.0
+

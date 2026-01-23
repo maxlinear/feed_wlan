@@ -1,0 +1,66 @@
+From 89b164138c0a9f88300ca1faaf385611fadd0270 Mon Sep 17 00:00:00 2001
+From: Jouni Malinen <quic_jouni@quicinc.com>
+Date: Thu, 11 Jul 2024 23:50:55 +0300
+Subject: [PATCH] BSS: Add wpa_bss_get_ie_beacon()
+
+This is a variant of wpa_bss_get_ie() to allow IEs to be checked from
+only Beacon frames similarly to how wpa_bss_get_vendor_ie_beacon()
+behaves for vendor specific elements.
+
+Signed-off-by: Jouni Malinen <quic_jouni@quicinc.com>
+---
+ wpa_supplicant/bss.c | 25 +++++++++++++++++++++++++
+ wpa_supplicant/bss.h |  1 +
+ 2 files changed, 26 insertions(+)
+
+diff --git a/wpa_supplicant/bss.c b/wpa_supplicant/bss.c
+index 289035310..f7b4d381e 100644
+--- a/wpa_supplicant/bss.c
++++ b/wpa_supplicant/bss.c
+@@ -1225,6 +1225,31 @@ const u8 * wpa_bss_get_ie(const struct wpa_bss *bss, u8 ie)
+ }
+ 
+ 
++/**
++ * wpa_bss_get_ie_beacon - Fetch a specified information element from a BSS entry
++ * @bss: BSS table entry
++ * @ie: Information element identitifier (WLAN_EID_*)
++ * Returns: Pointer to the information element (id field) or %NULL if not found
++ *
++ * This function returns the first matching information element in the BSS
++ * entry.
++ *
++ * This function is like wpa_bss_get_ie(), but uses IE buffer only from Beacon
++ * frames instead of either Beacon or Probe Response frames.
++ */
++const u8 * wpa_bss_get_ie_beacon(const struct wpa_bss *bss, u8 ie)
++{
++	const u8 *ies;
++
++	if (bss->beacon_ie_len == 0)
++		return NULL;
++
++	ies = wpa_bss_ie_ptr(bss);
++	ies += bss->ie_len;
++	return get_ie(ies, bss->beacon_ie_len, ie);
++}
++
++
+ /**
+  * wpa_bss_get_ie_ext - Fetch a specified extended IE from a BSS entry
+  * @bss: BSS table entry
+diff --git a/wpa_supplicant/bss.h b/wpa_supplicant/bss.h
+index cc0496324..2079606a9 100644
+--- a/wpa_supplicant/bss.h
++++ b/wpa_supplicant/bss.h
+@@ -175,6 +175,7 @@ struct wpa_bss * wpa_bss_get_id(struct wpa_supplicant *wpa_s, unsigned int id);
+ struct wpa_bss * wpa_bss_get_id_range(struct wpa_supplicant *wpa_s,
+ 				      unsigned int idf, unsigned int idl);
+ const u8 * wpa_bss_get_ie(const struct wpa_bss *bss, u8 ie);
++const u8 * wpa_bss_get_ie_beacon(const struct wpa_bss *bss, u8 ie);
+ const u8 * wpa_bss_get_ie_ext(const struct wpa_bss *bss, u8 ext);
+ const u8 * wpa_bss_get_vendor_ie(const struct wpa_bss *bss, u32 vendor_type);
+ const u8 * wpa_bss_get_vendor_ie_beacon(const struct wpa_bss *bss,
+-- 
+2.43.0
+

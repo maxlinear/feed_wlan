@@ -1,0 +1,215 @@
+From ba55088a73a811fcfe42231ac5a39f71b26e03b3 Mon Sep 17 00:00:00 2001
+From: Vinay Gannevaram <quic_vganneva@quicinc.com>
+Date: Thu, 1 Feb 2024 08:38:33 +0530
+Subject: [PATCH] Replace PTKSA cache inline stubs with wrapper function stubs
+
+PTKSA cache API is included in libpasn.so used by external modules,
+e.g., Wi-Fi Aware. To avoid dependency on CONFIG_PTKSA_CACHE define for
+the external modules at compile time, remove PTKSA cache static inline
+functions from the header file and add wrapper function stubs.
+
+Signed-off-by: Jouni Malinen <quic_jouni@quicinc.com>
+---
+ hostapd/Android.mk        |  2 +-
+ hostapd/Makefile          |  2 +-
+ src/common/ptksa_cache.c  | 43 +++++++++++++++++++++++++++++++++++++++
+ src/common/ptksa_cache.h  | 38 ----------------------------------
+ wpa_supplicant/Android.mk |  2 +-
+ wpa_supplicant/Makefile   |  2 +-
+ 6 files changed, 47 insertions(+), 42 deletions(-)
+
+diff --git a/hostapd/Android.mk b/hostapd/Android.mk
+index cec865744..5b6d29afa 100644
+--- a/hostapd/Android.mk
++++ b/hostapd/Android.mk
+@@ -154,6 +154,7 @@ OBJS += src/utils/crc32.c
+ OBJS += src/common/ieee802_11_common.c
+ OBJS += src/common/wpa_common.c
+ OBJS += src/common/hw_features_common.c
++OBJS += src/common/ptksa_cache.c
+ 
+ OBJS += src/eapol_auth/eapol_auth_sm.c
+ 
+@@ -594,7 +595,6 @@ NEED_HMAC_SHA256_KDF=y
+ NEED_HMAC_SHA384_KDF=y
+ NEED_SHA256=y
+ NEED_SHA384=y
+-OBJS += src/common/ptksa_cache.c
+ endif
+ 
+ ifdef CONFIG_EAP_IKEV2
+diff --git a/hostapd/Makefile b/hostapd/Makefile
+index b3cb68673..a349dbac2 100644
+--- a/hostapd/Makefile
++++ b/hostapd/Makefile
+@@ -84,6 +84,7 @@ OBJS += ../src/ap/beacon.o
+ OBJS += ../src/ap/bss_load.o
+ OBJS += ../src/ap/neighbor_db.o
+ OBJS += ../src/ap/rrm.o
++OBJS += ../src/common/ptksa_cache.o
+ 
+ OBJS_c = hostapd_cli.o
+ OBJS_c += ../src/common/wpa_ctrl.o
+@@ -620,7 +621,6 @@ NEED_HMAC_SHA256_KDF=y
+ NEED_HMAC_SHA384_KDF=y
+ NEED_SHA256=y
+ NEED_SHA384=y
+-OBJS += ../src/common/ptksa_cache.o
+ endif
+ 
+ ifdef CONFIG_EAP_IKEV2
+diff --git a/src/common/ptksa_cache.c b/src/common/ptksa_cache.c
+index c00f28876..918a1cc0c 100644
+--- a/src/common/ptksa_cache.c
++++ b/src/common/ptksa_cache.c
+@@ -19,6 +19,8 @@ struct ptksa_cache {
+ 	unsigned int n_ptksa;
+ };
+ 
++#ifdef CONFIG_PTKSA_CACHE
++
+ static void ptksa_cache_set_expiration(struct ptksa_cache *ptksa);
+ 
+ 
+@@ -342,3 +344,44 @@ struct ptksa_cache_entry * ptksa_cache_add(struct ptksa_cache *ptksa,
+ 
+ 	return entry;
+ }
++
++#else /* CONFIG_PTKSA_CACHE */
++
++struct ptksa_cache * ptksa_cache_init(void)
++{
++	return (struct ptksa_cache *) 1;
++}
++
++
++void ptksa_cache_deinit(struct ptksa_cache *ptksa)
++{
++}
++
++
++struct ptksa_cache_entry *
++ptksa_cache_get(struct ptksa_cache *ptksa, const u8 *addr, u32 cipher)
++{
++	return NULL;
++}
++
++
++int ptksa_cache_list(struct ptksa_cache *ptksa, char *buf, size_t len)
++{
++	return -1;
++}
++
++
++struct ptksa_cache_entry *
++ptksa_cache_add(struct ptksa_cache *ptksa, const u8 *own_addr, const u8 *addr,
++		u32 cipher, u32 life_time, const struct wpa_ptk *ptk,
++		void (*cb)(struct ptksa_cache_entry *e), void *ctx, u32 akmp)
++{
++	return NULL;
++}
++
++
++void ptksa_cache_flush(struct ptksa_cache *ptksa, const u8 *addr, u32 cipher)
++{
++}
++
++#endif /* CONFIG_PTKSA_CACHE */
+diff --git a/src/common/ptksa_cache.h b/src/common/ptksa_cache.h
+index 6182215cd..dd5e7db8f 100644
+--- a/src/common/ptksa_cache.h
++++ b/src/common/ptksa_cache.h
+@@ -29,7 +29,6 @@ struct ptksa_cache_entry {
+ 	u32 akmp;
+ };
+ 
+-#ifdef CONFIG_PTKSA_CACHE
+ 
+ struct ptksa_cache;
+ 
+@@ -48,41 +47,4 @@ struct ptksa_cache_entry * ptksa_cache_add(struct ptksa_cache *ptksa,
+ 					   void *ctx, u32 akmp);
+ void ptksa_cache_flush(struct ptksa_cache *ptksa, const u8 *addr, u32 cipher);
+ 
+-#else /* CONFIG_PTKSA_CACHE */
+-
+-static inline struct ptksa_cache * ptksa_cache_init(void)
+-{
+-	return (struct ptksa_cache *) 1;
+-}
+-
+-static inline void ptksa_cache_deinit(struct ptksa_cache *ptksa)
+-{
+-}
+-
+-static inline struct ptksa_cache_entry *
+-ptksa_cache_get(struct ptksa_cache *ptksa, const u8 *addr, u32 cipher)
+-{
+-	return NULL;
+-}
+-
+-static inline int ptksa_cache_list(struct ptksa_cache *ptksa,
+-				   char *buf, size_t len)
+-{
+-	return -1;
+-}
+-
+-static inline struct ptksa_cache_entry *
+-ptksa_cache_add(struct ptksa_cache *ptksa, const u8 *own_addr, const u8 *addr,
+-		u32 cipher, u32 life_time, const struct wpa_ptk *ptk,
+-		void (*cb)(struct ptksa_cache_entry *e), void *ctx, u32 akmp)
+-{
+-	return NULL;
+-}
+-
+-static inline void ptksa_cache_flush(struct ptksa_cache *ptksa,
+-				     const u8 *addr, u32 cipher)
+-{
+-}
+-
+-#endif /* CONFIG_PTKSA_CACHE */
+ #endif /* PTKSA_CACHE_H */
+diff --git a/wpa_supplicant/Android.mk b/wpa_supplicant/Android.mk
+index 307e18952..fd03f389c 100644
+--- a/wpa_supplicant/Android.mk
++++ b/wpa_supplicant/Android.mk
+@@ -100,6 +100,7 @@ OBJS += src/utils/wpabuf.c
+ OBJS += src/utils/bitfield.c
+ OBJS += src/utils/ip_addr.c
+ OBJS += src/utils/crc32.c
++OBJS += src/common/ptksa_cache.c
+ OBJS += twt.c
+ OBJS_p = wpa_passphrase.c
+ OBJS_p += src/utils/common.c
+@@ -389,7 +390,6 @@ NEED_HMAC_SHA256_KDF=y
+ NEED_HMAC_SHA384_KDF=y
+ NEED_SHA256=y
+ NEED_SHA384=y
+-OBJS += src/common/ptksa_cache.c
+ OBJS += src/pasn/pasn_initiator.c
+ OBJS += pasn_supplicant.c
+ endif
+diff --git a/wpa_supplicant/Makefile b/wpa_supplicant/Makefile
+index dd13308f7..9230787a4 100644
+--- a/wpa_supplicant/Makefile
++++ b/wpa_supplicant/Makefile
+@@ -112,6 +112,7 @@ OBJS += ../src/utils/wpabuf.o
+ OBJS += ../src/utils/bitfield.o
+ OBJS += ../src/utils/ip_addr.o
+ OBJS += ../src/utils/crc32.o
++OBJS += ../src/common/ptksa_cache.o
+ OBJS += twt.o
+ OBJS_p = wpa_passphrase.o
+ OBJS_p += ../src/utils/common.o
+@@ -431,7 +432,6 @@ NEED_HMAC_SHA256_KDF=y
+ NEED_HMAC_SHA384_KDF=y
+ NEED_SHA256=y
+ NEED_SHA384=y
+-OBJS += ../src/common/ptksa_cache.o
+ OBJS += ../src/pasn/pasn_initiator.o
+ OBJS += pasn_supplicant.o
+ endif
+-- 
+2.43.0
+

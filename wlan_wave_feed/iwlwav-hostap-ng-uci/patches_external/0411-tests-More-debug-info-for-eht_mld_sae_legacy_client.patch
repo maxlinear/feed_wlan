@@ -1,0 +1,44 @@
+From 16f70728882a7077aa0d9722daa036233f265682 Mon Sep 17 00:00:00 2001
+From: Jouni Malinen <j@w1.fi>
+Date: Sun, 3 Mar 2024 19:25:27 +0200
+Subject: [PATCH] tests: More debug info for eht_mld_sae_legacy_client
+
+It looks like this test case can fail in some cases. Add more debug info
+and event wait that might help with a race condition.
+
+Signed-off-by: Jouni Malinen <j@w1.fi>
+---
+ tests/hwsim/test_eht.py | 10 ++++++++++
+ 1 file changed, 10 insertions(+)
+
+diff --git a/tests/hwsim/test_eht.py b/tests/hwsim/test_eht.py
+index b234c314d..bab67e9e5 100644
+--- a/tests/hwsim/test_eht.py
++++ b/tests/hwsim/test_eht.py
+@@ -73,6 +73,8 @@ def eht_verify_status(wpas, hapd, freq, bw, is_ht=False, is_vht=False,
+ 
+     sta = hapd.get_sta(wpas.own_addr())
+     logger.info("hostapd STA: " + str(sta))
++    if sta['addr'] == 'FAIL':
++        raise Exception("hostapd " + hapd.ifname + " did not have a STA entry for the STA " + wpas.own_addr())
+     if is_ht and "[HT]" not in sta['flags']:
+         raise Exception("Missing STA flag: HT")
+     if is_vht and "[VHT]" not in sta['flags']:
+@@ -592,6 +594,14 @@ def test_eht_mld_sae_legacy_client(dev, apdev):
+             dev[0].set("sae_pwe", "1")
+             dev[0].connect(ssid, sae_password=passphrase, scan_freq="2412",
+                            key_mgmt="SAE", ieee80211w="2", beacon_prot="1")
++            logger.info("wpa_supplicant STATUS:\n" + dev[0].request("STATUS"))
++            bssid = dev[0].get_status_field("bssid")
++            if hapd0.own_addr() == bssid:
++                hapd0.wait_sta();
++            elif hapd1.own_addr() == bssid:
++                hapd1.wait_sta();
++            else:
++                raise Exception("Unknown BSSID: " + bssid)
+ 
+             eht_verify_status(dev[0], hapd0, 2412, 20, is_ht=True)
+             traffic_test(dev[0], hapd0)
+-- 
+2.43.0
+

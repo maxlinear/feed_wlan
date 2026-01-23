@@ -1,0 +1,55 @@
+From c16ac89be235ddb07247e0143abf245bb7760c40 Mon Sep 17 00:00:00 2001
+From: Jouni Malinen <quic_jouni@quicinc.com>
+Date: Wed, 11 Oct 2023 12:45:09 +0300
+Subject: [PATCH] Add RSN overriding elements into IE parsing
+
+Signed-off-by: Jouni Malinen <quic_jouni@quicinc.com>
+---
+ src/common/ieee802_11_common.c | 8 ++++++++
+ src/common/ieee802_11_common.h | 4 ++++
+ 2 files changed, 12 insertions(+)
+
+diff --git a/src/common/ieee802_11_common.c b/src/common/ieee802_11_common.c
+index ba1cb5257..40a38955d 100644
+--- a/src/common/ieee802_11_common.c
++++ b/src/common/ieee802_11_common.c
+@@ -140,6 +140,14 @@ static int ieee802_11_parse_vendor_specific(const u8 *pos, size_t elen,
+ 			elems->sae_pk = pos + 4;
+ 			elems->sae_pk_len = elen - 4;
+ 			break;
++		case WFA_RSNE_OVERRIDE_OUI_TYPE:
++			elems->rsne_override = pos;
++			elems->rsne_override_len = elen;
++			break;
++		case WFA_RSNE_OVERRIDE_2_OUI_TYPE:
++			elems->rsne_override_2 = pos;
++			elems->rsne_override_2_len = elen;
++			break;
+ 		default:
+ 			wpa_printf(MSG_MSGDUMP, "Unknown WFA "
+ 				   "information element ignored "
+diff --git a/src/common/ieee802_11_common.h b/src/common/ieee802_11_common.h
+index 9e9684c11..46a86096e 100644
+--- a/src/common/ieee802_11_common.h
++++ b/src/common/ieee802_11_common.h
+@@ -116,6 +116,8 @@ struct ieee802_11_elems {
+ 	const u8 *prior_access_mle;
+ 	const u8 *mbssid_known_bss;
+ 	const u8 *mbssid;
++	const u8 *rsne_override;
++	const u8 *rsne_override_2;
+ 
+ 	u8 ssid_len;
+ 	u8 supp_rates_len;
+@@ -179,6 +181,8 @@ struct ieee802_11_elems {
+ 	size_t prior_access_mle_len;
+ 	u8 mbssid_known_bss_len;
+ 	u8 mbssid_len;
++	size_t rsne_override_len;
++	size_t rsne_override_2_len;
+ 
+ 	struct mb_ies_info mb_ies;
+ 
+-- 
+2.43.0
+

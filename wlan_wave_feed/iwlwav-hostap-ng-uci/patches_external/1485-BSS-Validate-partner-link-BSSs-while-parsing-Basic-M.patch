@@ -1,0 +1,189 @@
+From de49e55d7a1f62ef8eeb8269d8b34726468d54ac Mon Sep 17 00:00:00 2001
+From: Thirusenthil Kumaran J <quic_thirusen@quicinc.com>
+Date: Tue, 4 Mar 2025 00:03:02 +0530
+Subject: [PATCH] BSS: Validate partner link BSSs while parsing Basic MLE
+
+When the Basic MLE from the AP is parsed, wpa_scan_res_match() is called
+for only the association link when the BSS params from the RNR element
+is set with colocated AP or same SSID bits. Even if the affiliated APs
+of the AP MLD have configurations incompatible with the non-AP MLD,
+association will be attempted with all the links. An AP MLD is required
+to have compatible parameters in all affiliated APs, but it is not
+guaranteed that all deployed AP MLDs are compliant with this
+requirement.
+
+Enable wpa_scan_res_match() for affiliated AP BSSs as well by removing
+RNR BSS params check so that the affiliated APs that fail the checks are
+skipped and connection is downgraded to a smaller number of links by
+including only the links with compatible configuration. BSSs are still
+filtered from the RNR TBTT info based on the MLD ID subfield contained
+in the MLD params subfield. While at it, skip some checks for other
+affiliated APs which are meant only for the association link.
+
+Fixes: a3020f852e1c ("MLD: Use BSS Parameters in TBTT Info to check SSID match")
+Co-developed-by: Pooventhiran G <quic_pooventh@quicinc.com>
+Signed-off-by: Pooventhiran G <quic_pooventh@quicinc.com>
+Co-developed-by: Rohan Dutta <quic_drohan@quicinc.com>
+Signed-off-by: Rohan Dutta <quic_drohan@quicinc.com>
+Signed-off-by: Thirusenthil Kumaran J <quic_thirusen@quicinc.com>
+---
+ wpa_supplicant/bss.c              |  7 +------
+ wpa_supplicant/events.c           | 19 ++++++++++---------
+ wpa_supplicant/wnm_sta.c          |  4 ++--
+ wpa_supplicant/wpa_supplicant_i.h |  3 ++-
+ 4 files changed, 15 insertions(+), 18 deletions(-)
+
+diff --git a/wpa_supplicant/bss.c b/wpa_supplicant/bss.c
+index a0f657888..0afac49e3 100644
+--- a/wpa_supplicant/bss.c
++++ b/wpa_supplicant/bss.c
+@@ -1664,12 +1664,9 @@ wpa_bss_parse_ml_rnr_ap_info(struct wpa_supplicant *wpa_s,
+ 	pos += sizeof(*ap_info);
+ 
+ 	for (i = 0; i < count; i++, pos += ap_info->tbtt_info_len) {
+-		u8 bss_params;
+-
+ 		if (end - pos < ap_info->tbtt_info_len)
+ 			break;
+ 
+-		bss_params = pos[1 + ETH_ALEN + 4];
+ 		mld_params = pos + mld_params_offset;
+ 
+ 		link_id = *(mld_params + 1) & EHT_ML_LINK_ID_MSK;
+@@ -1696,10 +1693,8 @@ wpa_bss_parse_ml_rnr_ap_info(struct wpa_supplicant *wpa_s,
+ 			if (!neigh_bss) {
+ 				*missing |= BIT(link_id);
+ 			} else if ((!ssid ||
+-				    (bss_params & (RNR_BSS_PARAM_SAME_SSID |
+-						   RNR_BSS_PARAM_CO_LOCATED)) ||
+ 				    wpa_scan_res_match(wpa_s, 0, neigh_bss,
+-						       ssid, 1, 0)) &&
++						       ssid, 1, 0, true)) &&
+ 				   !wpa_bssid_ignore_is_listed(
+ 					   wpa_s, neigh_bss->bssid)) {
+ 				struct mld_link *l;
+diff --git a/wpa_supplicant/events.c b/wpa_supplicant/events.c
+index 0c3521951..8b575534b 100644
+--- a/wpa_supplicant/events.c
++++ b/wpa_supplicant/events.c
+@@ -1212,7 +1212,7 @@ int disabled_freq(struct wpa_supplicant *wpa_s, int freq)
+ static bool wpa_scan_res_ok(struct wpa_supplicant *wpa_s, struct wpa_ssid *ssid,
+ 			    const u8 *match_ssid, size_t match_ssid_len,
+ 			    struct wpa_bss *bss, int bssid_ignore_count,
+-			    bool debug_print);
++			    bool debug_print, bool link);
+ 
+ 
+ #ifdef CONFIG_SAE_PK
+@@ -1242,7 +1242,7 @@ static bool sae_pk_acceptable_bss_with_pk(struct wpa_supplicant *wpa_s,
+ 
+ 		count = wpa_bssid_ignore_is_listed(wpa_s, bss->bssid);
+ 		if (wpa_scan_res_ok(wpa_s, ssid, match_ssid, match_ssid_len,
+-				    bss, count, 0))
++				    bss, count, false, false))
+ 			return true;
+ 	}
+ 
+@@ -1254,7 +1254,7 @@ static bool sae_pk_acceptable_bss_with_pk(struct wpa_supplicant *wpa_s,
+ static bool wpa_scan_res_ok(struct wpa_supplicant *wpa_s, struct wpa_ssid *ssid,
+ 			    const u8 *match_ssid, size_t match_ssid_len,
+ 			    struct wpa_bss *bss, int bssid_ignore_count,
+-			    bool debug_print)
++			    bool debug_print, bool link)
+ {
+ 	int res;
+ 	bool wpa, check_ssid = false;
+@@ -1329,7 +1329,7 @@ static bool wpa_scan_res_ok(struct wpa_supplicant *wpa_s, struct wpa_ssid *ssid,
+ 		return false;
+ 	}
+ 
+-	if (ssid->bssid_set &&
++	if (!link && ssid->bssid_set &&
+ 	    !ether_addr_equal(bss->bssid, ssid->bssid)) {
+ 		if (debug_print)
+ 			wpa_dbg(wpa_s, MSG_DEBUG, "   skip - BSSID mismatch");
+@@ -1596,7 +1596,7 @@ skip_assoc_disallow:
+ 		return false;
+ 	}
+ 
+-	if (!wpas_valid_ml_bss(wpa_s, bss)) {
++	if (!link && !wpas_valid_ml_bss(wpa_s, bss)) {
+ 		if (debug_print)
+ 			wpa_dbg(wpa_s, MSG_DEBUG,
+ 				"   skip - ML BSS going to be removed");
+@@ -1611,7 +1611,8 @@ skip_assoc_disallow:
+ struct wpa_ssid * wpa_scan_res_match(struct wpa_supplicant *wpa_s,
+ 				     int i, struct wpa_bss *bss,
+ 				     struct wpa_ssid *group,
+-				     int only_first_ssid, int debug_print)
++				     int only_first_ssid, int debug_print,
++				     bool link)
+ {
+ 	u8 wpa_ie_len, rsn_ie_len;
+ 	const u8 *ie;
+@@ -1700,7 +1701,7 @@ struct wpa_ssid * wpa_scan_res_match(struct wpa_supplicant *wpa_s,
+ 
+ 	for (ssid = group; ssid; ssid = only_first_ssid ? NULL : ssid->pnext) {
+ 		if (wpa_scan_res_ok(wpa_s, ssid, match_ssid, match_ssid_len,
+-				    bss, bssid_ignore_count, debug_print))
++				    bss, bssid_ignore_count, debug_print, link))
+ 			return ssid;
+ 	}
+ 
+@@ -1726,7 +1727,7 @@ wpa_supplicant_select_bss(struct wpa_supplicant *wpa_s,
+ 			struct wpa_bss *bss = wpa_s->last_scan_res[i];
+ 
+ 			ssid = wpa_scan_res_match(wpa_s, i, bss, group,
+-						  only_first_ssid, 0);
++						  only_first_ssid, 0, false);
+ 			if (ssid != wpa_s->current_ssid)
+ 				continue;
+ 			wpa_dbg(wpa_s, MSG_DEBUG, "%u: " MACSTR
+@@ -1748,7 +1749,7 @@ wpa_supplicant_select_bss(struct wpa_supplicant *wpa_s,
+ 
+ 		wpa_s->owe_transition_select = 1;
+ 		*selected_ssid = wpa_scan_res_match(wpa_s, i, bss, group,
+-						    only_first_ssid, 1);
++						    only_first_ssid, 1, false);
+ 		wpa_s->owe_transition_select = 0;
+ 		if (!*selected_ssid)
+ 			continue;
+diff --git a/wpa_supplicant/wnm_sta.c b/wpa_supplicant/wnm_sta.c
+index 41385c302..8f39b5f2d 100644
+--- a/wpa_supplicant/wnm_sta.c
++++ b/wpa_supplicant/wnm_sta.c
+@@ -847,7 +847,7 @@ static void wnm_add_cand_list(struct wpa_supplicant *wpa_s, struct wpabuf **buf)
+ 		struct wpa_bss *bss = wpa_s->last_scan_res[i];
+ 		int res;
+ 
+-		if (wpa_scan_res_match(wpa_s, i, bss, ssid, 1, 0)) {
++		if (wpa_scan_res_match(wpa_s, i, bss, ssid, 1, 0, false)) {
+ 			res = wnm_nei_rep_add_bss(wpa_s, bss, buf, pref--);
+ 			if (res == -2)
+ 				continue; /* could not build entry for BSS */
+@@ -1101,7 +1101,7 @@ int wnm_scan_process(struct wpa_supplicant *wpa_s, bool pre_scan_check)
+ 	/* Apply normal roaming rules if we can stay with the current BSS */
+ 	if (current_bss && bss != current_bss &&
+ 	    wpa_scan_res_match(wpa_s, 0, current_bss, wpa_s->current_ssid,
+-			       1, 0) &&
++			       1, 0, false) &&
+ 	    !wpa_supplicant_need_to_roam_within_ess(wpa_s, current_bss, bss,
+ 						    true))
+ 		bss = current_bss;
+diff --git a/wpa_supplicant/wpa_supplicant_i.h b/wpa_supplicant/wpa_supplicant_i.h
+index 61b82f9b5..7644ed9b5 100644
+--- a/wpa_supplicant/wpa_supplicant_i.h
++++ b/wpa_supplicant/wpa_supplicant_i.h
+@@ -1967,7 +1967,8 @@ void free_bss_tmp_disallowed(struct wpa_supplicant *wpa_s);
+ struct wpa_ssid * wpa_scan_res_match(struct wpa_supplicant *wpa_s,
+ 				     int i, struct wpa_bss *bss,
+ 				     struct wpa_ssid *group,
+-				     int only_first_ssid, int debug_print);
++				     int only_first_ssid, int debug_print,
++				     bool link);
+ 
+ struct wpa_bss * wpa_supplicant_select_bss(struct wpa_supplicant *wpa_s,
+ 					   struct wpa_ssid *group,
+-- 
+2.43.0
+

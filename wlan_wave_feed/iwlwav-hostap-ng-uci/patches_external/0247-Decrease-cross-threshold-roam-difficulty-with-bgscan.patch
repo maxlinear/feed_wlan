@@ -1,0 +1,71 @@
+From 05474b34bf8a7cdfee6752dd2ac914392e963a86 Mon Sep 17 00:00:00 2001
+From: Matthew Wang <matthewmwang@chromium.org>
+Date: Thu, 28 Dec 2023 21:03:42 +0000
+Subject: [PATCH] Decrease cross-threshold roam difficulty with bgscan_simple
+
+Decrease the roam difficulty when roaming across the short background
+scan threshold (i.e., when the current BSS RSSI is below the threshold
+and the selected BSS RSSI is above the threshold). This tends to happen
+in normal roaming scenarios when moving from the domain of one AP to
+the domain of another.
+
+Signed-off-by: Matthew Wang <matthewmwang@chromium.org>
+---
+ wpa_supplicant/bgscan_simple.c    | 5 ++++-
+ wpa_supplicant/events.c           | 3 +++
+ wpa_supplicant/wpa_supplicant_i.h | 1 +
+ 3 files changed, 8 insertions(+), 1 deletion(-)
+
+diff --git a/wpa_supplicant/bgscan_simple.c b/wpa_supplicant/bgscan_simple.c
+index cac3049e3..a90cf86e5 100644
+--- a/wpa_supplicant/bgscan_simple.c
++++ b/wpa_supplicant/bgscan_simple.c
+@@ -189,6 +189,7 @@ static void * bgscan_simple_init(struct wpa_supplicant *wpa_s,
+ 	data->scan_interval = data->short_interval;
+ 	data->max_short_scans = data->long_interval / data->short_interval + 1;
+ 	if (data->signal_threshold) {
++		wpa_s->signal_threshold = data->signal_threshold;
+ 		/* Poll for signal info to set initial scan interval */
+ 		struct wpa_signal_info siginfo;
+ 		if (wpa_drv_signal_poll(wpa_s, &siginfo) == 0 &&
+@@ -216,8 +217,10 @@ static void bgscan_simple_deinit(void *priv)
+ {
+ 	struct bgscan_simple_data *data = priv;
+ 	eloop_cancel_timeout(bgscan_simple_timeout, data, NULL);
+-	if (data->signal_threshold)
++	if (data->signal_threshold) {
++		data->wpa_s->signal_threshold = 0;
+ 		wpa_drv_signal_monitor(data->wpa_s, 0, 0);
++	}
+ 	os_free(data);
+ }
+ 
+diff --git a/wpa_supplicant/events.c b/wpa_supplicant/events.c
+index 6dddcf116..ee39a6570 100644
+--- a/wpa_supplicant/events.c
++++ b/wpa_supplicant/events.c
+@@ -2281,6 +2281,9 @@ int wpa_supplicant_need_to_roam_within_ess(struct wpa_supplicant *wpa_s,
+ 		min_diff -= 2;
+ 	if (to_6ghz)
+ 		min_diff -= 2;
++	if (wpa_s->signal_threshold && cur_level <= wpa_s->signal_threshold &&
++	    sel_level > wpa_s->signal_threshold)
++		min_diff -= 2;
+ 	diff = sel_level - cur_level;
+ 	if (diff < min_diff) {
+ 		wpa_dbg(wpa_s, MSG_DEBUG,
+diff --git a/wpa_supplicant/wpa_supplicant_i.h b/wpa_supplicant/wpa_supplicant_i.h
+index 3d4d21f19..36e682f3e 100644
+--- a/wpa_supplicant/wpa_supplicant_i.h
++++ b/wpa_supplicant/wpa_supplicant_i.h
+@@ -1193,6 +1193,7 @@ struct wpa_supplicant {
+ 	struct wpa_ssid *bgscan_ssid;
+ 	const struct bgscan_ops *bgscan;
+ 	void *bgscan_priv;
++	int signal_threshold;
+ 
+ 	const struct autoscan_ops *autoscan;
+ 	struct wpa_driver_scan_params *autoscan_params;
+-- 
+2.43.0
+

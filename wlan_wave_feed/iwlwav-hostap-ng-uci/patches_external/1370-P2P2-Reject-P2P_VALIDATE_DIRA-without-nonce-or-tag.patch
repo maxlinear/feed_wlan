@@ -1,0 +1,39 @@
+From c8c7d56a3d3c4ca79bcbb6a87f372ce4bc2e9f11 Mon Sep 17 00:00:00 2001
+From: Jouni Malinen <j@w1.fi>
+Date: Sun, 9 Feb 2025 19:02:05 +0200
+Subject: [PATCH] P2P2: Reject P2P_VALIDATE_DIRA without nonce or tag
+
+There is no point in trying to validate DIRA without these values being
+available. Avoid using uninitialized stack buffer for such pointless
+check.
+
+Signed-off-by: Jouni Malinen <j@w1.fi>
+---
+ wpa_supplicant/ctrl_iface.c | 4 ++++
+ 1 file changed, 4 insertions(+)
+
+diff --git a/wpa_supplicant/ctrl_iface.c b/wpa_supplicant/ctrl_iface.c
+index fdf3a5d4c..85fbbe458 100644
+--- a/wpa_supplicant/ctrl_iface.c
++++ b/wpa_supplicant/ctrl_iface.c
+@@ -6651,6 +6651,8 @@ static int p2p_ctrl_validate_dira(struct wpa_supplicant *wpa_s, char *cmd)
+ 		pos2 += 6;
+ 		if (hexstr2bin(pos2, nonce, sizeof(nonce)) < 0)
+ 			return -1;
++	} else {
++		return -1;
+ 	}
+ 
+ 	pos2 = os_strstr(pos, "tag=");
+@@ -6658,6 +6660,8 @@ static int p2p_ctrl_validate_dira(struct wpa_supplicant *wpa_s, char *cmd)
+ 		pos2 += 4;
+ 		if (hexstr2bin(pos2, tag, sizeof(tag)) < 0)
+ 			return -1;
++	} else {
++		return -1;
+ 	}
+ 
+ 	return wpas_p2p_validate_dira(wpa_s, addr, 0, nonce, tag);
+-- 
+2.43.0
+

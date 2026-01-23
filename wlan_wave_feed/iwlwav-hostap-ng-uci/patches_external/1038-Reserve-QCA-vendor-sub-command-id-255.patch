@@ -1,0 +1,27 @@
+From 999ef04990178dc1f22816797ab3674806f03463 Mon Sep 17 00:00:00 2001
+From: Jouni Malinen <quic_jouni@quicinc.com>
+Date: Thu, 31 Oct 2024 22:55:25 +0200
+Subject: [PATCH] Reserve QCA vendor sub command id 255
+
+This is reserved for QCA use.
+
+Signed-off-by: Jouni Malinen <quic_jouni@quicinc.com>
+---
+ src/common/qca-vendor.h | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/src/common/qca-vendor.h b/src/common/qca-vendor.h
+index becdf3d2a..ed46d27d1 100644
+--- a/src/common/qca-vendor.h
++++ b/src/common/qca-vendor.h
+@@ -1563,6 +1563,7 @@ enum qca_nl80211_vendor_subcmds {
+ 	QCA_NL80211_VENDOR_SUBCMD_CHAN_USAGE_REQ = 252,
+ 	QCA_NL80211_VENDOR_SUBCMD_GET_FW_SCAN_REPORT = 253,
+ 	QCA_NL80211_VENDOR_SUBCMD_IDLE_SHUTDOWN = 254,
++	/* 255 - reserved for QCA */
+ };
+ 
+ /* Compatibility defines for previously used subcmd names.
+-- 
+2.43.0
+

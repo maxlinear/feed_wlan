@@ -1,0 +1,30 @@
+From f20ca22dce6208db98ae78e8a97f321877b4706c Mon Sep 17 00:00:00 2001
+From: Jouni Malinen <quic_jouni@quicinc.com>
+Date: Fri, 26 Jan 2024 11:59:48 +0200
+Subject: [PATCH] DFS: Print the random channel list entry selection in debug
+ print
+
+This makes it a bit easier to understand what happens with random
+channel selection after radar detection.
+
+Signed-off-by: Jouni Malinen <quic_jouni@quicinc.com>
+---
+ src/ap/dfs.c | 2 ++
+ 1 file changed, 2 insertions(+)
+
+diff --git a/src/ap/dfs.c b/src/ap/dfs.c
+index d5bb240ec..5e4c81070 100644
+--- a/src/ap/dfs.c
++++ b/src/ap/dfs.c
+@@ -551,6 +551,8 @@ dfs_get_valid_channel(struct hostapd_iface *iface,
+ 	if (os_get_random((u8 *) &_rand, sizeof(_rand)) < 0)
+ 		return NULL;
+ 	chan_idx = _rand % num_available_chandefs;
++	wpa_printf(MSG_DEBUG, "DFS: Picked random entry from the list: %d/%d",
++		   chan_idx, num_available_chandefs);
+ 	dfs_find_channel(iface, &chan, chan_idx, type);
+ 	if (!chan) {
+ 		wpa_printf(MSG_DEBUG, "DFS: no random channel found");
+-- 
+2.43.0
+

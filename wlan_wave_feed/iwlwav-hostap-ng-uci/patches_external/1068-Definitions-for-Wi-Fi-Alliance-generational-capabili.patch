@@ -1,0 +1,37 @@
+From a0ba416e7fdceba66b0bb03a25ba369e1bbbfe44 Mon Sep 17 00:00:00 2001
+From: Jouni Malinen <quic_jouni@quicinc.com>
+Date: Tue, 5 Nov 2024 18:40:47 +0200
+Subject: [PATCH] Definitions for Wi-Fi Alliance generational capabilities
+ indication
+
+Define the identifiers assigned for Wi-Fi Alliance Capabilities frame
+and Generational Capabilities Indication attribute.
+
+Signed-off-by: Jouni Malinen <quic_jouni@quicinc.com>
+---
+ src/common/ieee802_11_defs.h | 9 +++++++++
+ 1 file changed, 9 insertions(+)
+
+diff --git a/src/common/ieee802_11_defs.h b/src/common/ieee802_11_defs.h
+index 4b431b081..6983ef2e3 100644
+--- a/src/common/ieee802_11_defs.h
++++ b/src/common/ieee802_11_defs.h
+@@ -3114,6 +3114,15 @@ enum dscp_policy_request_type {
+ #define WFA_CAPA_QM_UNSOLIC_DSCP BIT(1)
+ #define WFA_CAPA_QM_NON_EHT_SCS_TRAFFIC_DESC BIT(2)
+ 
++/* Wi-Fi Alliance Capabilities attributes */
++enum wfa_capa_attr_id {
++	WFA_CAPA_ATTR_GENERATIONAL_CAPAB = 1,
++	WFA_CAPA_ATTR_VENDOR_SPECIFIC = 221,
++};
++
++/* Wi-Fi Alliance Capabilities frame */
++#define WFA_CAPAB_VENDOR_TYPE 0x506f9a1b
++
+ struct ieee80211_neighbor_ap_info {
+ 	u8 tbtt_info_hdr;
+ 	u8 tbtt_info_len;
+-- 
+2.43.0
+

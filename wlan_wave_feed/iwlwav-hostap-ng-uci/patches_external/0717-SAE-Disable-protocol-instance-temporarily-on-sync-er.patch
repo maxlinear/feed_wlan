@@ -1,0 +1,106 @@
+From 5da59ff1cd348e4410a54fba48958523b82059c8 Mon Sep 17 00:00:00 2001
+From: Jouni Malinen <quic_jouni@quicinc.com>
+Date: Sat, 13 Jul 2024 16:35:12 +0300
+Subject: [PATCH] SAE: Disable protocol instance temporarily on sync error in
+ mesh
+
+Reduce the number of unwanted SAE commit retries in synchronization
+error cases when Sync > dot11RSNASAESync in mesh cases by discarding
+received SAE commit messages for 10 seconds after a sync error has been
+detected.
+
+Signed-off-by: Jouni Malinen <quic_jouni@quicinc.com>
+---
+ src/ap/ieee802_11.c | 42 ++++++++++++++++++++++++++++++++++++++++++
+ src/common/sae.h    |  2 ++
+ 2 files changed, 44 insertions(+)
+
+diff --git a/src/ap/ieee802_11.c b/src/ap/ieee802_11.c
+index 2d361fc59..efcc27a50 100644
+--- a/src/ap/ieee802_11.c
++++ b/src/ap/ieee802_11.c
+@@ -813,12 +813,41 @@ static int sae_check_big_sync(struct hostapd_data *hapd, struct sta_info *sta)
+ 	if (sta->sae->sync > hapd->conf->sae_sync) {
+ 		sae_set_state(sta, SAE_NOTHING, "Sync > dot11RSNASAESync");
+ 		sta->sae->sync = 0;
++		if (sta->sae->tmp) {
++			/* Disable this SAE instance for 10 seconds to avoid
++			 * unnecessary flood of multiple SAE commits in
++			 * unexpected mesh cases. */
++			if (os_get_reltime(&sta->sae->tmp->disabled_until) == 0)
++				sta->sae->tmp->disabled_until.sec += 10;
++		}
+ 		return -1;
+ 	}
+ 	return 0;
+ }
+ 
+ 
++static bool sae_proto_instance_disabled(struct sta_info *sta)
++{
++	struct sae_temporary_data *tmp;
++
++	if (!sta->sae)
++		return false;
++	tmp = sta->sae->tmp;
++	if (!tmp)
++		return false;
++
++	if (os_reltime_initialized(&tmp->disabled_until)) {
++		struct os_reltime now;
++
++		os_get_reltime(&now);
++		if (os_reltime_before(&now, &tmp->disabled_until))
++			return true;
++	}
++
++	return false;
++}
++
++
+ static void auth_sae_retransmit_timer(void *eloop_ctx, void *eloop_data)
+ {
+ 	struct hostapd_data *hapd = eloop_ctx;
+@@ -962,6 +991,13 @@ static int sae_sm_step(struct hostapd_data *hapd, struct sta_info *sta,
+ 	wpa_printf(MSG_DEBUG, "SAE: Peer " MACSTR " state=%s auth_trans=%u",
+ 		   MAC2STR(sta->addr), sae_state_txt(sta->sae->state),
+ 		   auth_transaction);
++
++	if (auth_transaction == 1 && sae_proto_instance_disabled(sta)) {
++		wpa_printf(MSG_DEBUG,
++			   "SAE: Protocol instance temporarily disabled - discard received SAE commit");
++		return WLAN_STATUS_SUCCESS;
++	}
++
+ 	switch (sta->sae->state) {
+ 	case SAE_NOTHING:
+ 		if (auth_transaction == 1) {
+@@ -1403,6 +1439,12 @@ static void handle_auth_sae(struct hostapd_data *hapd, struct sta_info *sta,
+ 		if (!sae_status_success(hapd, status_code))
+ 			goto remove_sta;
+ 
++		if (sae_proto_instance_disabled(sta)) {
++			wpa_printf(MSG_DEBUG,
++				   "SAE: Protocol instance temporarily disabled - discard received SAE commit");
++			return;
++		}
++
+ 		if (!(hapd->conf->mesh & MESH_ENABLED) &&
+ 		    sta->sae->state == SAE_COMMITTED) {
+ 			/* This is needed in the infrastructure BSS case to
+diff --git a/src/common/sae.h b/src/common/sae.h
+index c446da396..a353aa8da 100644
+--- a/src/common/sae.h
++++ b/src/common/sae.h
+@@ -82,6 +82,8 @@ struct sae_temporary_data {
+ 	bool omit_pk_elem;
+ #endif /* CONFIG_TESTING_OPTIONS */
+ #endif /* CONFIG_SAE_PK */
++
++	struct os_reltime disabled_until;
+ };
+ 
+ struct sae_pt {
+-- 
+2.43.0
+

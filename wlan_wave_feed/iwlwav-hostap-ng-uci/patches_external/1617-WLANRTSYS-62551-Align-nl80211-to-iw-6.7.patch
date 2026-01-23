@@ -1,0 +1,25 @@
+From ed8b31449f448add04508b4a5113f73db4b30233 Mon Sep 17 00:00:00 2001
+From: fromans <fromans@maxlinear.com>
+Date: Tue, 23 Jan 2024 12:15:17 +0200
+Subject: [PATCH] WLANRTSYS-62551 Align nl80211 to iw 6.7
+
+---
+ src/drivers/nl80211_copy.h | 2 ++
+ 1 file changed, 2 insertions(+)
+
+diff --git a/src/drivers/nl80211_copy.h b/src/drivers/nl80211_copy.h
+index 67b06c30a..f77fa0e2e 100644
+--- a/src/drivers/nl80211_copy.h
++++ b/src/drivers/nl80211_copy.h
+@@ -3522,6 +3522,8 @@ enum nl80211_attrs {
+ #define NL80211_MAX_NR_AKM_SUITES		2
+ #define NL80211_EHT_MIN_CAPABILITY_LEN          13
+ #define NL80211_EHT_MAX_CAPABILITY_LEN          51
++#define NL80211_EHT_MIN_OPERATION_LEN		4 /*TODO: Unspecified in 802.11BE D1.01 version!*/
++#define NL80211_EHT_MAX_OPERATION_LEN		6 /*TODO: Unspecified in 802.11BE D1.01 version!*/
+ 
+ #define NL80211_MIN_REMAIN_ON_CHANNEL_TIME	10
+ 
+-- 
+2.43.0
+

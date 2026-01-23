@@ -1,0 +1,103 @@
+From e7172e26d3ebe962150a2e579e40d3a69e8f7304 Mon Sep 17 00:00:00 2001
+From: Michael-CY Lee <michael-cy.lee@mediatek.com>
+Date: Tue, 9 Apr 2024 14:50:23 +0800
+Subject: [PATCH] MLD STA: Find partner links by BSSID and SSID
+
+Non-AP MLD finds AP MLD's partner links by BSSID from the scan results.
+However, if the scan results contain BSSs with the same BSSID but
+different BSS information, the non-AP MLD might assign a wrong BSS to
+one of the AP MLD's partner links.
+
+Avoids the problem by using both BSSID and SSID to find the AP MLD's
+partner links.
+
+Signed-off-by: Michael-CY Lee <michael-cy.lee@mediatek.com>
+---
+ wpa_supplicant/bss.c | 10 ++++++++--
+ wpa_supplicant/sme.c | 19 ++++++++++++++-----
+ 2 files changed, 22 insertions(+), 7 deletions(-)
+
+diff --git a/wpa_supplicant/bss.c b/wpa_supplicant/bss.c
+index f7b4d381e..e8aaf6fe1 100644
+--- a/wpa_supplicant/bss.c
++++ b/wpa_supplicant/bss.c
+@@ -1554,8 +1554,14 @@ wpa_bss_parse_ml_rnr_ap_info(struct wpa_supplicant *wpa_s,
+ 			wpa_printf(MSG_DEBUG,
+ 				   "MLD: Reported link not part of MLD");
+ 		} else if (!(BIT(link_id) & *seen)) {
+-			struct wpa_bss *neigh_bss =
+-				wpa_bss_get_bssid(wpa_s, pos + 1);
++			struct wpa_bss *neigh_bss;
++
++			if (ssid && ssid->ssid_len)
++				neigh_bss = wpa_bss_get(wpa_s, pos + 1,
++							ssid->ssid,
++							ssid->ssid_len);
++			else
++				neigh_bss = wpa_bss_get_bssid(wpa_s, pos + 1);
+ 
+ 			*seen |= BIT(link_id);
+ 			wpa_printf(MSG_DEBUG, "MLD: mld ID=%u, link ID=%u",
+diff --git a/wpa_supplicant/sme.c b/wpa_supplicant/sme.c
+index 1b05de066..e6538e871 100644
+--- a/wpa_supplicant/sme.c
++++ b/wpa_supplicant/sme.c
+@@ -392,7 +392,8 @@ static void wpas_ml_handle_removed_links(struct wpa_supplicant *wpa_s,
+ 
+ #ifdef CONFIG_TESTING_OPTIONS
+ static struct wpa_bss * wpas_ml_connect_pref(struct wpa_supplicant *wpa_s,
+-					     struct wpa_bss *bss)
++					     struct wpa_bss *bss,
++					     struct wpa_ssid *ssid)
+ {
+ 	unsigned int low, high, i;
+ 
+@@ -458,7 +459,11 @@ found:
+ 		   MAC2STR(wpa_s->links[i].bssid));
+ 
+ 	/* Get the BSS entry and do the switch */
+-	bss = wpa_bss_get_bssid(wpa_s, wpa_s->links[i].bssid);
++	if (ssid && ssid->ssid_len)
++		bss = wpa_bss_get(wpa_s, wpa_s->links[i].bssid, ssid->ssid,
++				  ssid->ssid_len);
++	else
++		bss = wpa_bss_get_bssid(wpa_s, wpa_s->links[i].bssid);
+ 	wpa_s->mlo_assoc_link_id = i;
+ 
+ 	return bss;
+@@ -513,7 +518,7 @@ static int wpas_sme_ml_auth(struct wpa_supplicant *wpa_s,
+ 
+ 
+ static void wpas_sme_set_mlo_links(struct wpa_supplicant *wpa_s,
+-				   struct wpa_bss *bss)
++				   struct wpa_bss *bss, struct wpa_ssid *ssid)
+ {
+ 	u8 i;
+ 
+@@ -530,6 +535,10 @@ static void wpas_sme_set_mlo_links(struct wpa_supplicant *wpa_s,
+ 
+ 		if (bss->mld_link_id == i)
+ 			wpa_s->links[i].bss = bss;
++		else if (ssid && ssid->ssid_len)
++			wpa_s->links[i].bss = wpa_bss_get(wpa_s, bssid,
++							  ssid->ssid,
++							  ssid->ssid_len);
+ 		else
+ 			wpa_s->links[i].bss = wpa_bss_get_bssid(wpa_s, bssid);
+ 	}
+@@ -574,10 +583,10 @@ static void sme_send_authentication(struct wpa_supplicant *wpa_s,
+ 					    NULL, ssid, NULL) &&
+ 	    bss->valid_links) {
+ 		wpa_printf(MSG_DEBUG, "MLD: In authentication");
+-		wpas_sme_set_mlo_links(wpa_s, bss);
++		wpas_sme_set_mlo_links(wpa_s, bss, ssid);
+ 
+ #ifdef CONFIG_TESTING_OPTIONS
+-		bss = wpas_ml_connect_pref(wpa_s, bss);
++		bss = wpas_ml_connect_pref(wpa_s, bss, ssid);
+ 
+ 		if (wpa_s->conf->mld_force_single_link) {
+ 			wpa_printf(MSG_DEBUG, "MLD: Force single link");
+-- 
+2.43.0
+

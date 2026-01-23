@@ -1,0 +1,36 @@
+From dacfb3956b99ad5a0c21a463a8ac5478c5cd3fe6 Mon Sep 17 00:00:00 2001
+From: Jouni Malinen <j@w1.fi>
+Date: Sat, 22 Feb 2025 11:15:27 +0200
+Subject: [PATCH] MLD: Fix MLE parsing in for association on big-endian CPUs
+
+The control variable is ANDed with ml_control in host byte order and as
+such, the control variable should have been initialized without
+conversion to little endian.
+
+Fixes: 5af986c75af4 ("MLD: Also mark links as failed after association failure")
+Signed-off-by: Jouni Malinen <j@w1.fi>
+---
+ wpa_supplicant/events.c | 7 +++----
+ 1 file changed, 3 insertions(+), 4 deletions(-)
+
+diff --git a/wpa_supplicant/events.c b/wpa_supplicant/events.c
+index ec29deae1..89d4036ae 100644
+--- a/wpa_supplicant/events.c
++++ b/wpa_supplicant/events.c
+@@ -3929,10 +3929,9 @@ static unsigned int wpas_ml_parse_assoc(struct wpa_supplicant *wpa_s,
+ 	struct eht_ml_basic_common_info *common_info;
+ 	const u8 *pos;
+ 	u16 eml_capa = 0, mld_capa = 0;
+-	const u16 control =
+-		host_to_le16(MULTI_LINK_CONTROL_TYPE_BASIC |
+-			     BASIC_MULTI_LINK_CTRL_PRES_LINK_ID |
+-			     BASIC_MULTI_LINK_CTRL_PRES_BSS_PARAM_CH_COUNT);
++	const u16 control = MULTI_LINK_CONTROL_TYPE_BASIC |
++		BASIC_MULTI_LINK_CTRL_PRES_LINK_ID |
++		BASIC_MULTI_LINK_CTRL_PRES_BSS_PARAM_CH_COUNT;
+ 	u8 expected_common_info_len = 9;
+ 	unsigned int i = 0;
+ 	u16 ml_control;
+-- 
+2.43.0
+

@@ -1,0 +1,42 @@
+From 7d2d4c1bdf8653c545874feebeadd1d06bd72487 Mon Sep 17 00:00:00 2001
+From: Jouni Malinen <j@w1.fi>
+Date: Sat, 22 Feb 2025 11:12:09 +0200
+Subject: [PATCH] wpa_supplicant: Fix VHT SGI disabling on big-endian CPUs
+
+vht_capabilities_info is little-endian and the host byte order values
+need to be converted to little-endian when ANDing values.
+
+Fixes: fd83a80815b3 ("wpa_supplicant: Allow disabling VHT SGI capability")
+Signed-off-by: Jouni Malinen <j@w1.fi>
+---
+ wpa_supplicant/wpa_supplicant.c | 12 +++++++-----
+ 1 file changed, 7 insertions(+), 5 deletions(-)
+
+diff --git a/wpa_supplicant/wpa_supplicant.c b/wpa_supplicant/wpa_supplicant.c
+index 661a7524c..af19f228d 100644
+--- a/wpa_supplicant/wpa_supplicant.c
++++ b/wpa_supplicant/wpa_supplicant.c
+@@ -6658,13 +6658,15 @@ void wpa_supplicant_apply_vht_overrides(
+ 
+ #ifdef CONFIG_HT_OVERRIDES
+ 	if (ssid->disable_sgi) {
+-		vhtcaps_mask->vht_capabilities_info |= (VHT_CAP_SHORT_GI_80 |
+-							VHT_CAP_SHORT_GI_160);
+-		vhtcaps->vht_capabilities_info &= ~(VHT_CAP_SHORT_GI_80 |
+-						    VHT_CAP_SHORT_GI_160);
++		vhtcaps_mask->vht_capabilities_info |=
++			host_to_le32(VHT_CAP_SHORT_GI_80 |
++				     VHT_CAP_SHORT_GI_160);
++		vhtcaps->vht_capabilities_info &=
++			host_to_le32(~(VHT_CAP_SHORT_GI_80 |
++				       VHT_CAP_SHORT_GI_160));
+ 		wpa_msg(wpa_s, MSG_DEBUG,
+ 			"disable-sgi override specified, vht-caps: 0x%x",
+-			vhtcaps->vht_capabilities_info);
++			le_to_host32(vhtcaps->vht_capabilities_info));
+ 	}
+ 
+ 	/* if max ampdu is <= 3, we have to make the HT cap the same */
+-- 
+2.43.0
+

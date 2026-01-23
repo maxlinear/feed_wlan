@@ -1,0 +1,36 @@
+From 84c9040933b45c331e620d4a6b1832e27e4aa733 Mon Sep 17 00:00:00 2001
+From: Jouni Malinen <j@w1.fi>
+Date: Fri, 27 Dec 2024 23:49:57 +0200
+Subject: [PATCH] WPS: Fix a race condition on WPS_CANCEL handling
+
+If the WPS_CANCEL command were issued between the driver command
+requesting association and the driver event indicating completion of
+association, i.e., within the WPA_ASSOCIATING state, it was possible for
+the association to continue and the WPS procedure to be completed after
+this.
+
+Address this by forcing deauthentication and WPS state clearing also in
+the WPS_ASSOCIATING state and not only if the association has been
+completed.
+
+Signed-off-by: Jouni Malinen <j@w1.fi>
+---
+ wpa_supplicant/wps_supplicant.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/wpa_supplicant/wps_supplicant.c b/wpa_supplicant/wps_supplicant.c
+index 7b9cf7f9e..d332f000c 100644
+--- a/wpa_supplicant/wps_supplicant.c
++++ b/wpa_supplicant/wps_supplicant.c
+@@ -1375,7 +1375,7 @@ int wpas_wps_cancel(struct wpa_supplicant *wpa_s)
+ 		wpa_printf(MSG_DEBUG, "WPS: Cancel operation - cancel scan");
+ 		wpa_supplicant_cancel_scan(wpa_s);
+ 		wpas_clear_wps(wpa_s);
+-	} else if (wpa_s->wpa_state >= WPA_ASSOCIATED) {
++	} else if (wpa_s->wpa_state >= WPA_ASSOCIATING) {
+ 		wpa_printf(MSG_DEBUG, "WPS: Cancel operation - "
+ 			   "deauthenticate");
+ 		wpa_s->own_disconnect_req = 1;
+-- 
+2.43.0
+

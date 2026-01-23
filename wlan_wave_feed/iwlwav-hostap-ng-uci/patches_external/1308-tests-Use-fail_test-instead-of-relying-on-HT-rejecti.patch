@@ -1,0 +1,49 @@
+From 1879c5be4571f0d544b2479a5c879ea93f09677d Mon Sep 17 00:00:00 2001
+From: Benjamin Berg <benjamin.berg@intel.com>
+Date: Wed, 8 Jan 2025 10:10:32 +0100
+Subject: [PATCH] tests: Use fail_test() instead of relying on HT rejection
+
+This is more robust as mac80211 will start checking that it supports the
+BSS membership selectors present in the supported rates set.
+
+Signed-off-by: Benjamin Berg <benjamin.berg@intel.com>
+Reviewed-by: Andrei Otcheretianski <andrei.otcheretianski@intel.com>
+---
+ tests/hwsim/test_connect_cmd.py | 18 +++++++++---------
+ 1 file changed, 9 insertions(+), 9 deletions(-)
+
+diff --git a/tests/hwsim/test_connect_cmd.py b/tests/hwsim/test_connect_cmd.py
+index 341cf2412..90fe1d881 100644
+--- a/tests/hwsim/test_connect_cmd.py
++++ b/tests/hwsim/test_connect_cmd.py
+@@ -128,18 +128,18 @@ def test_connect_cmd_concurrent_grpform_while_connecting(dev, apdev):
+ 
+ def test_connect_cmd_reject_assoc(dev, apdev):
+     """Connection using cfg80211 connect command getting rejected"""
+-    params = {"ssid": "sta-connect",
+-              "require_ht": "1"}
+-    hostapd.add_ap(apdev[0], params)
++    params = {"ssid": "sta-connect"}
++    hapd = hostapd.add_ap(apdev[0], params)
+ 
+     wpas = WpaSupplicant(global_iface='/tmp/wpas-wlan5')
+     wpas.interface_add("wlan5", drv_params="force_connect_cmd=1")
+-    wpas.connect("sta-connect", key_mgmt="NONE", scan_freq="2412",
+-                 disable_ht="1", wait_connect=False)
+-    ev = wpas.wait_event(["CTRL-EVENT-ASSOC-REJECT"], timeout=15)
+-    if ev is None:
+-        raise Exception("Association rejection timed out")
+-    if "status_code=27" not in ev:
++    with fail_test(hapd, 1, "hostapd_get_aid"):
++        wpas.connect("sta-connect", key_mgmt="NONE", scan_freq="2412",
++                     wait_connect=False)
++        ev = wpas.wait_event(["CTRL-EVENT-ASSOC-REJECT"], timeout=15)
++        if ev is None:
++            raise Exception("Association rejection timed out")
++    if "status_code=17" not in ev:
+         raise Exception("Unexpected rejection status code")
+ 
+     wpas.request("DISCONNECT")
+-- 
+2.43.0
+

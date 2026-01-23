@@ -1,0 +1,87 @@
+From bd36dc90f1821b84130d06c5fb9b0a70a684acb8 Mon Sep 17 00:00:00 2001
+From: Jouni Malinen <quic_jouni@quicinc.com>
+Date: Thu, 25 Apr 2024 11:56:23 +0300
+Subject: [PATCH] AP MLD: Remove unused get_ml_rsn_info callback definition
+
+This is not used anymore after the previous AP MLD cleanup.
+
+Signed-off-by: Jouni Malinen <quic_jouni@quicinc.com>
+---
+ src/ap/wpa_auth.c | 11 ++---------
+ src/ap/wpa_auth.h | 11 -----------
+ 2 files changed, 2 insertions(+), 20 deletions(-)
+
+diff --git a/src/ap/wpa_auth.c b/src/ap/wpa_auth.c
+index f3da9367f..8304c6047 100644
+--- a/src/ap/wpa_auth.c
++++ b/src/ap/wpa_auth.c
+@@ -7143,8 +7143,7 @@ void wpa_auth_set_ml_info(struct wpa_state_machine *sm,
+ 			  u8 mld_assoc_link_id, struct mld_info *info)
+ {
+ #ifdef CONFIG_IEEE80211BE
+-	struct wpa_auth_ml_rsn_info ml_rsn_info;
+-	unsigned int link_id, i;
++	unsigned int link_id;
+ 
+ 	if (!info)
+ 		return;
+@@ -7159,9 +7158,7 @@ void wpa_auth_set_ml_info(struct wpa_state_machine *sm,
+ 
+ 	sm->mld_assoc_link_id = mld_assoc_link_id;
+ 
+-	os_memset(&ml_rsn_info, 0, sizeof(ml_rsn_info));
+-
+-	for (i = 0, link_id = 0; link_id < MAX_NUM_MLD_LINKS; link_id++) {
++	for (link_id = 0; link_id < MAX_NUM_MLD_LINKS; link_id++) {
+ 		struct mld_link_info *link = &info->links[link_id];
+ 		struct mld_link *sm_link = &sm->mld_links[link_id];
+ 		struct wpa_get_link_auth_ctx ctx;
+@@ -7177,8 +7174,6 @@ void wpa_auth_set_ml_info(struct wpa_state_machine *sm,
+ 			   link_id,
+ 			   MAC2STR(sm_link->peer_addr));
+ 
+-		ml_rsn_info.links[i++].link_id = link_id;
+-
+ 		if (link_id != mld_assoc_link_id) {
+ 			sm->n_mld_affiliated_links++;
+ 			ctx.addr = link->local_addr;
+@@ -7203,7 +7198,5 @@ void wpa_auth_set_ml_info(struct wpa_state_machine *sm,
+ 				   MAC2STR(sm->wpa_auth->mld_addr),
+ 				   link_id);
+ 	}
+-
+-	ml_rsn_info.n_mld_links = i;
+ #endif /* CONFIG_IEEE80211BE */
+ }
+diff --git a/src/ap/wpa_auth.h b/src/ap/wpa_auth.h
+index 4ee367bc6..ed0442c18 100644
+--- a/src/ap/wpa_auth.h
++++ b/src/ap/wpa_auth.h
+@@ -303,16 +303,6 @@ typedef enum {
+ 	WPA_EAPOL_keyDone, WPA_EAPOL_inc_EapolFramesTx
+ } wpa_eapol_variable;
+ 
+-struct wpa_auth_ml_rsn_info {
+-	unsigned int n_mld_links;
+-
+-	struct wpa_auth_ml_link_rsn_info {
+-		unsigned int link_id;
+-		const u8 *rsn_ies;
+-		size_t rsn_ies_len;
+-	} links[MAX_NUM_MLD_LINKS];
+-};
+-
+ struct wpa_auth_ml_key_info {
+ 	unsigned int n_mld_links;
+ 	bool mgmt_frame_prot;
+@@ -406,7 +396,6 @@ struct wpa_auth_callbacks {
+ 			       size_t ltf_keyseed_len);
+ #endif /* CONFIG_PASN */
+ #ifdef CONFIG_IEEE80211BE
+-	int (*get_ml_rsn_info)(void *ctx, struct wpa_auth_ml_rsn_info *info);
+ 	int (*get_ml_key_info)(void *ctx, struct wpa_auth_ml_key_info *info);
+ #endif /* CONFIG_IEEE80211BE */
+ 	int (*get_drv_flags)(void *ctx, u64 *drv_flags, u64 *drv_flags2);
+-- 
+2.43.0
+

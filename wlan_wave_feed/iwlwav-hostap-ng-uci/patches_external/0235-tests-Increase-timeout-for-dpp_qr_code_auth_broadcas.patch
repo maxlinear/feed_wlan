@@ -1,0 +1,29 @@
+From 44b233b6416d7500703bae5562c16241e1d6f35f Mon Sep 17 00:00:00 2001
+From: Jouni Malinen <j@w1.fi>
+Date: Sun, 14 Jan 2024 12:44:15 +0200
+Subject: [PATCH] tests: Increase timeout for dpp_qr_code_auth_broadcast
+
+This allows another initiation round to be executed if the first
+broadcast frame fails to get through.
+
+Signed-off-by: Jouni Malinen <j@w1.fi>
+---
+ tests/hwsim/test_dpp.py | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/tests/hwsim/test_dpp.py b/tests/hwsim/test_dpp.py
+index 5543e20c6..dd3d8e375 100644
+--- a/tests/hwsim/test_dpp.py
++++ b/tests/hwsim/test_dpp.py
+@@ -322,7 +322,7 @@ def test_dpp_qr_code_auth_broadcast(dev, apdev):
+     logger.info("dev1 scans QR Code and initiates DPP Authentication")
+     dev[0].dpp_listen(2412)
+     dev[1].dpp_auth_init(uri=uri0)
+-    wait_auth_success(dev[0], dev[1], stop_responder=True)
++    wait_auth_success(dev[0], dev[1], stop_responder=True, timeout=20)
+ 
+ def test_dpp_qr_code_auth_unicast(dev, apdev):
+     """DPP QR Code and authentication exchange (unicast)"""
+-- 
+2.43.0
+

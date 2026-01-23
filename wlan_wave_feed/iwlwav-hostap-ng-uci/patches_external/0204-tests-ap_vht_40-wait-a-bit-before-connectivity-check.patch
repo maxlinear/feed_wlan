@@ -1,0 +1,30 @@
+From e633811c34c15f9a412668a298673a8bfea5c398 Mon Sep 17 00:00:00 2001
+From: Johannes Berg <johannes.berg@intel.com>
+Date: Mon, 25 Dec 2023 12:21:07 +0200
+Subject: [PATCH] tests: ap_vht_40: wait a bit before connectivity check
+
+We need the station to be fully set up on the AP before
+running the connectivity check, not just the station to
+be set up itself. Just waiting for the events seems to
+still be racy so just sleep a little bit.
+
+Signed-off-by: Johannes Berg <johannes.berg@intel.com>
+---
+ tests/hwsim/test_ap_vht.py | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/tests/hwsim/test_ap_vht.py b/tests/hwsim/test_ap_vht.py
+index 2a7da8f68..5f0efecb4 100644
+--- a/tests/hwsim/test_ap_vht.py
++++ b/tests/hwsim/test_ap_vht.py
+@@ -347,6 +347,7 @@ def test_ap_vht_40(devs, apdevs):
+                   "vht_oper_centr_freq_seg0_idx": "0"}
+         hapd = hostapd.add_ap(ap, params)
+         dev.connect("test-vht40", scan_freq="5180", key_mgmt="NONE")
++        time.sleep(0.1)
+         hwsim_utils.test_connectivity(dev, hapd)
+ 
+         sta = hapd.get_sta(dev.own_addr())
+-- 
+2.43.0
+

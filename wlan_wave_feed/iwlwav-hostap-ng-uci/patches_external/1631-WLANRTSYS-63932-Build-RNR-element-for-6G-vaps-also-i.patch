@@ -1,0 +1,99 @@
+From 443b0b87d62efd90bd3df46ecc2d2b60465a55d9 Mon Sep 17 00:00:00 2001
+From: Nikita Chernikov <nchernikov@maxlinear.com>
+Date: Thu, 7 Mar 2024 15:36:39 +0200
+Subject: [PATCH] WLANRTSYS-63932 Build RNR element for 6G vaps also in probe
+ response
+
+Signed-off-by: Nikita Chernikov <nchernikov@maxlinear.com>
+---
+ src/ap/ieee802_11.c | 28 +++++++++++++++++++++-------
+ 1 file changed, 21 insertions(+), 7 deletions(-)
+
+diff --git a/src/ap/ieee802_11.c b/src/ap/ieee802_11.c
+index ae0867164..3168f8482 100644
+--- a/src/ap/ieee802_11.c
++++ b/src/ap/ieee802_11.c
+@@ -8503,7 +8503,7 @@ u8 * hostapd_eid_chsw_wrapper(struct hostapd_data *hapd, u8 *eid)
+ 
+ 
+ static size_t hostapd_eid_nr_db_len(struct hostapd_data *hapd,
+-				    size_t *current_len)
++				    size_t *current_len, u32 type)
+ {
+ 	struct hostapd_neighbor_entry *nr;
+ 	size_t total_len = 0, len = *current_len;
+@@ -8513,6 +8513,11 @@ static size_t hostapd_eid_nr_db_len(struct hostapd_data *hapd,
+ 		if (!nr->nr || wpabuf_len(nr->nr) < 12)
+ 			continue;
+ 
++		/* Skip building RNR element from nr_db for non 6G VAPs in probe response */
++		if (!(is_6ghz_op_class(wpabuf_head_u8(nr->nr)[10])) &&
++			(type == WLAN_FC_STYPE_PROBE_RESP))
++			continue;
++
+ 		if (nr->short_ssid == hapd->conf->ssid.short_ssid)
+ 			continue;
+ 
+@@ -8777,10 +8782,12 @@ size_t hostapd_eid_rnr_len(struct hostapd_data *hapd, u32 type,
+ 
+ 	switch (type) {
+ 	case WLAN_FC_STYPE_BEACON:
+-		if (hapd->conf->rnr)
+-			total_len += hostapd_eid_nr_db_len(hapd, &current_len);
+ 		/* fallthrough */
+ 	case WLAN_FC_STYPE_PROBE_RESP:
++#ifdef CONFIG_VENDOR_MXL
++		if (hapd->conf->rnr)
++			total_len += hostapd_eid_nr_db_len(hapd, &current_len, type);
++#endif /* CONFIG_VENDOR_MXL */
+ 		if (mode == COLOCATED_LOWER_BAND)
+ 			total_len +=
+ 				hostapd_eid_rnr_colocation_len(hapd,
+@@ -8812,7 +8819,7 @@ size_t hostapd_eid_rnr_len(struct hostapd_data *hapd, u32 type,
+ 
+ 
+ static u8 * hostapd_eid_nr_db(struct hostapd_data *hapd, u8 *eid,
+-			      size_t *current_len)
++			      size_t *current_len, u32 type)
+ {
+ 	struct hostapd_neighbor_entry *nr;
+ 	size_t len = *current_len;
+@@ -8823,6 +8830,11 @@ static u8 * hostapd_eid_nr_db(struct hostapd_data *hapd, u8 *eid,
+ 		if (!nr->nr || wpabuf_len(nr->nr) < 12)
+ 			continue;
+ 
++		/* Skip building RNR element from nr_db for non 6G VAPs in probe response */
++		if (!(is_6ghz_op_class(wpabuf_head_u8(nr->nr)[10])) &&
++			(type == WLAN_FC_STYPE_PROBE_RESP))
++			continue;
++
+ 		if (nr->short_ssid == hapd->conf->ssid.short_ssid)
+ 			continue;
+ 
+@@ -9136,10 +9148,12 @@ u8 * hostapd_eid_rnr(struct hostapd_data *hapd, u8 *eid, u32 type,
+ 
+ 	switch (type) {
+ 	case WLAN_FC_STYPE_BEACON:
+-		if (hapd->conf->rnr)
+-			eid = hostapd_eid_nr_db(hapd, eid, &current_len);
+ 		/* fallthrough */
+ 	case WLAN_FC_STYPE_PROBE_RESP:
++#ifdef CONFIG_VENDOR_MXL
++		if (hapd->conf->rnr)
++			eid = hostapd_eid_nr_db(hapd, eid, &current_len, type);
++#endif /* CONFIG_VENDOR_MXL */
+ 		if (mode == COLOCATED_LOWER_BAND)
+ 			eid = hostapd_eid_rnr_colocation(hapd, eid,
+ 							 &current_len);
+@@ -9540,7 +9554,7 @@ u8 * hostapd_eid_mbssid(struct hostapd_data *hapd, u8 *eid, u8 *end,
+ 		cur_len = 0;
+ 
+ 		if (hapd->conf->rnr)
+-			rnr_eid = hostapd_eid_nr_db(hapd, rnr_eid, &cur_len);
++			rnr_eid = hostapd_eid_nr_db(hapd, rnr_eid, &cur_len, frame_stype);
+ 		if (get_colocation_mode(hapd) == COLOCATED_LOWER_BAND)
+ 			rnr_eid = hostapd_eid_rnr_colocation(hapd, rnr_eid,
+ 							     &cur_len);
+-- 
+2.43.0
+

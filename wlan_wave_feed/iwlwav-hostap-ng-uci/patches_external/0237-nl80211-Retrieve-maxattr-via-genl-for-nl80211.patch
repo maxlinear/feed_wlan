@@ -1,0 +1,91 @@
+From 7fec9e7bc1027bc7da10e0289178cd7c785c0b5b Mon Sep 17 00:00:00 2001
+From: Benjamin Berg <benjamin.berg@intel.com>
+Date: Thu, 28 Dec 2023 15:14:05 +0200
+Subject: [PATCH] nl80211: Retrieve maxattr via genl for nl80211
+
+Older kernel versions may not support all attributes and may refuse
+commands that include them. To avoid sending too new attributes query
+the highest supported attribute. This allows adding appropriate checks
+where needed.
+
+Signed-off-by: Benjamin Berg <benjamin.berg@intel.com>
+---
+ src/drivers/driver_nl80211.c | 28 ++++++++++++++++++++++++++++
+ src/drivers/driver_nl80211.h |  1 +
+ 2 files changed, 29 insertions(+)
+
+diff --git a/src/drivers/driver_nl80211.c b/src/drivers/driver_nl80211.c
+index 39c9362d0..8313ac594 100644
+--- a/src/drivers/driver_nl80211.c
++++ b/src/drivers/driver_nl80211.c
+@@ -16,6 +16,7 @@
+ #include <net/if.h>
+ #include <netlink/genl/genl.h>
+ #include <netlink/genl/ctrl.h>
++#include <netlink/genl/family.h>
+ #ifdef CONFIG_LIBNL3_ROUTE
+ #include <netlink/route/neighbour.h>
+ #endif /* CONFIG_LIBNL3_ROUTE */
+@@ -1938,6 +1939,8 @@ static int wpa_driver_nl80211_get_country(void *priv, char *alpha2)
+ 
+ static int wpa_driver_nl80211_init_nl_global(struct nl80211_global *global)
+ {
++	struct nl_cache *cache = NULL;
++	struct genl_family *family = NULL;
+ 	int ret;
+ 
+ 	global->nl_cb = nl_cb_alloc(NL_CB_DEFAULT);
+@@ -2009,6 +2012,29 @@ static int wpa_driver_nl80211_init_nl_global(struct nl80211_global *global)
+ 		/* Continue without vendor events */
+ 	}
+ 
++	/* Resolve maxattr for kernel support checks */
++	ret = genl_ctrl_alloc_cache(global->nl, &cache);
++	if (ret < 0) {
++		wpa_printf(MSG_DEBUG,
++			   "nl80211: Could not allocate genl cache: %d (%s)",
++			   ret, nl_geterror(ret));
++		goto err;
++	}
++
++	family = genl_ctrl_search(cache, global->nl80211_id);
++	if (!family) {
++		wpa_printf(MSG_DEBUG,
++			   "nl80211: Could not get nl80211 family from cache: %d (%s)",
++			   ret, nl_geterror(ret));
++		goto err;
++	}
++
++	global->nl80211_maxattr = genl_family_get_maxattr(family);
++	wpa_printf(MSG_DEBUG, "nl80211: Maximum supported attribute ID: %u",
++		   global->nl80211_maxattr);
++	genl_family_put(family);
++	nl_cache_free(cache);
++
+ 	nl_cb_set(global->nl_cb, NL_CB_SEQ_CHECK, NL_CB_CUSTOM,
+ 		  no_seq_check, NULL);
+ 	nl_cb_set(global->nl_cb, NL_CB_VALID, NL_CB_CUSTOM,
+@@ -2021,6 +2047,8 @@ static int wpa_driver_nl80211_init_nl_global(struct nl80211_global *global)
+ 	return 0;
+ 
+ err:
++	genl_family_put(family);
++	nl_cache_free(cache);
+ 	nl_destroy_handles(&global->nl_event);
+ 	nl_destroy_handles(&global->nl);
+ 	nl_cb_put(global->nl_cb);
+diff --git a/src/drivers/driver_nl80211.h b/src/drivers/driver_nl80211.h
+index 2b2bc9b11..1eb5656ff 100644
+--- a/src/drivers/driver_nl80211.h
++++ b/src/drivers/driver_nl80211.h
+@@ -32,6 +32,7 @@ struct nl80211_global {
+ 	struct nl_cb *nl_cb;
+ 	struct nl_sock *nl;
+ 	int nl80211_id;
++	unsigned int nl80211_maxattr;
+ 	int nlctrl_id;
+ 	int ioctl_sock; /* socket for ioctl() use */
+ 
+-- 
+2.43.0
+

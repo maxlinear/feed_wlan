@@ -1,0 +1,37 @@
+From 1282787878702f20e1c98942aa691e7ea8105831 Mon Sep 17 00:00:00 2001
+From: Jouni Malinen <j@w1.fi>
+Date: Sat, 10 Aug 2024 10:30:07 +0300
+Subject: [PATCH] tests: hostapd error path on driver interface initialization
+ failure
+
+Signed-off-by: Jouni Malinen <j@w1.fi>
+---
+ tests/hwsim/test_hostapd_error.py | 16 ++++++++++++++++
+ 1 file changed, 16 insertions(+)
+ create mode 100644 tests/hwsim/test_hostapd_error.py
+
+diff --git a/tests/hwsim/test_hostapd_error.py b/tests/hwsim/test_hostapd_error.py
+new file mode 100644
+index 000000000..0081b3004
+--- /dev/null
++++ b/tests/hwsim/test_hostapd_error.py
+@@ -0,0 +1,16 @@
++# hostapd error paths
++# Copyright (c) 2024, Jouni Malinen <j@w1.fi>
++#
++# This software may be distributed under the terms of the BSD license.
++# See README for more details.
++
++import hostapd
++from utils import *
++
++def test_hostapd_error_drv_init(dev, apdev):
++    """hostapd error path on driver interface initialization failure"""
++    hapd = hostapd.add_ap(apdev[0], {"ssid": "ctrl"})
++    with fail_test(hapd, 1, "nl80211_setup_ap"):
++        hapd1 = hostapd.add_ap(apdev[1], {"ssid": "open"}, no_enable=True)
++        if "FAIL" not in hapd1.request("ENABLE"):
++            raise Exception("ENABLE succeeded unexpectedly")
+-- 
+2.43.0
+

@@ -1,0 +1,49 @@
+From 655794898fe018bb0cdfa73fedb00febe64184cd Mon Sep 17 00:00:00 2001
+From: Ilan Peer <ilan.peer@intel.com>
+Date: Tue, 26 Dec 2023 15:30:15 +0200
+Subject: [PATCH] RRM: Fix the parsing of the Extended Request subelement in
+ beacon req
+
+The Extended Request subelement of a Beacon Request is expected to also
+include the Requested Element ID field (that identifies the Element ID
+used to indicated extended elements) which needs to be skipped to get
+the Requested Element ID Extensions.
+
+Fixes: 2d4f905214b7 ("RRM: Add support for including extended ID elements in beacon report")
+Signed-off-by: Ilan Peer <ilan.peer@intel.com>
+---
+ wpa_supplicant/rrm.c | 18 ++++++++++++++++++
+ 1 file changed, 18 insertions(+)
+
+diff --git a/wpa_supplicant/rrm.c b/wpa_supplicant/rrm.c
+index 2aaf7d35f..343f450d8 100644
+--- a/wpa_supplicant/rrm.c
++++ b/wpa_supplicant/rrm.c
+@@ -1117,6 +1117,24 @@ static int wpas_rm_handle_beacon_req_subelem(struct wpa_supplicant *wpa_s,
+ 			return -1;
+ 		}
+ 
++		if (sid == WLAN_BEACON_REQUEST_SUBELEM_EXT_REQUEST) {
++			if (slen < 2) {
++				wpa_printf(MSG_DEBUG,
++					   "Invalid extended request");
++				return -1;
++			}
++			if (subelem[0] != WLAN_EID_EXTENSION) {
++				wpa_printf(MSG_DEBUG,
++					   "Skip unknown Requested Element ID %u in Extended Request subelement",
++					   subelem[0]);
++				break;
++			}
++
++			/* Skip the Requested Element ID field */
++			subelem++;
++			slen--;
++		}
++
+ 		if ((sid == WLAN_BEACON_REQUEST_SUBELEM_REQUEST &&
+ 		     data->eids) ||
+ 		    (sid == WLAN_BEACON_REQUEST_SUBELEM_EXT_REQUEST &&
+-- 
+2.43.0
+

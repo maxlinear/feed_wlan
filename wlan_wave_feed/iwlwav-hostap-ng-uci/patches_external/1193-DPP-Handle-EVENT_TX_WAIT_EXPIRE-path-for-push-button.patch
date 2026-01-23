@@ -1,0 +1,57 @@
+From d8772c1951da7b813459722ded7ed8cee0ff4155 Mon Sep 17 00:00:00 2001
+From: andrewrpope <andrew.pope@morsemicro.com>
+Date: Tue, 26 Nov 2024 08:11:52 +1100
+Subject: [PATCH] DPP: Handle EVENT_TX_WAIT_EXPIRE path for push button
+
+The DPP push button state machine will get stuck if an off-channel PB
+announcement is cancelled via EVENT_TX_WAIT_EXPIRE. Handle a
+TX_WAIT_EXPIRE by calling wpas_dpp_pb_next(), moving the state machine
+forward.
+
+Signed-off-by: Andrew Pope <andrew.pope@morsemicro.com>
+---
+ wpa_supplicant/dpp_supplicant.c | 14 +++++++++++++-
+ 1 file changed, 13 insertions(+), 1 deletion(-)
+
+diff --git a/wpa_supplicant/dpp_supplicant.c b/wpa_supplicant/dpp_supplicant.c
+index 62059ccc8..3feb4ccb6 100644
+--- a/wpa_supplicant/dpp_supplicant.c
++++ b/wpa_supplicant/dpp_supplicant.c
+@@ -58,6 +58,9 @@ static int wpas_dpp_process_conf_obj(void *ctx,
+ 				     struct dpp_authentication *auth);
+ static bool wpas_dpp_tcp_msg_sent(void *ctx, struct dpp_authentication *auth);
+ #endif /* CONFIG_DPP2 */
++#ifdef CONFIG_DPP3
++static void wpas_dpp_pb_next(void *eloop_ctx, void *timeout_ctx);
++#endif /* CONFIG_DPP3 */
+ 
+ static const u8 broadcast[ETH_ALEN] = { 0xff, 0xff, 0xff, 0xff, 0xff, 0xff };
+ 
+@@ -1332,6 +1335,16 @@ void wpas_dpp_tx_wait_expire(struct wpa_supplicant *wpa_s)
+ 	struct dpp_authentication *auth = wpa_s->dpp_auth;
+ 	int freq;
+ 
++#ifdef CONFIG_DPP3
++	if (wpa_s->dpp_pb_announcement && wpa_s->dpp_pb_discovery_done) {
++		wpa_printf(MSG_DEBUG,
++			   "DPP: Failed to send push button announcement");
++		if (eloop_register_timeout(0, 0, wpas_dpp_pb_next,
++					   wpa_s, NULL) < 0)
++			wpas_dpp_push_button_stop(wpa_s);
++	}
++#endif /* CONFIG_DPP3 */
++
+ 	if (wpa_s->dpp_listen_on_tx_expire && auth && auth->neg_freq) {
+ 		wpa_printf(MSG_DEBUG,
+ 			   "DPP: Start listen on neg_freq %u MHz based on TX wait expiration on the previous channel",
+@@ -5507,7 +5520,6 @@ int wpas_dpp_ca_set(struct wpa_supplicant *wpa_s, const char *cmd)
+ #define DPP_PB_ANNOUNCE_PER_CHAN 3
+ 
+ static int wpas_dpp_pb_announce(struct wpa_supplicant *wpa_s, int freq);
+-static void wpas_dpp_pb_next(void *eloop_ctx, void *timeout_ctx);
+ 
+ 
+ static void wpas_dpp_pb_tx_status(struct wpa_supplicant *wpa_s,
+-- 
+2.43.0
+

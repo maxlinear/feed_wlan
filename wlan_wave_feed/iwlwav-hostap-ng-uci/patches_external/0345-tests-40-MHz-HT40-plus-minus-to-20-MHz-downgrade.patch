@@ -1,0 +1,41 @@
+From 6a91e3608feeec5b84128e944fde708f17334372 Mon Sep 17 00:00:00 2001
+From: Jouni Malinen <quic_jouni@quicinc.com>
+Date: Fri, 2 Feb 2024 17:54:03 +0200
+Subject: [PATCH] tests: 40 MHz HT40 plus/minus to 20 MHz downgrade
+
+Signed-off-by: Jouni Malinen <quic_jouni@quicinc.com>
+---
+ tests/hwsim/test_he.py | 17 +++++++++++++++++
+ 1 file changed, 17 insertions(+)
+
+diff --git a/tests/hwsim/test_he.py b/tests/hwsim/test_he.py
+index 05a921348..52cbb1c60 100644
+--- a/tests/hwsim/test_he.py
++++ b/tests/hwsim/test_he.py
+@@ -1744,6 +1744,23 @@ def test_he_downgrade_40mhz_to_20mhz(dev, apdev):
+               "he_oper_chwidth": "0" }
+     run_he_downgrade_to_20_mhz(dev, apdev, params)
+ 
++def test_he_downgrade_40mhz_plus_minus_to_20mhz(dev, apdev):
++    """HE AP and downgrade from 40 MHz (+/-) to 20 MHz due to regulatory constraints"""
++    # Try to configure 40 MHz channel when the regdb limits this frequency to
++    # 20 MHz.
++    params = {"ssid": "he",
++              "country_code": "AM",
++              "channel": "36",
++              "op_class": "116",
++              "ieee80211n": "1",
++              "ieee80211ac": "1",
++              "ieee80211ax": "1",
++              "hw_mode": "a",
++              "ht_capab": "[HT40+][HT40-]",
++              "vht_oper_chwidth": "0",
++              "he_oper_chwidth": "0" }
++    run_he_downgrade_to_20_mhz(dev, apdev, params)
++
+ def test_he_downgrade_80mhz_to_20mhz(dev, apdev):
+     """HE AP and downgrade from 80 MHz to 20 MHz due to regulatory constraints"""
+     # Try to configure 80 MHz channel when the regdb limits this frequency to
+-- 
+2.43.0
+

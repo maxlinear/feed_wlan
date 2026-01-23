@@ -1,0 +1,31 @@
+From a9bc6e89df1af976952ff9943726ca06256bd745 Mon Sep 17 00:00:00 2001
+From: Jouni Malinen <quic_jouni@quicinc.com>
+Date: Wed, 27 Mar 2024 20:35:25 +0200
+Subject: [PATCH] OpenSSL: Fix a memory leak in CMAC
+
+The OpenSSL 3.0 (or newer) version of omac1_aes_vector() did not free
+the EVP_MAC. This resulted in a memory leak that shows up in a bit
+strange way in valgrind reports and because of that, was not caught
+during automated testing.
+
+Fixes: 0c61f6234fd2 ("OpenSSL: Implement CMAC using the EVP_MAC API")
+Signed-off-by: Jouni Malinen <quic_jouni@quicinc.com>
+---
+ src/crypto/crypto_openssl.c | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/src/crypto/crypto_openssl.c b/src/crypto/crypto_openssl.c
+index 07455d91f..2d8ff60aa 100644
+--- a/src/crypto/crypto_openssl.c
++++ b/src/crypto/crypto_openssl.c
+@@ -1835,6 +1835,7 @@ int omac1_aes_vector(const u8 *key, size_t key_len, size_t num_elem,
+ 	ret = 0;
+ fail:
+ 	EVP_MAC_CTX_free(ctx);
++	EVP_MAC_free(emac);
+ 	return ret;
+ #else /* OpenSSL version >= 3.0 */
+ 	CMAC_CTX *ctx;
+-- 
+2.43.0
+

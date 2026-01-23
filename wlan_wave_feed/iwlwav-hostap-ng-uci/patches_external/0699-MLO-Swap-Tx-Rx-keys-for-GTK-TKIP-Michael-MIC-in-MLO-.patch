@@ -1,0 +1,60 @@
+From cb91ef256612b7d203a3d7d66661af237d479f98 Mon Sep 17 00:00:00 2001
+From: Hu Wang <quic_huw@quicinc.com>
+Date: Tue, 9 Jul 2024 00:55:28 -0700
+Subject: [PATCH] MLO: Swap Tx/Rx keys for GTK TKIP Michael MIC in MLO GTK KDE
+
+While TKIP should not really be used at all anymore and is not allowed
+for WPA3 (which is required for Wi-Fi 7), there are some deployed APs
+that allow WPA2 PSK to be used with MLO and even allowing WPA+WPA2 mode
+with TKIP as the group cipher). IEEE P802.11be/D5.0 does not seem to
+explicitly disallow this combination, so handle the MLO GTK KDE key
+processing similarly to the way GTK KDE is processed, i.e., including
+swapping of Michael MIC Tx and Rx keys for TKIP.
+
+This fixes issues with Michael MIC failures if TKIP is used as a group
+cipher for a multi-link association.
+
+Signed-off-by: Jouni Malinen <quic_jouni@quicinc.com>
+---
+ src/rsn_supp/wpa.c | 10 ++++++++++
+ 1 file changed, 10 insertions(+)
+
+diff --git a/src/rsn_supp/wpa.c b/src/rsn_supp/wpa.c
+index 323690a66..f23979cd9 100644
+--- a/src/rsn_supp/wpa.c
++++ b/src/rsn_supp/wpa.c
+@@ -1398,6 +1398,7 @@ static int wpa_supplicant_install_mlo_gtk(struct wpa_sm *sm, u8 link_id,
+ 					  const u8 *key_rsc, int wnm_sleep)
+ {
+ 	const u8 *gtk = gd->gtk;
++	u8 gtk_buf[32];
+ 
+ 	/* Detect possible key reinstallation */
+ 	if ((sm->mlo.links[link_id].gtk.gtk_len == (size_t) gd->gtk_len &&
+@@ -1420,14 +1421,23 @@ static int wpa_supplicant_install_mlo_gtk(struct wpa_sm *sm, u8 link_id,
+ 		link_id, gd->keyidx, gd->tx, gd->gtk_len);
+ 	wpa_hexdump_link(MSG_DEBUG, link_id, "RSN: RSC",
+ 			 key_rsc, gd->key_rsc_len);
++	if (sm->group_cipher == WPA_CIPHER_TKIP) {
++		/* Swap Tx/Rx keys for Michael MIC */
++		os_memcpy(gtk_buf, gd->gtk, 16);
++		os_memcpy(gtk_buf + 16, gd->gtk + 24, 8);
++		os_memcpy(gtk_buf + 24, gd->gtk + 16, 8);
++		gtk = gtk_buf;
++	}
+ 	if (wpa_sm_set_key(sm, link_id, gd->alg, broadcast_ether_addr,
+ 			   gd->keyidx, gd->tx, key_rsc, gd->key_rsc_len, gtk,
+ 			   gd->gtk_len, KEY_FLAG_GROUP_RX) < 0) {
+ 		wpa_msg(sm->ctx->msg_ctx, MSG_WARNING,
+ 			"RSN: Failed to set GTK to the driver (link_id=%d alg=%d keylen=%d keyidx=%d)",
+ 			link_id, gd->alg, gd->gtk_len, gd->keyidx);
++		forced_memzero(gtk_buf, sizeof(gtk_buf));
+ 		return -1;
+ 	}
++	forced_memzero(gtk_buf, sizeof(gtk_buf));
+ 
+ 	if (wnm_sleep) {
+ 		sm->mlo.links[link_id].gtk_wnm_sleep.gtk_len = gd->gtk_len;
+-- 
+2.43.0
+

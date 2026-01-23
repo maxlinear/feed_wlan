@@ -1,0 +1,35 @@
+From 8f83b7d7d1a824af1facff3ee895d611331507ca Mon Sep 17 00:00:00 2001
+From: Jouni Malinen <j@w1.fi>
+Date: Sun, 21 Apr 2024 11:35:25 +0300
+Subject: [PATCH] tests: WPA2-PSK from RADIUS during 4-way handshake with
+ Session-Timeout
+
+Signed-off-by: Jouni Malinen <j@w1.fi>
+---
+ tests/hwsim/test_radius.py | 10 +++++++++-
+ 1 file changed, 9 insertions(+), 1 deletion(-)
+
+diff --git a/tests/hwsim/test_radius.py b/tests/hwsim/test_radius.py
+index 4ecb6599b..a98a75a5e 100644
+--- a/tests/hwsim/test_radius.py
++++ b/tests/hwsim/test_radius.py
+@@ -1302,7 +1302,15 @@ def test_radius_psk(dev, apdev):
+ 
+ def test_radius_psk_during_4way_hs(dev, apdev):
+     """WPA2 with PSK from RADIUS during 4-way handshake"""
+-    t, t_events = start_radius_psk_server("12345678")
++    run_radius_psk_during_4way_hs(dev, apdev, 0)
++
++def test_radius_psk_during_4way_hs_session_timeout(dev, apdev):
++    """WPA2 with PSK from RADIUS during 4-way handshake with Session-Timeout"""
++    run_radius_psk_during_4way_hs(dev, apdev, 10000)
++
++def run_radius_psk_during_4way_hs(dev, apdev, session_timeout):
++    t, t_events = start_radius_psk_server("12345678",
++                                          session_timeout=session_timeout)
+ 
+     try:
+         params = hostapd_radius_psk_test_params()
+-- 
+2.43.0
+

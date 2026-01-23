@@ -1,0 +1,37 @@
+From 37a7b14dd9de39bdfde4205f17cb310b8d435a31 Mon Sep 17 00:00:00 2001
+From: Jouni Malinen <j@w1.fi>
+Date: Sat, 9 Dec 2023 17:20:02 +0200
+Subject: [PATCH] tests: Wait for regdom events in wpas_config_file
+
+Make sure the pending regdom changes are processed before returning to
+avoid some potential race conditions.
+
+Signed-off-by: Jouni Malinen <j@w1.fi>
+---
+ tests/hwsim/test_wpas_config.py | 10 ++++++++++
+ 1 file changed, 10 insertions(+)
+
+diff --git a/tests/hwsim/test_wpas_config.py b/tests/hwsim/test_wpas_config.py
+index 9bae4deb8..631669617 100644
+--- a/tests/hwsim/test_wpas_config.py
++++ b/tests/hwsim/test_wpas_config.py
+@@ -297,6 +297,16 @@ def test_wpas_config_file(dev, apdev, params):
+         wpas.request("SET country 00")
+         wpas.wait_event(["CTRL-EVENT-REGDOM-CHANGE"], timeout=1)
+ 
++    country = False
++    for i in range(5):
++        ev = dev[0].wait_event(["CTRL-EVENT-REGDOM-CHANGE"], timeout=1)
++        if ev is None:
++            break
++        if "alpha2=FI" in ev:
++            country = True
++        if country and "type=WORLD":
++            break
++
+ def test_wpas_config_file_wps(dev, apdev):
+     """wpa_supplicant config file parsing/writing with WPS"""
+     config = "/tmp/test_wpas_config_file.conf"
+-- 
+2.43.0
+

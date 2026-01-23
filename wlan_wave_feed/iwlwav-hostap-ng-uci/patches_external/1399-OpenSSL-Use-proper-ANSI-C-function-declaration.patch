@@ -1,0 +1,26 @@
+From 6dcc4c79547a5bc1f6ddb73c9f91437f74ea2571 Mon Sep 17 00:00:00 2001
+From: Jouni Malinen <j@w1.fi>
+Date: Sat, 22 Feb 2025 11:01:40 +0200
+Subject: [PATCH] OpenSSL: Use proper ANSI C function declaration
+
+Signed-off-by: Jouni Malinen <j@w1.fi>
+---
+ src/crypto/crypto_openssl.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/src/crypto/crypto_openssl.c b/src/crypto/crypto_openssl.c
+index 2d8ff60aa..3a4d07175 100644
+--- a/src/crypto/crypto_openssl.c
++++ b/src/crypto/crypto_openssl.c
+@@ -4248,7 +4248,7 @@ fail:
+ }
+ 
+ 
+-struct crypto_csr * crypto_csr_init()
++struct crypto_csr * crypto_csr_init(void)
+ {
+ 	return (struct crypto_csr *)X509_REQ_new();
+ }
+-- 
+2.43.0
+

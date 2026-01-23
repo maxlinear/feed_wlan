@@ -1,0 +1,69 @@
+From d2408e303263497499bfec85bf9b4a6578804e18 Mon Sep 17 00:00:00 2001
+From: Jouni Malinen <quic_jouni@quicinc.com>
+Date: Sun, 15 Sep 2024 11:59:24 +0300
+Subject: [PATCH] dbus: Dict helpers for fetching integers of any type
+
+Signed-off-by: Jouni Malinen <quic_jouni@quicinc.com>
+---
+ wpa_supplicant/dbus/dbus_dict_helpers.c | 35 +++++++++++++++++++++++++
+ wpa_supplicant/dbus/dbus_dict_helpers.h |  3 +++
+ 2 files changed, 38 insertions(+)
+
+diff --git a/wpa_supplicant/dbus/dbus_dict_helpers.c b/wpa_supplicant/dbus/dbus_dict_helpers.c
+index 27003eb44..a3f32c34f 100644
+--- a/wpa_supplicant/dbus/dbus_dict_helpers.c
++++ b/wpa_supplicant/dbus/dbus_dict_helpers.c
+@@ -1159,3 +1159,38 @@ void wpa_dbus_dict_entry_clear(struct wpa_dbus_dict_entry *entry)
+ 
+ 	os_memset(entry, 0, sizeof(struct wpa_dbus_dict_entry));
+ }
++
++
++dbus_bool_t wpa_dbus_dict_entry_is_int(const struct wpa_dbus_dict_entry *entry)
++{
++	return entry->type == DBUS_TYPE_BYTE ||
++		entry->type == DBUS_TYPE_INT16 ||
++		entry->type == DBUS_TYPE_UINT16 ||
++		entry->type == DBUS_TYPE_INT32 ||
++		entry->type == DBUS_TYPE_UINT32 ||
++		entry->type == DBUS_TYPE_INT64 ||
++		entry->type == DBUS_TYPE_UINT64;
++}
++
++
++int wpa_dbus_dict_entry_get_int(const struct wpa_dbus_dict_entry *entry)
++{
++	switch (entry->type) {
++	case DBUS_TYPE_BYTE:
++		return entry->byte_value;
++	case DBUS_TYPE_INT16:
++		return entry->int16_value;
++	case DBUS_TYPE_UINT16:
++		return entry->uint16_value;
++	case DBUS_TYPE_INT32:
++		return entry->int32_value;
++	case DBUS_TYPE_UINT32:
++		return entry->uint32_value;
++	case DBUS_TYPE_INT64:
++		return entry->int64_value;
++	case DBUS_TYPE_UINT64:
++		return entry->uint64_value;
++	}
++
++	return -1;
++}
+diff --git a/wpa_supplicant/dbus/dbus_dict_helpers.h b/wpa_supplicant/dbus/dbus_dict_helpers.h
+index 1d33689a8..15c8aba0c 100644
+--- a/wpa_supplicant/dbus/dbus_dict_helpers.h
++++ b/wpa_supplicant/dbus/dbus_dict_helpers.h
+@@ -158,4 +158,7 @@ dbus_bool_t wpa_dbus_dict_has_dict_entry(DBusMessageIter *iter_dict);
+ 
+ void wpa_dbus_dict_entry_clear(struct wpa_dbus_dict_entry *entry);
+ 
++dbus_bool_t wpa_dbus_dict_entry_is_int(const struct wpa_dbus_dict_entry *entry);
++int wpa_dbus_dict_entry_get_int(const struct wpa_dbus_dict_entry *entry);
++
+ #endif  /* DBUS_DICT_HELPERS_H */
+-- 
+2.43.0
+

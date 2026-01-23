@@ -1,0 +1,35 @@
+From 38a5ed5fda5826abf5fe53aaac2636f4841404af Mon Sep 17 00:00:00 2001
+From: Jouni Malinen <j@w1.fi>
+Date: Sun, 17 Dec 2023 21:53:52 +0200
+Subject: [PATCH] AP MLD: Skip unknown Multi-Link element subelements
+
+Instead of rejecting the Multi-Link element, skip unknown subelements to
+be less likely to cause interop issues for future. IEEE P802.11be/D5.0
+allows other optional subelements to be included here.
+
+Signed-off-by: Jouni Malinen <j@w1.fi>
+---
+ src/ap/ieee802_11_eht.c | 6 ++++--
+ 1 file changed, 4 insertions(+), 2 deletions(-)
+
+diff --git a/src/ap/ieee802_11_eht.c b/src/ap/ieee802_11_eht.c
+index 630baa4e8..709151f14 100644
+--- a/src/ap/ieee802_11_eht.c
++++ b/src/ap/ieee802_11_eht.c
+@@ -1269,9 +1269,11 @@ u16 hostapd_process_ml_assoc_req(struct hostapd_data *hapd,
+ 
+ 		if (*pos != MULTI_LINK_SUB_ELEM_ID_PER_STA_PROFILE) {
+ 			wpa_printf(MSG_DEBUG,
+-				   "MLD: Unexpected Multi-Link element subelement ID=%u",
++				   "MLD: Skip unknown Multi-Link element subelement ID=%u",
+ 				   *pos);
+-			goto out;
++			pos += 2 + sub_elem_len;
++			ml_len -= 2 + sub_elem_len;
++			continue;
+ 		}
+ 
+ 		/* Skip the subelement ID and the length */
+-- 
+2.43.0
+

@@ -1,0 +1,40 @@
+From f7a903654f186bb2b2beaf5dfa1cd49dcc5b747d Mon Sep 17 00:00:00 2001
+From: Jouni Malinen <quic_jouni@quicinc.com>
+Date: Tue, 16 Jan 2024 15:52:34 +0200
+Subject: [PATCH] Extend mechanism to distinguish EAPOL-Key msg 2/4 from 4/4
+
+The initial Authenticator implementation depended on the Key Data field
+being empty for EAPOL-Key msg 4/4. This worked fine for years in
+practice, but in theory, vendor specific elements or KDEs could have
+been added inti EAPOL-Key msg 4/4 and that would have broken this
+design. In addition, the MLD case did introduce a KDE into EAPOL-Key msg
+4/4 and required changes here.
+
+As an initial step to make this more robust for future extensions,
+recognize a received EAPOL-Key message as msg 4/4 if it is for RSN
+(i.e., not WPAv1), has Secure=1, contains an unencrypted Key Data field,
+and does not include RSNE.
+
+Signed-off-by: Jouni Malinen <quic_jouni@quicinc.com>
+---
+ src/ap/wpa_auth.c | 4 ++++
+ 1 file changed, 4 insertions(+)
+
+diff --git a/src/ap/wpa_auth.c b/src/ap/wpa_auth.c
+index 1b2a89a80..13e3b2e65 100644
+--- a/src/ap/wpa_auth.c
++++ b/src/ap/wpa_auth.c
+@@ -1197,6 +1197,10 @@ void wpa_receive(struct wpa_authenticator *wpa_auth,
+ 		msg = GROUP_2;
+ 		msgtxt = "2/2 Group";
+ 	} else if (key_data_length == 0 ||
++		   (sm->wpa == WPA_VERSION_WPA2 &&
++		    !(key_info & WPA_KEY_INFO_ENCR_KEY_DATA) &&
++		    (key_info & WPA_KEY_INFO_SECURE) &&
++		    !get_ie(key_data, key_data_length, WLAN_EID_RSN)) ||
+ 		   (mic_len == 0 && (key_info & WPA_KEY_INFO_ENCR_KEY_DATA) &&
+ 		    key_data_length == AES_BLOCK_SIZE) ||
+ 		   (is_mld && (key_info & WPA_KEY_INFO_SECURE) &&
+-- 
+2.43.0
+

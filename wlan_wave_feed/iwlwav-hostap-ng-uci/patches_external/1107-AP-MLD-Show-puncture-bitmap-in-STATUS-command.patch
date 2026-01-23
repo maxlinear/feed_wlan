@@ -1,0 +1,36 @@
+From 4c3b329326ca7edf85e6f6acdec3eb1ba50d5e9d Mon Sep 17 00:00:00 2001
+From: Mohan Raj <quic_mrajraje@quicinc.com>
+Date: Mon, 28 Oct 2024 16:52:55 +0530
+Subject: [PATCH] AP MLD: Show puncture bitmap in STATUS command
+
+This can be used to determine the disabled subchannels based on the
+puncture bitmap (each bit corresponds to a 20 MHz subchannel).
+
+Signed-off-by: Mohan Raj <quic_mrajraje@quicinc.com>
+---
+ src/ap/ctrl_iface_ap.c | 9 +++++++++
+ 1 file changed, 9 insertions(+)
+
+diff --git a/src/ap/ctrl_iface_ap.c b/src/ap/ctrl_iface_ap.c
+index b93a5d215..be0425fcc 100644
+--- a/src/ap/ctrl_iface_ap.c
++++ b/src/ap/ctrl_iface_ap.c
+@@ -917,6 +917,15 @@ int hostapd_ctrl_iface_status(struct hostapd_data *hapd, char *buf,
+ 			len += ret;
+ 		}
+ 
++		if (hapd->iconf->punct_bitmap) {
++			ret = os_snprintf(buf + len, buflen - len,
++					  "punct_bitmap=0x%x\n",
++					  hapd->iconf->punct_bitmap);
++			if (os_snprintf_error(buflen - len, ret))
++				return len;
++			len += ret;
++		}
++
+ 		if (hapd->conf->mld_ap) {
+ 			struct hostapd_data *link_bss;
+ 
+-- 
+2.43.0
+

@@ -1,0 +1,74 @@
+From f35c8a9ff7926fbcb52429bd987d8ccd59b33bd3 Mon Sep 17 00:00:00 2001
+From: Jouni Malinen <quic_jouni@quicinc.com>
+Date: Wed, 30 Oct 2024 00:08:21 +0200
+Subject: [PATCH] P2P2: Enable PASN on a P2P GO
+
+Allow the AP SME in user space case to process PASN Authentication
+frames for P2P GO.
+
+Signed-off-by: Jouni Malinen <quic_jouni@quicinc.com>
+---
+ src/ap/ieee802_11.c             | 24 ++++++++++++++++++++++++
+ wpa_supplicant/p2p_supplicant.c |  4 ++--
+ 2 files changed, 26 insertions(+), 2 deletions(-)
+
+diff --git a/src/ap/ieee802_11.c b/src/ap/ieee802_11.c
+index 8115b68cc..9dccdb370 100644
+--- a/src/ap/ieee802_11.c
++++ b/src/ap/ieee802_11.c
+@@ -2834,6 +2834,30 @@ static void handle_auth_pasn(struct hostapd_data *hapd, struct sta_info *sta,
+ 			     u16 trans_seq, u16 status)
+ {
+ 	int ret;
++#ifdef CONFIG_P2P
++	struct ieee802_11_elems elems;
++
++	if (len < 24) {
++		wpa_printf(MSG_DEBUG, "PASN: Too short Management frame");
++		return;
++	}
++
++	if (ieee802_11_parse_elems(mgmt->u.auth.variable,
++				   len - offsetof(struct ieee80211_mgmt,
++						  u.auth.variable),
++				   &elems, 1) == ParseFailed) {
++		wpa_printf(MSG_DEBUG,
++			   "PASN: Failed parsing Authentication frame");
++		return;
++	}
++
++	if ((hapd->conf->p2p & (P2P_ENABLED | P2P_GROUP_OWNER)) ==
++	    (P2P_ENABLED | P2P_GROUP_OWNER) &&
++	    hapd->p2p && elems.p2p2_ie && elems.p2p2_ie_len) {
++		p2p_pasn_auth_rx(hapd->p2p, mgmt, len, hapd->iface->freq);
++		return;
++	}
++#endif /* CONFIG_P2P */
+ 
+ 	if (hapd->conf->wpa != WPA_PROTO_RSN) {
+ 		wpa_printf(MSG_INFO, "PASN: RSN is not configured");
+diff --git a/wpa_supplicant/p2p_supplicant.c b/wpa_supplicant/p2p_supplicant.c
+index f746c338b..0f3512d6f 100644
+--- a/wpa_supplicant/p2p_supplicant.c
++++ b/wpa_supplicant/p2p_supplicant.c
+@@ -2380,7 +2380,7 @@ static void wpas_start_go(struct wpa_supplicant *wpa_s,
+ 		else
+ 			ssid->auth_alg |= WPA_AUTH_ALG_SAE;
+ 
+-		ssid->key_mgmt = WPA_KEY_MGMT_SAE;
++		ssid->key_mgmt = WPA_KEY_MGMT_SAE | WPA_KEY_MGMT_PASN;
+ 		ssid->sae_password = os_strdup(params->sae_password);
+ 		ssid->ieee80211w = MGMT_FRAME_PROTECTION_REQUIRED;
+ 		ssid->sae_pwe = SAE_PWE_HASH_TO_ELEMENT;
+@@ -7629,7 +7629,7 @@ static int wpas_start_p2p_client(struct wpa_supplicant *wpa_s,
+ 	}
+ 
+ 	if (p2p2) {
+-		ssid->key_mgmt = WPA_KEY_MGMT_SAE;
++		ssid->key_mgmt = WPA_KEY_MGMT_SAE | WPA_KEY_MGMT_PASN;
+ 		ssid->auth_alg = WPA_AUTH_ALG_OPEN;
+ 		ssid->sae_pwe = SAE_PWE_HASH_TO_ELEMENT;
+ 		ssid->ieee80211w = MGMT_FRAME_PROTECTION_REQUIRED;
+-- 
+2.43.0
+

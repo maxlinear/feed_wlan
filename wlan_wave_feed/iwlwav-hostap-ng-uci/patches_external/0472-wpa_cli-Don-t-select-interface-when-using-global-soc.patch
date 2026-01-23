@@ -1,0 +1,32 @@
+From ec4b755b068db4cd7620430cc0ab9d60d9561add Mon Sep 17 00:00:00 2001
+From: Janusz Dziedzic <janusz.dziedzic@gmail.com>
+Date: Sat, 9 Mar 2024 20:42:28 +0100
+Subject: [PATCH] wpa_cli: Don't select interface when using global socket
+
+In case we run command like:
+wpa_cli -g <global_ctrl_path> command
+
+don't print
+"Selected interface " message.
+
+Signed-off-by: Janusz Dziedzic <janusz.dziedzic@gmail.com>
+---
+ wpa_supplicant/wpa_cli.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/wpa_supplicant/wpa_cli.c b/wpa_supplicant/wpa_cli.c
+index b1334e2e6..60f85624f 100644
+--- a/wpa_supplicant/wpa_cli.c
++++ b/wpa_supplicant/wpa_cli.c
+@@ -5129,7 +5129,7 @@ int main(int argc, char *argv[])
+ 
+ 	eloop_register_signal_terminate(wpa_cli_terminate, NULL);
+ 
+-	if (ctrl_ifname == NULL)
++	if (!ctrl_ifname && !global)
+ 		ctrl_ifname = wpa_cli_get_default_ifname();
+ 
+ 	if (reconnect && action_file && ctrl_ifname) {
+-- 
+2.43.0
+

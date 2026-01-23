@@ -1,0 +1,31 @@
+From 29f38ebcf6710ed1e3e3bef68cfa3707505107b4 Mon Sep 17 00:00:00 2001
+From: Jouni Malinen <j@w1.fi>
+Date: Sun, 17 Dec 2023 00:02:43 +0200
+Subject: [PATCH] ACS: Check whether iface->current_mode is NULL before use
+
+This line seemed to trigger SIGSEGV in some code coverage testing cases.
+It is not exactly clear how that was possible, but just in case, check
+that iface->current_mode is set before using it here.
+
+Signed-off-by: Jouni Malinen <j@w1.fi>
+---
+ src/ap/acs.c | 3 ++-
+ 1 file changed, 2 insertions(+), 1 deletion(-)
+
+diff --git a/src/ap/acs.c b/src/ap/acs.c
+index 0ac05b52a..7ab310f75 100644
+--- a/src/ap/acs.c
++++ b/src/ap/acs.c
+@@ -917,7 +917,8 @@ acs_find_ideal_chan_mode(struct hostapd_iface *iface,
+ 
+ 		/* If the AP is in the 5 GHz or 6 GHz band, lets prefer a less
+ 		 * crowded primary channel if one was found in the segment */
+-		if (iface->current_mode->mode == HOSTAPD_MODE_IEEE80211A &&
++		if (iface->current_mode &&
++		    iface->current_mode->mode == HOSTAPD_MODE_IEEE80211A &&
+ 		    chan != best) {
+ 			wpa_printf(MSG_DEBUG,
+ 				   "ACS: promoting channel %d over %d (less interference %Lg/%Lg)",
+-- 
+2.43.0
+

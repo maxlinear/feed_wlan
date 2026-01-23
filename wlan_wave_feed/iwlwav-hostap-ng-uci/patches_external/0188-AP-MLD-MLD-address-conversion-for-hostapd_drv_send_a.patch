@@ -1,0 +1,80 @@
+From 9ccfc0d516990029af69ceb3d1d82b54d236c183 Mon Sep 17 00:00:00 2001
+From: Jouni Malinen <j@w1.fi>
+Date: Sat, 13 Jan 2024 12:19:12 +0200
+Subject: [PATCH] AP MLD: MLD address conversion for
+ hostapd_drv_send_action_addr3_ap()
+
+Commit 31e025c033f3 ("AP: When sending Action frames, use the AP MLD MAC
+address if needed") added this for hostapd_drv_send_action(), but the
+A3=BSSID variant of that function needs similar changes for GAS to work
+correctly with STAs that are currently associated with MLO.
+
+Signed-off-by: Jouni Malinen <j@w1.fi>
+---
+ src/ap/ap_drv_ops.c | 24 ++++++++++++++----------
+ 1 file changed, 14 insertions(+), 10 deletions(-)
+
+diff --git a/src/ap/ap_drv_ops.c b/src/ap/ap_drv_ops.c
+index 588c4cf44..3dec6eca6 100644
+--- a/src/ap/ap_drv_ops.c
++++ b/src/ap/ap_drv_ops.c
+@@ -882,9 +882,9 @@ int hostapd_drv_wnm_oper(struct hostapd_data *hapd, enum wnm_oper oper,
+ }
+ 
+ 
+-int hostapd_drv_send_action(struct hostapd_data *hapd, unsigned int freq,
+-			    unsigned int wait, const u8 *dst, const u8 *data,
+-			    size_t len)
++static int hapd_drv_send_action(struct hostapd_data *hapd, unsigned int freq,
++				unsigned int wait, const u8 *dst,
++				const u8 *data, size_t len, bool addr3_ap)
+ {
+ 	const u8 *own_addr = hapd->own_addr;
+ 	const u8 *bssid;
+@@ -896,7 +896,7 @@ int hostapd_drv_send_action(struct hostapd_data *hapd, unsigned int freq,
+ 	if (!hapd->driver || !hapd->driver->send_action || !hapd->drv_priv)
+ 		return 0;
+ 	bssid = hapd->own_addr;
+-	if (!is_multicast_ether_addr(dst) &&
++	if (!addr3_ap && !is_multicast_ether_addr(dst) &&
+ 	    len > 0 && data[0] == WLAN_ACTION_PUBLIC) {
+ 		/*
+ 		 * Public Action frames to a STA that is not a member of the BSS
+@@ -905,7 +905,7 @@ int hostapd_drv_send_action(struct hostapd_data *hapd, unsigned int freq,
+ 		sta = ap_get_sta(hapd, dst);
+ 		if (!sta || !(sta->flags & WLAN_STA_ASSOC))
+ 			bssid = wildcard_bssid;
+-	} else if (is_broadcast_ether_addr(dst) &&
++	} else if (!addr3_ap && is_broadcast_ether_addr(dst) &&
+ 		   len > 0 && data[0] == WLAN_ACTION_PUBLIC) {
+ 		/*
+ 		 * The only current use case of Public Action frames with
+@@ -930,16 +930,20 @@ int hostapd_drv_send_action(struct hostapd_data *hapd, unsigned int freq,
+ }
+ 
+ 
++int hostapd_drv_send_action(struct hostapd_data *hapd, unsigned int freq,
++			    unsigned int wait, const u8 *dst, const u8 *data,
++			    size_t len)
++{
++	return hapd_drv_send_action(hapd, freq, wait, dst, data, len, false);
++}
++
++
+ int hostapd_drv_send_action_addr3_ap(struct hostapd_data *hapd,
+ 				     unsigned int freq,
+ 				     unsigned int wait, const u8 *dst,
+ 				     const u8 *data, size_t len)
+ {
+-	if (hapd->driver == NULL || hapd->driver->send_action == NULL)
+-		return 0;
+-	return hapd->driver->send_action(hapd->drv_priv, freq, wait, dst,
+-					 hapd->own_addr, hapd->own_addr, data,
+-					 len, 0);
++	return hapd_drv_send_action(hapd, freq, wait, dst, data, len, true);
+ }
+ 
+ 
+-- 
+2.43.0
+

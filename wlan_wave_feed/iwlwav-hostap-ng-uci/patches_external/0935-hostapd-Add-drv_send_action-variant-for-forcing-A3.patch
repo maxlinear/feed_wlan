@@ -1,0 +1,92 @@
+From e0496580a4bd72b59e630fcec63e7ceedb7f1ce2 Mon Sep 17 00:00:00 2001
+From: Jouni Malinen <quic_jouni@quicinc.com>
+Date: Fri, 13 Sep 2024 21:58:51 +0300
+Subject: [PATCH] hostapd: Add drv_send_action variant for forcing A3
+
+This is needed for cases that are not compliant with the IEEE 802.11
+standard rules for Public Action frame addressing. For example, NAN USD
+needs this.
+
+Signed-off-by: Jouni Malinen <quic_jouni@quicinc.com>
+---
+ src/ap/ap_drv_ops.c | 26 +++++++++++++++++++++-----
+ src/ap/ap_drv_ops.h |  5 +++++
+ 2 files changed, 26 insertions(+), 5 deletions(-)
+
+diff --git a/src/ap/ap_drv_ops.c b/src/ap/ap_drv_ops.c
+index 92dbc1653..977610927 100644
+--- a/src/ap/ap_drv_ops.c
++++ b/src/ap/ap_drv_ops.c
+@@ -918,7 +918,8 @@ int hostapd_drv_wnm_oper(struct hostapd_data *hapd, enum wnm_oper oper,
+ 
+ static int hapd_drv_send_action(struct hostapd_data *hapd, unsigned int freq,
+ 				unsigned int wait, const u8 *dst,
+-				const u8 *data, size_t len, bool addr3_ap)
++				const u8 *data, size_t len, bool addr3_ap,
++				const u8 *forced_a3)
+ {
+ 	const u8 *own_addr = hapd->own_addr;
+ 	const u8 *bssid;
+@@ -930,8 +931,10 @@ static int hapd_drv_send_action(struct hostapd_data *hapd, unsigned int freq,
+ 	if (!hapd->driver || !hapd->driver->send_action || !hapd->drv_priv)
+ 		return 0;
+ 	bssid = hapd->own_addr;
+-	if (!addr3_ap && !is_multicast_ether_addr(dst) &&
+-	    len > 0 && data[0] == WLAN_ACTION_PUBLIC) {
++	if (forced_a3) {
++		bssid = forced_a3;
++	} else if (!addr3_ap && !is_multicast_ether_addr(dst) &&
++		   len > 0 && data[0] == WLAN_ACTION_PUBLIC) {
+ 		/*
+ 		 * Public Action frames to a STA that is not a member of the BSS
+ 		 * shall use wildcard BSSID value.
+@@ -968,7 +971,8 @@ int hostapd_drv_send_action(struct hostapd_data *hapd, unsigned int freq,
+ 			    unsigned int wait, const u8 *dst, const u8 *data,
+ 			    size_t len)
+ {
+-	return hapd_drv_send_action(hapd, freq, wait, dst, data, len, false);
++	return hapd_drv_send_action(hapd, freq, wait, dst, data, len, false,
++				    NULL);
+ }
+ 
+ 
+@@ -977,7 +981,19 @@ int hostapd_drv_send_action_addr3_ap(struct hostapd_data *hapd,
+ 				     unsigned int wait, const u8 *dst,
+ 				     const u8 *data, size_t len)
+ {
+-	return hapd_drv_send_action(hapd, freq, wait, dst, data, len, true);
++	return hapd_drv_send_action(hapd, freq, wait, dst, data, len, true,
++				    NULL);
++}
++
++
++int hostapd_drv_send_action_forced_addr3(struct hostapd_data *hapd,
++					 unsigned int freq,
++					 unsigned int wait, const u8 *dst,
++					 const u8 *a3,
++					 const u8 *data, size_t len)
++{
++	return hapd_drv_send_action(hapd, freq, wait, dst, data, len, false,
++				    a3);
+ }
+ 
+ 
+diff --git a/src/ap/ap_drv_ops.h b/src/ap/ap_drv_ops.h
+index 6b7f02a1f..34f7fb77c 100644
+--- a/src/ap/ap_drv_ops.h
++++ b/src/ap/ap_drv_ops.h
+@@ -116,6 +116,11 @@ int hostapd_drv_send_action_addr3_ap(struct hostapd_data *hapd,
+ 				     unsigned int freq,
+ 				     unsigned int wait, const u8 *dst,
+ 				     const u8 *data, size_t len);
++int hostapd_drv_send_action_forced_addr3(struct hostapd_data *hapd,
++					 unsigned int freq,
++					 unsigned int wait, const u8 *dst,
++					 const u8 *a3,
++					 const u8 *data, size_t len);
+ static inline void
+ hostapd_drv_send_action_cancel_wait(struct hostapd_data *hapd)
+ {
+-- 
+2.43.0
+

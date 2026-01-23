@@ -1,0 +1,122 @@
+From d43eb71da79f5d92931ed5cde5c62b6ccc17d04b Mon Sep 17 00:00:00 2001
+From: Johannes Berg <johannes.berg@intel.com>
+Date: Thu, 28 Mar 2024 14:06:58 +0100
+Subject: [PATCH] hostapd: Add support for testing Probe Response frame
+ elements
+
+Add support for additional (vendor) elements to be added
+to only Probe Response frames, for testing.
+
+Signed-off-by: Johannes Berg <johannes.berg@intel.com>
+---
+ hostapd/config_file.c |  3 +++
+ hostapd/hostapd.conf  |  7 +++++++
+ src/ap/ap_config.c    |  1 +
+ src/ap/ap_config.h    |  1 +
+ src/ap/ap_drv_ops.c   |  3 +++
+ src/ap/beacon.c       | 12 ++++++++++++
+ 6 files changed, 27 insertions(+)
+
+diff --git a/hostapd/config_file.c b/hostapd/config_file.c
+index 20ee59081..9a8f34e0d 100644
+--- a/hostapd/config_file.c
++++ b/hostapd/config_file.c
+@@ -4516,6 +4516,9 @@ static int hostapd_config_fill(struct hostapd_config *conf,
+ 		bss->eapol_m3_no_encrypt = atoi(pos);
+ 	} else if (os_strcmp(buf, "test_assoc_comeback_type") == 0) {
+ 		bss->test_assoc_comeback_type = atoi(pos);
++	} else if (os_strcmp(buf, "presp_elements") == 0) {
++		if (parse_wpabuf_hex(line, buf, &bss->presp_elements, pos))
++			return 1;
+ #endif /* CONFIG_TESTING_OPTIONS */
+ #ifdef CONFIG_SAE
+ 	} else if (os_strcmp(buf, "sae_password") == 0) {
+diff --git a/hostapd/hostapd.conf b/hostapd/hostapd.conf
+index e34d75c86..51ca05e25 100644
+--- a/hostapd/hostapd.conf
++++ b/hostapd/hostapd.conf
+@@ -3216,6 +3216,13 @@ own_ip_addr=127.0.0.1
+ # attempt (wpa_pairwise_update_count). This will trigger a timeout on all
+ # previous attempts and thus delays the frame. (testing only)
+ #delay_eapol_tx=0
++#
++# Additional elements for Probe Response frames.
++# This parameter can be used to add additional element(s) to the end of the
++# Probe Response frames. The format for these element(s) is a hexdump of the
++# raw information elements (id+len+payload for one or more elements).
++# These elements are added after the 'vendor_elements'.
++#presp_elements=
+ 
+ ##### Multiple BSSID support ##################################################
+ #
+diff --git a/src/ap/ap_config.c b/src/ap/ap_config.c
+index 1a18df617..e1910d422 100644
+--- a/src/ap/ap_config.c
++++ b/src/ap/ap_config.c
+@@ -967,6 +967,7 @@ void hostapd_config_free_bss(struct hostapd_bss_config *conf)
+ 	wpabuf_free(conf->igtk_rsc_override);
+ 	wpabuf_free(conf->eapol_m1_elements);
+ 	wpabuf_free(conf->eapol_m3_elements);
++	wpabuf_free(conf->presp_elements);
+ #endif /* CONFIG_TESTING_OPTIONS */
+ 
+ 	os_free(conf->no_probe_resp_if_seen_on);
+diff --git a/src/ap/ap_config.h b/src/ap/ap_config.h
+index 754d55331..aa513be4c 100644
+--- a/src/ap/ap_config.h
++++ b/src/ap/ap_config.h
+@@ -709,6 +709,7 @@ struct hostapd_bss_config {
+ 	struct wpabuf *eapol_m3_elements;
+ 	bool eapol_m3_no_encrypt;
+ 	int test_assoc_comeback_type;
++	struct wpabuf *presp_elements;
+ 
+ #ifdef CONFIG_IEEE80211BE
+ 	u16 eht_oper_puncturing_override;
+diff --git a/src/ap/ap_drv_ops.c b/src/ap/ap_drv_ops.c
+index 11fe39c25..d09d678ef 100644
+--- a/src/ap/ap_drv_ops.c
++++ b/src/ap/ap_drv_ops.c
+@@ -208,6 +208,9 @@ int hostapd_build_ap_extra_ies(struct hostapd_data *hapd,
+ 
+ 	add_buf(&beacon, hapd->conf->vendor_elements);
+ 	add_buf(&proberesp, hapd->conf->vendor_elements);
++#ifdef CONFIG_TESTING_OPTIONS
++	add_buf(&proberesp, hapd->conf->presp_elements);
++#endif /* CONFIG_TESTING_OPTIONS */
+ 	add_buf(&assocresp, hapd->conf->assocresp_elements);
+ 
+ 	*beacon_ret = beacon;
+diff --git a/src/ap/beacon.c b/src/ap/beacon.c
+index 32865f667..143b3b4b7 100644
+--- a/src/ap/beacon.c
++++ b/src/ap/beacon.c
+@@ -649,6 +649,10 @@ static size_t hostapd_probe_resp_elems_len(struct hostapd_data *hapd,
+ #endif /* CONFIG_FST */
+ 	if (hapd->conf->vendor_elements)
+ 		buflen += wpabuf_len(hapd->conf->vendor_elements);
++#ifdef CONFIG_TESTING_OPTIONS
++	if (hapd->conf->presp_elements)
++		buflen += wpabuf_len(hapd->conf->presp_elements);
++#endif /* CONFIG_TESTING_OPTIONS */
+ 	if (hapd->conf->vendor_vht) {
+ 		buflen += 5 + 2 + sizeof(struct ieee80211_vht_capabilities) +
+ 			2 + sizeof(struct ieee80211_vht_operation);
+@@ -885,6 +889,14 @@ static u8 * hostapd_probe_resp_fill_elems(struct hostapd_data *hapd,
+ 		pos += wpabuf_len(hapd->conf->vendor_elements);
+ 	}
+ 
++#ifdef CONFIG_TESTING_OPTIONS
++	if (hapd->conf->presp_elements) {
++		os_memcpy(pos, wpabuf_head(hapd->conf->presp_elements),
++			  wpabuf_len(hapd->conf->presp_elements));
++		pos += wpabuf_len(hapd->conf->presp_elements);
++	}
++#endif /* CONFIG_TESTING_OPTIONS */
++
+ 	return pos;
+ }
+ 
+-- 
+2.43.0
+

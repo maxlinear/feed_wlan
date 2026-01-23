@@ -1,0 +1,32 @@
+From fd9bf2cc2f59834b5d9c50a23ac7a833d21eefb2 Mon Sep 17 00:00:00 2001
+From: Andrei Otcheretianski <andrei.otcheretianski@intel.com>
+Date: Tue, 26 Nov 2024 11:10:20 +0200
+Subject: [PATCH] tests: Enable NAN_USD hwsim tests
+
+Signed-off-by: Andrei Otcheretianski <andrei.otcheretianski@intel.com>
+---
+ tests/hwsim/example-hostapd.config        | 1 +
+ tests/hwsim/example-wpa_supplicant.config | 1 +
+ 2 files changed, 2 insertions(+)
+
+diff --git a/tests/hwsim/example-hostapd.config b/tests/hwsim/example-hostapd.config
+index 210b7fb86..c75395c00 100644
+--- a/tests/hwsim/example-hostapd.config
++++ b/tests/hwsim/example-hostapd.config
+@@ -123,3 +123,4 @@ CONFIG_WEP=y
+ CONFIG_PASN=y
+ CONFIG_AIRTIME_POLICY=y
+ CONFIG_IEEE80211BE=y
++CONFIG_NAN_USD=y
+diff --git a/tests/hwsim/example-wpa_supplicant.config b/tests/hwsim/example-wpa_supplicant.config
+index 123f397e3..c7b56996d 100644
+--- a/tests/hwsim/example-wpa_supplicant.config
++++ b/tests/hwsim/example-wpa_supplicant.config
+@@ -166,3 +166,4 @@ CONFIG_DPP2=y
+ CONFIG_DPP3=y
+ CONFIG_WEP=y
+ CONFIG_PASN=y
++CONFIG_NAN_USD=y
+-- 
+2.43.0
+

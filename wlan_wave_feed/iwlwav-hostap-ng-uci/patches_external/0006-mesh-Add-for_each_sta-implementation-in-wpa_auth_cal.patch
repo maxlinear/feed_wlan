@@ -1,0 +1,76 @@
+From bbb0d3a40e96ca2989d97829a286282aad9c19b4 Mon Sep 17 00:00:00 2001
+From: Remi Pommarel <repk@triplefau.lt>
+Date: Fri, 1 Dec 2023 16:14:11 +0100
+Subject: [PATCH] mesh: Add for_each_sta implementation in wpa_auth_callbacks
+
+The wpa_auth_callbacks for mesh was missing a for_each_sta
+implementation. This is an issue with pmksa cache, as when a cache entry
+expires the for_each_sta callback is called in order to clear the pmksa
+reference for all sta that was using this entry. Not having a
+for_each_sta callback will prevent this cleanup to happen then a sta
+could still use this pmksa entry even after it has been freed.
+
+This used after free was not a problem up until recently where
+dpp_pkhash is now stored in pmksa entry and retreived later on causing
+crash with below backtrace:
+
+  _wpa_snprintf_hex                        src/utils/common.c:326
+  wpa_snprintf_hex                         src/utils/common.c:348
+  hostapd_ctrl_iface_sta_mib               src/ap/ctrl_iface_ap.c:542
+  hostapd_ctrl_iface_sta_mib               src/ap/ctrl_iface_ap.c:542
+  hostapd_ctrl_iface_sta_mib               src/ap/ctrl_iface_ap.c:600
+  hostapd_ctrl_iface_sta                   src/ap/ctrl_iface_ap.c:615
+  wpa_supplicant_ctrl_iface_process        src/wpa_supplicant/ctrl_iface.c:12741
+  wpa_supplicant_global_ctrl_iface_receive src/wpa_supplicant/ctrl_iface_unix.c:1141
+  eloop_sock_table_dispatch                src/utils/eloop.c:625
+  eloop_run                                src/utils/eloop.c:1238
+  wpa_supplicant_run                       src/wpa_supplicant/wpa_supplicant.c:8021
+  main                                     src/wpa_supplicant/main.c:393
+
+Adding a for_each_sta callbacks fixes that.
+
+Fixes: 043dedee83a7 ("DPP: Expose enrollee pubkey hash for identification")
+Signed-off-by: Remi Pommarel <repk@triplefau.lt>
+---
+ wpa_supplicant/mesh_rsn.c | 18 ++++++++++++++++++
+ 1 file changed, 18 insertions(+)
+
+diff --git a/wpa_supplicant/mesh_rsn.c b/wpa_supplicant/mesh_rsn.c
+index 902c4bb7f..ada53c796 100644
+--- a/wpa_supplicant/mesh_rsn.c
++++ b/wpa_supplicant/mesh_rsn.c
+@@ -142,6 +142,23 @@ static int auth_start_ampe(void *ctx, const u8 *addr)
+ }
+ 
+ 
++static int auth_for_each_sta(
++	void *ctx, int (*cb)(struct wpa_state_machine *sm, void *ctx),
++	void *cb_ctx)
++{
++	struct mesh_rsn *rsn = ctx;
++	struct hostapd_data *hapd;
++	struct sta_info *sta;
++
++	hapd = rsn->wpa_s->ifmsh->bss[0];
++	for (sta = hapd->sta_list; sta; sta = sta->next) {
++		if (sta->wpa_sm && cb(sta->wpa_sm, cb_ctx))
++			return 1;
++	}
++	return 0;
++}
++
++
+ static int __mesh_rsn_auth_init(struct mesh_rsn *rsn, const u8 *addr,
+ 				enum mfp_options ieee80211w, int ocv)
+ {
+@@ -151,6 +168,7 @@ static int __mesh_rsn_auth_init(struct mesh_rsn *rsn, const u8 *addr,
+ 		.get_psk = auth_get_psk,
+ 		.set_key = auth_set_key,
+ 		.start_ampe = auth_start_ampe,
++		.for_each_sta = auth_for_each_sta,
+ 	};
+ 	u8 seq[6] = {};
+ 
+-- 
+2.43.0
+

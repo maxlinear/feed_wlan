@@ -1,0 +1,67 @@
+From c144dcbdfbcf0e02d6f0e2040db0ab84f9460b68 Mon Sep 17 00:00:00 2001
+From: Vinay Gannevaram <quic_vganneva@quicinc.com>
+Date: Thu, 20 Feb 2025 11:50:22 +0530
+Subject: [PATCH] P2P2: Add support to fetch the P2P2 and PCC capability
+
+Add support to fetch the P2P2 and PCC capability from wpa_supplicant.
+This defines the driver capability bits for this and the control
+interface extension. The actual driver capability fetching will be
+handled in future commit(s).
+
+Signed-off-by: Vinay Gannevaram <quic_vganneva@quicinc.com>
+---
+ src/drivers/driver.h        |  4 ++++
+ wpa_supplicant/ctrl_iface.c | 22 ++++++++++++++++++++++
+ 2 files changed, 26 insertions(+)
+
+diff --git a/src/drivers/driver.h b/src/drivers/driver.h
+index 566475214..1830019ee 100644
+--- a/src/drivers/driver.h
++++ b/src/drivers/driver.h
+@@ -2380,6 +2380,10 @@ struct wpa_driver_capa {
+ #define WPA_DRIVER_FLAGS2_NAN_OFFLOAD		0x0000000000800000ULL
+ /** Driver/device supports SPP A-MSDUs */
+ #define WPA_DRIVER_FLAGS2_SPP_AMSDU		0x0000000001000000ULL
++/** Driver supports P2P V2 */
++#define WPA_DRIVER_FLAGS2_P2P_FEATURE_V2	0x0000000002000000ULL
++/** Driver supports P2P PCC mode */
++#define WPA_DRIVER_FLAGS2_P2P_FEATURE_PCC_MODE	0x0000000004000000ULL
+ 	u64 flags2;
+ 
+ #define FULL_AP_CLIENT_STATE_SUPP(drv_flags) \
+diff --git a/wpa_supplicant/ctrl_iface.c b/wpa_supplicant/ctrl_iface.c
+index 91591e9db..a89cb5211 100644
+--- a/wpa_supplicant/ctrl_iface.c
++++ b/wpa_supplicant/ctrl_iface.c
+@@ -4942,6 +4942,28 @@ static int wpa_supplicant_ctrl_iface_get_capability(
+ 		return res;
+ 	}
+ 
++#ifdef CONFIG_P2P
++	if (os_strcmp(field, "p2p2") == 0) {
++		if (wpa_s->drv_flags2 & WPA_DRIVER_FLAGS2_P2P_FEATURE_V2)
++			res = os_snprintf(buf, buflen, "supported");
++		else
++			res = os_snprintf(buf, buflen, "not supported");
++		if (os_snprintf_error(buflen, res))
++			return -1;
++		return res;
++	}
++
++	if (os_strcmp(field, "pcc_mode") == 0) {
++		if (wpa_s->drv_flags2 & WPA_DRIVER_FLAGS2_P2P_FEATURE_PCC_MODE)
++			res = os_snprintf(buf, buflen, "supported");
++		else
++			res = os_snprintf(buf, buflen, "not supported");
++		if (os_snprintf_error(buflen, res))
++			return -1;
++		return res;
++	}
++#endif /* CONFIG_P2P */
++
+ 	wpa_printf(MSG_DEBUG, "CTRL_IFACE: Unknown GET_CAPABILITY field '%s'",
+ 		   field);
+ 
+-- 
+2.43.0
+

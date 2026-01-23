@@ -1,0 +1,34 @@
+From 651370325ad918e992f943623a94bcaeae0de5d2 Mon Sep 17 00:00:00 2001
+From: Jouni Malinen <j@w1.fi>
+Date: Sat, 1 Mar 2025 20:14:11 +0200
+Subject: [PATCH] SAE: Add an explicit debug print for failure to derive PWE
+
+The needed HMAC-SHA256 operation with short salt is something that can
+fail if OpenSSL is forced to use the fips provider, so it is helpful to
+get this failure case clearer in the debug log.
+
+Signed-off-by: Jouni Malinen <j@w1.fi>
+---
+ src/common/sae.c | 5 ++++-
+ 1 file changed, 4 insertions(+), 1 deletion(-)
+
+diff --git a/src/common/sae.c b/src/common/sae.c
+index ce282db6b..801f36301 100644
+--- a/src/common/sae.c
++++ b/src/common/sae.c
+@@ -366,8 +366,11 @@ static int sae_derive_pwe_ecc(struct sae_data *sae, const u8 *addr1,
+ 		const_time_select_bin(found, stub_password, password,
+ 				      password_len, tmp_password);
+ 		if (hmac_sha256_vector(addrs, sizeof(addrs), 2,
+-				       addr, len, pwd_seed) < 0)
++				       addr, len, pwd_seed) < 0) {
++			wpa_printf(MSG_INFO,
++				   "SAE: hmac_sha256_vector() failed - cannot derive PWE");
+ 			break;
++		}
+ 
+ 		res = sae_test_pwd_seed_ecc(sae, pwd_seed,
+ 					    prime, qr_bin, qnr_bin, x_cand_bin);
+-- 
+2.43.0
+

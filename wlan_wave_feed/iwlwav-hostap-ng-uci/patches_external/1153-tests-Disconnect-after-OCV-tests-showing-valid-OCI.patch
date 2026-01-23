@@ -1,0 +1,70 @@
+From 83ea5f8810515067234c4f3b3bfcb6a6ec5a8654 Mon Sep 17 00:00:00 2001
+From: Jouni Malinen <quic_jouni@quicinc.com>
+Date: Fri, 20 Dec 2024 00:45:25 +0200
+Subject: [PATCH] tests: Disconnect after OCV tests showing valid OCI
+
+These test cases that used external EAPOL handling to test hostapd
+behavior left the STA in associated state at the end and that could
+result in race conditions showing up as a new association related event
+in the following test case. Minimize risk of that resulting in test case
+failures by explicit disconnecting at the end of the test case.
+
+This was found with this test case sequence:
+autogo_many wpa2_ocv_ap_unexpected1 wpa2_ocv_sta_override_eapol
+
+Signed-off-by: Jouni Malinen <quic_jouni@quicinc.com>
+---
+ tests/hwsim/test_ocv.py | 16 ++++++++++++++++
+ 1 file changed, 16 insertions(+)
+
+diff --git a/tests/hwsim/test_ocv.py b/tests/hwsim/test_ocv.py
+index bdcda8265..32af72931 100644
+--- a/tests/hwsim/test_ocv.py
++++ b/tests/hwsim/test_ocv.py
+@@ -448,6 +448,10 @@ def test_wpa2_ocv_ap_mismatch(dev, apdev):
+     conn.test_bad_oci("invalid operating class", 0, 0, 0)
+     conn.confirm_valid_oci(81, 1, 0)
+ 
++    dev[0].dump_monitor()
++    dev[0].request("DISCONNECT")
++    dev[0].wait_disconnected()
++
+ @remote_compatible
+ def test_wpa2_ocv_ap_ht_mismatch(dev, apdev):
+     """OCV AP mismatch (HT)"""
+@@ -462,6 +466,10 @@ def test_wpa2_ocv_ap_ht_mismatch(dev, apdev):
+     conn.test_bad_oci("bad upper/lower channel", 83, 6, 0)
+     conn.confirm_valid_oci(84, 6, 0)
+ 
++    dev[0].dump_monitor()
++    dev[0].request("DISCONNECT")
++    dev[0].wait_disconnected()
++
+ @remote_compatible
+ def test_wpa2_ocv_ap_vht80_mismatch(dev, apdev):
+     """OCV AP mismatch (VHT80)"""
+@@ -575,6 +583,10 @@ def test_wpa2_ocv_ap_unexpected1(dev, apdev):
+     logger.debug("Client will send OCI KDE even if it was not negotiated")
+     conn.confirm_valid_oci(81, 1, 0)
+ 
++    dev[0].dump_monitor()
++    dev[0].request("DISCONNECT")
++    dev[0].wait_disconnected()
++
+ @remote_compatible
+ def test_wpa2_ocv_ap_unexpected2(dev, apdev):
+     """OCV and unexpected OCI KDE from station"""
+@@ -587,6 +599,10 @@ def test_wpa2_ocv_ap_unexpected2(dev, apdev):
+     logger.debug("Client will send OCI KDE even if it was not negotiated")
+     conn.confirm_valid_oci(81, 1, 0)
+ 
++    dev[0].dump_monitor()
++    dev[0].request("DISCONNECT")
++    dev[0].wait_disconnected()
++
+ @remote_compatible
+ def test_wpa2_ocv_ap_retransmit_msg3(dev, apdev):
+     """Verify that manually retransmitted msg 3/4 contain a correct OCI"""
+-- 
+2.43.0
+

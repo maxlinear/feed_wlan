@@ -1,0 +1,42 @@
+From 828311ef312188d8e35c720969118bed97eb82e4 Mon Sep 17 00:00:00 2001
+From: Jouni Malinen <j@w1.fi>
+Date: Sun, 17 Dec 2023 21:55:10 +0200
+Subject: [PATCH] AP MLD: More careful checking of Multi-Link element length
+ fields
+
+Avoid potential read of one or two octets beyond the end of the
+subelement when verifying that there is sufficient amount of data
+included in each subelement/element within the MLE in Association
+Request frames.
+
+Signed-off-by: Jouni Malinen <j@w1.fi>
+---
+ src/common/ieee802_11_common.c | 5 +++--
+ 1 file changed, 3 insertions(+), 2 deletions(-)
+
+diff --git a/src/common/ieee802_11_common.c b/src/common/ieee802_11_common.c
+index 06f82ce30..1f71a1df0 100644
+--- a/src/common/ieee802_11_common.c
++++ b/src/common/ieee802_11_common.c
+@@ -1004,7 +1004,7 @@ ParseRes ieee802_11_parse_link_assoc_req(const u8 *start, size_t len,
+ 			continue;
+ 		}
+ 
+-		if (sub_elem_len < 3) {
++		if (sub_elem_len < 5) {
+ 			if (show_errors)
+ 				wpa_printf(MSG_DEBUG,
+ 					   "MLD: error: sub_elem_len=%zu < 5",
+@@ -1073,7 +1073,8 @@ ParseRes ieee802_11_parse_link_assoc_req(const u8 *start, size_t len,
+ 			non_inherit_len -= 1 + non_inherit[0];
+ 			non_inherit += 1 + non_inherit[0];
+ 
+-			if (non_inherit_len < 1UL + non_inherit[0]) {
++			if (non_inherit_len < 1UL ||
++			    non_inherit_len < 1UL + non_inherit[0]) {
+ 				if (show_errors)
+ 					wpa_printf(MSG_DEBUG,
+ 						   "MLD: Invalid inheritance");
+-- 
+2.43.0
+

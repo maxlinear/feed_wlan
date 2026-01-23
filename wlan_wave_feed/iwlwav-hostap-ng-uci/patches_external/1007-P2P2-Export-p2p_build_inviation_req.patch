@@ -1,0 +1,49 @@
+From 29ad7ffe7a798505fd28719239c807cc6c242f7d Mon Sep 17 00:00:00 2001
+From: Shivani Baranwal <quic_shivbara@quicinc.com>
+Date: Tue, 2 Jul 2024 00:41:48 +0530
+Subject: [PATCH] P2P2: Export p2p_build_inviation_req()
+
+This will be needed for P2P2 invitation/pairing verification outside the
+p2p_invitation.c file.
+
+Signed-off-by: Shivani Baranwal <quic_shivbara@quicinc.com>
+---
+ src/p2p/p2p_i.h          | 3 +++
+ src/p2p/p2p_invitation.c | 7 +++----
+ 2 files changed, 6 insertions(+), 4 deletions(-)
+
+diff --git a/src/p2p/p2p_i.h b/src/p2p/p2p_i.h
+index b54ac3395..06c758769 100644
+--- a/src/p2p/p2p_i.h
++++ b/src/p2p/p2p_i.h
+@@ -978,6 +978,9 @@ void p2p_process_pcea(struct p2p_data *p2p, struct p2p_message *msg,
+ 		      struct p2p_device *dev);
+ 
+ /* p2p_invitation.c */
++struct wpabuf * p2p_build_invitation_req(struct p2p_data *p2p,
++					 struct p2p_device *peer,
++					 const u8 *go_dev_addr, int dev_pw_id);
+ void p2p_handle_invitation_req(struct p2p_data *p2p, const u8 *sa,
+ 			       const u8 *data, size_t len, int rx_freq);
+ void p2p_handle_invitation_resp(struct p2p_data *p2p, const u8 *sa,
+diff --git a/src/p2p/p2p_invitation.c b/src/p2p/p2p_invitation.c
+index 7b8a2c584..f733e6946 100644
+--- a/src/p2p/p2p_invitation.c
++++ b/src/p2p/p2p_invitation.c
+@@ -19,10 +19,9 @@
+ #include "p2p.h"
+ 
+ 
+-static struct wpabuf * p2p_build_invitation_req(struct p2p_data *p2p,
+-						struct p2p_device *peer,
+-						const u8 *go_dev_addr,
+-						int dev_pw_id)
++struct wpabuf * p2p_build_invitation_req(struct p2p_data *p2p,
++					 struct p2p_device *peer,
++					 const u8 *go_dev_addr, int dev_pw_id)
+ {
+ 	struct wpabuf *buf;
+ 	u8 *len;
+-- 
+2.43.0
+

@@ -1,0 +1,69 @@
+From 84f99b6e8d6c3d3d7708eef5b2e42d7c0e1a30e5 Mon Sep 17 00:00:00 2001
+From: Jouni Malinen <j@w1.fi>
+Date: Sat, 21 Dec 2024 22:25:57 +0200
+Subject: [PATCH] tests: More test cases with common UML issues to the front of
+ the queue
+
+Move test cases that have shown frequent, but random, issues UML to the
+beginning of the run to minimize risk of false failures.
+
+Signed-off-by: Jouni Malinen <j@w1.fi>
+---
+ tests/hwsim/vm/parallel-vm.py | 25 ++++++++++++++++++-------
+ 1 file changed, 18 insertions(+), 7 deletions(-)
+
+diff --git a/tests/hwsim/vm/parallel-vm.py b/tests/hwsim/vm/parallel-vm.py
+index c71fd87c8..499910a2f 100755
+--- a/tests/hwsim/vm/parallel-vm.py
++++ b/tests/hwsim/vm/parallel-vm.py
+@@ -24,15 +24,8 @@ logger = logging.getLogger()
+ 
+ # Test cases that take significantly longer time to execute than average.
+ long_tests = ["ap_roam_open",
+-              "gas_anqp_address3_ap_forced",
+-              "gas_anqp_address3_ap_non_compliant",
+-              "gas_anqp_address3_not_assoc",
+-              "gas_anqp_address3_assoc",
+-              "ieee8021x_reauth_wep",
+               "hostapd_oom_wpa2_eap_connect",
+               "ap_wpa2_eap_eke_many",
+-              "p2p_channel_random_social_with_op_class_change",
+-              "ap_open_ps_mc_buf",
+               "wpas_mesh_password_mismatch_retry",
+               "wpas_mesh_password_mismatch",
+               "hostapd_oom_wpa2_psk_connect",
+@@ -97,6 +90,17 @@ long_tests = ["ap_roam_open",
+               "p2p_go_move_scm_peer_does_not_support",
+               "p2p_go_move_scm_multi"]
+ 
++# Test cases that have common, but random, issues with UML.
++uml_issue_tests = ["eht_connect_invalid_link",
++                   "eht_mld_connect_probes",
++                   "gas_anqp_address3_ap_forced",
++                   "gas_anqp_address3_ap_non_compliant",
++                   "gas_anqp_address3_not_assoc",
++                   "gas_anqp_address3_assoc",
++                   "p2p_channel_random_social_with_op_class_change",
++                   "ap_open_ps_mc_buf",
++                   "ieee8021x_reauth_wep"]
++
+ # Test cases that depend on dumping full process memory
+ memory_read_tests = ["ap_wpa2_eap_fast_pac_lifetime",
+                      "wpa2_eap_ttls_pap_key_lifetime_in_memory",
+@@ -609,6 +613,13 @@ def main():
+                 tests.remove(l)
+                 tests.insert(0, l)
+ 
++        # Move test cases that have shown frequent, but random, issues UML
++        # to the beginning of the run to minimize risk of false failures.
++        for l in uml_issue_tests:
++            if l in tests:
++                tests.remove(l)
++                tests.insert(0, l)
++
+         # Test cases that read full wpa_supplicant or hostapd process memory
+         # can apparently cause resources issues at least with newer python3
+         # versions, so run them first before possible memory fragmentation has
+-- 
+2.43.0
+

@@ -1,0 +1,78 @@
+From 8426e5274f8cf0a918602f1e83cd5db3feec34b5 Mon Sep 17 00:00:00 2001
+From: Shivani Baranwal <quic_shivbara@quicinc.com>
+Date: Mon, 5 Aug 2024 02:43:59 +0530
+Subject: [PATCH] PASN: Use allocated memory for RSNXE and allow its contents
+ to be set
+
+This will be needed for P2P2 cases.
+
+Signed-off-by: Shivani Baranwal <quic_shivbara@quicinc.com>
+---
+ src/pasn/pasn_common.c    | 5 ++++-
+ src/pasn/pasn_common.h    | 2 +-
+ src/pasn/pasn_initiator.c | 6 +++++-
+ 3 files changed, 10 insertions(+), 3 deletions(-)
+
+diff --git a/src/pasn/pasn_common.c b/src/pasn/pasn_common.c
+index 331a65b70..25e44a195 100644
+--- a/src/pasn/pasn_common.c
++++ b/src/pasn/pasn_common.c
+@@ -28,6 +28,9 @@ struct pasn_data * pasn_data_init(void)
+ 
+ void pasn_data_deinit(struct pasn_data *pasn)
+ {
++	if (!pasn)
++		return;
++	os_free(pasn->rsnxe_ie);
+ 	bin_clear_free(pasn, sizeof(struct pasn_data));
+ }
+ 
+@@ -157,7 +160,7 @@ void pasn_set_rsnxe_ie(struct pasn_data *pasn, const u8 *rsnxe_ie)
+ {
+ 	if (!pasn || !rsnxe_ie)
+ 		return;
+-	pasn->rsnxe_ie = rsnxe_ie;
++	pasn->rsnxe_ie = os_memdup(rsnxe_ie, 2 + rsnxe_ie[1]);
+ }
+ 
+ 
+diff --git a/src/pasn/pasn_common.h b/src/pasn/pasn_common.h
+index 36d129f4e..7b7c73792 100644
+--- a/src/pasn/pasn_common.h
++++ b/src/pasn/pasn_common.h
+@@ -54,7 +54,7 @@ struct pasn_data {
+ 	int wpa_key_mgmt;
+ 	int rsn_pairwise;
+ 	u16 rsnxe_capab;
+-	const u8 *rsnxe_ie;
++	u8 *rsnxe_ie;
+ 	bool custom_pmkid_valid;
+ 	u8 custom_pmkid[PMKID_LEN];
+ 
+diff --git a/src/pasn/pasn_initiator.c b/src/pasn/pasn_initiator.c
+index dbcc91a71..ce1055b1b 100644
+--- a/src/pasn/pasn_initiator.c
++++ b/src/pasn/pasn_initiator.c
+@@ -646,7 +646,10 @@ static struct wpabuf * wpas_pasn_build_auth_1(struct pasn_data *pasn,
+ 	if (wpa_pasn_add_wrapped_data(buf, wrapped_data_buf) < 0)
+ 		goto fail;
+ 
+-	wpa_pasn_add_rsnxe(buf, pasn->rsnxe_capab);
++	if (pasn->rsnxe_ie)
++		wpabuf_put_data(buf, pasn->rsnxe_ie, 2 + pasn->rsnxe_ie[1]);
++	else
++		wpa_pasn_add_rsnxe(buf, pasn->rsnxe_capab);
+ 
+ 	wpa_pasn_add_extra_ies(buf, pasn->extra_ies, pasn->extra_ies_len);
+ 
+@@ -806,6 +809,7 @@ void wpa_pasn_reset(struct pasn_data *pasn)
+ 	pasn->derive_kdk = false;
+ 	pasn->rsn_ie = NULL;
+ 	pasn->rsn_ie_len = 0;
++	os_free(pasn->rsnxe_ie);
+ 	pasn->rsnxe_ie = NULL;
+ 	pasn->custom_pmkid_valid = false;
+ 
+-- 
+2.43.0
+

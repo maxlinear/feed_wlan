@@ -1,0 +1,203 @@
+From 45fffac0fe4bbf426fa968e1945b159eae3222d0 Mon Sep 17 00:00:00 2001
+From: Benjamin Berg <benjamin.berg@intel.com>
+Date: Tue, 20 Feb 2024 14:18:15 +0100
+Subject: [PATCH] BSS: Switch struct wpa_bss to use valid_links bitmask
+
+This aligns both the wpa_supplicant and bss structures to use the same
+pattern of a valid_links bitmask plus per-link entries.
+
+Signed-off-by: Benjamin Berg <benjamin.berg@intel.com>
+---
+ tests/test-bss.c        |  2 +-
+ wpa_supplicant/bss.c    | 29 +++++++++++++----------------
+ wpa_supplicant/bss.h    |  5 +++--
+ wpa_supplicant/events.c |  5 ++---
+ wpa_supplicant/sme.c    | 24 +++++++++++++-----------
+ 5 files changed, 32 insertions(+), 33 deletions(-)
+
+diff --git a/tests/test-bss.c b/tests/test-bss.c
+index 3e0900140..97af7e4a1 100644
+--- a/tests/test-bss.c
++++ b/tests/test-bss.c
+@@ -63,7 +63,7 @@ void test_parse_basic_ml(struct wpa_supplicant *wpa_s, u8 mld_id)
+ 					     &missing_links, NULL, &ap_mld_id);
+ 
+ 	ASSERT_CMP_INT(ret, ==, 0);
+-	ASSERT_CMP_INT(bss.bss.n_mld_links, ==, 1);
++	ASSERT_CMP_INT(bss.bss.valid_links, ==, 1);
+ 	ASSERT_CMP_INT(missing_links, ==, 0x0002);
+ 	ASSERT_CMP_INT(ap_mld_id, ==, mld_id);
+ }
+diff --git a/wpa_supplicant/bss.c b/wpa_supplicant/bss.c
+index 3a061ea60..9e34135e1 100644
+--- a/wpa_supplicant/bss.c
++++ b/wpa_supplicant/bss.c
+@@ -1510,9 +1510,6 @@ wpa_bss_parse_ml_rnr_ap_info(struct wpa_supplicant *wpa_s,
+ 	for (i = 0; i < count; i++) {
+ 		u8 bss_params;
+ 
+-		if (bss->n_mld_links >= MAX_NUM_MLD_LINKS)
+-			return;
+-
+ 		if (end - pos < ap_info->tbtt_info_len)
+ 			break;
+ 
+@@ -1520,6 +1517,8 @@ wpa_bss_parse_ml_rnr_ap_info(struct wpa_supplicant *wpa_s,
+ 		mld_params = pos + mld_params_offset;
+ 
+ 		link_id = *(mld_params + 1) & EHT_ML_LINK_ID_MSK;
++		if (link_id >= MAX_NUM_MLD_LINKS)
++			return;
+ 
+ 		if (*mld_params != mbssid_idx) {
+ 			wpa_printf(MSG_DEBUG,
+@@ -1543,13 +1542,12 @@ wpa_bss_parse_ml_rnr_ap_info(struct wpa_supplicant *wpa_s,
+ 					   wpa_s, neigh_bss->bssid)) {
+ 				struct mld_link *l;
+ 
+-				l = &bss->mld_links[bss->n_mld_links];
+-				l->link_id = link_id;
++				bss->valid_links |= BIT(link_id);
++				l = &bss->mld_links[link_id];
+ 				os_memcpy(l->bssid, pos + 1, ETH_ALEN);
+ 				l->freq = neigh_bss->freq;
+ 				l->disabled = mld_params[2] &
+ 					RNR_TBTT_INFO_MLD_PARAM2_LINK_DISABLED;
+-				bss->n_mld_links++;
+ 			}
+ 		}
+ 
+@@ -1675,15 +1673,15 @@ int wpa_bss_parse_basic_ml_element(struct wpa_supplicant *wpa_s,
+ 		os_memcpy(ap_mld_addr, ml_basic_common_info->mld_addr,
+ 			  ETH_ALEN);
+ 
+-	bss->n_mld_links = 0;
+-	l = &bss->mld_links[bss->n_mld_links];
+ 	link_id = ml_basic_common_info->variable[0] & EHT_ML_LINK_ID_MSK;
+-	l->link_id = link_id;
++
++	bss->mld_link_id = link_id;
++	seen = bss->valid_links = BIT(link_id);
++
++	l = &bss->mld_links[link_id];
+ 	os_memcpy(l->bssid, bss->bssid, ETH_ALEN);
+ 	l->freq = bss->freq;
+ 
+-	seen = BIT(link_id);
+-	bss->n_mld_links++;
+ 
+ 	/*
+ 	 * The AP MLD ID in the RNR corresponds to the MBSSID index, see
+@@ -1733,13 +1731,12 @@ int wpa_bss_parse_basic_ml_element(struct wpa_supplicant *wpa_s,
+ 		}
+ 	}
+ 
+-	wpa_printf(MSG_DEBUG, "MLD: n_mld_links=%u (unresolved: 0x%04hx)",
+-		   bss->n_mld_links, missing);
++	wpa_printf(MSG_DEBUG, "MLD: valid_links=%04hx (unresolved: 0x%04hx)",
++		   bss->valid_links, missing);
+ 
+-	for (i = 0; i < bss->n_mld_links; i++) {
++	for_each_link(bss->valid_links, i) {
+ 		wpa_printf(MSG_DEBUG, "MLD: link=%u, bssid=" MACSTR,
+-			   bss->mld_links[i].link_id,
+-			   MAC2STR(bss->mld_links[i].bssid));
++			   i, MAC2STR(bss->mld_links[i].bssid));
+ 	}
+ 
+ 	if (missing_links)
+diff --git a/wpa_supplicant/bss.h b/wpa_supplicant/bss.h
+index c06c20acf..cc0496324 100644
+--- a/wpa_supplicant/bss.h
++++ b/wpa_supplicant/bss.h
+@@ -126,11 +126,12 @@ struct wpa_bss {
+ 	size_t beacon_ie_len;
+ 	/** MLD address of the AP */
+ 	u8 mld_addr[ETH_ALEN];
++	/** Link ID of this affiliated AP of the AP MLD */
++	u8 mld_link_id;
+ 
+ 	/** An array of MLD links */
+-	u8 n_mld_links;
++	u16 valid_links;
+ 	struct mld_link {
+-		u8 link_id;
+ 		u8 bssid[ETH_ALEN];
+ 		int freq;
+ 
+diff --git a/wpa_supplicant/events.c b/wpa_supplicant/events.c
+index cdc17b3c9..9346a4f61 100644
+--- a/wpa_supplicant/events.c
++++ b/wpa_supplicant/events.c
+@@ -1155,19 +1155,18 @@ static void owe_trans_ssid(struct wpa_supplicant *wpa_s, struct wpa_bss *bss,
+ 
+ 
+ static bool wpas_valid_ml_bss(struct wpa_supplicant *wpa_s, struct wpa_bss *bss)
+-
+ {
+ 	u16 removed_links;
+ 
+ 	if (wpa_bss_parse_basic_ml_element(wpa_s, bss, NULL, NULL, NULL, NULL))
+ 		return true;
+ 
+-	if (bss->n_mld_links == 0)
++	if (!bss->valid_links)
+ 		return true;
+ 
+ 	/* Check if the current BSS is going to be removed */
+ 	removed_links = wpa_bss_parse_reconf_ml_element(wpa_s, bss);
+-	if (BIT(bss->mld_links[0].link_id) & removed_links)
++	if (BIT(bss->mld_link_id) & removed_links)
+ 		return false;
+ 
+ 	return true;
+diff --git a/wpa_supplicant/sme.c b/wpa_supplicant/sme.c
+index d12ffb3ce..045ea6d62 100644
+--- a/wpa_supplicant/sme.c
++++ b/wpa_supplicant/sme.c
+@@ -517,21 +517,23 @@ out:
+ static void wpas_sme_set_mlo_links(struct wpa_supplicant *wpa_s,
+ 				   struct wpa_bss *bss)
+ {
+-	int i;
++	u8 i;
+ 
+ 	wpa_s->valid_links = 0;
++	wpa_s->mlo_assoc_link_id = bss->mld_link_id;
+ 
+-	for (i = 0; i < bss->n_mld_links; i++) {
+-		u8 link_id = bss->mld_links[i].link_id;
++	for_each_link(bss->valid_links, i) {
+ 		const u8 *bssid = bss->mld_links[i].bssid;
+ 
+-		if (i == 0)
+-			wpa_s->mlo_assoc_link_id = link_id;
+-		wpa_s->valid_links |= BIT(link_id);
+-		os_memcpy(wpa_s->links[link_id].bssid, bssid, ETH_ALEN);
+-		wpa_s->links[link_id].freq = bss->mld_links[i].freq;
+-		wpa_s->links[link_id].bss = wpa_bss_get_bssid(wpa_s, bssid);
+-		wpa_s->links[link_id].disabled = bss->mld_links[i].disabled;
++		wpa_s->valid_links |= BIT(i);
++		os_memcpy(wpa_s->links[i].bssid, bssid, ETH_ALEN);
++		wpa_s->links[i].freq = bss->mld_links[i].freq;
++		wpa_s->links[i].disabled = bss->mld_links[i].disabled;
++
++		if (bss->mld_link_id == i)
++			wpa_s->links[i].bss = bss;
++		else
++			wpa_s->links[i].bss = wpa_bss_get_bssid(wpa_s, bssid);
+ 	}
+ }
+ 
+@@ -572,7 +574,7 @@ static void sme_send_authentication(struct wpa_supplicant *wpa_s,
+ 	if ((wpa_s->drv_flags2 & WPA_DRIVER_FLAGS2_MLO) &&
+ 	    !wpa_bss_parse_basic_ml_element(wpa_s, bss, wpa_s->ap_mld_addr,
+ 					    NULL, ssid, NULL) &&
+-	    bss->n_mld_links) {
++	    bss->valid_links) {
+ 		wpa_printf(MSG_DEBUG, "MLD: In authentication");
+ 		wpas_sme_set_mlo_links(wpa_s, bss);
+ 
+-- 
+2.43.0
+

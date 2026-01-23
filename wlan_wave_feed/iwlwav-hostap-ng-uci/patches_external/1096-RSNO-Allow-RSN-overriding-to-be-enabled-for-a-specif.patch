@@ -1,0 +1,247 @@
+From 007d3f01b776168ac8f1d1fb2e8e1cb60ad2303f Mon Sep 17 00:00:00 2001
+From: Shivani Baranwal <quic_shivbara@quicinc.com>
+Date: Wed, 13 Nov 2024 16:17:35 +0530
+Subject: [PATCH] RSNO: Allow RSN overriding to be enabled for a specific
+ network
+
+The new ssid block configuration parameter rsn_overriding can now be
+used to override the value of the global rsn_overriding parameter.
+
+Signed-off-by: Shivani Baranwal <quic_shivbara@quicinc.com>
+---
+ wpa_supplicant/bss.c               |  8 ++++----
+ wpa_supplicant/config.c            |  2 ++
+ wpa_supplicant/config.h            | 12 ++----------
+ wpa_supplicant/config_file.c       |  1 +
+ wpa_supplicant/config_ssid.h       | 20 ++++++++++++++++++++
+ wpa_supplicant/sme.c               |  4 ++--
+ wpa_supplicant/wpa_supplicant.c    | 19 +++++++++++++------
+ wpa_supplicant/wpa_supplicant.conf |  2 ++
+ wpa_supplicant/wpa_supplicant_i.h  |  2 +-
+ 9 files changed, 47 insertions(+), 23 deletions(-)
+
+diff --git a/wpa_supplicant/bss.c b/wpa_supplicant/bss.c
+index 35b62cbe9..2bf97652d 100644
+--- a/wpa_supplicant/bss.c
++++ b/wpa_supplicant/bss.c
+@@ -1712,11 +1712,11 @@ int wpa_bss_parse_basic_ml_element(struct wpa_supplicant *wpa_s,
+ 		const u8 *rsne;
+ 		size_t rsne_len;
+ 
+-		if (elems.rsne_override_2 && wpas_rsn_overriding(wpa_s)) {
++		if (elems.rsne_override_2 && wpas_rsn_overriding(wpa_s, ssid)) {
+ 			rsne = elems.rsne_override_2;
+ 			rsne_len = elems.rsne_override_2_len;
+ 		} else if (elems.rsne_override &&
+-			   wpas_rsn_overriding(wpa_s)) {
++			   wpas_rsn_overriding(wpa_s, ssid)) {
+ 			rsne = elems.rsne_override;
+ 			rsne_len = elems.rsne_override_len;
+ 		} else {
+@@ -2064,7 +2064,7 @@ const u8 * wpa_bss_get_rsne(struct wpa_supplicant *wpa_s,
+ {
+ 	const u8 *ie;
+ 
+-	if (wpas_rsn_overriding(wpa_s)) {
++	if (wpas_rsn_overriding(wpa_s, ssid)) {
+ 		if (!ssid)
+ 			ssid = wpa_s->current_ssid;
+ 
+@@ -2099,7 +2099,7 @@ const u8 * wpa_bss_get_rsnxe(struct wpa_supplicant *wpa_s,
+ {
+ 	const u8 *ie;
+ 
+-	if (wpas_rsn_overriding(wpa_s)) {
++	if (wpas_rsn_overriding(wpa_s, ssid)) {
+ 		ie = wpa_bss_get_vendor_ie(bss, RSNXE_OVERRIDE_IE_VENDOR_TYPE);
+ 		if (ie) {
+ 			const u8 *tmp;
+diff --git a/wpa_supplicant/config.c b/wpa_supplicant/config.c
+index 675559d49..9c5382f65 100644
+--- a/wpa_supplicant/config.c
++++ b/wpa_supplicant/config.c
+@@ -2757,6 +2757,7 @@ static const struct parse_data ssid_fields[] = {
+ 	{ INT_RANGE(enable_4addr_mode, 0, 1)},
+ 	{ INT_RANGE(max_idle, 0, 65535)},
+ 	{ INT_RANGE(ssid_protection, 0, 1)},
++	{ INT_RANGE(rsn_overriding, 0, 2)},
+ };
+ 
+ #undef OFFSET
+@@ -3292,6 +3293,7 @@ void wpa_config_set_network_defaults(struct wpa_ssid *ssid)
+ #endif /* CONFIG_MACSEC */
+ 	ssid->mac_addr = WPAS_MAC_ADDR_STYLE_NOT_SET;
+ 	ssid->max_oper_chwidth = DEFAULT_MAX_OPER_CHWIDTH;
++	ssid->rsn_overriding = RSN_OVERRIDING_NOT_SET;
+ }
+ 
+ 
+diff --git a/wpa_supplicant/config.h b/wpa_supplicant/config.h
+index 8b76ff720..8df9eb583 100644
+--- a/wpa_supplicant/config.h
++++ b/wpa_supplicant/config.h
+@@ -1825,17 +1825,9 @@ struct wpa_config {
+ 	int wowlan_disconnect_on_deinit;
+ 
+ 	/**
+-	 * rsn_overriding - RSN overriding
+-	 *
+-	 * 0 = Disabled
+-	 * 1 = Enabled automatically if the driver indicates support
+-	 * 2 = Forced to be enabled even without driver capability indication
++	 * rsn_overriding - RSN overriding (default behavior)
+ 	 */
+-	enum rsn_overriding {
+-		RSN_OVERRIDING_DISABLED = 0,
+-		RSN_OVERRIDING_AUTO = 1,
+-		RSN_OVERRIDING_ENABLED = 2,
+-	} rsn_overriding;
++	enum wpas_rsn_overriding rsn_overriding;
+ 
+ #ifdef CONFIG_PASN
+ #ifdef CONFIG_TESTING_OPTIONS
+diff --git a/wpa_supplicant/config_file.c b/wpa_supplicant/config_file.c
+index 5d60af04a..6a4d4c9ee 100644
+--- a/wpa_supplicant/config_file.c
++++ b/wpa_supplicant/config_file.c
+@@ -976,6 +976,7 @@ static void wpa_config_write_network(FILE *f, struct wpa_ssid *ssid)
+ 	INT(enable_4addr_mode);
+ 	INT(max_idle);
+ 	INT(ssid_protection);
++	INT_DEF(rsn_overriding, RSN_OVERRIDING_NOT_SET);
+ 
+ #undef STR
+ #undef INT
+diff --git a/wpa_supplicant/config_ssid.h b/wpa_supplicant/config_ssid.h
+index 71dba9ea0..b280258a4 100644
+--- a/wpa_supplicant/config_ssid.h
++++ b/wpa_supplicant/config_ssid.h
+@@ -79,6 +79,20 @@ enum wpas_mac_addr_style {
+ 	WPAS_MAC_ADDR_STYLE_DEDICATED_PER_ESS = 3,
+ };
+ 
++/**
++ * rsn_overriding - RSN overriding
++ *
++ * 0 = Disabled
++ * 1 = Enabled automatically if the driver indicates support
++ * 2 = Forced to be enabled even without driver capability indication
++ */
++enum wpas_rsn_overriding {
++	RSN_OVERRIDING_NOT_SET = -1,
++	RSN_OVERRIDING_DISABLED = 0,
++	RSN_OVERRIDING_AUTO = 1,
++	RSN_OVERRIDING_ENABLED = 2,
++};
++
+ /**
+  * struct wpa_ssid - Network configuration data
+  *
+@@ -1288,6 +1302,12 @@ struct wpa_ssid {
+ 	 * ssid_protection - Whether to use SSID protection in 4-way handshake
+ 	 */
+ 	bool ssid_protection;
++
++	/**
++	 * rsn_overriding - RSN overriding (per-network override for the global
++	 *	parameter with the same name)
++	 */
++	enum wpas_rsn_overriding rsn_overriding;
+ };
+ 
+ #endif /* CONFIG_SSID_H */
+diff --git a/wpa_supplicant/sme.c b/wpa_supplicant/sme.c
+index eb7516e36..2b758939d 100644
+--- a/wpa_supplicant/sme.c
++++ b/wpa_supplicant/sme.c
+@@ -2502,10 +2502,10 @@ mscs_fail:
+ 	}
+ 
+ 	wpa_sm_set_param(wpa_s->wpa, WPA_PARAM_RSN_OVERRIDE_SUPPORT,
+-			 wpas_rsn_overriding(wpa_s));
++			 wpas_rsn_overriding(wpa_s, ssid));
+ 	wpa_sm_set_param(wpa_s->wpa, WPA_PARAM_RSN_OVERRIDE,
+ 			 RSN_OVERRIDE_NOT_USED);
+-	if (wpas_rsn_overriding(wpa_s) &&
++	if (wpas_rsn_overriding(wpa_s, ssid) &&
+ 	    wpas_ap_supports_rsn_overriding(wpa_s, wpa_s->current_bss) &&
+ 	    wpa_s->sme.assoc_req_ie_len + 2 + 4 <=
+ 	    sizeof(wpa_s->sme.assoc_req_ie)) {
+diff --git a/wpa_supplicant/wpa_supplicant.c b/wpa_supplicant/wpa_supplicant.c
+index 858529e0e..4184ae780 100644
+--- a/wpa_supplicant/wpa_supplicant.c
++++ b/wpa_supplicant/wpa_supplicant.c
+@@ -4150,10 +4150,10 @@ mscs_end:
+ 	}
+ 
+ 	wpa_sm_set_param(wpa_s->wpa, WPA_PARAM_RSN_OVERRIDE_SUPPORT,
+-			 wpas_rsn_overriding(wpa_s));
++			 wpas_rsn_overriding(wpa_s, ssid));
+ 	wpa_sm_set_param(wpa_s->wpa, WPA_PARAM_RSN_OVERRIDE,
+ 			 RSN_OVERRIDE_NOT_USED);
+-	if (wpas_rsn_overriding(wpa_s) &&
++	if (wpas_rsn_overriding(wpa_s, ssid) &&
+ 	    wpas_ap_supports_rsn_overriding(wpa_s, bss) &&
+ 	    wpa_ie_len + 2 + 4 + 1 <= max_wpa_ie_len) {
+ 		u8 *pos = wpa_ie + wpa_ie_len, *start = pos;
+@@ -4190,7 +4190,7 @@ mscs_end:
+ 		wpa_ie_len += pos - start;
+ 	}
+ 
+-	params->rsn_overriding = wpas_rsn_overriding(wpa_s);
++	params->rsn_overriding = wpas_rsn_overriding(wpa_s, ssid);
+ 	params->wpa_ie = wpa_ie;
+ 	params->wpa_ie_len = wpa_ie_len;
+ 	params->auth_alg = algs;
+@@ -8833,12 +8833,19 @@ static bool wpas_driver_rsn_override(struct wpa_supplicant *wpa_s)
+ }
+ 
+ 
+-bool wpas_rsn_overriding(struct wpa_supplicant *wpa_s)
++bool wpas_rsn_overriding(struct wpa_supplicant *wpa_s, struct wpa_ssid *ssid)
+ {
+-	if (wpa_s->conf->rsn_overriding == RSN_OVERRIDING_DISABLED)
++	enum wpas_rsn_overriding rsno;
++
++	if (ssid && ssid->rsn_overriding != RSN_OVERRIDING_NOT_SET)
++		rsno = ssid->rsn_overriding;
++	else
++		rsno = wpa_s->conf->rsn_overriding;
++
++	if (rsno == RSN_OVERRIDING_DISABLED)
+ 		return false;
+ 
+-	if (wpa_s->conf->rsn_overriding == RSN_OVERRIDING_ENABLED)
++	if (rsno == RSN_OVERRIDING_ENABLED)
+ 		return true;
+ 
+ 	if (!(wpa_s->drv_flags & WPA_DRIVER_FLAGS_SME) ||
+diff --git a/wpa_supplicant/wpa_supplicant.conf b/wpa_supplicant/wpa_supplicant.conf
+index a1b6a9188..40c5ff57d 100644
+--- a/wpa_supplicant/wpa_supplicant.conf
++++ b/wpa_supplicant/wpa_supplicant.conf
+@@ -954,6 +954,8 @@ fast_reauth=1
+ # NOTE: The protocol used for this mechanism is still subject to change and as
+ # such, this should not yet be enabled for production uses to avoid issues if
+ # something were to change.
++# A per-network block parameter with the same name can be used to override this
++# global parameter.
+ # 0 = Disabled (default)
+ # 1 = Enabled automatically if the driver indicates support
+ # 2 = Forced to be enabled even without driver capability indication
+diff --git a/wpa_supplicant/wpa_supplicant_i.h b/wpa_supplicant/wpa_supplicant_i.h
+index 030ceec14..c500a6c65 100644
+--- a/wpa_supplicant/wpa_supplicant_i.h
++++ b/wpa_supplicant/wpa_supplicant_i.h
+@@ -1741,7 +1741,7 @@ void wpas_connection_failed(struct wpa_supplicant *wpa_s, const u8 *bssid,
+ void fils_connection_failure(struct wpa_supplicant *wpa_s);
+ void fils_pmksa_cache_flush(struct wpa_supplicant *wpa_s);
+ int wpas_driver_bss_selection(struct wpa_supplicant *wpa_s);
+-bool wpas_rsn_overriding(struct wpa_supplicant *wpa_s);
++bool wpas_rsn_overriding(struct wpa_supplicant *wpa_s, struct wpa_ssid *ssid);
+ int wpas_is_p2p_prioritized(struct wpa_supplicant *wpa_s);
+ void wpas_auth_failed(struct wpa_supplicant *wpa_s, const char *reason,
+ 		      const u8 *bssid);
+-- 
+2.43.0
+

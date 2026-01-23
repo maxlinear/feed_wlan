@@ -1,0 +1,44 @@
+From 7d51bf2abd78ec5337e036435e494db32a5e9147 Mon Sep 17 00:00:00 2001
+From: Jouni Malinen <quic_jouni@quicinc.com>
+Date: Sat, 13 Jul 2024 16:37:15 +0300
+Subject: [PATCH] SAE: Drop default dot11RSNASAESync value from 5 to 3
+
+Going through five extra rounds of SAE commit messages in cases where
+SAE peers are somehow unsynchronized feels unnecessary much to do by
+default, so drop the default value to 3.
+
+Signed-off-by: Jouni Malinen <quic_jouni@quicinc.com>
+---
+ hostapd/hostapd.conf | 2 +-
+ src/ap/ap_config.c   | 2 +-
+ 2 files changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/hostapd/hostapd.conf b/hostapd/hostapd.conf
+index 3f0e66beb..d875d5fc6 100644
+--- a/hostapd/hostapd.conf
++++ b/hostapd/hostapd.conf
+@@ -2119,7 +2119,7 @@ own_ip_addr=127.0.0.1
+ # Maximum number of SAE synchronization errors (dot11RSNASAESync)
+ # The offending SAE peer will be disconnected if more than this many
+ # synchronization errors happen.
+-#sae_sync=5
++#sae_sync=3
+ 
+ # Enabled SAE finite cyclic groups
+ # SAE implementation are required to support group 19 (ECC group defined over a
+diff --git a/src/ap/ap_config.c b/src/ap/ap_config.c
+index 0b5a16ef9..565b58716 100644
+--- a/src/ap/ap_config.c
++++ b/src/ap/ap_config.c
+@@ -125,7 +125,7 @@ void hostapd_config_defaults_bss(struct hostapd_bss_config *bss)
+ 	bss->radius_require_message_authenticator = 1;
+ 
+ 	bss->anti_clogging_threshold = 5;
+-	bss->sae_sync = 5;
++	bss->sae_sync = 3;
+ 
+ 	bss->gas_frag_limit = 1400;
+ 
+-- 
+2.43.0
+

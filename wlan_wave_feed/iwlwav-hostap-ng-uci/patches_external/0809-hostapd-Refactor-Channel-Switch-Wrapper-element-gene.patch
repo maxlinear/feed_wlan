@@ -1,0 +1,151 @@
+From c9d0c6fd7e4b477180b3775c532cf49b2327f7eb Mon Sep 17 00:00:00 2001
+From: Karthik M <quic_karm@quicinc.com>
+Date: Tue, 16 Jul 2024 15:44:05 +0530
+Subject: [PATCH] hostapd: Refactor Channel Switch Wrapper element generation
+
+The Wide Bandwidth Channel Switch subelement was directly appended in
+the Channel Switch Wrapper element function
+hostapd_eid_wb_chsw_wrapper(). However, a subsequent change would add
+Bandwidth Indication subelement in the Channel Switch Wrapper element.
+Hence using the same function name would be confusing.
+
+Hence, refactor the current code into two functions. The first function
+hostapd_eid_chsw_wrapper() forms the channel switch wrapper element.
+This calls hostapd_eid_wb_channel_switch() to add a Wide Bandwidth
+Channel Switch subelement inside it.
+
+No functionality change.
+
+Signed-off-by: Karthik M <quic_karm@quicinc.com>
+Signed-off-by: Aditya Kumar Singh <quic_adisi@quicinc.com>
+---
+ src/ap/beacon.c     |  4 +--
+ src/ap/ieee802_11.c | 61 ++++++++++++++++++++++++++++-----------------
+ src/ap/ieee802_11.h |  2 +-
+ 3 files changed, 41 insertions(+), 26 deletions(-)
+
+diff --git a/src/ap/beacon.c b/src/ap/beacon.c
+index 40513154b..4a13ea791 100644
+--- a/src/ap/beacon.c
++++ b/src/ap/beacon.c
+@@ -910,7 +910,7 @@ static u8 * hostapd_probe_resp_fill_elems(struct hostapd_data *hapd,
+ 		pos = hostapd_eid_txpower_envelope(hapd, pos);
+ #endif /* CONFIG_IEEE80211AX */
+ 
+-	pos = hostapd_eid_wb_chsw_wrapper(hapd, pos);
++	pos = hostapd_eid_chsw_wrapper(hapd, pos);
+ 
+ 	if (!params->is_ml_sta_info)
+ 		pos = hostapd_eid_rnr(hapd, pos, WLAN_FC_STYPE_PROBE_RESP,
+@@ -2418,7 +2418,7 @@ int ieee802_11_build_ap_params(struct hostapd_data *hapd,
+ 		tailpos = hostapd_eid_txpower_envelope(hapd, tailpos);
+ #endif /* CONFIG_IEEE80211AX */
+ 
+-	tailpos = hostapd_eid_wb_chsw_wrapper(hapd, tailpos);
++	tailpos = hostapd_eid_chsw_wrapper(hapd, tailpos);
+ 
+ 	tailpos = hostapd_eid_rnr(hapd, tailpos, WLAN_FC_STYPE_BEACON, true);
+ 	tailpos = hostapd_eid_fils_indic(hapd, tailpos, 0);
+diff --git a/src/ap/ieee802_11.c b/src/ap/ieee802_11.c
+index c1d3532bb..1929d6488 100644
+--- a/src/ap/ieee802_11.c
++++ b/src/ap/ieee802_11.c
+@@ -7246,16 +7246,11 @@ u8 * hostapd_eid_txpower_envelope(struct hostapd_data *hapd, u8 *eid)
+ }
+ 
+ 
+-u8 * hostapd_eid_wb_chsw_wrapper(struct hostapd_data *hapd, u8 *eid)
++/* Wide Bandwidth Channel Switch subelement */
++static u8 * hostapd_eid_wb_channel_switch(struct hostapd_data *hapd, u8 *eid,
++					  u8 chan1, u8 chan2)
+ {
+-	u8 bw, chan1 = 0, chan2 = 0;
+-	int freq1;
+-
+-	if (!hapd->cs_freq_params.channel ||
+-	    (!hapd->cs_freq_params.vht_enabled &&
+-	     !hapd->cs_freq_params.he_enabled &&
+-	     !hapd->cs_freq_params.eht_enabled))
+-		return eid;
++	u8 bw;
+ 
+ 	/* bandwidth: 0: 40, 1: 80, 160, 80+80, 4: 320 as per
+ 	 * IEEE P802.11-REVme/D4.0, 9.4.2.159 and Table 9-314. */
+@@ -7277,20 +7272,6 @@ u8 * hostapd_eid_wb_chsw_wrapper(struct hostapd_data *hapd, u8 *eid)
+ 		return eid;
+ 	}
+ 
+-	freq1 = hapd->cs_freq_params.center_freq1 ?
+-		hapd->cs_freq_params.center_freq1 :
+-		hapd->cs_freq_params.freq;
+-	if (ieee80211_freq_to_chan(freq1, &chan1) !=
+-	    HOSTAPD_MODE_IEEE80211A)
+-		return eid;
+-
+-	if (hapd->cs_freq_params.center_freq2 &&
+-	    ieee80211_freq_to_chan(hapd->cs_freq_params.center_freq2,
+-				   &chan2) != HOSTAPD_MODE_IEEE80211A)
+-		return eid;
+-
+-	*eid++ = WLAN_EID_CHANNEL_SWITCH_WRAPPER;
+-	*eid++ = 5; /* Length of Channel Switch Wrapper */
+ 	*eid++ = WLAN_EID_WIDE_BW_CHSWITCH;
+ 	*eid++ = 3; /* Length of Wide Bandwidth Channel Switch element */
+ 	*eid++ = bw; /* New Channel Width */
+@@ -7316,6 +7297,40 @@ u8 * hostapd_eid_wb_chsw_wrapper(struct hostapd_data *hapd, u8 *eid)
+ }
+ 
+ 
++u8 * hostapd_eid_chsw_wrapper(struct hostapd_data *hapd, u8 *eid)
++{
++	u8 chan1 = 0, chan2 = 0;
++	u8 *eid_len_offset;
++	int freq1;
++
++	if (!hapd->cs_freq_params.channel ||
++	    (!hapd->cs_freq_params.vht_enabled &&
++	     !hapd->cs_freq_params.he_enabled &&
++	     !hapd->cs_freq_params.eht_enabled))
++		return eid;
++
++	freq1 = hapd->cs_freq_params.center_freq1 ?
++		hapd->cs_freq_params.center_freq1 :
++		hapd->cs_freq_params.freq;
++	if (ieee80211_freq_to_chan(freq1, &chan1) !=
++	    HOSTAPD_MODE_IEEE80211A)
++		return eid;
++
++	if (hapd->cs_freq_params.center_freq2 &&
++	    ieee80211_freq_to_chan(hapd->cs_freq_params.center_freq2,
++				   &chan2) != HOSTAPD_MODE_IEEE80211A)
++		return eid;
++
++	*eid++ = WLAN_EID_CHANNEL_SWITCH_WRAPPER;
++	eid_len_offset = eid++; /* Length of Channel Switch Wrapper element */
++
++	eid = hostapd_eid_wb_channel_switch(hapd, eid, chan1, chan2);
++
++	*eid_len_offset = (eid - eid_len_offset) - 1;
++	return eid;
++}
++
++
+ static size_t hostapd_eid_nr_db_len(struct hostapd_data *hapd,
+ 				    size_t *current_len)
+ {
+diff --git a/src/ap/ieee802_11.h b/src/ap/ieee802_11.h
+index dd4995f3f..abf48ab68 100644
+--- a/src/ap/ieee802_11.h
++++ b/src/ap/ieee802_11.h
+@@ -63,7 +63,7 @@ u8 * hostapd_eid_ht_operation(struct hostapd_data *hapd, u8 *eid);
+ u8 * hostapd_eid_vht_capabilities(struct hostapd_data *hapd, u8 *eid, u32 nsts);
+ u8 * hostapd_eid_vht_operation(struct hostapd_data *hapd, u8 *eid);
+ u8 * hostapd_eid_vendor_vht(struct hostapd_data *hapd, u8 *eid);
+-u8 * hostapd_eid_wb_chsw_wrapper(struct hostapd_data *hapd, u8 *eid);
++u8 * hostapd_eid_chsw_wrapper(struct hostapd_data *hapd, u8 *eid);
+ u8 * hostapd_eid_txpower_envelope(struct hostapd_data *hapd, u8 *eid);
+ u8 * hostapd_eid_he_capab(struct hostapd_data *hapd, u8 *eid,
+ 			  enum ieee80211_op_mode opmode);
+-- 
+2.43.0
+

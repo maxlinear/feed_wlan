@@ -1,0 +1,26 @@
+From 9e3988fc64479323dc05650ea59fa4c806011c4b Mon Sep 17 00:00:00 2001
+From: Jouni Malinen <j@w1.fi>
+Date: Sat, 20 Apr 2024 11:08:50 +0300
+Subject: [PATCH] tests: Enable TLSv1.3 test cases with OpenSSL 3.3
+
+Signed-off-by: Jouni Malinen <j@w1.fi>
+---
+ tests/hwsim/test_ap_eap.py | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/tests/hwsim/test_ap_eap.py b/tests/hwsim/test_ap_eap.py
+index aafca8daf..f8e75b5fb 100644
+--- a/tests/hwsim/test_ap_eap.py
++++ b/tests/hwsim/test_ap_eap.py
+@@ -100,7 +100,7 @@ def check_pkcs5_v15_support(dev):
+ def check_tls13_support(dev):
+     tls = dev.request("GET tls_library")
+     ok = ['run=OpenSSL 1.1.1', 'run=OpenSSL 3.0', 'run=OpenSSL 3.1',
+-          'run=OpenSSL 3.2', 'wolfSSL']
++          'run=OpenSSL 3.2', 'run=OpenSSL 3.3', 'wolfSSL']
+     for s in ok:
+         if s in tls:
+             return
+-- 
+2.43.0
+

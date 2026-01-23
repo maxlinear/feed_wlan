@@ -1,0 +1,43 @@
+From fd71cae6c971ff98d9093342d36871d3cec03694 Mon Sep 17 00:00:00 2001
+From: Jouni Malinen <quic_jouni@quicinc.com>
+Date: Mon, 22 Jan 2024 11:35:51 +0200
+Subject: [PATCH] nl80211: Fix memory leak on libnl nl_cb
+
+nl_socket_get_cb() increases cb_refcnf for the cb that is bound to a
+socket and as such, nl_cb_put() needs to be used with the returned cb
+after having cloned it to avoid leaking memory due to cb_refcnt never
+getting back to 0.
+
+Fixes: da0d51fee74b ("nl80211: Use socket cb instead of global->nl_cb in send_and_recv()")
+Signed-off-by: Jouni Malinen <quic_jouni@quicinc.com>
+---
+ src/drivers/driver_nl80211.c | 6 ++++--
+ 1 file changed, 4 insertions(+), 2 deletions(-)
+
+diff --git a/src/drivers/driver_nl80211.c b/src/drivers/driver_nl80211.c
+index fcac9cc04..6cc363e97 100644
+--- a/src/drivers/driver_nl80211.c
++++ b/src/drivers/driver_nl80211.c
+@@ -498,7 +498,7 @@ int send_and_recv(struct nl80211_global *global,
+ 		  void *ack_data,
+ 		  struct nl80211_err_info *err_info)
+ {
+-	struct nl_cb *cb;
++	struct nl_cb *cb, *s_nl_cb;
+ 	struct nl80211_ack_err_args err;
+ 	int opt;
+ 
+@@ -507,7 +507,9 @@ int send_and_recv(struct nl80211_global *global,
+ 
+ 	err.err = -ENOMEM;
+ 
+-	cb = nl_cb_clone(nl_socket_get_cb(nl_handle));
++	s_nl_cb = nl_socket_get_cb(nl_handle);
++	cb = nl_cb_clone(s_nl_cb);
++	nl_cb_put(s_nl_cb);
+ 	if (!cb)
+ 		goto out;
+ 
+-- 
+2.43.0
+

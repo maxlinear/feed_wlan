@@ -1,0 +1,41 @@
+From ed5887a8c9d372c66613e7fff6d033a2496ec6de Mon Sep 17 00:00:00 2001
+From: Sunil Ravi <sunilravi@google.com>
+Date: Thu, 18 Jul 2024 23:10:46 +0000
+Subject: [PATCH] Move NULL check for driver private data (drv_priv)
+
+In the hostapd_cleanup_driver() function, the NULL check for the driver
+private data (drv_priv) is located within the CONFIG_IEEE80211BE feature
+flag. As a result, on platforms where CONFIG_IEEE80211BE is not defined,
+driver->hapd_deinit(drv_priv) is called with drv_priv set to NULL. This
+leads to a null pointer exception in wpa_driver_nl80211_deinit().
+
+To address this issue, move the NULL check for drv_priv outside the
+CONFIG_IEEE80211BE build flag. This ensures that the check is performed
+regardless of the value of CONFIG_IEEE80211BE, preventing the NULL
+pointer exception.
+
+Fixes: df34c2ced34f ("AP MLD: De-initialize/disable link BSS properly")
+Signed-off-by: Sunil Ravi <sunilravi@google.com>
+---
+ src/ap/hostapd.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/src/ap/hostapd.c b/src/ap/hostapd.c
+index 84a943ef5..a05de030d 100644
+--- a/src/ap/hostapd.c
++++ b/src/ap/hostapd.c
+@@ -3375,10 +3375,10 @@ hostapd_interface_init_bss(struct hapd_interfaces *interfaces, const char *phy,
+ static void hostapd_cleanup_driver(const struct wpa_driver_ops *driver,
+ 				   void *drv_priv, struct hostapd_iface *iface)
+ {
+-#ifdef CONFIG_IEEE80211BE
+ 	if (!driver || !driver->hapd_deinit || !drv_priv)
+ 		return;
+ 
++#ifdef CONFIG_IEEE80211BE
+ 	/* In case of non-ML operation, de-init. But if ML operation exist,
+ 	 * even if that's the last BSS in the interface, the driver (drv) could
+ 	 * be in use for a different AP MLD. Hence, need to check if drv is
+-- 
+2.43.0
+

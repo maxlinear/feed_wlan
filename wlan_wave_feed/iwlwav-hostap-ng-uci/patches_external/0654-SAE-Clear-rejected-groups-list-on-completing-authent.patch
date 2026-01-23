@@ -1,0 +1,31 @@
+From d944ef1c01863cb743c29b9f4e93e87ab2c97f96 Mon Sep 17 00:00:00 2001
+From: Jouni Malinen <j@w1.fi>
+Date: Sun, 7 Jul 2024 12:11:06 +0300
+Subject: [PATCH] SAE: Clear rejected groups list on completing authentication
+
+The rejected groups list is valid only during each individual SAE
+authentication instance and it should not be maintained between separate
+instances. In particular, it should not be maintained when roaming to
+another AP since the APs might use different configuration for the
+allowed SAE groups.
+
+Signed-off-by: Jouni Malinen <j@w1.fi>
+---
+ wpa_supplicant/sme.c | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/wpa_supplicant/sme.c b/wpa_supplicant/sme.c
+index 0700ae61d..013c2453b 100644
+--- a/wpa_supplicant/sme.c
++++ b/wpa_supplicant/sme.c
+@@ -1873,6 +1873,7 @@ static int sme_sae_auth(struct wpa_supplicant *wpa_s, u16 auth_transaction,
+ 
+ 		wpa_s->sme.sae.state = SAE_ACCEPTED;
+ 		sae_clear_temp_data(&wpa_s->sme.sae);
++		wpa_s_clear_sae_rejected(wpa_s);
+ 
+ 		if (external) {
+ 			/* Report success to driver */
+-- 
+2.43.0
+

@@ -1,0 +1,30 @@
+From 5543f5efaa77b8e96dc486ce1f670efa5976d840 Mon Sep 17 00:00:00 2001
+From: Andrew Sayers <w1.fi@pileofstuff.org>
+Date: Mon, 27 Jan 2025 18:41:47 +0000
+Subject: [PATCH] wpa_supplicant: Use wpa_dbg() for "Successfully set 4addr
+ mode"
+
+Most messages of the form "Successfully..." are set to MSG_DEBUG and
+there is no need for this specific one to be any different.
+
+Signed-off-by: Andrew Sayers <w1.fi@pileofstuff.org>
+---
+ wpa_supplicant/events.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/wpa_supplicant/events.c b/wpa_supplicant/events.c
+index 2be597409..3ae17ace4 100644
+--- a/wpa_supplicant/events.c
++++ b/wpa_supplicant/events.c
+@@ -3111,7 +3111,7 @@ static void wpa_supplicant_set_4addr_mode(struct wpa_supplicant *wpa_s)
+ 		goto fail;
+ 	}
+ 	wpa_s->enabled_4addr_mode = 1;
+-	wpa_msg(wpa_s, MSG_INFO, "Successfully set 4addr mode");
++	wpa_dbg(wpa_s, MSG_DEBUG, "Successfully set 4addr mode");
+ 	return;
+ 
+ fail:
+-- 
+2.43.0
+

@@ -1,0 +1,102 @@
+From 4bc61b6577cc8a51e8cf7b9efe94b1c39a9d5e01 Mon Sep 17 00:00:00 2001
+From: Aditya Kumar Singh <quic_adisi@quicinc.com>
+Date: Wed, 6 Mar 2024 12:11:19 +0530
+Subject: [PATCH] AP MLD: Remove restriction of having to disable the first
+ link BSS last
+
+The first link BSS was always disabled last. However, now the first BSS
+can be dynamically adjusted. Hence, remove such restriction.
+
+Signed-off-by: Aditya Kumar Singh <quic_adisi@quicinc.com>
+---
+ hostapd/ctrl_iface.c | 17 +----------------
+ src/ap/hostapd.c     | 23 -----------------------
+ 2 files changed, 1 insertion(+), 39 deletions(-)
+
+diff --git a/hostapd/ctrl_iface.c b/hostapd/ctrl_iface.c
+index 085ee6e57..10cb186f1 100644
+--- a/hostapd/ctrl_iface.c
++++ b/hostapd/ctrl_iface.c
+@@ -3501,7 +3501,6 @@ static void hostapd_disable_iface_bss(struct hostapd_iface *iface)
+ static int hostapd_ctrl_iface_disable_mld(struct hostapd_iface *iface)
+ {
+ 	unsigned int i;
+-	struct hostapd_iface *first_iface = NULL;
+ 
+ 	if (!iface || !iface->bss[0]->conf->mld_ap) {
+ 		wpa_printf(MSG_ERROR,
+@@ -3519,24 +3518,15 @@ static int hostapd_ctrl_iface_disable_mld(struct hostapd_iface *iface)
+ 		if (!hostapd_is_ml_partner(h_hapd, iface->bss[0]))
+ 			continue;
+ 
+-		if (hostapd_mld_is_first_bss(h_hapd)) {
+-			first_iface = h_iface;
+-			continue;
+-		}
+ 		hostapd_disable_iface_bss(iface);
+ 	}
+ 
+-	if (first_iface)
+-		hostapd_disable_iface_bss(first_iface);
+-
+ 	/* Then, fully disable interfaces */
+-
+ 	for (i = 0; i < iface->interfaces->count; ++i) {
+ 		struct hostapd_iface *h_iface = iface->interfaces->iface[i];
+ 		struct hostapd_data *h_hapd = h_iface->bss[0];
+ 
+-		if (!hostapd_is_ml_partner(h_hapd, iface->bss[0]) ||
+-		    hostapd_mld_is_first_bss(h_hapd))
++		if (!hostapd_is_ml_partner(h_hapd, iface->bss[0]))
+ 			continue;
+ 
+ 		if (hostapd_disable_iface(h_iface)) {
+@@ -3545,11 +3535,6 @@ static int hostapd_ctrl_iface_disable_mld(struct hostapd_iface *iface)
+ 		}
+ 	}
+ 
+-	if (first_iface && hostapd_disable_iface(first_iface)) {
+-		wpa_printf(MSG_ERROR, "Disabling AP MLD failed");
+-		return -1;
+-	}
+-
+ 	return 0;
+ }
+ 
+diff --git a/src/ap/hostapd.c b/src/ap/hostapd.c
+index b1ae909a0..f8cb6432d 100644
+--- a/src/ap/hostapd.c
++++ b/src/ap/hostapd.c
+@@ -3486,29 +3486,6 @@ int hostapd_disable_iface(struct hostapd_iface *hapd_iface)
+ 		return -1;
+ 	}
+ 
+-#ifdef CONFIG_IEEE80211BE
+-	if (hapd_iface->bss[0]->conf->mld_ap &&
+-	    hostapd_mld_is_first_bss((hapd_iface->bss[0]))) {
+-		/* Do not allow mld_first_bss disabling before other BSSs */
+-		for (j = 0; j < hapd_iface->interfaces->count; ++j) {
+-			struct hostapd_iface *h_iface =
+-				hapd_iface->interfaces->iface[j];
+-			struct hostapd_data *h_hapd = h_iface->bss[0];
+-
+-			if (!hostapd_is_ml_partner(h_hapd,
+-						   hapd_iface->bss[0]) ||
+-			    h_iface == hapd_iface)
+-				continue;
+-
+-			if (h_iface->state != HAPD_IFACE_DISABLED) {
+-				wpa_printf(MSG_INFO,
+-					   "Do not allow disable mld_first_bss first");
+-				return -1;
+-			}
+-		}
+-	}
+-#endif /* CONFIG_IEEE80211BE */
+-
+ 	wpa_msg(hapd_iface->bss[0]->msg_ctx, MSG_INFO, AP_EVENT_DISABLED);
+ 	driver = hapd_iface->bss[0]->driver;
+ 	drv_priv = hapd_iface->bss[0]->drv_priv;
+-- 
+2.43.0
+

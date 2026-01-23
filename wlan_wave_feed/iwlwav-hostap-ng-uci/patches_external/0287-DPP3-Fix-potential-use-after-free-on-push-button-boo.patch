@@ -1,0 +1,76 @@
+From 9456adeeba280bc95880e136ff20982ac77189ac Mon Sep 17 00:00:00 2001
+From: Jouni Malinen <quic_jouni@quicinc.com>
+Date: Mon, 22 Jan 2024 12:41:02 +0200
+Subject: [PATCH] DPP3: Fix potential use-after-free on push button bootstrap
+ info
+
+When removing the bootstrap info for the PB context, all the possible
+pointers to that information needs to be cleared to avoid accesses to
+freed memory.
+
+Fixes: 37bccfcab854 ("DPP3: Push button bootstrap mechanism")
+Signed-off-by: Jouni Malinen <quic_jouni@quicinc.com>
+---
+ hostapd/ctrl_iface.c            |  1 +
+ src/ap/dpp_hostapd.c            | 14 ++++++++++++++
+ wpa_supplicant/dpp_supplicant.c |  2 ++
+ 3 files changed, 17 insertions(+)
+
+diff --git a/hostapd/ctrl_iface.c b/hostapd/ctrl_iface.c
+index 01836cdf2..f2f7f0dbd 100644
+--- a/hostapd/ctrl_iface.c
++++ b/hostapd/ctrl_iface.c
+@@ -4542,6 +4542,7 @@ static void hostapd_ctrl_iface_flush(struct hapd_interfaces *interfaces)
+ #ifdef CONFIG_DPP
+ 	dpp_global_clear(interfaces->dpp);
+ #ifdef CONFIG_DPP3
++	interfaces->dpp_pb_bi = NULL;
+ 	{
+ 		int i;
+ 
+diff --git a/src/ap/dpp_hostapd.c b/src/ap/dpp_hostapd.c
+index 2813155b9..812d21afd 100644
+--- a/src/ap/dpp_hostapd.c
++++ b/src/ap/dpp_hostapd.c
+@@ -3955,11 +3955,25 @@ void hostapd_dpp_push_button_stop(struct hostapd_data *hapd)
+ 	ifaces->dpp_pb_time.usec = 0;
+ 	dpp_pkex_free(hapd->dpp_pkex);
+ 	hapd->dpp_pkex = NULL;
++	hapd->dpp_pkex_bi = NULL;
+ 	os_free(hapd->dpp_pkex_auth_cmd);
+ 	hapd->dpp_pkex_auth_cmd = NULL;
+ 
+ 	if (ifaces->dpp_pb_bi) {
+ 		char id[20];
++		size_t i;
++
++		for (i = 0; i < ifaces->count; i++) {
++			struct hostapd_iface *iface = ifaces->iface[i];
++			size_t j;
++
++			for (j = 0; iface && j < iface->num_bss; j++) {
++				struct hostapd_data *h = iface->bss[j];
++
++				if (h->dpp_pkex_bi == ifaces->dpp_pb_bi)
++					h->dpp_pkex_bi = NULL;
++			}
++		}
+ 
+ 		os_snprintf(id, sizeof(id), "%u", ifaces->dpp_pb_bi->id);
+ 		dpp_bootstrap_remove(ifaces->dpp, id);
+diff --git a/wpa_supplicant/dpp_supplicant.c b/wpa_supplicant/dpp_supplicant.c
+index 21ad685f2..d3a96ac0c 100644
+--- a/wpa_supplicant/dpp_supplicant.c
++++ b/wpa_supplicant/dpp_supplicant.c
+@@ -5665,6 +5665,8 @@ void wpas_dpp_push_button_stop(struct wpa_supplicant *wpa_s)
+ 	if (wpa_s->dpp_pb_bi) {
+ 		char id[20];
+ 
++		if (wpa_s->dpp_pb_bi == wpa_s->dpp_pkex_bi)
++			wpa_s->dpp_pkex_bi = NULL;
+ 		os_snprintf(id, sizeof(id), "%u", wpa_s->dpp_pb_bi->id);
+ 		dpp_bootstrap_remove(wpa_s->dpp, id);
+ 		wpa_s->dpp_pb_bi = NULL;
+-- 
+2.43.0
+

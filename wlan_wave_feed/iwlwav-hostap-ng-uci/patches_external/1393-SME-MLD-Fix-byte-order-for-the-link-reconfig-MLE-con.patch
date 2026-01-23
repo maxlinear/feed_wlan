@@ -1,0 +1,32 @@
+From 3e4782549dd25731172cbfcb180fad2a7e165b39 Mon Sep 17 00:00:00 2001
+From: Jouni Malinen <j@w1.fi>
+Date: Sat, 22 Feb 2025 10:45:11 +0200
+Subject: [PATCH] SME: MLD: Fix byte order for the link reconfig MLE control
+ field
+
+This is a 16-bit bit little endian field and as such, needs to be
+converted to host byte order before comparison.
+
+Fixes: e5ea30feefa3 ("SME: MLD: Handle reconfiguration Multi-Link element")
+Signed-off-by: Jouni Malinen <j@w1.fi>
+---
+ wpa_supplicant/bss.c | 3 ++-
+ 1 file changed, 2 insertions(+), 1 deletion(-)
+
+diff --git a/wpa_supplicant/bss.c b/wpa_supplicant/bss.c
+index ee97d2162..42630b645 100644
+--- a/wpa_supplicant/bss.c
++++ b/wpa_supplicant/bss.c
+@@ -1953,7 +1953,8 @@ u16 wpa_bss_parse_reconf_ml_element(struct wpa_supplicant *wpa_s,
+ 		goto out;
+ 
+ 	ml_common_len = 1;
+-	if (ml->ml_control & RECONF_MULTI_LINK_CTRL_PRES_MLD_MAC_ADDR)
++	if (le_to_host16(ml->ml_control) &
++	    RECONF_MULTI_LINK_CTRL_PRES_MLD_MAC_ADDR)
+ 		ml_common_len += ETH_ALEN;
+ 
+ 	if (len < sizeof(*ml) + ml_common_len) {
+-- 
+2.43.0
+

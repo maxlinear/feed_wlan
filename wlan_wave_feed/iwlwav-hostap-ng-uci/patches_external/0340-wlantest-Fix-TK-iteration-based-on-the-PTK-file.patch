@@ -1,0 +1,57 @@
+From 1abdeaa412be5671a7beab6c3525010c693445f2 Mon Sep 17 00:00:00 2001
+From: Jouni Malinen <quic_jouni@quicinc.com>
+Date: Thu, 1 Feb 2024 19:51:56 +0200
+Subject: [PATCH] wlantest: Fix TK iteration based on the PTK file
+
+Use of ptk_len is not valid here to check what is the length of the
+actual TK. Fix this by using ptk->tk_len instead so that the appropriate
+decryption function can be selected for cases where the TKs are
+configured through the PTK file.
+
+Fixes: ce7bdb54e5c9 ("wlantest: Extend Management frame decryption to support GCMP and CCMP-256")
+Signed-off-by: Jouni Malinen <quic_jouni@quicinc.com>
+---
+ wlantest/rx_mgmt.c | 8 ++++----
+ 1 file changed, 4 insertions(+), 4 deletions(-)
+
+diff --git a/wlantest/rx_mgmt.c b/wlantest/rx_mgmt.c
+index 6fa61612c..ac7ea6abc 100644
+--- a/wlantest/rx_mgmt.c
++++ b/wlantest/rx_mgmt.c
+@@ -3062,21 +3062,21 @@ static int check_bip(struct wlantest *wt, const u8 *data, size_t len)
+ }
+ 
+ 
+-static u8 * try_tk(struct wpa_ptk *ptk, size_t ptk_len,
++static u8 * try_tk(struct wpa_ptk *ptk,
+ 		   const u8 *data, size_t len, size_t *dlen)
+ {
+ 	const struct ieee80211_hdr *hdr;
+ 	u8 *decrypted, *frame;
+ 
+ 	hdr = (const struct ieee80211_hdr *) data;
+-	if (ptk_len == 16) {
++	if (ptk->tk_len == 16) {
+ 		decrypted = ccmp_decrypt(ptk->tk, hdr, NULL, NULL, NULL,
+ 					 data + 24, len - 24, dlen);
+ 		if (!decrypted)
+ 			decrypted = gcmp_decrypt(ptk->tk, 16, hdr, NULL, NULL,
+ 						 NULL,
+ 						 data + 24, len - 24, dlen);
+-	} else if (ptk_len == 32) {
++	} else if (ptk->tk_len == 32) {
+ 		decrypted = ccmp_256_decrypt(ptk->tk, hdr, NULL, NULL, NULL,
+ 					     data + 24, len - 24, dlen);
+ 		if (!decrypted)
+@@ -3112,7 +3112,7 @@ static u8 * mgmt_decrypt_tk(struct wlantest *wt, const u8 *data, size_t len,
+ 
+ 	wpa_debug_level = MSG_WARNING;
+ 	dl_list_for_each(ptk, &wt->ptk, struct wlantest_ptk, list) {
+-		decrypted = try_tk(&ptk->ptk, ptk->ptk_len, data, len, dlen);
++		decrypted = try_tk(&ptk->ptk, data, len, dlen);
+ 		if (decrypted) {
+ 			wpa_debug_level = prev_level;
+ 			add_note(wt, MSG_DEBUG,
+-- 
+2.43.0
+

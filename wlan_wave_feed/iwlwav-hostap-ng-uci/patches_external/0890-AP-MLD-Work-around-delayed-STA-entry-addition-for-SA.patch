@@ -1,0 +1,61 @@
+From 63df62c6c0b86221493588f7b9e583a4e45dd75a Mon Sep 17 00:00:00 2001
+From: Jouni Malinen <quic_jouni@quicinc.com>
+Date: Sun, 1 Sep 2024 13:14:12 +0300
+Subject: [PATCH] AP MLD: Work around delayed STA entry addition for SAE
+ confirm
+
+The driver is expected to have an STA entry for a non-AP MLD ready to
+translate the address fields for SAE confirm messages. However, there is
+at least a theoretical race condition in a case where the peer sends the
+SAE confirm message quickly enough for the driver translation mechanism
+to not be available to update the SAE confirm message addresses. Work
+around that by searching for the STA entry using the link address of the
+non-AP MLD if no match is found based on the MLD MAC address.
+
+Signed-off-by: Jouni Malinen <quic_jouni@quicinc.com>
+---
+ src/ap/ieee802_11_eht.c | 24 ++++++++++++++++++++++--
+ 1 file changed, 22 insertions(+), 2 deletions(-)
+
+diff --git a/src/ap/ieee802_11_eht.c b/src/ap/ieee802_11_eht.c
+index b935ee889..bc8e34c91 100644
+--- a/src/ap/ieee802_11_eht.c
++++ b/src/ap/ieee802_11_eht.c
+@@ -909,12 +909,32 @@ sae_confirm_skip_fixed_fields(struct hostapd_data *hapd,
+ 
+ 	/*
+ 	 * At this stage we should already have an MLD station and actually SA
+-	 * will be replaced with the MLD MAC address by the driver.
++	 * will be replaced with the MLD MAC address by the driver. However,
++	 * there is at least a theoretical race condition in a case where the
++	 * peer sends the SAE confirm message quickly enough for the driver
++	 * translation mechanism to not be available to update the SAE confirm
++	 * message addresses. Work around that by searching for the STA entry
++	 * using the link address of the non-AP MLD if no match is found based
++	 * on the MLD MAC address.
+ 	 */
+ 	sta = ap_get_sta(hapd, mgmt->sa);
+ 	if (!sta) {
+ 		wpa_printf(MSG_DEBUG, "SAE: No MLD STA for SAE confirm");
+-		return NULL;
++		for (sta = hapd->sta_list; sta; sta = sta->next) {
++			int link_id = hapd->mld_link_id;
++
++			if (!sta->mld_info.mld_sta ||
++			    sta->mld_info.links[link_id].valid ||
++			    !ether_addr_equal(
++				    mgmt->sa,
++				    sta->mld_info.links[link_id].peer_addr))
++				continue;
++			wpa_printf(MSG_DEBUG,
++				   "SAE: Found MLD STA for SAE confirm based on link address");
++			break;
++		}
++		if (!sta)
++			return NULL;
+ 	}
+ 
+ 	if (!sta->sae || sta->sae->state < SAE_COMMITTED || !sta->sae->tmp) {
+-- 
+2.43.0
+

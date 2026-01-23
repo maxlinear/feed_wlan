@@ -1,0 +1,155 @@
+From 9e90486bce45b527b9951285752c22e360595b94 Mon Sep 17 00:00:00 2001
+From: Jouni Malinen <quic_jouni@quicinc.com>
+Date: Tue, 5 Mar 2024 16:07:22 +0200
+Subject: [PATCH] 2-octet operating classes in Support Operating Classes
+ element
+
+A previous workaround was used to move the special operating class 130
+to the end of the Supported Operating Classes element to avoid getting
+any following entry being ignored or misunderstood. That is not really
+the correct way of encoding the special cases, i.e., 80+80 MHz channels
+that use two nonadjacent frequency segments.
+
+Add support for encoding the 80+80 MHz channel with the 2-octet
+operating class design using the Operating Class Duple sequence field of
+the Supported Operating Classes element instead of listing the operating
+classes that have the 80+ behavior limit set indication in Table E-4
+(i.e., opclass 130 and 135) as 1-octet operating classes in the
+Operating Classes field.
+
+Fixes: a92660a00e10 ("Work around Supported Operating Classes element issues for 6 GHz")
+Signed-off-by: Jouni Malinen <quic_jouni@quicinc.com>
+---
+ src/common/ieee802_11_common.c | 20 +++++++++++----
+ src/common/ieee802_11_common.h |  1 +
+ wpa_supplicant/op_classes.c    | 47 ++++++++++++++++++++++++++++++++--
+ 3 files changed, 61 insertions(+), 7 deletions(-)
+
+diff --git a/src/common/ieee802_11_common.c b/src/common/ieee802_11_common.c
+index 081723f7c..0b2ad61f5 100644
+--- a/src/common/ieee802_11_common.c
++++ b/src/common/ieee802_11_common.c
+@@ -2040,6 +2040,13 @@ int is_dfs_global_op_class(u8 op_class)
+ }
+ 
+ 
++bool is_80plus_op_class(u8 op_class)
++{
++	/* Operating classes with "80+" behavior indication in Table E-4 */
++	return op_class == 130 || op_class == 135;
++}
++
++
+ static int is_11b(u8 rate)
+ {
+ 	return rate == 0x02 || rate == 0x04 || rate == 0x0b || rate == 0x16;
+@@ -2406,9 +2413,17 @@ const struct oper_class_map global_op_class[] = {
+ 	 * channel center frequency index value, but it happens to be a 20 MHz
+ 	 * channel and the channel number in the channel set would match the
+ 	 * value in for the frequency center.
++	 *
++	 * Operating class value pair 128 and 130 is used to describe a 80+80
++	 * MHz channel on the 5 GHz band. 130 is identified with "80+", so this
++	 * is encoded with two octets 130 and 128. Similarly, operating class
++	 * value pair 133 and 135 is used to describe a 80+80 MHz channel on
++	 * the 6 GHz band (135 being the one with "80+" indication). All other
++	 * operating classes listed here are used as 1-octet values.
+ 	 */
+ 	{ HOSTAPD_MODE_IEEE80211A, 128, 36, 177, 4, BW80, P2P_SUPP },
+ 	{ HOSTAPD_MODE_IEEE80211A, 129, 36, 177, 4, BW160, P2P_SUPP },
++	{ HOSTAPD_MODE_IEEE80211A, 130, 36, 177, 4, BW80P80, P2P_SUPP },
+ 	{ HOSTAPD_MODE_IEEE80211A, 131, 1, 233, 4, BW20, P2P_SUPP },
+ 	{ HOSTAPD_MODE_IEEE80211A, 132, 1, 233, 8, BW40, P2P_SUPP },
+ 	{ HOSTAPD_MODE_IEEE80211A, 133, 1, 233, 16, BW80, P2P_SUPP },
+@@ -2429,11 +2444,6 @@ const struct oper_class_map global_op_class[] = {
+ 	{ HOSTAPD_MODE_IEEE80211AD, 182, 17, 20, 1, BW6480, P2P_SUPP },
+ 	{ HOSTAPD_MODE_IEEE80211AD, 183, 25, 27, 1, BW8640, P2P_SUPP },
+ 
+-	/* Keep the operating class 130 as the last entry as a workaround for
+-	 * the OneHundredAndThirty Delimiter value used in the Supported
+-	 * Operating Classes element to indicate the end of the Operating
+-	 * Classes field. */
+-	{ HOSTAPD_MODE_IEEE80211A, 130, 36, 177, 4, BW80P80, P2P_SUPP },
+ 	{ -1, 0, 0, 0, 0, BW20, NO_P2P_SUPP }
+ };
+ 
+diff --git a/src/common/ieee802_11_common.h b/src/common/ieee802_11_common.h
+index 24be71b45..da057bdb2 100644
+--- a/src/common/ieee802_11_common.h
++++ b/src/common/ieee802_11_common.h
+@@ -235,6 +235,7 @@ int ieee80211_chaninfo_to_channel(unsigned int freq, enum chan_width chanwidth,
+ int ieee80211_is_dfs(int freq, const struct hostapd_hw_modes *modes,
+ 		     u16 num_modes);
+ int is_dfs_global_op_class(u8 op_class);
++bool is_80plus_op_class(u8 op_class);
+ enum phy_type ieee80211_get_phy_type(int freq, int ht, int vht);
+ 
+ int supp_rates_11b_only(struct ieee802_11_elems *elems);
+diff --git a/wpa_supplicant/op_classes.c b/wpa_supplicant/op_classes.c
+index d5742de7b..9eba67160 100644
+--- a/wpa_supplicant/op_classes.c
++++ b/wpa_supplicant/op_classes.c
+@@ -522,6 +522,7 @@ size_t wpas_supp_op_class_ie(struct wpa_supplicant *wpa_s,
+ 	u8 op, current, chan;
+ 	u8 *ie_len;
+ 	size_t res;
++	bool op128 = false, op130 = false, op133 = false, op135 = false;
+ 
+ 	/*
+ 	 * Determine the current operating class correct mode based on
+@@ -549,8 +550,50 @@ size_t wpas_supp_op_class_ie(struct wpa_supplicant *wpa_s,
+ 	wpabuf_put_u8(buf, current);
+ 
+ 	for (op = 0; global_op_class[op].op_class; op++) {
+-		if (wpas_op_class_supported(wpa_s, ssid, &global_op_class[op]))
+-			wpabuf_put_u8(buf, global_op_class[op].op_class);
++		bool supp;
++		u8 op_class = global_op_class[op].op_class;
++
++		supp = wpas_op_class_supported(wpa_s, ssid,
++					       &global_op_class[op]);
++		if (!supp)
++			continue;
++		switch (op_class) {
++		case 128:
++			op128 = true;
++			break;
++		case 130:
++			op130 = true;
++			break;
++		case 133:
++			op133 = true;
++			break;
++		case 135:
++			op135 = true;
++			break;
++		}
++		if (is_80plus_op_class(op_class))
++			continue;
++
++		/* Add a 1-octet operating class to the Operating Class field */
++		wpabuf_put_u8(buf, global_op_class[op].op_class);
++	}
++
++	/* Add the 2-octet operating classes (i.e., 80+80 MHz cases), if any */
++	if ((op128 && op130) || (op133 && op135)) {
++		/* Operating Class Duple Sequence field */
++
++		/* Zero Delimiter */
++		wpabuf_put_u8(buf, 0);
++
++		/* Operating Class Duple List */
++		if (op128 && op130) {
++			wpabuf_put_u8(buf, 130);
++			wpabuf_put_u8(buf, 128);
++		}
++		if (op133 && op135) {
++			wpabuf_put_u8(buf, 135);
++			wpabuf_put_u8(buf, 133);
++		}
+ 	}
+ 
+ 	*ie_len = wpabuf_len(buf) - 2;
+-- 
+2.43.0
+

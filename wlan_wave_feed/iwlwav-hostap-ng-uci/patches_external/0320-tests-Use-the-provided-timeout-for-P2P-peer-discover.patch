@@ -1,0 +1,31 @@
+From c579b07e264d2dae04afd681bd6decdd0d79282c Mon Sep 17 00:00:00 2001
+From: Jouni Malinen <j@w1.fi>
+Date: Sat, 27 Jan 2024 11:35:31 +0200
+Subject: [PATCH] tests: Use the provided timeout for P2P peer discovery
+
+p2p_go_neg_init() ignored the provided timeout value and used the
+default 15 second timeout in discover_peer(). This did not allow the
+recently added go_neg_pbc() timeout increase for concurrent cases to be
+used fully.
+
+Signed-off-by: Jouni Malinen <j@w1.fi>
+---
+ tests/hwsim/wpasupplicant.py | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/tests/hwsim/wpasupplicant.py b/tests/hwsim/wpasupplicant.py
+index ae728a034..8912310b9 100644
+--- a/tests/hwsim/wpasupplicant.py
++++ b/tests/hwsim/wpasupplicant.py
+@@ -804,7 +804,7 @@ class WpaSupplicant:
+                         persistent_id=None, freq=None, provdisc=False,
+                         wait_group=True, freq2=None, max_oper_chwidth=None,
+                         ht40=False, vht=False):
+-        if not self.discover_peer(peer):
++        if not self.discover_peer(peer,timeout=timeout if timeout else 15):
+             raise Exception("Peer " + peer + " not found")
+         self.dump_monitor()
+         if pin:
+-- 
+2.43.0
+

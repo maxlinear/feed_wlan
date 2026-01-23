@@ -1,0 +1,48 @@
+From 7e0e69cfeac300414ef0492bc76a2aa164443249 Mon Sep 17 00:00:00 2001
+From: Vinay Gannevaram <quic_vganneva@quicinc.com>
+Date: Fri, 5 Jan 2024 12:28:41 +0530
+Subject: [PATCH] SAE: Send external auth status after sending Authentication
+ frame
+
+The driver might delete the STA node details on receiving external auth
+status. In SAE authentication failure case on the AP, an Authentication
+frame with a failure status is sent to the driver after sending the
+external auth status. Authentication frame transmission didn't have a
+dependency with STA node details earlier, but with MLO, Authentication
+frames should be transmitted using the link address for a given MLD MAC
+address by the supplicant. Since MLD to link address translation is done
+by the driver, the STA node details are required to transmit the
+Authentication frame. Hence, send external auth status to the driver
+after sending the Authentication frame.
+
+SAE external auth was introduced in commit 4ffb0fefe4e7 ("hostapd:
+Support external authentication offload in AP mode"), which requires the
+change in order of sending Authentication frame and auth status in case
+of failure when using MLO.
+
+Signed-off-by: Vinay Gannevaram <quic_vganneva@quicinc.com>
+---
+ src/ap/ieee802_11.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/src/ap/ieee802_11.c b/src/ap/ieee802_11.c
+index 63047671c..fd1de5ebc 100644
+--- a/src/ap/ieee802_11.c
++++ b/src/ap/ieee802_11.c
+@@ -1609,12 +1609,12 @@ reply:
+ 		    !data && end - pos >= 2)
+ 			data = wpabuf_alloc_copy(pos, 2);
+ 
+-		sae_sme_send_external_auth_status(hapd, sta, resp);
+ 		send_auth_reply(hapd, sta, sta->addr,
+ 				WLAN_AUTH_SAE,
+ 				auth_transaction, resp,
+ 				data ? wpabuf_head(data) : (u8 *) "",
+ 				data ? wpabuf_len(data) : 0, "auth-sae");
++		sae_sme_send_external_auth_status(hapd, sta, resp);
+ 		if (sta->sae && sta->sae->tmp && sta->sae->tmp->pw_id &&
+ 		    resp == WLAN_STATUS_UNKNOWN_PASSWORD_IDENTIFIER &&
+ 		    auth_transaction == 1) {
+-- 
+2.43.0
+

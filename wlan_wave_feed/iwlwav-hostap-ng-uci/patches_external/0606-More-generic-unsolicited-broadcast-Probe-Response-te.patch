@@ -1,0 +1,197 @@
+From 7d0c08910b612653d72f2098b474866784ebfd11 Mon Sep 17 00:00:00 2001
+From: Rathees Kumar R Chinannan <quic_rrchinan@quicinc.com>
+Date: Mon, 8 Apr 2024 12:05:16 +0530
+Subject: [PATCH] More generic unsolicited broadcast Probe Response template
+ setup
+
+When AP is beaconing only on the 6 GHz band and unsol_bcast_presp
+interval is set, AP sends unsolicited broadcast Probe Response frames
+for in-band discovery. hostapd sent the Probe Response template for this
+frame only when setting a new beacon.
+
+As a preparation for extending this functionality to other cases, move
+the generation of the unsolicited broadcast Probe Response template into
+a more generic function and data structure.
+
+Signed-off-by: Rathees Kumar R Chinannan <quic_rrchinan@quicinc.com>
+---
+ src/ap/beacon.c              | 16 ++++++++--------
+ src/ap/beacon.h              |  3 +++
+ src/drivers/driver.h         | 35 ++++++++++++++++++++---------------
+ src/drivers/driver_nl80211.c | 16 ++++++++--------
+ 4 files changed, 39 insertions(+), 31 deletions(-)
+
+diff --git a/src/ap/beacon.c b/src/ap/beacon.c
+index c214f5227..cec0c9829 100644
+--- a/src/ap/beacon.c
++++ b/src/ap/beacon.c
+@@ -1712,15 +1712,15 @@ static u8 * hostapd_probe_resp_offloads(struct hostapd_data *hapd,
+ 
+ #ifdef CONFIG_IEEE80211AX
+ /* Unsolicited broadcast Probe Response transmission, 6 GHz only */
+-static u8 * hostapd_unsol_bcast_probe_resp(struct hostapd_data *hapd,
+-					   struct wpa_driver_ap_params *params)
++u8 * hostapd_unsol_bcast_probe_resp(struct hostapd_data *hapd,
++				    struct unsol_bcast_probe_resp *ubpr)
+ {
+ 	struct probe_resp_params probe_params;
+ 
+ 	if (!is_6ghz_op_class(hapd->iconf->op_class))
+ 		return NULL;
+ 
+-	params->unsol_bcast_probe_resp_interval =
++	ubpr->unsol_bcast_probe_resp_interval =
+ 		hapd->conf->unsol_bcast_probe_resp_interval;
+ 
+ 	os_memset(&probe_params, 0, sizeof(probe_params));
+@@ -1733,7 +1733,7 @@ static u8 * hostapd_unsol_bcast_probe_resp(struct hostapd_data *hapd,
+ 	probe_params.mld_info = NULL;
+ 
+ 	hostapd_gen_probe_resp(hapd, &probe_params);
+-	params->unsol_bcast_probe_resp_tmpl_len = probe_params.resp_len;
++	ubpr->unsol_bcast_probe_resp_tmpl_len = probe_params.resp_len;
+ 	return (u8 *) probe_params.resp;
+ }
+ #endif /* CONFIG_IEEE80211AX */
+@@ -2546,8 +2546,8 @@ void ieee802_11_free_ap_params(struct wpa_driver_ap_params *params)
+ 	params->fd_frame_tmpl = NULL;
+ #endif /* CONFIG_FILS */
+ #ifdef CONFIG_IEEE80211AX
+-	os_free(params->unsol_bcast_probe_resp_tmpl);
+-	params->unsol_bcast_probe_resp_tmpl = NULL;
++	os_free(params->ubpr.unsol_bcast_probe_resp_tmpl);
++	params->ubpr.unsol_bcast_probe_resp_tmpl = NULL;
+ #endif /* CONFIG_IEEE80211AX */
+ 	os_free(params->allowed_freqs);
+ 	params->allowed_freqs = NULL;
+@@ -2608,8 +2608,8 @@ static int __ieee802_11_set_beacon(struct hostapd_data *hapd)
+ 	params.he_bss_color = hapd->iface->conf->he_op.he_bss_color;
+ 	twt_he_responder = hostapd_get_he_twt_responder(hapd,
+ 							IEEE80211_MODE_AP);
+-	params.unsol_bcast_probe_resp_tmpl =
+-		hostapd_unsol_bcast_probe_resp(hapd, &params);
++	params.ubpr.unsol_bcast_probe_resp_tmpl =
++		hostapd_unsol_bcast_probe_resp(hapd, &params.ubpr);
+ #endif /* CONFIG_IEEE80211AX */
+ 	params.twt_responder =
+ 		twt_he_responder || hostapd_get_ht_vht_twt_responder(hapd);
+diff --git a/src/ap/beacon.h b/src/ap/beacon.h
+index b32b2a7d0..e381542a8 100644
+--- a/src/ap/beacon.h
++++ b/src/ap/beacon.h
+@@ -33,4 +33,7 @@ void sta_track_claim_taxonomy_info(struct hostapd_iface *iface, const u8 *addr,
+ 
+ const u8 * hostapd_wpa_ie(struct hostapd_data *hapd, u8 eid);
+ 
++u8 * hostapd_unsol_bcast_probe_resp(struct hostapd_data *hapd,
++				    struct unsol_bcast_probe_resp *ubpr);
++
+ #endif /* BEACON_H */
+diff --git a/src/drivers/driver.h b/src/drivers/driver.h
+index 52632154e..e2fc85482 100644
+--- a/src/drivers/driver.h
++++ b/src/drivers/driver.h
+@@ -1386,6 +1386,23 @@ struct wowlan_triggers {
+ 	u8 rfkill_release;
+ };
+ 
++struct unsol_bcast_probe_resp {
++	/**
++	 * Unsolicited broadcast Probe Response interval in TUs
++	 */
++	unsigned int unsol_bcast_probe_resp_interval;
++
++	/**
++	 * Unsolicited broadcast Probe Response template data
++	 */
++	u8 *unsol_bcast_probe_resp_tmpl;
++
++	/**
++	 * Unsolicited broadcast Probe Response template length
++	 */
++	size_t unsol_bcast_probe_resp_tmpl_len;
++};
++
+ struct wpa_driver_ap_params {
+ 	/**
+ 	 * head - Beacon head from IEEE 802.11 header to IEs before TIM IE
+@@ -1728,21 +1745,6 @@ struct wpa_driver_ap_params {
+ 	 */
+ 	size_t fd_frame_tmpl_len;
+ 
+-	/**
+-	 * Unsolicited broadcast Probe Response interval in TUs
+-	 */
+-	unsigned int unsol_bcast_probe_resp_interval;
+-
+-	/**
+-	 * Unsolicited broadcast Probe Response template data
+-	 */
+-	u8 *unsol_bcast_probe_resp_tmpl;
+-
+-	/**
+-	 * Unsolicited broadcast Probe Response template length
+-	 */
+-	size_t unsol_bcast_probe_resp_tmpl_len;
+-
+ 	/**
+ 	 * mbssid_tx_iface - Transmitting interface of the MBSSID set
+ 	 */
+@@ -1809,6 +1811,9 @@ struct wpa_driver_ap_params {
+ 	 */
+ 	u8 **rnr_elem_offset;
+ 
++	/* Unsolicited broadcast Probe Response data */
++	struct unsol_bcast_probe_resp ubpr;
++
+ 	/**
+ 	 * allowed_freqs - List of allowed 20 MHz channel center frequencies in
+ 	 * MHz for AP operation. Drivers which support this parameter will
+diff --git a/src/drivers/driver_nl80211.c b/src/drivers/driver_nl80211.c
+index c6af0f02f..4ad0f39b5 100644
+--- a/src/drivers/driver_nl80211.c
++++ b/src/drivers/driver_nl80211.c
+@@ -4768,7 +4768,7 @@ static int nl80211_fils_discovery(struct i802_bss *bss, struct nl_msg *msg,
+ 
+ static int nl80211_unsol_bcast_probe_resp(struct i802_bss *bss,
+ 					  struct nl_msg *msg,
+-					  struct wpa_driver_ap_params *params)
++					  struct unsol_bcast_probe_resp *ubpr)
+ {
+ 	struct nlattr *attr;
+ 
+@@ -4781,15 +4781,15 @@ static int nl80211_unsol_bcast_probe_resp(struct i802_bss *bss,
+ 
+ 	wpa_printf(MSG_DEBUG,
+ 		   "nl80211: Unsolicited broadcast Probe Response frame interval: %u",
+-		   params->unsol_bcast_probe_resp_interval);
++		   ubpr->unsol_bcast_probe_resp_interval);
+ 	attr = nla_nest_start(msg, NL80211_ATTR_UNSOL_BCAST_PROBE_RESP);
+ 	if (!attr ||
+ 	    nla_put_u32(msg, NL80211_UNSOL_BCAST_PROBE_RESP_ATTR_INT,
+-			params->unsol_bcast_probe_resp_interval) ||
+-	    (params->unsol_bcast_probe_resp_tmpl &&
++			ubpr->unsol_bcast_probe_resp_interval) ||
++	    (ubpr->unsol_bcast_probe_resp_tmpl &&
+ 	     nla_put(msg, NL80211_UNSOL_BCAST_PROBE_RESP_ATTR_TMPL,
+-		     params->unsol_bcast_probe_resp_tmpl_len,
+-		     params->unsol_bcast_probe_resp_tmpl)))
++		     ubpr->unsol_bcast_probe_resp_tmpl_len,
++		     ubpr->unsol_bcast_probe_resp_tmpl)))
+ 		return -1;
+ 
+ 	nla_nest_end(msg, attr);
+@@ -5374,8 +5374,8 @@ static int wpa_driver_nl80211_set_ap(void *priv,
+ 			goto fail;
+ 	}
+ 
+-	if (params->unsol_bcast_probe_resp_interval &&
+-	    nl80211_unsol_bcast_probe_resp(bss, msg, params) < 0)
++	if (params->ubpr.unsol_bcast_probe_resp_interval &&
++	    nl80211_unsol_bcast_probe_resp(bss, msg, &params->ubpr) < 0)
+ 		goto fail;
+ 
+ 	if (nl80211_mbssid(msg, params) < 0)
+-- 
+2.43.0
+

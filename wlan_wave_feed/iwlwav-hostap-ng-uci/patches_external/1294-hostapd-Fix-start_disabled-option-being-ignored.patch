@@ -1,0 +1,48 @@
+From 5b0201a277172f481c88c647c8cbf6db722502c9 Mon Sep 17 00:00:00 2001
+From: Hancheng Yang <hyang@freebox.fr>
+Date: Mon, 13 Jan 2025 14:30:20 +0100
+Subject: [PATCH] hostapd: Fix 'start_disabled' option being ignored
+
+Fix two cases where 'start_disabled' were not respected:
+- when ieee802_11_set_beacon() is called for a BSS, same operation will
+  be called for all its colocated BSSs. Now we set beacon only for BSSs
+  which have already had their beacon setting done.
+- replace ieee802_11_set_beacons() by ieee802_11_update_beacons() in
+  hostapd_setup_interface_complete_sync() for the same reason.
+
+Signed-off-by: Hancheng Yang <hyang@freebox.fr>
+---
+ src/ap/beacon.c  | 3 ++-
+ src/ap/hostapd.c | 2 +-
+ 2 files changed, 3 insertions(+), 2 deletions(-)
+
+diff --git a/src/ap/beacon.c b/src/ap/beacon.c
+index 542768daa..5d50a9d9f 100644
+--- a/src/ap/beacon.c
++++ b/src/ap/beacon.c
+@@ -3248,7 +3248,8 @@ int ieee802_11_set_beacon(struct hostapd_data *hapd)
+ 				continue;
+ #endif /* CONFIG_IEEE80211BE */
+ 
+-			if (other->bss[i] && other->bss[i]->started)
++			if (other->bss[i] && other->bss[i]->started &&
++			    other->bss[i]->beacon_set_done)
+ 				__ieee802_11_set_beacon(other->bss[i]);
+ 		}
+ 	}
+diff --git a/src/ap/hostapd.c b/src/ap/hostapd.c
+index 3510dcc0f..0227b8512 100644
+--- a/src/ap/hostapd.c
++++ b/src/ap/hostapd.c
+@@ -2765,7 +2765,7 @@ dfs_offload:
+ 		hostapd_neighbor_set_own_report(iface->bss[j]);
+ 
+ 	if (iface->interfaces && iface->interfaces->count > 1)
+-		ieee802_11_set_beacons(iface);
++		ieee802_11_update_beacons(iface);
+ 
+ 	return 0;
+ 
+-- 
+2.43.0
+

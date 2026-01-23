@@ -1,0 +1,39 @@
+From dd65d13ce07d8e413d58631e24470de7c7b2c0ae Mon Sep 17 00:00:00 2001
+From: Gururaj Pandurangi <quic_panduran@quicinc.com>
+Date: Mon, 6 Jan 2025 17:17:44 -0800
+Subject: [PATCH] Add QCA vendor attribute for BTM reject support
+
+Add a vendor attribute for a testbed STA to configure firmware to reject
+AP's BSS Transition Management (BTM) request frame by sending a BTM
+response with error status code.
+
+Signed-off-by: Jouni Malinen <quic_jouni@quicinc.com>
+---
+ src/common/qca-vendor.h | 11 +++++++++++
+ 1 file changed, 11 insertions(+)
+
+diff --git a/src/common/qca-vendor.h b/src/common/qca-vendor.h
+index c72ac7de3..4bd3b49cb 100644
+--- a/src/common/qca-vendor.h
++++ b/src/common/qca-vendor.h
+@@ -10601,6 +10601,17 @@ enum qca_wlan_vendor_attr_wifi_test_config {
+ 	 */
+ 	QCA_WLAN_VENDOR_ATTR_WIFI_TEST_CONFIG_EHT_EXTRA_LTF = 77,
+ 
++	/* 8-bit unsigned integer to configure the firmware to reject AP's BSS
++	 * Transition Management (BTM) request frame by sending a BTM response
++	 * with error status code.
++	 *
++	 * 1 - STA rejects AP's BTM request frame
++	 * 0 - STA accepts AP's BTM request frame
++	 *
++	 * This attribute is used for testing purposes.
++	 */
++	QCA_WLAN_VENDOR_ATTR_WIFI_TEST_CONFIG_BTM_REQ_REJECT = 78,
++
+ 	/* keep last */
+ 	QCA_WLAN_VENDOR_ATTR_WIFI_TEST_CONFIG_AFTER_LAST,
+ 	QCA_WLAN_VENDOR_ATTR_WIFI_TEST_CONFIG_MAX =
+-- 
+2.43.0
+

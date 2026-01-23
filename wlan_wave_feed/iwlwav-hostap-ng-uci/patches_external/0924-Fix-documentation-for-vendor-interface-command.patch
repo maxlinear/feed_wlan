@@ -1,0 +1,40 @@
+From a8655be0b1828059bf5acd92e91d928ec94f9eed Mon Sep 17 00:00:00 2001
+From: Shivani Baranwal <quic_shivbara@quicinc.com>
+Date: Mon, 9 Sep 2024 10:18:31 +0530
+Subject: [PATCH] Fix documentation for vendor interface command
+
+Fix the placement of documentation of attribute used for the
+QCA_NL80211_VENDOR_SUBCMD_CONNECT_EXT command.
+
+Fixes: 97c6ef258890 ("QCA vendor interface to set the P2P mode configuration")
+Signed-off-by: Shivani Baranwal <quic_shivbara@quicinc.com>
+---
+ src/common/qca-vendor.h | 6 +++---
+ 1 file changed, 3 insertions(+), 3 deletions(-)
+
+diff --git a/src/common/qca-vendor.h b/src/common/qca-vendor.h
+index 7e53e621c..ddf196627 100644
+--- a/src/common/qca-vendor.h
++++ b/src/common/qca-vendor.h
+@@ -1282,15 +1282,15 @@ enum qca_radiotap_vendor_ids {
+  *	vendor interfaces, driver internal logic, and BTM requests from the
+  *	connected AP.
+  *
++ *	The attributes used with this command are defined in
++ *	enum qca_wlan_vendor_attr_connect_ext.
++ *
+  * @QCA_NL80211_VENDOR_SUBCMD_SET_P2P_MODE: Vendor subcommand to configure
+  *	Wi-Fi Direct mode. This command sets the configuration through
+  *	the attributes defined in the enum qca_wlan_vendor_attr_set_p2p_mode.
+  *	It is applicable for P2P Group Owner only. This command is used before
+  *	starting the GO.
+  *
+- *	The attributes used with this command are defined in
+- *	enum qca_wlan_vendor_attr_connect_ext.
+- *
+  * @QCA_NL80211_VENDOR_SUBCMD_CHAN_USAGE_REQ: Vendor subcommand to request
+  *	transmission of a channel usage request. It carries channel usage
+  *	information for BSSs that are not infrastructure BSSs or an off channel
+-- 
+2.43.0
+

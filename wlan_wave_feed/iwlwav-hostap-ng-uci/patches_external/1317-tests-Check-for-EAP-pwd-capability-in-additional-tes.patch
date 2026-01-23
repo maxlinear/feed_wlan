@@ -1,0 +1,44 @@
+From f895d9dc7e04082e70fe9fb52f8ac22da9d5dc62 Mon Sep 17 00:00:00 2001
+From: Jouni Malinen <j@w1.fi>
+Date: Sat, 1 Feb 2025 19:45:55 +0200
+Subject: [PATCH] tests: Check for EAP-pwd capability in additional test cases
+
+These need to be skipped if the devices do not support EAP-pwd (e.g.,
+when testing with GnuTLS).
+
+Signed-off-by: Jouni Malinen <j@w1.fi>
+---
+ tests/hwsim/test_fils.py | 3 +++
+ 1 file changed, 3 insertions(+)
+
+diff --git a/tests/hwsim/test_fils.py b/tests/hwsim/test_fils.py
+index 18eff3f01..3214c76ba 100644
+--- a/tests/hwsim/test_fils.py
++++ b/tests/hwsim/test_fils.py
+@@ -18,6 +18,7 @@ from tshark import run_tshark
+ from wpasupplicant import WpaSupplicant
+ import hwsim_utils
+ from utils import *
++from test_eap import check_eap_capa
+ from test_erp import start_erp_as
+ from test_ap_hs20 import ip_checksum
+ 
+@@ -2268,6 +2269,7 @@ def test_fils_sk_erp_radius_ext(dev, apdev, params):
+ def run_fils_sk_erp_radius_ext(dev, apdev, params):
+     check_fils_capa(dev[0])
+     check_erp_capa(dev[0])
++    check_eap_capa(dev[0], "PWD")
+ 
+     bssid = apdev[0]['bssid']
+     params = hostapd.wpa2_eap_params(ssid="fils")
+@@ -2321,6 +2323,7 @@ def test_fils_sk_erp_radius_roam(dev, apdev):
+ def run_fils_sk_erp_radius_roam(dev, apdev):
+     check_fils_capa(dev[0])
+     check_erp_capa(dev[0])
++    check_eap_capa(dev[0], "PWD")
+ 
+     bssid = apdev[0]['bssid']
+     params = hostapd.wpa2_eap_params(ssid="fils")
+-- 
+2.43.0
+

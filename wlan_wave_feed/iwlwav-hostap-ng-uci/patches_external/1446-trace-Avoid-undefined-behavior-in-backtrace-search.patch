@@ -1,0 +1,47 @@
+From 4cb1b7c31e67cb36d233f377c50d39400e71188b Mon Sep 17 00:00:00 2001
+From: Jouni Malinen <quic_jouni@quicinc.com>
+Date: Tue, 25 Feb 2025 23:09:23 +0200
+Subject: [PATCH] trace: Avoid undefined behavior in backtrace search
+
+Skip backtrace() returned addresses that are smaller than start_offset
+to avoid overflowing pointer calculation.
+
+Signed-off-by: Jouni Malinen <quic_jouni@quicinc.com>
+---
+ src/utils/trace.c | 6 ++++++
+ 1 file changed, 6 insertions(+)
+
+diff --git a/src/utils/trace.c b/src/utils/trace.c
+index 7c9a17ff8..1ec226515 100644
+--- a/src/utils/trace.c
++++ b/src/utils/trace.c
+@@ -197,6 +197,8 @@ static void wpa_trace_bfd_addr(void *pc)
+ 	if (abfd == NULL)
+ 		return;
+ 
++	if (start_offset > (uintptr_t) pc)
++		return;
+ 	data.pc = (uintptr_t) ((u8 *) pc - start_offset);
+ 	data.found = FALSE;
+ 	bfd_map_over_sections(abfd, find_addr_sect, &data);
+@@ -238,6 +240,8 @@ static const char * wpa_trace_bfd_addr2func(void *pc)
+ 	if (abfd == NULL)
+ 		return NULL;
+ 
++	if (start_offset > (uintptr_t) pc)
++		return NULL;
+ 	data.pc = (uintptr_t) ((u8 *) pc - start_offset);
+ 	data.found = FALSE;
+ 	bfd_map_over_sections(abfd, find_addr_sect, &data);
+@@ -310,6 +314,8 @@ size_t wpa_trace_calling_func(const char *buf[], size_t len)
+ 	for (i = 0; i < btrace_num; i++) {
+ 		struct bfd_data data;
+ 
++		if (start_offset > (uintptr_t) btrace_res[i])
++			continue;
+ 		data.pc = (uintptr_t) ((u8 *) btrace_res[i] - start_offset);
+ 		data.found = FALSE;
+ 		bfd_map_over_sections(abfd, find_addr_sect, &data);
+-- 
+2.43.0
+

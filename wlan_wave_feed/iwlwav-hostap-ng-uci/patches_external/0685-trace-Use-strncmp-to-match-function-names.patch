@@ -1,0 +1,34 @@
+From 49344db0954e463f54cfbd05b7898575b2c8c734 Mon Sep 17 00:00:00 2001
+From: Benjamin Berg <benjamin.berg@intel.com>
+Date: Fri, 14 Jun 2024 10:13:49 +0200
+Subject: [PATCH] trace: Use strncmp() to match function names
+
+The functions specified by the user might be longer than the function in
+the backtrace, potentially overflowing the memcmp(). In practice, it
+should not be a relevant out-of-memory read. However, we can use
+strncmp() instead.
+
+Note that, as before, this is only a prefix match. If a function name is
+longer in the backtrace it will still match.
+
+Signed-off-by: Benjamin Berg <benjamin.berg@intel.com>
+---
+ src/utils/os_unix.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/src/utils/os_unix.c b/src/utils/os_unix.c
+index d5870669a..b665c79a2 100644
+--- a/src/utils/os_unix.c
++++ b/src/utils/os_unix.c
+@@ -611,7 +611,7 @@ int testing_test_fail(const char *tag, bool is_alloc)
+ 			len = next - pos;
+ 		else
+ 			len = os_strlen(pos);
+-		if (os_memcmp(pos, func[i], len) != 0) {
++		if (os_strncmp(pos, func[i], len) != 0) {
+ 			if (maybe && next) {
+ 				pos = next + 1;
+ 				continue;
+-- 
+2.43.0
+

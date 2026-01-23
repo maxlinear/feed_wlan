@@ -1,0 +1,98 @@
+From 63ac001ed2f0af48fcf9ba7cacb096fa0f020628 Mon Sep 17 00:00:00 2001
+From: Benjamin Berg <benjamin.berg@intel.com>
+Date: Mon, 29 Apr 2024 13:51:42 +0200
+Subject: [PATCH] WNM: Only trigger selection logic for own scans
+
+Commit e508c070c40e ("WNM: Keep BTM information until connection
+completes") changed the logic so that much of the information about a
+transition management request will be kept around for longer. However,
+doing this also implies that the scan logic can be called multiple times
+with wnm_dialog_token being set.
+
+Add a guard to bail out if the scan was not done for a BTM request. But,
+add it after the transition candidate validity check so that we reset
+the state when a new scan invalidated it.
+
+However, invalidation does not make sense for any scan, primarily an ML
+probe request during a connection attempt should not trigger
+invalidation. So move the call to wnm_scan_process() further down in the
+list to avoid issues.
+
+Signed-off-by: Benjamin Berg <benjamin.berg@intel.com>
+---
+ wpa_supplicant/events.c           | 6 +++---
+ wpa_supplicant/wnm_sta.c          | 7 +++++++
+ wpa_supplicant/wpa_supplicant_i.h | 1 +
+ 3 files changed, 11 insertions(+), 3 deletions(-)
+
+diff --git a/wpa_supplicant/events.c b/wpa_supplicant/events.c
+index ea1c60902..b0fb170af 100644
+--- a/wpa_supplicant/events.c
++++ b/wpa_supplicant/events.c
+@@ -2523,9 +2523,6 @@ static int _wpa_supplicant_event_scan_results(struct wpa_supplicant *wpa_s,
+ 		return 0;
+ 	}
+ 
+-	if (wnm_scan_process(wpa_s, false) > 0)
+-		goto scan_work_done;
+-
+ 	if (sme_proc_obss_scan(wpa_s) > 0)
+ 		goto scan_work_done;
+ 
+@@ -2555,6 +2552,9 @@ static int _wpa_supplicant_event_scan_results(struct wpa_supplicant *wpa_s,
+ 
+ 	wpas_wps_update_ap_info(wpa_s, scan_res);
+ 
++	if (wnm_scan_process(wpa_s, false) > 0)
++		goto scan_work_done;
++
+ 	if (wpa_s->wpa_state >= WPA_AUTHENTICATING &&
+ 	    wpa_s->wpa_state < WPA_COMPLETED)
+ 		goto scan_work_done;
+diff --git a/wpa_supplicant/wnm_sta.c b/wpa_supplicant/wnm_sta.c
+index 7dc93ebff..a383ed803 100644
+--- a/wpa_supplicant/wnm_sta.c
++++ b/wpa_supplicant/wnm_sta.c
+@@ -1192,6 +1192,11 @@ int wnm_scan_process(struct wpa_supplicant *wpa_s, bool pre_scan_check)
+ 		goto send_bss_resp_fail;
+ 	}
+ 
++	if (!pre_scan_check && !wpa_s->wnm_transition_scan)
++		return 0;
++
++	wpa_s->wnm_transition_scan = false;
++
+ 	/* Compare the Neighbor Report and scan results */
+ 	bss = compare_scan_neighbor_results(wpa_s, 0, &reason);
+ 
+@@ -1504,6 +1509,7 @@ static void ieee802_11_rx_bss_trans_mgmt_req(struct wpa_supplicant *wpa_s,
+ 		if (wpa_s->wnm_dissoc_timer && !wpa_s->scanning &&
+ 		    (!wpa_s->current_ssid || !wpa_s->current_ssid->bssid_set)) {
+ 			wpa_printf(MSG_DEBUG, "Trying to find another BSS");
++			wpa_s->wnm_transition_scan = true;
+ 			wpa_supplicant_req_scan(wpa_s, 0, 0);
+ 		}
+ 	}
+@@ -1617,6 +1623,7 @@ static void ieee802_11_rx_bss_trans_mgmt_req(struct wpa_supplicant *wpa_s,
+ 				   "WNM: Scan only for a specific BSSID since there is only a single candidate "
+ 				   MACSTR, MAC2STR(wpa_s->next_scan_bssid));
+ 		}
++		wpa_s->wnm_transition_scan = true;
+ 		wpa_supplicant_req_scan(wpa_s, 0, 0);
+ 	} else if (reply) {
+ 		enum bss_trans_mgmt_status_code status;
+diff --git a/wpa_supplicant/wpa_supplicant_i.h b/wpa_supplicant/wpa_supplicant_i.h
+index 275bbf221..e001699ac 100644
+--- a/wpa_supplicant/wpa_supplicant_i.h
++++ b/wpa_supplicant/wpa_supplicant_i.h
+@@ -1302,6 +1302,7 @@ struct wpa_supplicant {
+ 	u8 *mac_addr_pno;
+ 
+ #ifdef CONFIG_WNM
++	bool wnm_transition_scan;
+ 	u8 wnm_dialog_token;
+ 	u8 wnm_reply;
+ 	u8 wnm_num_neighbor_report;
+-- 
+2.43.0
+

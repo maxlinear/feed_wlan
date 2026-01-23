@@ -1,0 +1,32 @@
+From 6c3438eef6311a426c69304c0823b23f44649828 Mon Sep 17 00:00:00 2001
+From: Jouni Malinen <j@w1.fi>
+Date: Fri, 22 Dec 2023 10:57:04 +0200
+Subject: [PATCH] nl80211: Fix AP deinit path in error cases
+
+If the interface initialization fails, no links might be set when
+calling the deinit functions. Those functions need to be prepared for
+bss->flink being NULL.
+
+Fixes: 47269be36e61 ("nl80211: Refactor i802_bss to support multiple links")
+Signed-off-by: Jouni Malinen <j@w1.fi>
+---
+ src/drivers/driver_nl80211.c | 3 ++-
+ 1 file changed, 2 insertions(+), 1 deletion(-)
+
+diff --git a/src/drivers/driver_nl80211.c b/src/drivers/driver_nl80211.c
+index dbe092adf..4bebd6ed3 100644
+--- a/src/drivers/driver_nl80211.c
++++ b/src/drivers/driver_nl80211.c
+@@ -6135,7 +6135,8 @@ static void nl80211_teardown_ap(struct i802_bss *bss)
+ 		nl80211_mgmt_unsubscribe(bss, "AP teardown");
+ 
+ 	nl80211_put_wiphy_data_ap(bss);
+-	bss->flink->beacon_set = 0;
++	if (bss->flink)
++		bss->flink->beacon_set = 0;
+ }
+ 
+ 
+-- 
+2.43.0
+

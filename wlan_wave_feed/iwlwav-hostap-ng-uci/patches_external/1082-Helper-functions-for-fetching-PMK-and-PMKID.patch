@@ -1,0 +1,107 @@
+From 1525e84d4ba230fbc115422ec99fa8ef3fcdbd06 Mon Sep 17 00:00:00 2001
+From: Shivani Baranwal <quic_shivbara@quicinc.com>
+Date: Mon, 5 Aug 2024 12:03:44 +0530
+Subject: [PATCH] Helper functions for fetching PMK and PMKID
+
+These are needed to avoid direct use of struct rsn_pmksa_cache_entry
+which is defined differently for Authenticator and Supplicant.
+
+Signed-off-by: Shivani Baranwal <quic_shivbara@quicinc.com>
+---
+ src/ap/wpa_auth.c  | 20 ++++++++++++++++++++
+ src/ap/wpa_auth.h  |  3 +++
+ src/rsn_supp/wpa.c | 19 +++++++++++++++++++
+ src/rsn_supp/wpa.h |  2 ++
+ 4 files changed, 44 insertions(+)
+
+diff --git a/src/ap/wpa_auth.c b/src/ap/wpa_auth.c
+index d067b2cfa..5de4e09b7 100644
+--- a/src/ap/wpa_auth.c
++++ b/src/ap/wpa_auth.c
+@@ -6603,6 +6603,26 @@ wpa_auth_pmksa_get(struct wpa_authenticator *wpa_auth, const u8 *sta_addr,
+ }
+ 
+ 
++int wpa_auth_pmksa_get_pmk(struct wpa_authenticator *wpa_auth,
++			   const u8 *sta_addr, const u8 **pmk, size_t *pmk_len,
++			   const u8 **pmkid)
++{
++	struct rsn_pmksa_cache_entry *pmksa;
++
++	pmksa = wpa_auth_pmksa_get(wpa_auth, sta_addr, NULL);
++	if (!pmksa) {
++		wpa_printf(MSG_DEBUG, "RSN: Failed to get PMKSA for " MACSTR,
++			   MAC2STR(sta_addr));
++		return -1;
++	}
++
++	*pmk = pmksa->pmk;
++	*pmk_len = pmksa->pmk_len;
++	*pmkid = pmksa->pmkid;
++	return 0;
++}
++
++
+ void wpa_auth_pmksa_set_to_sm(struct rsn_pmksa_cache_entry *pmksa,
+ 			      struct wpa_state_machine *sm,
+ 			      struct wpa_authenticator *wpa_auth,
+diff --git a/src/ap/wpa_auth.h b/src/ap/wpa_auth.h
+index 82d09f097..9514e55b7 100644
+--- a/src/ap/wpa_auth.h
++++ b/src/ap/wpa_auth.h
+@@ -529,6 +529,9 @@ wpa_auth_get_pmksa_cache(struct wpa_authenticator *wpa_auth);
+ struct rsn_pmksa_cache_entry *
+ wpa_auth_pmksa_get(struct wpa_authenticator *wpa_auth, const u8 *sta_addr,
+ 		   const u8 *pmkid);
++int wpa_auth_pmksa_get_pmk(struct wpa_authenticator *wpa_auth,
++			   const u8 *sta_addr, const u8 **pmk, size_t *pmk_len,
++			   const u8 **pmkid);
+ struct rsn_pmksa_cache_entry *
+ wpa_auth_pmksa_get_fils_cache_id(struct wpa_authenticator *wpa_auth,
+ 				 const u8 *sta_addr, const u8 *pmkid);
+diff --git a/src/rsn_supp/wpa.c b/src/rsn_supp/wpa.c
+index e127093ca..9e4b0b219 100644
+--- a/src/rsn_supp/wpa.c
++++ b/src/rsn_supp/wpa.c
+@@ -5648,6 +5648,25 @@ struct rsn_pmksa_cache_entry * wpa_sm_pmksa_cache_get(struct wpa_sm *sm,
+ }
+ 
+ 
++int wpa_sm_pmksa_get_pmk(struct wpa_sm *sm, const u8 *aa, const u8 **pmk,
++			 size_t *pmk_len, const u8 **pmkid)
++{
++	struct rsn_pmksa_cache_entry *pmksa;
++
++	pmksa = wpa_sm_pmksa_cache_get(sm, aa, NULL, NULL, 0);
++	if (!pmksa) {
++		wpa_printf(MSG_DEBUG, "RSN: Failed to get PMKSA for " MACSTR,
++			   MAC2STR(aa));
++		return -1;
++	}
++
++	*pmk = pmksa->pmk;
++	*pmk_len = pmksa->pmk_len;
++	*pmkid = pmksa->pmkid;
++	return 0;
++}
++
++
+ void wpa_sm_pmksa_cache_remove(struct wpa_sm *sm,
+ 			       struct rsn_pmksa_cache_entry *entry)
+ {
+diff --git a/src/rsn_supp/wpa.h b/src/rsn_supp/wpa.h
+index 57ee0a635..a4a32ed28 100644
+--- a/src/rsn_supp/wpa.h
++++ b/src/rsn_supp/wpa.h
+@@ -256,6 +256,8 @@ struct rsn_pmksa_cache_entry * wpa_sm_pmksa_cache_get(struct wpa_sm *sm,
+ 						      const u8 *pmkid,
+ 						      const void *network_ctx,
+ 						      int akmp);
++int wpa_sm_pmksa_get_pmk(struct wpa_sm *sm, const u8 *aa, const u8 **pmk,
++			 size_t *pmk_len, const u8 **pmkid);
+ void wpa_sm_pmksa_cache_remove(struct wpa_sm *sm,
+ 			       struct rsn_pmksa_cache_entry *entry);
+ bool wpa_sm_has_ft_keys(struct wpa_sm *sm, const u8 *md);
+-- 
+2.43.0
+

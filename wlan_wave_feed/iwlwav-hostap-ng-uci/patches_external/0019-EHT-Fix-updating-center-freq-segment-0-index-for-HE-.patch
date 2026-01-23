@@ -1,0 +1,33 @@
+From 58116877b67126acc7870de08ccf6780c646a0e7 Mon Sep 17 00:00:00 2001
+From: Mikelis Vuls <mvuls@maxlinear.com>
+Date: Mon, 4 Dec 2023 12:27:48 +0000
+Subject: [PATCH] EHT: Fix updating center freq segment 0 index for HE and VHT
+
+Add additional check for 6 GHz operating class. Otherwise this results
+in setting incorrect segment 0 index for 5 GHz 40 MHz channel 157-161,
+which has the same center segment 0 index 159 as 6 GHz 320 MHz expected
+channel.
+
+Fixes: 085a3fc76e6b ("EHT: Add 320 channel width support")
+Signed-off-by: Mikelis Vuls <mvuls@maxlinear.com>
+---
+ src/ap/ap_config.h | 3 ++-
+ 1 file changed, 2 insertions(+), 1 deletion(-)
+
+diff --git a/src/ap/ap_config.h b/src/ap/ap_config.h
+index 9ecb6ee81..0bc799d3e 100644
+--- a/src/ap/ap_config.h
++++ b/src/ap/ap_config.h
+@@ -1241,7 +1241,8 @@ hostapd_set_oper_centr_freq_seg0_idx(struct hostapd_config *conf,
+ #ifdef CONFIG_IEEE80211BE
+ 	if (conf->ieee80211be)
+ 		conf->eht_oper_centr_freq_seg0_idx = oper_centr_freq_seg0_idx;
+-	if (center_idx_to_bw_6ghz(oper_centr_freq_seg0_idx) == 4)
++	if (is_6ghz_op_class(conf->op_class) &&
++	    center_idx_to_bw_6ghz(oper_centr_freq_seg0_idx) == 4)
+ 		oper_centr_freq_seg0_idx +=
+ 			conf->channel > oper_centr_freq_seg0_idx ? 16 : -16;
+ #endif /* CONFIG_IEEE80211BE */
+-- 
+2.43.0
+

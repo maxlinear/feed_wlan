@@ -1,0 +1,29 @@
+From 454a22daba4e6a34443e7b01341ba2528c9c1d85 Mon Sep 17 00:00:00 2001
+From: Jouni Malinen <quic_jouni@quicinc.com>
+Date: Thu, 11 Jul 2024 23:55:14 +0300
+Subject: [PATCH] tests: SSID verification using beacon protection
+
+Signed-off-by: Jouni Malinen <quic_jouni@quicinc.com>
+---
+ tests/hwsim/test_ap_pmf.py | 5 +++++
+ 1 file changed, 5 insertions(+)
+
+diff --git a/tests/hwsim/test_ap_pmf.py b/tests/hwsim/test_ap_pmf.py
+index 81782ebe2..f82ac1915 100644
+--- a/tests/hwsim/test_ap_pmf.py
++++ b/tests/hwsim/test_ap_pmf.py
+@@ -1449,6 +1449,11 @@ def run_ap_pmf_beacon_protection(dev, apdev, cipher):
+     if ev is not None:
+         raise Exception("Beacon loss detected")
+ 
++    # Verify that the SSID has been successfully verified from a protected
++    # Beacon frame.
++    if dev[0].get_status_field("ssid_verified") != "1":
++        raise Exception("ssid_verified=1 not in STATUS")
++
+ def test_ap_pmf_beacon_protection_mismatch(dev, apdev):
+     """WPA2-PSK Beacon protection MIC mismatch"""
+     run_ap_pmf_beacon_protection_mismatch(dev, apdev, False)
+-- 
+2.43.0
+

@@ -1,0 +1,260 @@
+From 2314a3569f032be87eb74ec68ef57c295251a6a5 Mon Sep 17 00:00:00 2001
+From: Jouni Malinen <quic_jouni@quicinc.com>
+Date: Tue, 16 Jan 2024 21:11:23 +0200
+Subject: [PATCH] Testing functionality for EAPOL-Key Key Data field encryption
+
+Allow the Key Data field to be encrypted in EAPOL-Key msg 2/4 and 4/4.
+This is for testing purposes to enable a convenient mechanism for
+testing Authenticator behavior with either potential future extensions
+or unexpected Supplicant behavior.
+
+Signed-off-by: Jouni Malinen <quic_jouni@quicinc.com>
+---
+ src/rsn_supp/wpa.c          | 94 +++++++++++++++++++++++++++++++++++++
+ src/rsn_supp/wpa.h          |  2 +
+ src/rsn_supp/wpa_i.h        |  2 +
+ wpa_supplicant/Android.mk   |  1 +
+ wpa_supplicant/Makefile     |  1 +
+ wpa_supplicant/ctrl_iface.c |  8 ++++
+ 6 files changed, 108 insertions(+)
+
+diff --git a/src/rsn_supp/wpa.c b/src/rsn_supp/wpa.c
+index e2e05eb45..6797d65d6 100644
+--- a/src/rsn_supp/wpa.c
++++ b/src/rsn_supp/wpa.c
+@@ -526,6 +526,9 @@ int wpa_supplicant_send_2_of_4(struct wpa_sm *sm, const unsigned char *dst,
+ 	u8 *rbuf, *key_mic;
+ 	u8 *rsn_ie_buf = NULL;
+ 	u16 key_info;
++#ifdef CONFIG_TESTING_OPTIONS
++	size_t pad_len = 0;
++#endif /* CONFIG_TESTING_OPTIONS */
+ 
+ 	if (wpa_ie == NULL) {
+ 		wpa_msg(sm->ctx->msg_ctx, MSG_WARNING, "WPA: No wpa_ie set - "
+@@ -576,6 +579,12 @@ int wpa_supplicant_send_2_of_4(struct wpa_sm *sm, const unsigned char *dst,
+ #ifdef CONFIG_TESTING_OPTIONS
+ 	if (sm->test_eapol_m2_elems)
+ 		extra_len = wpabuf_len(sm->test_eapol_m2_elems);
++	if (sm->encrypt_eapol_m2) {
++		pad_len = (wpa_ie_len + extra_len) % 8;
++		if (pad_len)
++			pad_len = 8 - pad_len;
++		extra_len += pad_len + 8;
++	}
+ #endif /* CONFIG_TESTING_OPTIONS */
+ 
+ 	mic_len = wpa_mic_len(sm->key_mgmt, sm->pmk_len);
+@@ -598,6 +607,10 @@ int wpa_supplicant_send_2_of_4(struct wpa_sm *sm, const unsigned char *dst,
+ 		key_info |= WPA_KEY_INFO_MIC;
+ 	else
+ 		key_info |= WPA_KEY_INFO_ENCR_KEY_DATA;
++#ifdef CONFIG_TESTING_OPTIONS
++	if (sm->encrypt_eapol_m2)
++		key_info |= WPA_KEY_INFO_ENCR_KEY_DATA;
++#endif /* CONFIG_TESTING_OPTIONS */
+ 	WPA_PUT_BE16(reply->key_info, key_info);
+ 	if (sm->proto == WPA_PROTO_RSN || sm->proto == WPA_PROTO_OSEN)
+ 		WPA_PUT_BE16(reply->key_length, 0);
+@@ -619,6 +632,37 @@ int wpa_supplicant_send_2_of_4(struct wpa_sm *sm, const unsigned char *dst,
+ 			  wpabuf_head(sm->test_eapol_m2_elems),
+ 			  wpabuf_len(sm->test_eapol_m2_elems));
+ 	}
++
++	if (sm->encrypt_eapol_m2) {
++		u8 *plain;
++		size_t plain_len;
++
++		if (sm->test_eapol_m2_elems)
++			extra_len = wpabuf_len(sm->test_eapol_m2_elems);
++		else
++			extra_len = 0;
++		plain_len = wpa_ie_len + extra_len + pad_len;
++		plain = os_memdup(key_mic + mic_len + 2, plain_len);
++		if (!plain) {
++			os_free(rbuf);
++			return -1;
++		}
++		if (pad_len)
++			plain[plain_len - pad_len] = 0xdd;
++
++		wpa_hexdump_key(MSG_DEBUG, "RSN: AES-WRAP using KEK",
++				ptk->kek, ptk->kek_len);
++		if (aes_wrap(ptk->kek, ptk->kek_len, plain_len / 8, plain,
++			     key_mic + mic_len + 2)) {
++			os_free(plain);
++			os_free(rbuf);
++			return -1;
++		}
++		wpa_hexdump(MSG_DEBUG,
++			    "RSN: Encrypted Key Data from AES-WRAP",
++			    key_mic + mic_len + 2, plain_len + 8);
++		os_free(plain);
++	}
+ #endif /* CONFIG_TESTING_OPTIONS */
+ 
+ 	os_memcpy(reply->key_nonce, nonce, WPA_NONCE_LEN);
+@@ -2168,6 +2212,9 @@ int wpa_supplicant_send_4_of_4(struct wpa_sm *sm, const unsigned char *dst,
+ 	u8 *rbuf, *key_mic;
+ 	u8 *kde = NULL;
+ 	size_t kde_len = 0, extra_len = 0;
++#ifdef CONFIG_TESTING_OPTIONS
++	size_t pad_len = 0;
++#endif /* CONFIG_TESTING_OPTIONS */
+ 
+ 	if (sm->mlo.valid_links) {
+ 		u8 *pos;
+@@ -2187,6 +2234,12 @@ int wpa_supplicant_send_4_of_4(struct wpa_sm *sm, const unsigned char *dst,
+ #ifdef CONFIG_TESTING_OPTIONS
+ 	if (sm->test_eapol_m4_elems)
+ 		extra_len = wpabuf_len(sm->test_eapol_m4_elems);
++	if (sm->encrypt_eapol_m4) {
++		pad_len = (kde_len + extra_len) % 8;
++		if (pad_len)
++			pad_len = 8 - pad_len;
++		extra_len += pad_len + 8;
++	}
+ #endif /* CONFIG_TESTING_OPTIONS */
+ 
+ 	mic_len = wpa_mic_len(sm->key_mgmt, sm->pmk_len);
+@@ -2208,6 +2261,10 @@ int wpa_supplicant_send_4_of_4(struct wpa_sm *sm, const unsigned char *dst,
+ 		key_info |= WPA_KEY_INFO_MIC;
+ 	else
+ 		key_info |= WPA_KEY_INFO_ENCR_KEY_DATA;
++#ifdef CONFIG_TESTING_OPTIONS
++	if (sm->encrypt_eapol_m4)
++		key_info |= WPA_KEY_INFO_ENCR_KEY_DATA;
++#endif /* CONFIG_TESTING_OPTIONS */
+ 	WPA_PUT_BE16(reply->key_info, key_info);
+ 	if (sm->proto == WPA_PROTO_RSN || sm->proto == WPA_PROTO_OSEN)
+ 		WPA_PUT_BE16(reply->key_length, 0);
+@@ -2230,6 +2287,37 @@ int wpa_supplicant_send_4_of_4(struct wpa_sm *sm, const unsigned char *dst,
+ 			  wpabuf_head(sm->test_eapol_m4_elems),
+ 			  wpabuf_len(sm->test_eapol_m4_elems));
+ 	}
++
++	if (sm->encrypt_eapol_m4) {
++		u8 *plain;
++		size_t plain_len;
++
++		if (sm->test_eapol_m4_elems)
++			extra_len = wpabuf_len(sm->test_eapol_m4_elems);
++		else
++			extra_len = 0;
++		plain_len = kde_len + extra_len + pad_len;
++		plain = os_memdup(key_mic + mic_len + 2, plain_len);
++		if (!plain) {
++			os_free(rbuf);
++			return -1;
++		}
++		if (pad_len)
++			plain[plain_len - pad_len] = 0xdd;
++
++		wpa_hexdump_key(MSG_DEBUG, "RSN: AES-WRAP using KEK",
++				ptk->kek, ptk->kek_len);
++		if (aes_wrap(ptk->kek, ptk->kek_len, plain_len / 8, plain,
++			     key_mic + mic_len + 2)) {
++			os_free(plain);
++			os_free(rbuf);
++			return -1;
++		}
++		wpa_hexdump(MSG_DEBUG,
++			    "RSN: Encrypted Key Data from AES-WRAP",
++			    key_mic + mic_len + 2, plain_len + 8);
++		os_free(plain);
++	}
+ #endif /* CONFIG_TESTING_OPTIONS */
+ 
+ 	wpa_dbg(sm->ctx->msg_ctx, MSG_DEBUG, "WPA: Sending EAPOL-Key 4/4");
+@@ -4585,6 +4673,12 @@ int wpa_sm_set_param(struct wpa_sm *sm, enum wpa_sm_conf_params param,
+ 	case WPA_PARAM_DISABLE_EAPOL_G2_TX:
+ 		sm->disable_eapol_g2_tx = value;
+ 		break;
++	case WPA_PARAM_ENCRYPT_EAPOL_M2:
++		sm->encrypt_eapol_m2 = value;
++		break;
++	case WPA_PARAM_ENCRYPT_EAPOL_M4:
++		sm->encrypt_eapol_m4 = value;
++		break;
+ #endif /* CONFIG_TESTING_OPTIONS */
+ #ifdef CONFIG_DPP2
+ 	case WPA_PARAM_DPP_PFS:
+diff --git a/src/rsn_supp/wpa.h b/src/rsn_supp/wpa.h
+index d99e5f676..3d2c2812e 100644
+--- a/src/rsn_supp/wpa.h
++++ b/src/rsn_supp/wpa.h
+@@ -132,6 +132,8 @@ enum wpa_sm_conf_params {
+ 	WPA_PARAM_OCI_FREQ_FT_ASSOC,
+ 	WPA_PARAM_OCI_FREQ_FILS_ASSOC,
+ 	WPA_PARAM_DISABLE_EAPOL_G2_TX,
++	WPA_PARAM_ENCRYPT_EAPOL_M2,
++	WPA_PARAM_ENCRYPT_EAPOL_M4,
+ };
+ 
+ struct rsn_supp_config {
+diff --git a/src/rsn_supp/wpa_i.h b/src/rsn_supp/wpa_i.h
+index aa1d739c5..f326f43e9 100644
+--- a/src/rsn_supp/wpa_i.h
++++ b/src/rsn_supp/wpa_i.h
+@@ -190,6 +190,8 @@ struct wpa_sm {
+ 	unsigned int oci_freq_override_ft_assoc;
+ 	unsigned int oci_freq_override_fils_assoc;
+ 	unsigned int disable_eapol_g2_tx;
++	bool encrypt_eapol_m2;
++	bool encrypt_eapol_m4;
+ #endif /* CONFIG_TESTING_OPTIONS */
+ 
+ #ifdef CONFIG_FILS
+diff --git a/wpa_supplicant/Android.mk b/wpa_supplicant/Android.mk
+index 287be70cb..c80c17a0b 100644
+--- a/wpa_supplicant/Android.mk
++++ b/wpa_supplicant/Android.mk
+@@ -1006,6 +1006,7 @@ endif
+ 
+ ifdef CONFIG_TESTING_OPTIONS
+ L_CFLAGS += -DCONFIG_TESTING_OPTIONS
++NEED_AES_WRAP=y
+ endif
+ 
+ ifdef NEED_RSN_AUTHENTICATOR
+diff --git a/wpa_supplicant/Makefile b/wpa_supplicant/Makefile
+index ff4237032..60042bcc7 100644
+--- a/wpa_supplicant/Makefile
++++ b/wpa_supplicant/Makefile
+@@ -64,6 +64,7 @@ ifdef CONFIG_TESTING_OPTIONS
+ CFLAGS += -DCONFIG_TESTING_OPTIONS
+ CONFIG_WPS_TESTING=y
+ CONFIG_TDLS_TESTING=y
++NEED_AES_WRAP=y
+ endif
+ 
+ mkconfig:
+diff --git a/wpa_supplicant/ctrl_iface.c b/wpa_supplicant/ctrl_iface.c
+index 8317b1a7a..99a8475f0 100644
+--- a/wpa_supplicant/ctrl_iface.c
++++ b/wpa_supplicant/ctrl_iface.c
+@@ -739,6 +739,12 @@ static int wpa_supplicant_ctrl_iface_set(struct wpa_supplicant *wpa_s,
+ 				wpa_s->ext_eapol_frame_io;
+ 		}
+ #endif /* CONFIG_AP */
++	} else if (os_strcasecmp(cmd, "encrypt_eapol_m2") == 0) {
++		wpa_sm_set_param(wpa_s->wpa, WPA_PARAM_ENCRYPT_EAPOL_M2,
++				 !!atoi(value));
++	} else if (os_strcasecmp(cmd, "encrypt_eapol_m4") == 0) {
++		wpa_sm_set_param(wpa_s->wpa, WPA_PARAM_ENCRYPT_EAPOL_M4,
++				 !!atoi(value));
+ 	} else if (os_strcasecmp(cmd, "extra_roc_dur") == 0) {
+ 		wpa_s->extra_roc_dur = atoi(value);
+ 	} else if (os_strcasecmp(cmd, "test_failure") == 0) {
+@@ -8854,6 +8860,8 @@ static void wpa_supplicant_ctrl_iface_flush(struct wpa_supplicant *wpa_s)
+ 	wpa_sm_set_test_assoc_ie(wpa_s->wpa, NULL);
+ 	wpa_sm_set_test_eapol_m2_elems(wpa_s->wpa, NULL);
+ 	wpa_sm_set_test_eapol_m4_elems(wpa_s->wpa, NULL);
++	wpa_sm_set_param(wpa_s->wpa, WPA_PARAM_ENCRYPT_EAPOL_M2, 0);
++	wpa_sm_set_param(wpa_s->wpa, WPA_PARAM_ENCRYPT_EAPOL_M4, 0);
+ 	os_free(wpa_s->get_pref_freq_list_override);
+ 	wpa_s->get_pref_freq_list_override = NULL;
+ 	wpabuf_free(wpa_s->sae_commit_override);
+-- 
+2.43.0
+

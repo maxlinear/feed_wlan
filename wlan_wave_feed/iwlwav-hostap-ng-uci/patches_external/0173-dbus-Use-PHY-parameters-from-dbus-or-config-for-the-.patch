@@ -1,0 +1,124 @@
+From 47e89935c756a9c05a938d42cf10064caed3a32c Mon Sep 17 00:00:00 2001
+From: Jintao Lin <jintaolin@chromium.org>
+Date: Mon, 18 Dec 2023 18:11:46 +0000
+Subject: [PATCH] dbus: Use PHY parameters from dbus or config for the GroupAdd
+ command
+
+Use the PHY parameters from configuration or the values passed in from
+the dbus API for P2P dbus command GroupAdd instead of using the hard
+coded values to be inline with the method provided with the
+wpa_supplicant control interface.
+
+Signed-off-by: Jintao Lin <jintaolin@chromium.org>
+---
+ doc/dbus.doxygen                            |  7 +++
+ wpa_supplicant/dbus/dbus_new_handlers_p2p.c | 49 ++++++++++++++++++---
+ 2 files changed, 50 insertions(+), 6 deletions(-)
+
+diff --git a/doc/dbus.doxygen b/doc/dbus.doxygen
+index 17d4df06a..386ecf2dc 100644
+--- a/doc/dbus.doxygen
++++ b/doc/dbus.doxygen
+@@ -1600,6 +1600,13 @@ Interface for performing P2P (Wi-Fi Peer-to-Peer) P2P Device operations.
+ 	<tr><td>persistent_group_object</td><td>o</td><td></td><td>no</td></tr>
+ 	<tr><td>frequency</td><td>i</td><td>Operating frequency in MHz</td><td>no</td></tr>
+ 	<tr><td>retry_limit</td><td>i</td><td>Optional limit on the number of scan attempts to join a group</td><td>no</td></tr>
++	<tr><td>ht40</td><td>b</td><td></td><td>no</td></tr>
++	<tr><td>vht</td><td>b</td><td></td><td>no</td></tr>
++	<tr><td>he</td><td>b</td><td></td><td>no</td></tr>
++	<tr><td>edmg</td><td>b</td><td></td><td>no</td></tr>
++	<tr><td>allow_6ghz</td><td>b</td><td></td><td>no</td></tr>
++	<tr><td>freq2</td><td>i</td><td>Center frequency in MHz for segment 2 when operating in 80 MHz + 80 MHz mode</td><td>no</td></tr>
++	<tr><td>max_oper_chwidth</td><td>i</td><td>Maximum operating channel width in MHz (20, 40, 80, 160, 320)</td><td>no</td></tr>
+ 	</table>
+       </dd>
+     </dl>
+diff --git a/wpa_supplicant/dbus/dbus_new_handlers_p2p.c b/wpa_supplicant/dbus/dbus_new_handlers_p2p.c
+index f805ffe20..16b2caad6 100644
+--- a/wpa_supplicant/dbus/dbus_new_handlers_p2p.c
++++ b/wpa_supplicant/dbus/dbus_new_handlers_p2p.c
+@@ -361,6 +361,12 @@ DBusMessage * wpas_dbus_handler_p2p_group_add(DBusMessage *message,
+ 	unsigned int group_id = 0;
+ 	struct wpa_ssid *ssid;
+ 	u8 go_bssid_buf[ETH_ALEN], *go_bssid = NULL;
++	bool allow_6ghz = false;
++	int vht = wpa_s->conf->p2p_go_vht;
++	int ht40 = wpa_s->conf->p2p_go_ht40 || vht;
++	int he = wpa_s->conf->p2p_go_he;
++	int edmg = wpa_s->conf->p2p_go_edmg;
++	int max_oper_chwidth, chwidth = 0, freq2 = 0;
+ 
+ 	dbus_message_iter_init(message, &iter);
+ 
+@@ -393,6 +399,28 @@ DBusMessage * wpas_dbus_handler_p2p_group_add(DBusMessage *message,
+ 			if (hwaddr_aton(entry.str_value, go_bssid_buf))
+ 				goto inv_args_clear;
+ 			go_bssid = go_bssid_buf;
++		} else if (os_strcmp(entry.key, "ht40") == 0 &&
++			   entry.type == DBUS_TYPE_BOOLEAN) {
++			ht40 = entry.bool_value;
++		} else if (os_strcmp(entry.key, "vht") == 0 &&
++			   entry.type == DBUS_TYPE_BOOLEAN) {
++			vht = entry.bool_value;
++			ht40 |= vht;
++		} else if (os_strcmp(entry.key, "he") == 0 &&
++			   entry.type == DBUS_TYPE_BOOLEAN) {
++			he = entry.bool_value;
++		} else if (os_strcmp(entry.key, "edmg") == 0 &&
++			   entry.type == DBUS_TYPE_BOOLEAN) {
++			edmg = entry.bool_value;
++		} else if (os_strcmp(entry.key, "allow_6ghz") == 0 &&
++			   entry.type == DBUS_TYPE_BOOLEAN) {
++			allow_6ghz = entry.bool_value;
++		} else if (os_strcmp(entry.key, "freq2") == 0 &&
++			   entry.type == DBUS_TYPE_INT32) {
++			freq2 = entry.int32_value;
++		} else if (os_strcmp(entry.key, "max_oper_chwidth") == 0 &&
++			   entry.type == DBUS_TYPE_INT32) {
++			chwidth = entry.int32_value;
+ 		} else {
+ 			goto inv_args_clear;
+ 		}
+@@ -400,6 +428,13 @@ DBusMessage * wpas_dbus_handler_p2p_group_add(DBusMessage *message,
+ 		wpa_dbus_dict_entry_clear(&entry);
+ 	}
+ 
++	max_oper_chwidth = chwidth_freq2_to_ch_width(chwidth, freq2);
++	if (max_oper_chwidth < 0)
++		goto inv_args;
++
++	if (allow_6ghz && chwidth == 40)
++		max_oper_chwidth = CONF_OPER_CHWIDTH_40MHZ_6GHZ;
++
+ 	wpa_s = wpa_s->global->p2p_init_wpa_s;
+ 	if (!wpa_s) {
+ 		reply = wpas_dbus_error_no_p2p_mgmt_iface(message);
+@@ -438,17 +473,19 @@ DBusMessage * wpas_dbus_handler_p2p_group_add(DBusMessage *message,
+ 		if (ssid == NULL || ssid->disabled != 2)
+ 			goto inv_args;
+ 
+-		if (wpas_p2p_group_add_persistent(wpa_s, ssid, 0, freq, 0, 0, 0,
+-						  0, 0, 0, 0, NULL, 0, 0,
+-						  false, retry_limit,
+-						  go_bssid)) {
++		if (wpas_p2p_group_add_persistent(wpa_s, ssid, 0, freq, 0,
++						  freq2, ht40, vht,
++						  max_oper_chwidth, he, edmg,
++						  NULL, 0, 0, allow_6ghz,
++						  retry_limit, go_bssid)) {
+ 			reply = wpas_dbus_error_unknown_error(
+ 				message,
+ 				"Failed to reinvoke a persistent group");
+ 			goto out;
+ 		}
+-	} else if (wpas_p2p_group_add(wpa_s, persistent_group, freq, 0, 0, 0,
+-				      0, 0, 0, false))
++	} else if (wpas_p2p_group_add(wpa_s, persistent_group, freq, freq2,
++				      ht40, vht, max_oper_chwidth, he, edmg,
++				      allow_6ghz))
+ 		goto inv_args;
+ 
+ out:
+-- 
+2.43.0
+

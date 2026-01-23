@@ -1,0 +1,32 @@
+From acd9332c3b71c0d6f3d3c36584950a1612f5147b Mon Sep 17 00:00:00 2001
+From: Matthew Wang <matthewmwang@chromium.org>
+Date: Tue, 4 Jun 2024 21:02:16 +0000
+Subject: [PATCH] Fix success check for triggering 6 GHz scan
+
+wpas_trigger_6ghz_scan() returns 1 on success and 0 on failure to
+trigger the scan. Checking the return value to be less than zero is not
+correct. This was supposed to check for success, i.e., greater than
+zero.
+
+Fixes: 42add3c27ba0 ("Scan 6 GHz channels after change to 6 GHz-allowed regdom")
+Signed-off-by: Matthew Wang <matthewmwang@chromium.org>
+---
+ wpa_supplicant/events.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/wpa_supplicant/events.c b/wpa_supplicant/events.c
+index 7b39813f3..530a13edd 100644
+--- a/wpa_supplicant/events.c
++++ b/wpa_supplicant/events.c
+@@ -2721,7 +2721,7 @@ static int wpas_select_network_from_last_scan(struct wpa_supplicant *wpa_s,
+ 				wpa_supplicant_rsn_preauth_scan_results(wpa_s);
+ 		} else if (own_request) {
+ 			if (wpa_s->support_6ghz && trigger_6ghz_scan && data &&
+-			    wpas_trigger_6ghz_scan(wpa_s, data) < 0)
++			    wpas_trigger_6ghz_scan(wpa_s, data) > 0)
+ 				return 1;
+ 
+ 			/*
+-- 
+2.43.0
+

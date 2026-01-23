@@ -1,0 +1,202 @@
+From 7c52ff140ae472dfa12d7d3717f33d781a7ea17c Mon Sep 17 00:00:00 2001
+From: Vinay Gannevaram <quic_vganneva@quicinc.com>
+Date: Thu, 12 Dec 2024 01:11:43 +0530
+Subject: [PATCH] P2P2: Allow P2P2 client to connect to GO with preconfigured
+ credentials
+
+A P2P2 GO in PCC mode will allow connecting P2P and P2P2 clients. Such
+GO can allow connections with P2P clients by skipping the provisioning
+procedure. Add support to allow P2P client to initiate such direct
+connection with preconfigured credentials.
+
+Signed-off-by: Vinay Gannevaram <quic_vganneva@quicinc.com>
+---
+ wpa_supplicant/ctrl_iface.c                 |  7 +++--
+ wpa_supplicant/dbus/dbus_new_handlers_p2p.c |  2 +-
+ wpa_supplicant/p2p_supplicant.c             | 34 ++++++++++++++++-----
+ wpa_supplicant/p2p_supplicant.h             |  2 +-
+ 4 files changed, 33 insertions(+), 12 deletions(-)
+
+diff --git a/wpa_supplicant/ctrl_iface.c b/wpa_supplicant/ctrl_iface.c
+index 3d15a7453..224f5175e 100644
+--- a/wpa_supplicant/ctrl_iface.c
++++ b/wpa_supplicant/ctrl_iface.c
+@@ -6378,7 +6378,7 @@ static int p2p_ctrl_connect(struct wpa_supplicant *wpa_s, char *cmd,
+ 	size_t group_ssid_len = 0;
+ 	int he;
+ 	bool allow_6ghz;
+-	bool p2p2;
++	bool p2p2, skip_prov;
+ 	u16 bootstrap = 0;
+ 	const char *password = NULL;
+ 	char *token, *context = NULL;
+@@ -6395,7 +6395,7 @@ static int p2p_ctrl_connect(struct wpa_supplicant *wpa_s, char *cmd,
+ 	 * [persistent|persistent=<network id>]
+ 	 * [join] [auth] [go_intent=<0..15>] [freq=<in MHz>] [provdisc]
+ 	 * [ht40] [vht] [he] [edmg] [auto] [ssid=<hexdump>]
+-	 * [p2p2] [bstrapmethod=<value>] [password=<string>]
++	 * [p2p2] [skip_prov] [bstrapmethod=<value>] [password=<string>]
+ 	 */
+ 
+ 	if (hwaddr_aton(cmd, addr))
+@@ -6431,6 +6431,7 @@ static int p2p_ctrl_connect(struct wpa_supplicant *wpa_s, char *cmd,
+ 	he = (os_strstr(cmd, " he") != NULL) || wpa_s->conf->p2p_go_he;
+ 	edmg = (os_strstr(cmd, " edmg") != NULL) || wpa_s->conf->p2p_go_edmg;
+ 	p2p2 = os_strstr(pos, " p2p2") != NULL;
++	skip_prov = os_strstr(pos, " skip_prov") != NULL;
+ 
+ 	pos2 = os_strstr(pos, " go_intent=");
+ 	if (pos2) {
+@@ -6522,7 +6523,7 @@ static int p2p_ctrl_connect(struct wpa_supplicant *wpa_s, char *cmd,
+ 				   auth, go_intent, freq, freq2, persistent_id,
+ 				   pd, ht40, vht, max_oper_chwidth, he, edmg,
+ 				   group_ssid, group_ssid_len, allow_6ghz, p2p2,
+-				   bootstrap, password);
++				   bootstrap, password, skip_prov);
+ 	if (new_pin == -2) {
+ 		os_memcpy(buf, "FAIL-CHANNEL-UNAVAILABLE\n", 25);
+ 		return 25;
+diff --git a/wpa_supplicant/dbus/dbus_new_handlers_p2p.c b/wpa_supplicant/dbus/dbus_new_handlers_p2p.c
+index e3df6fe84..ce49bce0b 100644
+--- a/wpa_supplicant/dbus/dbus_new_handlers_p2p.c
++++ b/wpa_supplicant/dbus/dbus_new_handlers_p2p.c
+@@ -707,7 +707,7 @@ DBusMessage * wpas_dbus_handler_p2p_connect(DBusMessage *message,
+ 	new_pin = wpas_p2p_connect(wpa_s, addr, pin, wps_method,
+ 				   persistent_group, 0, join, authorize_only,
+ 				   go_intent, freq, 0, -1, 0, 0, 0, 0, 0, 0,
+-				   NULL, 0, false, 0, 0, NULL);
++				   NULL, 0, false, 0, 0, NULL, false);
+ 
+ 	if (new_pin >= 0) {
+ 		char npin[9];
+diff --git a/wpa_supplicant/p2p_supplicant.c b/wpa_supplicant/p2p_supplicant.c
+index 379ac8e99..a6edbae96 100644
+--- a/wpa_supplicant/p2p_supplicant.c
++++ b/wpa_supplicant/p2p_supplicant.c
+@@ -2023,6 +2023,11 @@ static void wpas_start_gc(struct wpa_supplicant *wpa_s,
+ 
+ 		wpa_sm_pmksa_cache_add_entry(wpa_s->wpa, entry);
+ 		ssid->pmk_valid = true;
++	} else if (res->akmp == WPA_KEY_MGMT_SAE && res->sae_password[0]) {
++		ssid->auth_alg = WPA_AUTH_ALG_SAE;
++		ssid->sae_password = os_strdup(res->sae_password);
++		if (!ssid->sae_password)
++			return;
+ 	}
+ 
+ 	if (res->psk_set) {
+@@ -5283,7 +5288,7 @@ static void wpas_p2p_send_bootstrap_comeback(void *eloop_ctx, void *timeout_ctx)
+ 			 wpa_s->p2p_go_he,
+ 			 wpa_s->p2p_go_edmg,
+ 			 NULL, 0, is_p2p_allow_6ghz(wpa_s->global->p2p),
+-			 wpa_s->p2p2, wpa_s->p2p_bootstrap, NULL);
++			 wpa_s->p2p2, wpa_s->p2p_bootstrap, NULL, false);
+ }
+ 
+ 
+@@ -6158,7 +6163,8 @@ static void wpas_p2p_scan_res_join(struct wpa_supplicant *wpa_s,
+ 					 is_p2p_allow_6ghz(wpa_s->global->p2p),
+ 					 wpa_s->p2p2, wpa_s->p2p_bootstrap,
+ 					 wpa_s->pending_join_password[0] ?
+-					 wpa_s->pending_join_password : NULL);
++					 wpa_s->pending_join_password : NULL,
++					 false);
+ 			return;
+ 		}
+ 
+@@ -6517,6 +6523,8 @@ static int wpas_p2p_join_start(struct wpa_supplicant *wpa_s, int freq,
+ 			res.freq = bss->freq;
+ 			res.ssid_len = bss->ssid_len;
+ 			os_memcpy(res.ssid, bss->ssid, bss->ssid_len);
++			os_memcpy(res.peer_interface_addr, bss->bssid,
++				  ETH_ALEN);
+ 			wpa_printf(MSG_DEBUG, "P2P: Join target GO operating frequency from BSS table: %d MHz (SSID %s)",
+ 				   bss->freq,
+ 				   wpa_ssid_txt(bss->ssid, bss->ssid_len));
+@@ -6736,6 +6744,7 @@ static int wpas_p2p_check_6ghz(struct wpa_supplicant *wpa_s,
+  * @bootstrap: Requested bootstrap method for pairing in P2P2
+  * @password: Password for pairing setup or NULL for opportunistic method
+  *	in P2P2
++ * @skip_prov: Connect without provisioning
+  * Returns: 0 or new PIN (if pin was %NULL) on success, -1 on unspecified
+  *	failure, -2 on failure due to channel not currently available,
+  *	-3 if forced channel is not supported
+@@ -6748,7 +6757,7 @@ int wpas_p2p_connect(struct wpa_supplicant *wpa_s, const u8 *peer_addr,
+ 		     unsigned int vht_chwidth, int he, int edmg,
+ 		     const u8 *group_ssid, size_t group_ssid_len,
+ 		     bool allow_6ghz, bool p2p2, u16 bootstrap,
+-		     const char *password)
++		     const char *password, bool skip_prov)
+ {
+ 	int force_freq = 0, pref_freq = 0;
+ 	int ret = 0, res;
+@@ -6896,6 +6905,17 @@ int wpas_p2p_connect(struct wpa_supplicant *wpa_s, const u8 *peer_addr,
+ 		if (password)
+ 			os_strlcpy(wpa_s->pending_join_password, password,
+ 				   sizeof(wpa_s->pending_join_password));
++
++		if (skip_prov) {
++			if (!wpa_s->p2p2) {
++				wpa_printf(MSG_DEBUG,
++					   "P2P: Join without provisioning not supported");
++				return -1;
++			}
++			/* Start join operation immediately */
++			return wpas_p2p_join_start(wpa_s, 0, group_ssid,
++						   group_ssid_len);
++		}
+ 		if (wpas_p2p_join(wpa_s, iface_addr, dev_addr, wps_method,
+ 				  auto_join, freq,
+ 				  group_ssid, group_ssid_len) < 0)
+@@ -9704,7 +9724,7 @@ static int wpas_p2p_fallback_to_go_neg(struct wpa_supplicant *wpa_s,
+ 			 wpa_s->p2p_go_he,
+ 			 wpa_s->p2p_go_edmg,
+ 			 NULL, 0, is_p2p_allow_6ghz(wpa_s->global->p2p),
+-			 wpa_s->p2p2, wpa_s->p2p_bootstrap, NULL);
++			 wpa_s->p2p2, wpa_s->p2p_bootstrap, NULL, false);
+ 	return ret;
+ }
+ 
+@@ -10247,7 +10267,7 @@ static int wpas_p2p_nfc_join_group(struct wpa_supplicant *wpa_s,
+ 				wpa_s->p2p_go_he, wpa_s->p2p_go_edmg,
+ 				params->go_ssid_len ? params->go_ssid : NULL,
+ 				params->go_ssid_len, false, wpa_s->p2p2,
+-				wpa_s->p2p_bootstrap, NULL);
++				wpa_s->p2p_bootstrap, NULL, false);
+ }
+ 
+ 
+@@ -10327,7 +10347,7 @@ static int wpas_p2p_nfc_init_go_neg(struct wpa_supplicant *wpa_s,
+ 				-1, 0, 1, 1, wpa_s->p2p_go_max_oper_chwidth,
+ 				wpa_s->p2p_go_he, wpa_s->p2p_go_edmg,
+ 				NULL, 0, false, wpa_s->p2p2,
+-				wpa_s->p2p_bootstrap, NULL);
++				wpa_s->p2p_bootstrap, NULL, false);
+ }
+ 
+ 
+@@ -10345,7 +10365,7 @@ static int wpas_p2p_nfc_resp_go_neg(struct wpa_supplicant *wpa_s,
+ 			       -1, 0, 1, 1, wpa_s->p2p_go_max_oper_chwidth,
+ 			       wpa_s->p2p_go_he, wpa_s->p2p_go_edmg,
+ 			       NULL, 0, false, wpa_s->p2p2,
+-			       wpa_s->p2p_bootstrap, NULL);
++			       wpa_s->p2p_bootstrap, NULL, false);
+ 	if (res)
+ 		return res;
+ 
+diff --git a/wpa_supplicant/p2p_supplicant.h b/wpa_supplicant/p2p_supplicant.h
+index ced623d45..888bce529 100644
+--- a/wpa_supplicant/p2p_supplicant.h
++++ b/wpa_supplicant/p2p_supplicant.h
+@@ -40,7 +40,7 @@ int wpas_p2p_connect(struct wpa_supplicant *wpa_s, const u8 *peer_addr,
+ 		     unsigned int vht_chwidth, int he, int edmg,
+ 		     const u8 *group_ssid, size_t group_ssid_len,
+ 		     bool allow_6ghz, bool p2p2, u16 bootstrap,
+-		     const char *password);
++		     const char *password, bool skip_prov);
+ int wpas_p2p_handle_frequency_conflicts(struct wpa_supplicant *wpa_s,
+                                           int freq, struct wpa_ssid *ssid);
+ int wpas_p2p_group_add(struct wpa_supplicant *wpa_s, int persistent_group,
+-- 
+2.43.0
+

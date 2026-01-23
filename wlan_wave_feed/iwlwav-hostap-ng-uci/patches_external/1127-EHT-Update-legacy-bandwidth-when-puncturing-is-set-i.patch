@@ -1,0 +1,63 @@
+From 711e837fdf9aca16dc0ab259a8ed2e967a6efc92 Mon Sep 17 00:00:00 2001
+From: Govindaraj Saminathan <quic_gsaminat@quicinc.com>
+Date: Fri, 6 Dec 2024 10:01:49 +0530
+Subject: [PATCH] EHT: Update legacy bandwidth when puncturing is set in 320
+ MHz
+
+Update lower bandwidth without puncturing for legacy clients when
+the puncturing bitmap is set in 320 MHz. This updates the lower
+bandwidth in HE and VHT Operation elements when the puncturing
+bitmap is set in EHT 320 MHz.
+
+Signed-off-by: Govindaraj Saminathan <quic_gsaminat@quicinc.com>
+---
+ src/common/hw_features_common.c | 26 +++++++++++++++++++++++++-
+ 1 file changed, 25 insertions(+), 1 deletion(-)
+
+diff --git a/src/common/hw_features_common.c b/src/common/hw_features_common.c
+index bffb44078..2a541d5e9 100644
+--- a/src/common/hw_features_common.c
++++ b/src/common/hw_features_common.c
+@@ -432,6 +432,27 @@ static void punct_update_legacy_bw_160(u8 bitmap, u8 pri,
+ }
+ 
+ 
++static void punct_update_legacy_bw_320(u16 bitmap, u8 pri,
++				       enum oper_chan_width *width, u8 *seg0)
++{
++	if (pri < *seg0) {
++		*seg0 -= 16;
++		if (bitmap & 0x00FF) {
++			*width = 1;
++			punct_update_legacy_bw_160(bitmap & 0xFF, pri, width,
++						   seg0);
++		}
++	} else {
++		*seg0 += 16;
++		if (bitmap & 0xFF00) {
++			*width = 1;
++			punct_update_legacy_bw_160((bitmap & 0xFF00) >> 8,
++						   pri, width, seg0);
++		}
++	}
++}
++
++
+ void punct_update_legacy_bw(u16 bitmap, u8 pri, enum oper_chan_width *width,
+ 			    u8 *seg0, u8 *seg1)
+ {
+@@ -446,7 +467,10 @@ void punct_update_legacy_bw(u16 bitmap, u8 pri, enum oper_chan_width *width,
+ 		punct_update_legacy_bw_160(bitmap & 0xFF, pri, width, seg0);
+ 	}
+ 
+-	/* TODO: 320 MHz */
++	if (*width == CONF_OPER_CHWIDTH_320MHZ && (bitmap & 0xFFFF)) {
++		*width = CONF_OPER_CHWIDTH_160MHZ;
++		punct_update_legacy_bw_320(bitmap & 0xFFFF, pri, width, seg0);
++	}
+ }
+ 
+ 
+-- 
+2.43.0
+

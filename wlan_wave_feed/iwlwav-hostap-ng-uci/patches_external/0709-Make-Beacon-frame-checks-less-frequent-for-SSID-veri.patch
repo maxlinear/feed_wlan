@@ -1,0 +1,58 @@
+From 10236545325fed33533ee3af9d0d16f5e0df4568 Mon Sep 17 00:00:00 2001
+From: Jouni Malinen <quic_jouni@quicinc.com>
+Date: Fri, 12 Jul 2024 13:13:09 +0300
+Subject: [PATCH] Make Beacon frame checks less frequent for SSID verification
+
+Instead of checking the latest scan results every second indefinitely,
+add more latency between the checks in case the driver does not update
+the time stamp value (i.e., does not report new Beacon frames during an
+association).
+
+Signed-off-by: Jouni Malinen <quic_jouni@quicinc.com>
+---
+ wpa_supplicant/wpa_supplicant.c   | 9 ++++++---
+ wpa_supplicant/wpa_supplicant_i.h | 1 +
+ 2 files changed, 7 insertions(+), 3 deletions(-)
+
+diff --git a/wpa_supplicant/wpa_supplicant.c b/wpa_supplicant/wpa_supplicant.c
+index 64394029d..4fe15e4a3 100644
+--- a/wpa_supplicant/wpa_supplicant.c
++++ b/wpa_supplicant/wpa_supplicant.c
+@@ -980,9 +980,11 @@ static void wpas_verify_ssid_beacon(void *eloop_ctx, void *timeout_ctx)
+ 		/* TODO: Multiple BSSID element */
+ 	}
+ 
+-	if (wpa_s->beacons_checked < 16)
+-		eloop_register_timeout(1, 0, wpas_verify_ssid_beacon,
+-				       wpa_s, NULL);
++	if (wpa_s->beacons_checked < 16) {
++		eloop_register_timeout(wpa_s->next_beacon_check, 0,
++				       wpas_verify_ssid_beacon, wpa_s, NULL);
++		wpa_s->next_beacon_check++;
++	}
+ }
+ 
+ 
+@@ -1006,6 +1008,7 @@ static void wpas_verify_ssid_beacon_prot(struct wpa_supplicant *wpa_s)
+ 		   (long long unsigned int) bss->tsf);
+ 	wpa_s->first_beacon_tsf = bss->tsf;
+ 	wpa_s->beacons_checked = 0;
++	wpa_s->next_beacon_check = 1;
+ 	eloop_cancel_timeout(wpas_verify_ssid_beacon, wpa_s, NULL);
+ 	eloop_register_timeout(1, 0, wpas_verify_ssid_beacon, wpa_s, NULL);
+ }
+diff --git a/wpa_supplicant/wpa_supplicant_i.h b/wpa_supplicant/wpa_supplicant_i.h
+index de4b1923b..110a8648c 100644
+--- a/wpa_supplicant/wpa_supplicant_i.h
++++ b/wpa_supplicant/wpa_supplicant_i.h
+@@ -1614,6 +1614,7 @@ struct wpa_supplicant {
+ 	bool bigtk_set;
+ 	u64 first_beacon_tsf;
+ 	unsigned int beacons_checked;
++	unsigned int next_beacon_check;
+ };
+ 
+ 
+-- 
+2.43.0
+

@@ -1,0 +1,31 @@
+From 40b2558828b4dafcfeb832db6e50dea9d561174b Mon Sep 17 00:00:00 2001
+From: Jouni Malinen <quic_jouni@quicinc.com>
+Date: Thu, 21 Dec 2023 19:44:32 +0200
+Subject: [PATCH] PASN: Select the latest available BSS entry for a BSSID
+
+This is needed to work around some issues that show up mainly in testing
+scenarios when the same BSSID might be used with different
+configurations and the scan results from the driver might include both
+the old and new contents when two different SSIDs are used.
+
+Signed-off-by: Jouni Malinen <quic_jouni@quicinc.com>
+---
+ wpa_supplicant/pasn_supplicant.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/wpa_supplicant/pasn_supplicant.c b/wpa_supplicant/pasn_supplicant.c
+index edecfde8d..ea4d511d0 100644
+--- a/wpa_supplicant/pasn_supplicant.c
++++ b/wpa_supplicant/pasn_supplicant.c
+@@ -472,7 +472,7 @@ static struct wpa_bss * wpas_pasn_allowed(struct wpa_supplicant *wpa_s,
+ 		return NULL;
+ 	}
+ 
+-	bss = wpa_bss_get_bssid(wpa_s, peer_addr);
++	bss = wpa_bss_get_bssid_latest(wpa_s, peer_addr);
+ 	if (!bss) {
+ 		wpa_printf(MSG_DEBUG, "PASN: BSS not found");
+ 		return NULL;
+-- 
+2.43.0
+

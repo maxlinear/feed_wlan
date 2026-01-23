@@ -1,0 +1,30 @@
+From 58027cfecc40502dcf10d5631c34527bbdaadba5 Mon Sep 17 00:00:00 2001
+From: Jouni Malinen <j@w1.fi>
+Date: Sat, 13 Jan 2024 23:11:08 +0200
+Subject: [PATCH] WPS: Fix authorized MAC removal
+
+Missing array referencing ended up only the first entry in the list to
+be compared.
+
+Fixes: 31fcea931d91 ("WPS 2.0: Add support for AuthorizedMACs attribute")
+Signed-off-by: Jouni Malinen <j@w1.fi>
+---
+ src/wps/wps_registrar.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/src/wps/wps_registrar.c b/src/wps/wps_registrar.c
+index 9587293d0..2b9c469aa 100644
+--- a/src/wps/wps_registrar.c
++++ b/src/wps/wps_registrar.c
+@@ -259,7 +259,7 @@ static void wps_registrar_remove_authorized_mac(struct wps_registrar *reg,
+ 	wpa_printf(MSG_DEBUG, "WPS: Remove authorized MAC " MACSTR,
+ 		   MAC2STR(addr));
+ 	for (i = 0; i < WPS_MAX_AUTHORIZED_MACS; i++) {
+-		if (os_memcmp(reg->authorized_macs, addr, ETH_ALEN) == 0)
++		if (os_memcmp(reg->authorized_macs[i], addr, ETH_ALEN) == 0)
+ 			break;
+ 	}
+ 	if (i == WPS_MAX_AUTHORIZED_MACS) {
+-- 
+2.43.0
+

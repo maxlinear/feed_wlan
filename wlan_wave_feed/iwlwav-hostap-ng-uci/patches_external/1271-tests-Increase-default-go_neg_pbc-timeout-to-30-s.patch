@@ -1,0 +1,30 @@
+From a0a96013e50482fd55b9f161b909ef5e0e3aa319 Mon Sep 17 00:00:00 2001
+From: Benjamin Berg <benjamin.berg@intel.com>
+Date: Wed, 22 Jan 2025 13:14:19 +0200
+Subject: [PATCH] tests: Increase default go_neg_pbc timeout to 30 s
+
+Occasionally, the two device simply cannot find themselves within the 15
+seconds (20 s - 5 s). Increase the default timeout to avoid random test
+failures.
+
+Signed-off-by: Benjamin Berg <benjamin.berg@intel.com>
+---
+ tests/hwsim/p2p_utils.py | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/tests/hwsim/p2p_utils.py b/tests/hwsim/p2p_utils.py
+index c0db35a86..5bf4e03b6 100644
+--- a/tests/hwsim/p2p_utils.py
++++ b/tests/hwsim/p2p_utils.py
+@@ -335,7 +335,7 @@ def go_neg_init_pbc(i_dev, r_dev, i_intent, res, freq, provdisc, timeout=20):
+     res.put(i_res)
+ 
+ def go_neg_pbc(i_dev, r_dev, i_intent=None, r_intent=None, i_freq=None,
+-               r_freq=None, provdisc=False, r_listen=False, timeout=20):
++               r_freq=None, provdisc=False, r_listen=False, timeout=30):
+     if r_listen:
+         r_dev.p2p_listen()
+     else:
+-- 
+2.43.0
+

@@ -1,0 +1,139 @@
+From df8c5e22d732a7e357bf2b1a287967a0de6d7183 Mon Sep 17 00:00:00 2001
+From: Veerendranath Jakkam <quic_vjakkam@quicinc.com>
+Date: Tue, 13 Aug 2024 23:42:48 +0530
+Subject: [PATCH] RSNO: Always enable SNonce cookie and RSN Override elements
+ validation
+
+Always set SNonce cookie and enable RSN Override elements validation
+irrespective of the RSN Selection element usage in (Re)Association
+Request frame when RSN overriding supported.
+
+Signed-off-by: Veerendranath Jakkam <quic_vjakkam@quicinc.com>
+---
+ src/rsn_supp/wpa.c              | 21 +++++++++++++++++----
+ src/rsn_supp/wpa.h              |  1 +
+ src/rsn_supp/wpa_i.h            |  2 ++
+ wpa_supplicant/sme.c            |  2 ++
+ wpa_supplicant/wpa_supplicant.c |  2 ++
+ 5 files changed, 24 insertions(+), 4 deletions(-)
+
+diff --git a/src/rsn_supp/wpa.c b/src/rsn_supp/wpa.c
+index 67bfe7f60..06a0c1774 100644
+--- a/src/rsn_supp/wpa.c
++++ b/src/rsn_supp/wpa.c
+@@ -1023,7 +1023,7 @@ static void wpa_supplicant_process_1_of_4(struct wpa_sm *sm,
+ 				"WPA: Failed to get random data for SNonce");
+ 			goto failed;
+ 		}
+-		if (sm->rsn_override != RSN_OVERRIDE_NOT_USED)
++		if (wpa_sm_rsn_overriding_supported(sm))
+ 			rsn_set_snonce_cookie(sm->snonce);
+ 		sm->renew_snonce = 0;
+ 		wpa_hexdump(MSG_DEBUG, "WPA: Renewed SNonce",
+@@ -2228,8 +2228,7 @@ static int wpa_supplicant_validate_ie(struct wpa_sm *sm,
+ 		return -1;
+ 	}
+ 
+-	if (sm->proto == WPA_PROTO_RSN &&
+-	    sm->rsn_override != RSN_OVERRIDE_NOT_USED) {
++	if (sm->proto == WPA_PROTO_RSN && wpa_sm_rsn_overriding_supported(sm)) {
+ 		if ((sm->ap_rsne_override && !ie->rsne_override) ||
+ 		    (!sm->ap_rsne_override && ie->rsne_override) ||
+ 		    (sm->ap_rsne_override && ie->rsne_override &&
+@@ -2532,7 +2531,7 @@ static int wpa_supplicant_validate_link_kde(struct wpa_sm *sm, u8 link_id,
+ 		goto fail;
+ 	}
+ 
+-	if (sm->rsn_override == RSN_OVERRIDE_NOT_USED)
++	if (!wpa_sm_rsn_overriding_supported(sm))
+ 		return 0;
+ 
+ 	if (rsn_override_link_kde) {
+@@ -4991,6 +4990,9 @@ int wpa_sm_set_param(struct wpa_sm *sm, enum wpa_sm_conf_params param,
+ 	case WPA_PARAM_RSN_OVERRIDE:
+ 		sm->rsn_override = value;
+ 		break;
++	case WPA_PARAM_RSN_OVERRIDE_SUPPORT:
++		sm->rsn_override_support = value;
++		break;
+ 	default:
+ 		break;
+ 	}
+@@ -5099,6 +5101,17 @@ int wpa_sm_pmf_enabled(struct wpa_sm *sm)
+ }
+ 
+ 
++bool wpa_sm_rsn_overriding_supported(struct wpa_sm *sm)
++{
++	const u8 *rsne;
++	size_t rsne_len;
++
++	rsne = wpa_sm_get_ap_rsne(sm, &rsne_len);
++
++	return sm->rsn_override_support && rsne;
++}
++
++
+ int wpa_sm_ext_key_id(struct wpa_sm *sm)
+ {
+ 	return sm ? sm->ext_key_id : 0;
+diff --git a/src/rsn_supp/wpa.h b/src/rsn_supp/wpa.h
+index d85dd9ac9..9312018c5 100644
+--- a/src/rsn_supp/wpa.h
++++ b/src/rsn_supp/wpa.h
+@@ -138,6 +138,7 @@ enum wpa_sm_conf_params {
+ 	WPA_PARAM_FT_PREPEND_PMKID,
+ 	WPA_PARAM_SSID_PROTECTION,
+ 	WPA_PARAM_RSN_OVERRIDE,
++	WPA_PARAM_RSN_OVERRIDE_SUPPORT,
+ };
+ 
+ enum wpa_rsn_override {
+diff --git a/src/rsn_supp/wpa_i.h b/src/rsn_supp/wpa_i.h
+index 8ac4fe1eb..ef26b248f 100644
+--- a/src/rsn_supp/wpa_i.h
++++ b/src/rsn_supp/wpa_i.h
+@@ -233,6 +233,7 @@ struct wpa_sm {
+ 	bool driver_bss_selection;
+ 	bool ft_prepend_pmkid;
+ 
++	bool rsn_override_support;
+ 	enum wpa_rsn_override rsn_override;
+ };
+ 
+@@ -547,5 +548,6 @@ int wpa_derive_ptk_ft(struct wpa_sm *sm, const unsigned char *src_addr,
+ 
+ void wpa_tdls_assoc(struct wpa_sm *sm);
+ void wpa_tdls_disassoc(struct wpa_sm *sm);
++bool wpa_sm_rsn_overriding_supported(struct wpa_sm *sm);
+ 
+ #endif /* WPA_I_H */
+diff --git a/wpa_supplicant/sme.c b/wpa_supplicant/sme.c
+index 443b0b667..9b083cddd 100644
+--- a/wpa_supplicant/sme.c
++++ b/wpa_supplicant/sme.c
+@@ -2467,6 +2467,8 @@ mscs_fail:
+ 		wpa_s->sme.assoc_req_ie_len += multi_ap_ie_len;
+ 	}
+ 
++	wpa_sm_set_param(wpa_s->wpa, WPA_PARAM_RSN_OVERRIDE_SUPPORT,
++			 wpas_rsn_overriding(wpa_s));
+ 	wpa_sm_set_param(wpa_s->wpa, WPA_PARAM_RSN_OVERRIDE,
+ 			 RSN_OVERRIDE_NOT_USED);
+ 	if (wpas_rsn_overriding(wpa_s) &&
+diff --git a/wpa_supplicant/wpa_supplicant.c b/wpa_supplicant/wpa_supplicant.c
+index a15351e53..81858327b 100644
+--- a/wpa_supplicant/wpa_supplicant.c
++++ b/wpa_supplicant/wpa_supplicant.c
+@@ -3965,6 +3965,8 @@ mscs_end:
+ 		wpa_ie_len += multi_ap_ie_len;
+ 	}
+ 
++	wpa_sm_set_param(wpa_s->wpa, WPA_PARAM_RSN_OVERRIDE_SUPPORT,
++			 wpas_rsn_overriding(wpa_s));
+ 	wpa_sm_set_param(wpa_s->wpa, WPA_PARAM_RSN_OVERRIDE,
+ 			 RSN_OVERRIDE_NOT_USED);
+ 	if (wpas_rsn_overriding(wpa_s) &&
+-- 
+2.43.0
+

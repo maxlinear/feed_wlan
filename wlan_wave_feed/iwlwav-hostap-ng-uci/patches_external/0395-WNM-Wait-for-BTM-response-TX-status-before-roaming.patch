@@ -1,0 +1,210 @@
+From e164943f432c636108e5d7454f57ef0d3da0ed57 Mon Sep 17 00:00:00 2001
+From: Avraham Stern <avraham.stern@intel.com>
+Date: Tue, 20 Feb 2024 14:18:18 +0100
+Subject: [PATCH] WNM: Wait for BTM response TX status before roaming
+
+When accepting a BSS transition request there is a race between
+sending the response and roaming to the target AP. As a result,
+the response may not be sent because the station deauthenticated
+from the AP before the response was actually sent.
+
+To make sure the BSS transition response is sent, start roaming only
+after the TX status is received for the BSS transition response.
+
+Signed-off-by: Avraham Stern <avraham.stern@intel.com>
+Signed-off-by: Benjamin Berg <benjamin.berg@intel.com>
+---
+ wpa_supplicant/bss.c              |  5 +++
+ wpa_supplicant/events.c           |  7 ++++
+ wpa_supplicant/wnm_sta.c          | 58 ++++++++++++++++++++++++++-----
+ wpa_supplicant/wnm_sta.h          |  2 ++
+ wpa_supplicant/wpa_supplicant.c   |  1 +
+ wpa_supplicant/wpa_supplicant_i.h |  1 +
+ 6 files changed, 66 insertions(+), 8 deletions(-)
+
+diff --git a/wpa_supplicant/bss.c b/wpa_supplicant/bss.c
+index 9e34135e1..289035310 100644
+--- a/wpa_supplicant/bss.c
++++ b/wpa_supplicant/bss.c
+@@ -400,6 +400,11 @@ static int wpa_bss_in_use(struct wpa_supplicant *wpa_s, struct wpa_bss *bss)
+ 	if (bss == wpa_s->ml_connect_probe_bss)
+ 		return 1;
+ 
++#ifdef CONFIG_WNM
++	if (bss == wpa_s->wnm_target_bss)
++		return 1;
++#endif /* CONFIG_WNM */
++
+ 	if (wpa_s->current_bss &&
+ 	    (bss->ssid_len != wpa_s->current_bss->ssid_len ||
+ 	     os_memcmp(bss->ssid, wpa_s->current_bss->ssid,
+diff --git a/wpa_supplicant/events.c b/wpa_supplicant/events.c
+index d61512124..d18f43628 100644
+--- a/wpa_supplicant/events.c
++++ b/wpa_supplicant/events.c
+@@ -6140,6 +6140,13 @@ void wpa_supplicant_event(void *ctx, enum wpa_event_type event,
+ 			" type=%d stype=%d",
+ 			MAC2STR(data->tx_status.dst),
+ 			data->tx_status.type, data->tx_status.stype);
++#ifdef CONFIG_WNM
++		if (data->tx_status.type == WLAN_FC_TYPE_MGMT &&
++		    data->tx_status.stype == WLAN_FC_STYPE_ACTION &&
++		    wnm_btm_resp_tx_status(wpa_s, data->tx_status.data,
++					   data->tx_status.data_len) == 0)
++			break;
++#endif /* CONFIG_WNM */
+ #ifdef CONFIG_PASN
+ 		if (data->tx_status.type == WLAN_FC_TYPE_MGMT &&
+ 		    data->tx_status.stype == WLAN_FC_STYPE_AUTH &&
+diff --git a/wpa_supplicant/wnm_sta.c b/wpa_supplicant/wnm_sta.c
+index 652c6d0e7..a883feabb 100644
+--- a/wpa_supplicant/wnm_sta.c
++++ b/wpa_supplicant/wnm_sta.c
+@@ -1045,7 +1045,7 @@ static void wnm_add_cand_list(struct wpa_supplicant *wpa_s, struct wpabuf **buf)
+ 
+ #define BTM_RESP_MIN_SIZE	5 + ETH_ALEN
+ 
+-static void wnm_send_bss_transition_mgmt_resp(
++static int wnm_send_bss_transition_mgmt_resp(
+ 	struct wpa_supplicant *wpa_s, u8 dialog_token,
+ 	enum bss_trans_mgmt_status_code status,
+ 	enum mbo_transition_reject_reason reason,
+@@ -1061,14 +1061,14 @@ static void wnm_send_bss_transition_mgmt_resp(
+ 	if (!wpa_s->current_bss) {
+ 		wpa_printf(MSG_DEBUG,
+ 			   "WNM: Current BSS not known - drop response");
+-		return;
++		return -1;
+ 	}
+ 
+ 	buf = wpabuf_alloc(BTM_RESP_MIN_SIZE);
+ 	if (!buf) {
+ 		wpa_printf(MSG_DEBUG,
+ 			   "WNM: Failed to allocate memory for BTM response");
+-		return;
++		return -1;
+ 	}
+ 
+ 	wpa_s->bss_tm_status = status;
+@@ -1106,7 +1106,7 @@ static void wnm_send_bss_transition_mgmt_resp(
+ 				wpabuf_free(buf);
+ 				wpa_printf(MSG_DEBUG,
+ 					   "WNM: Failed to allocate memory for MBO IE");
+-				return;
++				return -1;
+ 			}
+ 
+ 			wpabuf_put_data(buf, mbo, ret);
+@@ -1123,6 +1123,8 @@ static void wnm_send_bss_transition_mgmt_resp(
+ 	}
+ 
+ 	wpabuf_free(buf);
++
++	return res;
+ }
+ 
+ 
+@@ -1141,12 +1143,19 @@ static void wnm_bss_tm_connect(struct wpa_supplicant *wpa_s,
+ 	/* Send the BSS Management Response - Accept */
+ 	if (wpa_s->wnm_reply) {
+ 		wpa_s->wnm_reply = 0;
++		wpa_s->wnm_target_bss = bss;
+ 		wpa_printf(MSG_DEBUG,
+ 			   "WNM: Sending successful BSS Transition Management Response");
+-		wnm_send_bss_transition_mgmt_resp(
+-			wpa_s, wpa_s->wnm_dialog_token, WNM_BSS_TM_ACCEPT,
+-			MBO_TRANSITION_REJECT_REASON_UNSPECIFIED, 0,
+-			bss->bssid);
++
++		/* This function will be called again from the TX handler to
++		 * start the actual reassociation after this response has been
++		 * delivered to the current AP. */
++		if (wnm_send_bss_transition_mgmt_resp(
++			    wpa_s, wpa_s->wnm_dialog_token,
++			    WNM_BSS_TM_ACCEPT,
++			    MBO_TRANSITION_REJECT_REASON_UNSPECIFIED, 0,
++			    bss->bssid) >= 0)
++			return;
+ 	}
+ 
+ 	if (bss == wpa_s->current_bss) {
+@@ -1634,6 +1643,39 @@ static void ieee802_11_rx_bss_trans_mgmt_req(struct wpa_supplicant *wpa_s,
+ }
+ 
+ 
++int wnm_btm_resp_tx_status(struct wpa_supplicant *wpa_s, const u8 *data,
++			   size_t data_len)
++{
++	const struct ieee80211_mgmt *frame =
++		(const struct ieee80211_mgmt *) data;
++
++	if (data_len <
++	    IEEE80211_HDRLEN + sizeof(frame->u.action.u.bss_tm_resp) ||
++	    frame->u.action.category != WLAN_ACTION_WNM ||
++	    frame->u.action.u.bss_tm_resp.action != WNM_BSS_TRANS_MGMT_RESP ||
++	    frame->u.action.u.bss_tm_resp.status_code != WNM_BSS_TM_ACCEPT)
++		return -1;
++
++	/*
++	 * If disassoc imminent bit was set in the request, the response may
++	 * indicate accept even if no candidate was found, so bail out here.
++	 */
++	if (!wpa_s->wnm_target_bss) {
++		wpa_printf(MSG_DEBUG, "WNM: Target BSS is not set");
++		return 0;
++	}
++
++	if (!wpa_s->current_ssid)
++		return 0;
++
++	wnm_bss_tm_connect(wpa_s, wpa_s->wnm_target_bss, wpa_s->current_ssid,
++			   0);
++
++	wpa_s->wnm_target_bss = NULL;
++	return 0;
++}
++
++
+ #define BTM_QUERY_MIN_SIZE	4
+ 
+ int wnm_send_bss_transition_mgmt_query(struct wpa_supplicant *wpa_s,
+diff --git a/wpa_supplicant/wnm_sta.h b/wpa_supplicant/wnm_sta.h
+index 2eaa2964f..08662f433 100644
+--- a/wpa_supplicant/wnm_sta.h
++++ b/wpa_supplicant/wnm_sta.h
+@@ -72,6 +72,8 @@ void wnm_set_coloc_intf_elems(struct wpa_supplicant *wpa_s,
+ 			      struct wpabuf *elems);
+ bool wnm_is_bss_excluded(struct wpa_supplicant *wpa_s, struct wpa_bss *bss);
+ 
++int wnm_btm_resp_tx_status(struct wpa_supplicant *wpa_s, const u8 *data,
++			   size_t data_len);
+ 
+ #ifdef CONFIG_WNM
+ 
+diff --git a/wpa_supplicant/wpa_supplicant.c b/wpa_supplicant/wpa_supplicant.c
+index c19ab810a..679ff2012 100644
+--- a/wpa_supplicant/wpa_supplicant.c
++++ b/wpa_supplicant/wpa_supplicant.c
+@@ -2503,6 +2503,7 @@ void wpa_supplicant_associate(struct wpa_supplicant *wpa_s,
+ #endif /* CONFIG_NO_WMM_AC */
+ #ifdef CONFIG_WNM
+ 	wpa_s->wnm_mode = 0;
++	wpa_s->wnm_target_bss = NULL;
+ #endif /* CONFIG_WNM */
+ 	wpa_s->reassoc_same_bss = 0;
+ 	wpa_s->reassoc_same_ess = 0;
+diff --git a/wpa_supplicant/wpa_supplicant_i.h b/wpa_supplicant/wpa_supplicant_i.h
+index 7a35df950..513fcaadc 100644
+--- a/wpa_supplicant/wpa_supplicant_i.h
++++ b/wpa_supplicant/wpa_supplicant_i.h
+@@ -1310,6 +1310,7 @@ struct wpa_supplicant {
+ 	struct neighbor_report *wnm_neighbor_report_elements;
+ 	struct os_reltime wnm_cand_valid_until;
+ 	u8 wnm_cand_from_bss[ETH_ALEN];
++	struct wpa_bss *wnm_target_bss;
+ 	enum bss_trans_mgmt_status_code bss_tm_status;
+ 	bool bss_trans_mgmt_in_progress;
+ 	struct wpabuf *coloc_intf_elems;
+-- 
+2.43.0
+

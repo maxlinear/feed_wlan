@@ -1,0 +1,27 @@
+From 5c07e9be0e1c5468a56cdf37fe2ecbaa5fd7b197 Mon Sep 17 00:00:00 2001
+From: Juliusz Sosinowicz <juliusz@wolfssl.com>
+Date: Thu, 4 Apr 2024 20:16:23 +0200
+Subject: [PATCH] wolfssl: Add missing return in tls_init() in an error case
+
+This is a fatal error and processing cannot continue further.
+
+Signed-off-by: Juliusz Sosinowicz <juliusz@wolfssl.com>
+---
+ src/crypto/tls_wolfssl.c | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/src/crypto/tls_wolfssl.c b/src/crypto/tls_wolfssl.c
+index 8b05e7b06..13b036ec3 100644
+--- a/src/crypto/tls_wolfssl.c
++++ b/src/crypto/tls_wolfssl.c
+@@ -403,6 +403,7 @@ void * tls_init(const struct tls_config *conf)
+ 			os_free(tls_global);
+ 			tls_global = NULL;
+ 		}
++		return NULL;
+ 	}
+ 	wolfSSL_SetIORecv(ssl_ctx, wolfssl_receive_cb);
+ 	wolfSSL_SetIOSend(ssl_ctx, wolfssl_send_cb);
+-- 
+2.43.0
+

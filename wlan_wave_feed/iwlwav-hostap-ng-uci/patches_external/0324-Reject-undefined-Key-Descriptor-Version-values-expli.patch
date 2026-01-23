@@ -1,0 +1,36 @@
+From bd1e0789968ad713dd8674d0f5555d0c56a93f7b Mon Sep 17 00:00:00 2001
+From: Jouni Malinen <j@w1.fi>
+Date: Sun, 28 Jan 2024 11:22:47 +0200
+Subject: [PATCH] Reject undefined Key Descriptor Version values explicitly
+
+Check that the EAPOL-Key frame Key Descriptor Version value is one of
+the defined values explicitly instead of failing to process the Key Data
+field later (or end up ignoring the unexpected value if no processing of
+Key Data is needed).
+
+Signed-off-by: Jouni Malinen <j@w1.fi>
+---
+ src/ap/wpa_auth.c | 7 +++++++
+ 1 file changed, 7 insertions(+)
+
+diff --git a/src/ap/wpa_auth.c b/src/ap/wpa_auth.c
+index 84cd4a4d1..dac9e7ed2 100644
+--- a/src/ap/wpa_auth.c
++++ b/src/ap/wpa_auth.c
+@@ -1229,6 +1229,13 @@ void wpa_receive(struct wpa_authenticator *wpa_auth,
+ 		msgtxt = "2/4 Pairwise";
+ 	}
+ 
++	if (ver > WPA_KEY_INFO_TYPE_AES_128_CMAC) {
++		wpa_printf(MSG_INFO, "RSN: " MACSTR
++			   " used undefined Key Descriptor Version %d",
++			   MAC2STR(wpa_auth_get_spa(sm)), ver);
++		goto out;
++	}
++
+ 	if (!wpa_use_akm_defined(sm->wpa_key_mgmt) &&
+ 	    wpa_use_cmac(sm->wpa_key_mgmt) &&
+ 	    ver != WPA_KEY_INFO_TYPE_AES_128_CMAC) {
+-- 
+2.43.0
+

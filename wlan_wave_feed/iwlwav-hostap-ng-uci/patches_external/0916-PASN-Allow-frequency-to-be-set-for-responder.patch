@@ -1,0 +1,37 @@
+From a6fd2467b9eb2e17b323e136fb082b9dd0e258b5 Mon Sep 17 00:00:00 2001
+From: Shivani Baranwal <quic_shivbara@quicinc.com>
+Date: Mon, 5 Aug 2024 02:43:59 +0530
+Subject: [PATCH] PASN: Allow frequency to be set for responder
+
+This will be needed for P2P2 cases.
+
+Signed-off-by: Shivani Baranwal <quic_shivbara@quicinc.com>
+---
+ src/pasn/pasn_responder.c | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/src/pasn/pasn_responder.c b/src/pasn/pasn_responder.c
+index 1c08136cb..e344898df 100644
+--- a/src/pasn/pasn_responder.c
++++ b/src/pasn/pasn_responder.c
+@@ -473,7 +473,7 @@ static void handle_auth_pasn_comeback(struct pasn_data *pasn,
+ 		   "PASN: comeback: STA=" MACSTR, MAC2STR(peer_addr));
+ 
+ 	ret = pasn->send_mgmt(pasn->cb_ctx, wpabuf_head_u8(buf),
+-			      wpabuf_len(buf), 0, 0, 0);
++			      wpabuf_len(buf), 0, pasn->freq, 0);
+ 	if (ret)
+ 		wpa_printf(MSG_INFO, "PASN: Failed to send comeback frame 2");
+ 
+@@ -638,7 +638,7 @@ done:
+ 		   MAC2STR(peer_addr));
+ 
+ 	ret = pasn->send_mgmt(pasn->cb_ctx, wpabuf_head_u8(buf),
+-			      wpabuf_len(buf), 0, 0, 0);
++			      wpabuf_len(buf), 0, pasn->freq, 0);
+ 	if (ret)
+ 		wpa_printf(MSG_INFO, "send_auth_reply: Send failed");
+ 
+-- 
+2.43.0
+

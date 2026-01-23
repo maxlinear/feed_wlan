@@ -1,0 +1,66 @@
+From 7a0501d20df9322c83895c7e163e359c5000b864 Mon Sep 17 00:00:00 2001
+From: Aditya Kumar Singh <quic_adisi@quicinc.com>
+Date: Wed, 6 Mar 2024 12:09:43 +0530
+Subject: [PATCH] AP MLD: Refresh beacons for other links when one gets
+ disabled/enabled
+
+If one or more BSS from the interface is partnering with BSSs from
+another interface and if this interface gets disabled, the Beacon frames
+need to be refreshed for other interfaces. Similar thing should happen
+when it gets enabled.
+
+Add logic to refresh other interface Beacon frames when one of the
+interfaces is disabled or enabled.
+
+Signed-off-by: Aditya Kumar Singh <quic_adisi@quicinc.com>
+---
+ src/ap/hostapd.c | 19 +++++++++++++++++++
+ 1 file changed, 19 insertions(+)
+
+diff --git a/src/ap/hostapd.c b/src/ap/hostapd.c
+index 1e40e86ed..f94b89e8f 100644
+--- a/src/ap/hostapd.c
++++ b/src/ap/hostapd.c
+@@ -3355,6 +3355,22 @@ static void hostapd_deinit_driver(const struct wpa_driver_ops *driver,
+ }
+ 
+ 
++static void hostapd_refresh_all_iface_beacons(struct hostapd_iface *hapd_iface)
++{
++	size_t j;
++
++	if (!hapd_iface->interfaces || hapd_iface->interfaces->count <= 1)
++		return;
++
++	for (j = 0; j < hapd_iface->interfaces->count; j++) {
++		if (hapd_iface->interfaces->iface[j] == hapd_iface)
++			continue;
++
++		ieee802_11_update_beacons(hapd_iface->interfaces->iface[j]);
++	}
++}
++
++
+ int hostapd_enable_iface(struct hostapd_iface *hapd_iface)
+ {
+ 	size_t j;
+@@ -3393,6 +3409,8 @@ int hostapd_enable_iface(struct hostapd_iface *hapd_iface)
+ 		return -1;
+ 	}
+ 
++	hostapd_refresh_all_iface_beacons(hapd_iface);
++
+ 	return 0;
+ }
+ 
+@@ -3504,6 +3522,7 @@ int hostapd_disable_iface(struct hostapd_iface *hapd_iface)
+ 	wpa_printf(MSG_DEBUG, "Interface %s disabled",
+ 		   hapd_iface->bss[0]->conf->iface);
+ 	hostapd_set_state(hapd_iface, HAPD_IFACE_DISABLED);
++	hostapd_refresh_all_iface_beacons(hapd_iface);
+ 	return 0;
+ }
+ 
+-- 
+2.43.0
+

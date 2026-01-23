@@ -1,0 +1,58 @@
+From 89455cc078b15dda745d7b1d17f382b02be20ca6 Mon Sep 17 00:00:00 2001
+From: Aditya Kodukula <quic_akodukul@quicinc.com>
+Date: Mon, 4 Nov 2024 10:19:09 -0800
+Subject: [PATCH] Add new QCA vendor attributes for TWT setup parameters
+
+Add downlink and uplink TID vendor attributes to enum
+qca_wlan_vendor_attr_twt_setup for setting up restricted TWT schedules.
+Extend the range of Broadcast TWT Recommendation field values to include
+the new value 4 defined in IEEE P802.11be/D7.0.
+
+Signed-off-by: Jouni Malinen <quic_jouni@quicinc.com>
+---
+ src/common/qca-vendor.h | 13 ++++++++++++-
+ 1 file changed, 12 insertions(+), 1 deletion(-)
+
+diff --git a/src/common/qca-vendor.h b/src/common/qca-vendor.h
+index 0265ab9d1..bc6b5d270 100644
+--- a/src/common/qca-vendor.h
++++ b/src/common/qca-vendor.h
+@@ -11036,9 +11036,10 @@ enum qca_wlan_twt_session_suspendable {
+  * The Broadcast TWT Recommendation subfield contains a value that indicates
+  * recommendations on the types of frames that are transmitted by TWT
+  * scheduled STAs and scheduling AP during the broadcast TWT SP.
+- * The allowed values are 0 - 3.
++ * The allowed values are 0 - 4.
+  * This parameter is used for
+  * 1. TWT SET Request
++ * 2. R-TWT SET Request
+  *
+  * @QCA_WLAN_VENDOR_ATTR_TWT_SETUP_BCAST_PERSISTENCE: Optional (u8)
+  * This attribute is used to configure Broadcast TWT Persistence.
+@@ -11080,6 +11081,14 @@ enum qca_wlan_twt_session_suspendable {
+  * Refers the enum qca_wlan_twt_session_suspendable.
+  * This parameter is used for
+  * 1. TWT SET Response
++ *
++ * @QCA_WLAN_VENDOR_ATTR_TWT_SETUP_RTWT_DOWNLINK_TID_BITMAP: Optional (u32)
++ * This attribute is used to configure downlink TIDs for R-TWT scheduling.
++ * This attribute only applicable when requesting R-TWT schedules.
++ *
++ * @QCA_WLAN_VENDOR_ATTR_TWT_SETUP_RTWT_UPLINK_TID_BITMAP: Optional (u32)
++ * This attribute is used to configure uplink TIDs for R-TWT scheduling.
++ * This attribute only applicable when requesting R-TWT schedules.
+  */
+ 
+ enum qca_wlan_vendor_attr_twt_setup {
+@@ -11119,6 +11128,8 @@ enum qca_wlan_vendor_attr_twt_setup {
+ 
+ 	QCA_WLAN_VENDOR_ATTR_TWT_SETUP_PAD = 27,
+ 	QCA_WLAN_VENDOR_ATTR_TWT_SETUP_SUSPENDABLE = 28,
++	QCA_WLAN_VENDOR_ATTR_TWT_SETUP_RTWT_DOWNLINK_TID_BITMAP = 29,
++	QCA_WLAN_VENDOR_ATTR_TWT_SETUP_RTWT_UPLINK_TID_BITMAP = 30,
+ 
+ 	/* keep last */
+ 	QCA_WLAN_VENDOR_ATTR_TWT_SETUP_AFTER_LAST,
+-- 
+2.43.0
+

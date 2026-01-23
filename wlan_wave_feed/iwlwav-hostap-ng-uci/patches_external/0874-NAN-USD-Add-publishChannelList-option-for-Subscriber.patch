@@ -1,0 +1,108 @@
+From 25c6598f308ea89cf9ccc90c32dc63d9c0e4efa9 Mon Sep 17 00:00:00 2001
+From: Shivani Baranwal <quic_shivbara@quicinc.com>
+Date: Mon, 5 Aug 2024 15:03:04 +0530
+Subject: [PATCH] NAN USD: Add publishChannelList option for Subscriber
+
+Add frequency list to active NAN USD Subscriber to search for a
+Publisher on multiple channels. This is the publish channel list used by
+the Subscriber to periodically search for a service on these channels.
+publishChannelList was already supported in the Publisher and this
+commit extends that to the Subscriber.
+
+This is needed for a P2P2 seeker that is an active subscriber looking
+for an advertiser on a list of publish channels.
+
+Signed-off-by: Shivani Baranwal <quic_shivbara@quicinc.com>
+---
+ src/common/nan_de.c         | 11 +++++++++++
+ src/common/nan_de.h         |  3 +++
+ wpa_supplicant/ctrl_iface.c | 23 +++++++++++++++++++++++
+ 3 files changed, 37 insertions(+)
+
+diff --git a/src/common/nan_de.c b/src/common/nan_de.c
+index c7294c59d..5e79b8c16 100644
+--- a/src/common/nan_de.c
++++ b/src/common/nan_de.c
+@@ -1358,6 +1358,17 @@ int nan_de_subscribe(struct nan_de *de, const char *service_name,
+ 	if (nan_de_derive_service_id(srv) < 0)
+ 		goto fail;
+ 	os_memcpy(&srv->subscribe, params, sizeof(*params));
++
++	if (params->freq_list) {
++		size_t len;
++
++		len = (int_array_len(params->freq_list) + 1) * sizeof(int);
++		srv->freq_list = os_memdup(params->freq_list, len);
++		if (!srv->freq_list)
++			goto fail;
++	}
++	srv->subscribe.freq_list = NULL;
++
+ 	srv->srv_proto_type = srv_proto_type;
+ 	if (ssi) {
+ 		srv->ssi = wpabuf_dup(ssi);
+diff --git a/src/common/nan_de.h b/src/common/nan_de.h
+index bdac284b4..73f6c9c61 100644
+--- a/src/common/nan_de.h
++++ b/src/common/nan_de.h
+@@ -125,6 +125,9 @@ struct nan_subscribe_params {
+ 	/* Selected frequency */
+ 	unsigned int freq;
+ 
++	/* Multi-channel frequencies (publishChannelList) */
++	const int *freq_list;
++
+ 	/* Query period in ms; 0 = use default */
+ 	unsigned int query_period;
+ };
+diff --git a/wpa_supplicant/ctrl_iface.c b/wpa_supplicant/ctrl_iface.c
+index f3d74a869..743e42e51 100644
+--- a/wpa_supplicant/ctrl_iface.c
++++ b/wpa_supplicant/ctrl_iface.c
+@@ -12373,6 +12373,7 @@ static int wpas_ctrl_nan_subscribe(struct wpa_supplicant *wpa_s, char *cmd,
+ 	struct wpabuf *ssi = NULL;
+ 	int ret = -1;
+ 	enum nan_service_protocol_type srv_proto_type = 0;
++	int *freq_list = NULL;
+ 	bool p2p = false;
+ 
+ 	os_memset(&params, 0, sizeof(params));
+@@ -12399,6 +12400,27 @@ static int wpas_ctrl_nan_subscribe(struct wpa_supplicant *wpa_s, char *cmd,
+ 			continue;
+ 		}
+ 
++		if (os_strncmp(token, "freq_list=", 10) == 0) {
++			char *pos = token + 10;
++
++			if (os_strcmp(pos, "all") == 0) {
++				os_free(freq_list);
++				freq_list = wpas_nan_usd_all_freqs(wpa_s);
++				params.freq_list = freq_list;
++				continue;
++			}
++
++			while (pos && pos[0]) {
++				int_array_add_unique(&freq_list, atoi(pos));
++				pos = os_strchr(pos, ',');
++				if (pos)
++					pos++;
++			}
++
++			params.freq_list = freq_list;
++			continue;
++		}
++
+ 		if (os_strncmp(token, "srv_proto_type=", 15) == 0) {
+ 			srv_proto_type = atoi(token + 15);
+ 			continue;
+@@ -12431,6 +12453,7 @@ static int wpas_ctrl_nan_subscribe(struct wpa_supplicant *wpa_s, char *cmd,
+ 		ret = os_snprintf(buf, buflen, "%d", subscribe_id);
+ fail:
+ 	wpabuf_free(ssi);
++	os_free(freq_list);
+ 	return ret;
+ }
+ 
+-- 
+2.43.0
+

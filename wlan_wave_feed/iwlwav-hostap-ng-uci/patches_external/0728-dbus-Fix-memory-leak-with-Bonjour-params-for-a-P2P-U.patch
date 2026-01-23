@@ -1,0 +1,214 @@
+From aa2dfae5ebee879f2aadfc672699869c0f43a2ab Mon Sep 17 00:00:00 2001
+From: Davide Caratti <davide.caratti@gmail.com>
+Date: Thu, 18 Jul 2024 18:23:49 +0200
+Subject: [PATCH] dbus: Fix memory leak with Bonjour params for a P2P UPnP
+ service
+
+Using D-Bus, it is possible to add a valid UPnP service where 'query'
+and 'response' are specified. In this case, memory for 'query' and
+'response' is allocated but not used nor freed. Valgrind complains as
+follows:
+
+ 42 bytes in 1 blocks are definitely lost in loss record 32 of 75
+    at 0x484C214: calloc (vg_replace_malloc.c:1675)
+    by 0x41C673: wpabuf_alloc (wpabuf.c:124)
+    by 0x41C673: wpabuf_alloc_copy (wpabuf.c:162)
+    by 0x54F41A: wpas_dbus_handler_p2p_add_service (dbus_new_handlers_p2p.c:2762)
+    by 0x53B9A2: msg_method_handler (dbus_new_helpers.c:356)
+    by 0x53B9A2: message_handler (dbus_new_helpers.c:412)
+    by 0x4EAB4B8: dbus_connection_dispatch (in /usr/lib64/libdbus-1.so.3.19.13)
+    by 0x5495DF: dispatch_data (dbus_common.c:37)
+    by 0x5495DF: process_watch (dbus_common.c:73)
+    by 0x5495DF: process_watch_read (dbus_common.c:89)
+    by 0x41EE8E: eloop_sock_table_dispatch.part.0 (eloop.c:603)
+    by 0x41FA46: eloop_sock_table_dispatch (eloop.c:597)
+    by 0x41FA46: eloop_run (eloop.c:1233)
+    by 0x56A3CE: wpa_supplicant_run (wpa_supplicant.c:8074)
+    by 0x40DB06: main (main.c:393)
+
+ 49 bytes in 1 blocks are definitely lost in loss record 37 of 75
+    at 0x484C214: calloc (vg_replace_malloc.c:1675)
+    by 0x41C673: wpabuf_alloc (wpabuf.c:124)
+    by 0x41C673: wpabuf_alloc_copy (wpabuf.c:162)
+    by 0x54F348: wpas_dbus_handler_p2p_add_service (dbus_new_handlers_p2p.c:2755)
+    by 0x53B9A2: msg_method_handler (dbus_new_helpers.c:356)
+    by 0x53B9A2: message_handler (dbus_new_helpers.c:412)
+    by 0x4EAB4B8: dbus_connection_dispatch (in /usr/lib64/libdbus-1.so.3.19.13)
+    by 0x5495DF: dispatch_data (dbus_common.c:37)
+    by 0x5495DF: process_watch (dbus_common.c:73)
+    by 0x5495DF: process_watch_read (dbus_common.c:89)
+    by 0x41EE8E: eloop_sock_table_dispatch.part.0 (eloop.c:603)
+    by 0x41FA46: eloop_sock_table_dispatch (eloop.c:597)
+    by 0x41FA46: eloop_run (eloop.c:1233)
+    by 0x56A3CE: wpa_supplicant_run (wpa_supplicant.c:8074)
+    by 0x40DB06: main (main.c:393)
+
+Fix this ensuring that query and resp are freed both in the error and
+non-error path of wpas_dbus_handler_p2p_add_service(). Also, add a test
+in test_dbus.py to verify the correct behavior.
+
+Signed-off-by: Davide Caratti <davide.caratti@gmail.com>
+---
+ tests/hwsim/test_dbus.py                    | 14 ++++++-
+ wpa_supplicant/ctrl_iface.c                 | 43 +++++++++------------
+ wpa_supplicant/dbus/dbus_new_handlers_p2p.c | 12 +++---
+ wpa_supplicant/p2p_supplicant_sd.c          | 14 ++++++-
+ 4 files changed, 49 insertions(+), 34 deletions(-)
+
+diff --git a/tests/hwsim/test_dbus.py b/tests/hwsim/test_dbus.py
+index 2c59d7fb7..454c1c86f 100644
+--- a/tests/hwsim/test_dbus.py
++++ b/tests/hwsim/test_dbus.py
+@@ -3406,12 +3406,22 @@ def test_dbus_p2p_service_discovery(dev, apdev):
+     bonjour_query = dbus.ByteArray(binascii.unhexlify('0b5f6166706f766572746370c00c000c01'))
+     bonjour_response = dbus.ByteArray(binascii.unhexlify('074578616d706c65c027'))
+ 
++    tests = [{'service_type': 'bonjour',
++              'query': bonjour_query,
++              'response': bonjour_response},
++             {'service_type': 'upnp',
++              'version': 0x10,
++              'service': 'uuid:6859dede-8574-59ab-9332-123456789012::upnp:rootdevice',
++              'query': bonjour_query,
++              'response': bonjour_response}]
++    for args in tests:
++        p2p.AddService(args)
++        p2p.FlushService()
++
+     args = {'service_type': 'bonjour',
+             'query': bonjour_query,
+             'response': bonjour_response}
+     p2p.AddService(args)
+-    p2p.FlushService()
+-    p2p.AddService(args)
+ 
+     try:
+         p2p.DeleteService(args)
+diff --git a/wpa_supplicant/ctrl_iface.c b/wpa_supplicant/ctrl_iface.c
+index f939583c4..bcbcb258f 100644
+--- a/wpa_supplicant/ctrl_iface.c
++++ b/wpa_supplicant/ctrl_iface.c
+@@ -6740,6 +6740,7 @@ static int p2p_ctrl_service_add_bonjour(struct wpa_supplicant *wpa_s,
+ 	char *pos;
+ 	size_t len;
+ 	struct wpabuf *query, *resp;
++	int ret;
+ 
+ 	pos = os_strchr(cmd, ' ');
+ 	if (pos == NULL)
+@@ -6753,34 +6754,28 @@ static int p2p_ctrl_service_add_bonjour(struct wpa_supplicant *wpa_s,
+ 	query = wpabuf_alloc(len);
+ 	if (query == NULL)
+ 		return -1;
+-	if (hexstr2bin(cmd, wpabuf_put(query, len), len) < 0) {
+-		wpabuf_free(query);
+-		return -1;
+-	}
+-
++	ret = hexstr2bin(cmd, wpabuf_put(query, len), len);
++	if (ret < 0)
++		goto err_query;
++	ret = -1;
+ 	len = os_strlen(pos);
+-	if (len & 1) {
+-		wpabuf_free(query);
+-		return -1;
+-	}
++	if (len & 1)
++		goto err_query;
+ 	len /= 2;
+ 	resp = wpabuf_alloc(len);
+-	if (resp == NULL) {
+-		wpabuf_free(query);
+-		return -1;
+-	}
+-	if (hexstr2bin(pos, wpabuf_put(resp, len), len) < 0) {
+-		wpabuf_free(query);
+-		wpabuf_free(resp);
+-		return -1;
+-	}
++	if (!resp)
++		goto err_query;
++	ret = hexstr2bin(pos, wpabuf_put(resp, len), len);
++	if (ret < 0)
++		goto err_resp;
+ 
+-	if (wpas_p2p_service_add_bonjour(wpa_s, query, resp) < 0) {
+-		wpabuf_free(query);
+-		wpabuf_free(resp);
+-		return -1;
+-	}
+-	return 0;
++	ret = wpas_p2p_service_add_bonjour(wpa_s, query, resp);
++
++err_resp:
++	wpabuf_free(resp);
++err_query:
++	wpabuf_free(query);
++	return ret;
+ }
+ 
+ 
+diff --git a/wpa_supplicant/dbus/dbus_new_handlers_p2p.c b/wpa_supplicant/dbus/dbus_new_handlers_p2p.c
+index 5d55ede5e..418a8fd42 100644
+--- a/wpa_supplicant/dbus/dbus_new_handlers_p2p.c
++++ b/wpa_supplicant/dbus/dbus_new_handlers_p2p.c
+@@ -2778,20 +2778,20 @@ DBusMessage * wpas_dbus_handler_p2p_add_service(DBusMessage *message,
+ 
+ 		if (wpas_p2p_service_add_bonjour(wpa_s, query, resp) < 0)
+ 			goto error;
+-		query = NULL;
+-		resp = NULL;
+ 	} else
+ 		goto error;
+ 
++out:
+ 	os_free(service);
++	wpabuf_free(query);
++	wpabuf_free(resp);
++
+ 	return reply;
+ error_clear:
+ 	wpa_dbus_dict_entry_clear(&entry);
+ error:
+-	os_free(service);
+-	wpabuf_free(query);
+-	wpabuf_free(resp);
+-	return wpas_dbus_error_invalid_args(message, NULL);
++	reply = wpas_dbus_error_invalid_args(message, NULL);
++	goto out;
+ }
+ 
+ 
+diff --git a/wpa_supplicant/p2p_supplicant_sd.c b/wpa_supplicant/p2p_supplicant_sd.c
+index b400cbaca..1e2a733a4 100644
+--- a/wpa_supplicant/p2p_supplicant_sd.c
++++ b/wpa_supplicant/p2p_supplicant_sd.c
+@@ -1213,12 +1213,22 @@ int wpas_p2p_service_add_bonjour(struct wpa_supplicant *wpa_s,
+ 	bsrv = os_zalloc(sizeof(*bsrv));
+ 	if (bsrv == NULL)
+ 		return -1;
+-	bsrv->query = query;
+-	bsrv->resp = resp;
++	bsrv->query = wpabuf_dup(query);
++	if (!bsrv->query)
++		goto error_bsrv;
++	bsrv->resp = wpabuf_dup(resp);
++	if (!bsrv->resp)
++		goto error_query;
+ 	dl_list_add(&wpa_s->global->p2p_srv_bonjour, &bsrv->list);
+ 
+ 	wpas_p2p_sd_service_update(wpa_s);
+ 	return 0;
++
++error_query:
++	wpabuf_free(bsrv->query);
++error_bsrv:
++	os_free(bsrv);
++	return -1;
+ }
+ 
+ 
+-- 
+2.43.0
+

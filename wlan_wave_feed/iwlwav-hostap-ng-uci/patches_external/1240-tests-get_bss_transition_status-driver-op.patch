@@ -1,0 +1,207 @@
+From 42fe546e038f4615270f7b084e2929e438903e3c Mon Sep 17 00:00:00 2001
+From: Benjamin Berg <benjamin.berg@intel.com>
+Date: Thu, 19 Sep 2024 12:19:15 +0200
+Subject: [PATCH] tests: get_bss_transition_status() driver op
+
+Add some testing coverage for the BSS transition candidate processing by
+the driver for MBO.
+
+Signed-off-by: Benjamin Berg <benjamin.berg@intel.com>
+---
+ src/drivers/driver_nl80211.c | 60 ++++++++++++++++++++++++++++-
+ src/utils/os_unix.c          |  2 +-
+ tests/hwsim/test_wnm.py      | 73 ++++++++++++++++++++++++++++++++++++
+ 3 files changed, 132 insertions(+), 3 deletions(-)
+
+diff --git a/src/drivers/driver_nl80211.c b/src/drivers/driver_nl80211.c
+index 68f22234f..c139cfef2 100644
+--- a/src/drivers/driver_nl80211.c
++++ b/src/drivers/driver_nl80211.c
+@@ -13392,7 +13392,7 @@ nl80211_get_bss_transition_status_handler(struct nl_msg *msg, void *arg)
+ 
+ 
+ static struct wpa_bss_candidate_info *
+-nl80211_get_bss_transition_status(void *priv, struct wpa_bss_trans_info *params)
++qca_get_bss_transition_status(void *priv, struct wpa_bss_trans_info *params)
+ {
+ 	struct i802_bss *bss = priv;
+ 	struct wpa_driver_nl80211_data *drv = bss->drv;
+@@ -14072,6 +14072,60 @@ static int nl80211_do_acs(void *priv, struct drv_acs_params *params)
+ }
+ 
+ 
++#ifdef CONFIG_MBO
++static struct wpa_bss_candidate_info *
++nl80211_get_bss_transition_status(void *priv, struct wpa_bss_trans_info *params)
++{
++#if defined(WPA_TRACE_BFD) && defined(CONFIG_TESTING_OPTIONS)
++	/* This only exists for testing purposes, disable unless requested */
++	if (TEST_FAIL_TAG("simulate")) {
++		struct wpa_bss_candidate_info *info;
++		int i;
++
++		info = os_zalloc(sizeof(*info));
++		if (!info)
++			return NULL;
++
++		info->candidates = os_calloc(params->n_candidates,
++					     sizeof(*info->candidates));
++		if (!info->candidates) {
++			os_free(info);
++			return NULL;
++		}
++
++		info->num = params->n_candidates;
++		for (i = 0; i < params->n_candidates; i++) {
++			char bssid_str[ETH_ALEN * 3];
++
++			os_memcpy(info->candidates[i].bssid,
++				  &params->bssid[i * ETH_ALEN], ETH_ALEN);
++
++			os_snprintf(bssid_str, sizeof(bssid_str), MACSTR,
++				    MAC2STR(info->candidates[i].bssid));
++
++			if (TEST_FAIL_TAG(bssid_str)) {
++				info->candidates[i].is_accept = 0;
++				info->candidates[i].reject_reason =
++					MBO_TRANSITION_REJECT_REASON_FRAME_LOSS;
++			} else {
++				info->candidates[i].is_accept = 1;
++				info->candidates[i].reject_reason = 0;
++			}
++		}
++
++		return info;
++	}
++#endif /* defined(WPA_TRACE_BFD) && defined(CONFIG_TESTING_OPTIONS) */
++
++#ifdef CONFIG_DRIVER_NL80211_QCA
++	return qca_get_bss_transition_status(priv, params);
++#else /* CONFIG_DRIVER_NL80211_QCA */
++	return NULL;
++#endif /* CONFIG_DRIVER_NL80211_QCA */
++}
++#endif /* CONFIG_MBO */
++
++
+ static int nl80211_write_to_file(const char *name, unsigned int val)
+ {
+ 	int fd, len;
+@@ -14820,7 +14874,6 @@ const struct wpa_driver_ops wpa_driver_nl80211_ops = {
+ 	.set_default_scan_ies = nl80211_set_default_scan_ies,
+ 	.set_tdls_mode = nl80211_set_tdls_mode,
+ #ifdef CONFIG_MBO
+-	.get_bss_transition_status = nl80211_get_bss_transition_status,
+ 	.ignore_assoc_disallow = nl80211_ignore_assoc_disallow,
+ #endif /* CONFIG_MBO */
+ 	.set_bssid_tmp_disallow = nl80211_set_bssid_tmp_disallow,
+@@ -14839,6 +14892,9 @@ const struct wpa_driver_ops wpa_driver_nl80211_ops = {
+ #endif /* CONFIG_NAN_USD */
+ #endif /* CONFIG_DRIVER_NL80211_QCA */
+ 	.do_acs = nl80211_do_acs,
++#ifdef CONFIG_MBO
++	.get_bss_transition_status = nl80211_get_bss_transition_status,
++#endif /* CONFIG_MBO */
+ 	.configure_data_frame_filters = nl80211_configure_data_frame_filters,
+ 	.get_ext_capab = nl80211_get_ext_capab,
+ 	.get_mld_capab = nl80211_get_mld_capab,
+diff --git a/src/utils/os_unix.c b/src/utils/os_unix.c
+index 679f3a0dc..cabfd87c0 100644
+--- a/src/utils/os_unix.c
++++ b/src/utils/os_unix.c
+@@ -543,7 +543,7 @@ void * os_memdup(const void *src, size_t len)
+ struct wpa_trace_test_fail {
+ 	unsigned int fail_after;
+ 	char pattern[256];
+-} wpa_trace_test_fail[5][2];
++} wpa_trace_test_fail[5][4];
+ 
+ int testing_test_fail(const char *tag, bool is_alloc)
+ {
+diff --git a/tests/hwsim/test_wnm.py b/tests/hwsim/test_wnm.py
+index bf4243a46..cfe813e40 100644
+--- a/tests/hwsim/test_wnm.py
++++ b/tests/hwsim/test_wnm.py
+@@ -1027,6 +1027,79 @@ def test_wnm_bss_tm(dev, apdev):
+     finally:
+         clear_regdom_state(dev, hapd, hapd2)
+ 
++def test_wnm_bss_tm_drv_processing(dev, apdev):
++    """WNM BSS Transition Management - driver processing of candidates"""
++    try:
++        hapd = None
++        hapd2 = None
++        hapd = start_wnm_ap(apdev[0], country_code="FI")
++        dev[0].flush_scan_cache()
++        id = dev[0].connect("test-wnm", key_mgmt="NONE", scan_freq="2412")
++        dev[0].set_network(id, "scan_freq", "")
++
++        hapd2 = start_wnm_ap(apdev[1], country_code="FI", hw_mode="a",
++                             channel="36")
++
++        addr = dev[0].own_addr()
++        dev[0].dump_monitor()
++        # The following two tests exercise the MBO target querying to the driver
++        dev[0].flush_scan_cache()
++        logger.info("BTM request with candidate list and all are valid, roams because MBO is enabled and the driver rejects current")
++        with fail_test(dev[0], 1, "simulate;nl80211_get_bss_transition_status",
++                       1, apdev[0]['bssid'] + ";nl80211_get_bss_transition_status",
++                       # Second time post-scan
++                       1, "simulate;nl80211_get_bss_transition_status",
++                       1, apdev[0]['bssid'] + ";nl80211_get_bss_transition_status"):
++            if "OK" not in hapd.request("BSS_TM_REQ " + addr + " pref=1 abridged=1 mbo=3:0:1 valid_int=255 neighbor=" + apdev[0]['bssid'] + ",0x0000,81,1,7,0301ff neighbor=" + apdev[1]['bssid'] + ",0x0000,115,36,7,0301ff"):
++                raise Exception("BSS_TM_REQ command failed")
++            ev = hapd.wait_event(['BSS-TM-RESP'], timeout=10)
++            if ev is None:
++                raise Exception("No BSS Transition Management Response")
++        if "status_code=0" not in ev:
++            raise Exception("BSS transition request was not accepted: " + ev)
++        if "target_bssid=" + apdev[1]['bssid'] not in ev:
++            raise Exception("Unexpected target BSS: " + ev)
++        # This scans only one frequency
++        scan_ev = dev[0].wait_event(["CTRL-EVENT-SCAN-STARTED"], timeout=1)
++        if scan_ev is None:
++            raise Exception("Expected scan not started")
++        dev[0].wait_connected(timeout=15, error="No reassociation seen")
++        if apdev[1]['bssid'] not in ev:
++            raise Exception("Unexpected reassociation target: " + ev)
++        ev = dev[0].wait_event(["CTRL-EVENT-SCAN-STARTED"], timeout=0.1)
++        if ev is not None:
++            raise Exception("Unexpected scan started")
++
++        dev[0].flush_scan_cache()
++        logger.info("BTM request with candidate list forcing other AP through disassoc imminent, the driver does MBO reject, but still roams")
++        with fail_test(dev[0], 1, "simulate;nl80211_get_bss_transition_status",
++                       1, apdev[0]['bssid'] + ";nl80211_get_bss_transition_status",
++                       # And a second time post-scan
++                       1, "simulate;nl80211_get_bss_transition_status",
++                       1, apdev[0]['bssid'] + ";nl80211_get_bss_transition_status"):
++            if "OK" not in hapd2.request("BSS_TM_REQ " + addr + " disassoc_imminent=1 pref=1 abridged=1 mbo=3:5:1 valid_int=255 neighbor=" + apdev[0]['bssid'] + ",0x0000,81,1,7,0301ff"):
++                raise Exception("BSS_TM_REQ command failed")
++            ev = hapd2.wait_event(['BSS-TM-RESP'], timeout=10)
++            if ev is None:
++                raise Exception("No BSS Transition Management Response")
++        if "status_code=0" not in ev:
++            raise Exception("BSS transition request was not accepted: " + ev)
++        if "target_bssid=" + apdev[0]['bssid'] not in ev:
++            raise Exception("Unexpected target BSS: " + ev)
++        # This scans only one frequency
++        scan_ev = dev[0].wait_event(["CTRL-EVENT-SCAN-STARTED"], timeout=1)
++        if scan_ev is None:
++            raise Exception("Expected scan not started")
++        dev[0].wait_connected(timeout=15, error="No reassociation seen")
++        if apdev[0]['bssid'] not in ev:
++            raise Exception("Unexpected reassociation target: " + ev)
++        ev = dev[0].wait_event(["CTRL-EVENT-SCAN-STARTED"], timeout=0.1)
++        if ev is not None:
++            raise Exception("Unexpected scan started")
++
++    finally:
++        clear_regdom_state(dev, hapd, hapd2)
++
+ def test_wnm_bss_tm_steering_timeout(dev, apdev):
+     """WNM BSS Transition Management and steering timeout"""
+     hapd = start_wnm_ap(apdev[0])
+-- 
+2.43.0
+

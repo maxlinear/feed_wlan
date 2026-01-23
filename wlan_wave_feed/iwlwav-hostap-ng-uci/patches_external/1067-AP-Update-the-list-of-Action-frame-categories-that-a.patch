@@ -1,0 +1,40 @@
+From 74792088bcc3d313e7c4635c24ea7b61774031cc Mon Sep 17 00:00:00 2001
+From: Jouni Malinen <quic_jouni@quicinc.com>
+Date: Tue, 5 Nov 2024 18:48:20 +0200
+Subject: [PATCH] AP: Update the list of Action frame categories that are not
+ robust
+
+Number of new Action frame categories have been identified as being not
+robust, i.e., not using management frame protection. Update AP mode
+implementation to cover those to allow reception unprotection Action
+frames from those categories.
+
+Signed-off-by: Jouni Malinen <quic_jouni@quicinc.com>
+---
+ src/ap/ieee802_11.c | 10 +++++++++-
+ 1 file changed, 9 insertions(+), 1 deletion(-)
+
+diff --git a/src/ap/ieee802_11.c b/src/ap/ieee802_11.c
+index c03b88433..417a50056 100644
+--- a/src/ap/ieee802_11.c
++++ b/src/ap/ieee802_11.c
+@@ -6050,7 +6050,15 @@ static void handle_beacon(struct hostapd_data *hapd,
+ static int robust_action_frame(u8 category)
+ {
+ 	return category != WLAN_ACTION_PUBLIC &&
+-		category != WLAN_ACTION_HT;
++		category != WLAN_ACTION_HT &&
++		category != WLAN_ACTION_UNPROTECTED_WNM &&
++		category != WLAN_ACTION_SELF_PROTECTED &&
++		category != WLAN_ACTION_UNPROTECTED_DMG &&
++		category != WLAN_ACTION_VHT &&
++		category != WLAN_ACTION_UNPROTECTED_S1G &&
++		category != WLAN_ACTION_HE &&
++		category != WLAN_ACTION_EHT &&
++		category != WLAN_ACTION_VENDOR_SPECIFIC;
+ }
+ 
+ 
+-- 
+2.43.0
+

@@ -1,0 +1,496 @@
+From 96e48a05aa0a82e91e3cab75506297e433e253d0 Mon Sep 17 00:00:00 2001
+From: Shivani Baranwal <quic_shivbara@quicinc.com>
+Date: Tue, 2 Jul 2024 00:41:48 +0530
+Subject: [PATCH] P2P2: Invitation using pairing verification
+
+Add support for P2P2 pairing verification using invitation.
+
+Signed-off-by: Shivani Baranwal <quic_shivbara@quicinc.com>
+---
+ src/p2p/p2p.c                   | 119 +++++++++++++++++++++++++++++++-
+ src/p2p/p2p.h                   |   8 ++-
+ src/p2p/p2p_i.h                 |   9 +++
+ src/p2p/p2p_invitation.c        |  60 ++++++++++++++++
+ wpa_supplicant/p2p_supplicant.c | 114 +++++++++++++++++++++++++++++-
+ 5 files changed, 305 insertions(+), 5 deletions(-)
+
+diff --git a/src/p2p/p2p.c b/src/p2p/p2p.c
+index a8d771bf6..9d5e63d3c 100644
+--- a/src/p2p/p2p.c
++++ b/src/p2p/p2p.c
+@@ -6289,6 +6289,119 @@ void p2p_pasn_initialize(struct p2p_data *p2p, struct p2p_device *dev,
+ }
+ 
+ 
++int p2p_get_listen_freq(struct p2p_data *p2p, const u8 *peer_addr)
++{
++	int freq;
++	struct p2p_device *dev;
++
++	if (!peer_addr) {
++		p2p_dbg(p2p, "Peer address NULL");
++		return -1;
++	}
++
++	dev = p2p_get_device(p2p, peer_addr);
++	if (!dev) {
++		p2p_dbg(p2p, "Peer not known");
++		return -1;
++	}
++
++	freq = dev->listen_freq > 0 ? dev->listen_freq : dev->oper_freq;
++	if (freq <= 0)
++		freq = dev->oob_go_neg_freq;
++	if (freq <= 0) {
++		p2p_dbg(p2p, "No listen/operating frequency known for the peer "
++			MACSTR, MAC2STR(dev->info.p2p_device_addr));
++		return -1;
++	}
++	return freq;
++}
++
++
++int p2p_initiate_pasn_verify(struct p2p_data *p2p, const u8 *peer_addr,
++			     int freq, enum p2p_invite_role role,
++			     const u8 *bssid, const u8 *ssid, size_t ssid_len,
++			     unsigned int force_freq, const u8 *go_dev_addr,
++			     unsigned int pref_freq)
++{
++	struct pasn_data *pasn;
++	struct p2p_device *dev;
++	struct wpabuf *extra_ies, *req;
++	int ret = 0;
++	u8 *pasn_extra_ies = NULL;
++
++	if (!peer_addr) {
++		p2p_dbg(p2p, "Peer address NULL");
++		return -1;
++	}
++
++	dev = p2p_get_device(p2p, peer_addr);
++	if (!dev) {
++		p2p_dbg(p2p, "Peer not known");
++		return -1;
++	}
++
++	if (p2p_invite(p2p, peer_addr, role, bssid, ssid, ssid_len, force_freq,
++		       go_dev_addr, 1, pref_freq, -1, 1)) {
++		p2p_dbg(p2p, "p2p_invite() failed");
++		return -1;
++	}
++
++	dev->role = P2P_ROLE_PAIRING_INITIATOR;
++	p2p_pasn_initialize(p2p, dev, peer_addr, freq, true);
++	pasn = dev->pasn;
++
++	req = p2p_build_invitation_req(p2p, dev, go_dev_addr, -1);
++	if (!req)
++		return -1;
++
++	p2p_set_state(p2p, P2P_INVITE);
++	p2p->pending_action_state = P2P_PENDING_INVITATION_REQUEST;
++	p2p->invite_peer = dev;
++	dev->invitation_reqs++;
++
++	extra_ies = wpabuf_alloc(1500);
++	if (!extra_ies) {
++		wpabuf_free(req);
++		p2p_dbg(p2p, "Memory allocation failed for extra_ies");
++		return -1;
++	}
++
++	if (p2p_prepare_pasn_extra_ie(p2p, extra_ies, req)) {
++		p2p_dbg(p2p, "Prepare PASN extra IEs failed");
++		ret = -1;
++		goto out;
++	}
++
++	pasn_extra_ies = os_memdup(wpabuf_head_u8(extra_ies),
++				   wpabuf_len(extra_ies));
++	if (!pasn_extra_ies) {
++		p2p_dbg(p2p, "Memory allocation failed for PASN extra IEs");
++		ret = -1;
++		goto out;
++	}
++
++	pasn->extra_ies = pasn_extra_ies;
++	pasn->extra_ies_len = wpabuf_len(extra_ies);
++
++	/* Start PASN verify */
++	if (wpa_pasn_verify(pasn, pasn->own_addr, pasn->peer_addr, pasn->bssid,
++			    pasn->akmp, pasn->cipher, pasn->group, pasn->freq,
++			    NULL, 0, NULL, 0, NULL)) {
++		p2p_dbg(p2p, "PASN verify failed");
++		ret = -1;
++	} else {
++		dev->flags |= P2P_DEV_WAIT_INV_REQ_ACK;
++	}
++out:
++	pasn->extra_ies = NULL;
++	pasn->extra_ies_len = 0;
++	os_free(pasn_extra_ies);
++	wpabuf_free(req);
++	wpabuf_free(extra_ies);
++	return ret;
++}
++
++
+ int p2p_initiate_pasn_auth(struct p2p_data *p2p, const u8 *addr, int freq)
+ {
+ 	struct pasn_data *pasn;
+@@ -6677,7 +6790,7 @@ int p2p_parse_data_element(struct p2p_data *p2p, const u8 *data, size_t len)
+ 
+ 
+ int p2p_pasn_auth_tx_status(struct p2p_data *p2p, const u8 *data,
+-			    size_t data_len, bool acked)
++			    size_t data_len, bool acked, bool verify)
+ {
+ 	int ret = 0;
+ 	struct p2p_device *dev;
+@@ -6709,7 +6822,9 @@ int p2p_pasn_auth_tx_status(struct p2p_data *p2p, const u8 *data,
+ 	if (ret != 1)
+ 		return ret;
+ 
+-	if (dev == p2p->go_neg_peer)
++	if (verify && dev == p2p->invite_peer)
++		p2p_start_invitation_connect(p2p, dev);
++	else if (dev == p2p->go_neg_peer)
+ 		p2p_go_complete(p2p, dev);
+ 
+ 	return 0;
+diff --git a/src/p2p/p2p.h b/src/p2p/p2p.h
+index ecc3e191c..327119cd9 100644
+--- a/src/p2p/p2p.h
++++ b/src/p2p/p2p.h
+@@ -2664,12 +2664,18 @@ void p2p_set_comeback_after(struct p2p_data *p2p, int comeback_after);
+ void p2p_set_reg_info(struct p2p_data *p2p, u8 val);
+ void p2p_set_twt_power_mgmt(struct p2p_data *p2p, int val);
+ 
++int p2p_get_listen_freq(struct p2p_data *p2p, const u8 *peer_addr);
+ int p2p_initiate_pasn_auth(struct p2p_data *p2p, const u8 *addr, int freq);
++int p2p_initiate_pasn_verify(struct p2p_data *p2p, const u8 *peer_addr,
++			     int freq, enum p2p_invite_role role,
++			     const u8 *bssid, const u8 *ssid, size_t ssid_len,
++			     unsigned int force_freq, const u8 *go_dev_addr,
++			     unsigned int pref_freq);
+ int p2p_pasn_auth_rx(struct p2p_data *p2p, const struct ieee80211_mgmt *mgmt,
+ 		     size_t len, int freq);
+ int p2p_prepare_data_element(struct p2p_data *p2p, const u8 *peer_addr);
+ int p2p_parse_data_element(struct p2p_data *p2p, const u8 *data, size_t len);
+ int p2p_pasn_auth_tx_status(struct p2p_data *p2p, const u8 *data,
+-			    size_t data_len, bool acked);
++			    size_t data_len, bool acked, bool verify);
+ 
+ #endif /* P2P_H */
+diff --git a/src/p2p/p2p_i.h b/src/p2p/p2p_i.h
+index 06c758769..c56231c5a 100644
+--- a/src/p2p/p2p_i.h
++++ b/src/p2p/p2p_i.h
+@@ -196,6 +196,14 @@ struct p2p_device {
+ 
+ 	/* Device role */
+ 	enum p2p_role role;
++
++	/* Invitation parameters for P2P2 */
++	bool inv_reject;
++	u8 inv_status;
++	int inv_freq;
++	int inv_peer_oper_freq;
++	u8 inv_bssid[ETH_ALEN];
++	bool inv_all_channels;
+ };
+ 
+ struct p2p_sd_query {
+@@ -994,6 +1002,7 @@ int p2p_invite_send(struct p2p_data *p2p, struct p2p_device *dev,
+ 		    const u8 *go_dev_addr, int dev_pw_id);
+ void p2p_invitation_req_cb(struct p2p_data *p2p, int success);
+ void p2p_invitation_resp_cb(struct p2p_data *p2p, const u8 *dst, int success);
++void p2p_start_invitation_connect(struct p2p_data *p2p, struct p2p_device *dev);
+ 
+ /* p2p_dev_disc.c */
+ void p2p_process_dev_disc_req(struct p2p_data *p2p, const u8 *sa,
+diff --git a/src/p2p/p2p_invitation.c b/src/p2p/p2p_invitation.c
+index f733e6946..be6139ac7 100644
+--- a/src/p2p/p2p_invitation.c
++++ b/src/p2p/p2p_invitation.c
+@@ -454,6 +454,7 @@ void p2p_process_invitation_resp(struct p2p_data *p2p, const u8 *sa,
+ 	struct p2p_device *dev;
+ 	struct p2p_message msg;
+ 	struct p2p_channels intersection, *channels = NULL;
++	bool all_channels = false;
+ 
+ 	p2p_dbg(p2p, "Received Invitation Response from " MACSTR,
+ 		MAC2STR(sa));
+@@ -533,14 +534,17 @@ void p2p_process_invitation_resp(struct p2p_data *p2p, const u8 *sa,
+ #endif /* CONFIG_P2P_STRICT */
+ 		/* Try to survive without peer channel list */
+ 		channels = &p2p->channels;
++		all_channels = true;
+ 	} else if (!msg.channel_list) {
+ 		/* Non-success cases are not required to include Channel List */
+ 		channels = &p2p->channels;
++		all_channels = true;
+ 	} else if (p2p_peer_channels_check(p2p, &p2p->channels, dev,
+ 					   msg.channel_list,
+ 					   msg.channel_list_len) < 0) {
+ 		p2p_dbg(p2p, "No common channels found");
+ 		p2p_parse_free(&msg);
++		dev->inv_reject = true;
+ 		return;
+ 	} else {
+ 		p2p_channels_intersect(&p2p->channels, &dev->channels,
+@@ -569,18 +573,74 @@ void p2p_process_invitation_resp(struct p2p_data *p2p, const u8 *sa,
+ 		 */
+ 		p2p_check_pref_chan(p2p, 0, dev, &msg);
+ 
++		if (dev->p2p2) {
++			dev->inv_freq = freq;
++			dev->inv_status = *msg.status;
++			dev->inv_all_channels = all_channels;
++			dev->inv_peer_oper_freq = peer_oper_freq;
++			if (msg.group_bssid)
++				os_memcpy(dev->inv_bssid, msg.group_bssid,
++					  ETH_ALEN);
++			goto out;
++		}
++
+ 		p2p->cfg->invitation_result(p2p->cfg->cb_ctx, *msg.status,
+ 					    msg.group_bssid, channels, sa,
+ 					    freq, peer_oper_freq, NULL, NULL,
+ 					    0);
+ 	}
+ 
++	p2p_clear_timeout(p2p);
++	p2p_set_state(p2p, P2P_IDLE);
++	p2p->invite_peer = NULL;
++
++out:
+ 	p2p_parse_free(&msg);
++}
++
++
++#ifdef CONFIG_PASN
++void p2p_start_invitation_connect(struct p2p_data *p2p, struct p2p_device *dev)
++{
++	size_t pmk_len = 0;
++	u8 pmkid[PMKID_LEN];
++	u8 pmk[PMK_LEN_MAX];
++	struct p2p_channels intersection;
++	const struct p2p_channels *inv_channels;
++
++	if (!p2p || !dev || dev->inv_reject || !dev->pasn)
++		return;
++
++	if (dev->inv_all_channels) {
++		inv_channels = &p2p->channels;
++	} else {
++		p2p_channels_intersect(&p2p->channels, &dev->channels,
++				       &intersection);
++		inv_channels = &intersection;
++	}
++
++	pasn_initiator_pmksa_cache_get(dev->pasn->pmksa, dev->pasn->peer_addr,
++				       pmkid, pmk, &pmk_len);
++
++	wpa_pasn_reset(dev->pasn);
++	p2p_dbg(p2p, "Invitation connect: msg status %d", dev->inv_status);
++	if (p2p->cfg->invitation_result)
++		p2p->cfg->invitation_result(p2p->cfg->cb_ctx, dev->inv_status,
++					    dev->inv_bssid, inv_channels,
++					    dev->info.p2p_device_addr,
++					    dev->inv_freq,
++					    dev->inv_peer_oper_freq, pmkid,
++					    pmk, pmk_len);
++
++	/* Reset PMK and PMKID from stack */
++	forced_memzero(pmkid, sizeof(pmkid));
++	forced_memzero(pmk, sizeof(pmk));
+ 
+ 	p2p_clear_timeout(p2p);
+ 	p2p_set_state(p2p, P2P_IDLE);
+ 	p2p->invite_peer = NULL;
+ }
++#endif /* CONFIG_PASN */
+ 
+ 
+ int p2p_invite_send(struct p2p_data *p2p, struct p2p_device *dev,
+diff --git a/wpa_supplicant/p2p_supplicant.c b/wpa_supplicant/p2p_supplicant.c
+index 7d9f50c9c..ef2331277 100644
+--- a/wpa_supplicant/p2p_supplicant.c
++++ b/wpa_supplicant/p2p_supplicant.c
+@@ -1723,11 +1723,22 @@ static void wpas_send_action_done(void *ctx)
+ struct wpa_p2p_pasn_auth_work {
+ 	u8 peer_addr[ETH_ALEN];
+ 	int freq;
++	bool verify;
++	int force_freq;
++	int pref_freq;
++	enum p2p_invite_role role;
++	u8 *ssid;
++	size_t ssid_len;
++	u8 bssid[ETH_ALEN];
++	u8 go_dev_addr[ETH_ALEN];
+ };
+ 
+ 
+ static void wpas_p2p_pasn_free_auth_work(struct wpa_p2p_pasn_auth_work *awork)
+ {
++	if (!awork)
++		return;
++	os_free(awork->ssid);
+ 	os_free(awork);
+ }
+ 
+@@ -1743,10 +1754,13 @@ static void wpas_p2p_pasn_cancel_auth_work(struct wpa_supplicant *wpa_s)
+ 
+ static void wpas_p2p_pasn_auth_start_cb(struct wpa_radio_work *work, int deinit)
+ {
++	int ret;
+ 	struct wpa_supplicant *wpa_s = work->wpa_s;
+ 	struct wpa_p2p_pasn_auth_work *awork = work->ctx;
+ 	struct p2p_data *p2p = wpa_s->global->p2p;
+ 	const u8 *peer_addr = NULL;
++	const u8 *bssid = NULL;
++	const u8 *go_dev_addr = NULL;
+ 
+ 	if (deinit) {
+ 		if (!work->started) {
+@@ -1759,7 +1773,22 @@ static void wpas_p2p_pasn_auth_start_cb(struct wpa_radio_work *work, int deinit)
+ 
+ 	if (!is_zero_ether_addr(awork->peer_addr))
+ 		peer_addr = awork->peer_addr;
+-	if (p2p_initiate_pasn_auth(p2p, peer_addr, awork->freq)) {
++	if (!is_zero_ether_addr(awork->bssid))
++		bssid = awork->bssid;
++	if (!is_zero_ether_addr(awork->go_dev_addr))
++		go_dev_addr = awork->go_dev_addr;
++
++
++	if (awork->verify)
++		ret = p2p_initiate_pasn_verify(p2p, peer_addr, awork->freq,
++					       awork->role, bssid, awork->ssid,
++					       awork->ssid_len,
++					       awork->force_freq, go_dev_addr,
++					       awork->pref_freq);
++	else
++		ret = p2p_initiate_pasn_auth(p2p, peer_addr, awork->freq);
++
++	if (ret) {
+ 		wpa_printf(MSG_DEBUG,
+ 			   "P2P PASN: Failed to start PASN authentication");
+ 		goto fail;
+@@ -3733,6 +3762,13 @@ static void wpas_invitation_result(void *ctx, int status, const u8 *bssid,
+ 	struct wpa_ssid *ssid;
+ 	int freq;
+ 
++#ifdef CONFIG_PASN
++	if (wpa_s->p2p_pasn_auth_work) {
++		wpas_p2p_pasn_cancel_auth_work(wpa_s);
++		wpa_s->p2p_pasn_auth_work = NULL;
++	}
++#endif /* CONFIG_PASN */
++
+ 	if (bssid) {
+ 		wpa_msg_global(wpa_s, MSG_INFO, P2P_EVENT_INVITATION_RESULT
+ 			       "status=%d " MACSTR,
+@@ -5123,6 +5159,60 @@ static void wpas_bootstrap_completed(void *ctx, const u8 *addr,
+ 
+ #ifdef CONFIG_PASN
+ 
++static int wpas_p2p_initiate_pasn_verify(struct wpa_supplicant *wpa_s,
++					 const u8 *peer,
++					 enum p2p_invite_role role,
++					 const u8 *bssid, const u8 *ssid,
++					 size_t ssid_len,
++					 unsigned int force_freq,
++					 const u8 *go_dev_addr,
++					 unsigned int pref_freq)
++{
++	int freq;
++	struct wpa_p2p_pasn_auth_work *awork;
++
++	wpas_p2p_pasn_cancel_auth_work(wpa_s);
++	wpa_s->p2p_pasn_auth_work = NULL;
++
++	freq = p2p_get_listen_freq(wpa_s->global->p2p, peer);
++	if (freq == -1)
++		return -1;
++
++	awork = os_zalloc(sizeof(*awork));
++	if (!awork)
++		return -1;
++
++	awork->verify = 1;
++	awork->role = role;
++	awork->freq = freq;
++	awork->force_freq = force_freq;
++	awork->pref_freq = pref_freq;
++	os_memcpy(awork->peer_addr, peer, ETH_ALEN);
++	if (go_dev_addr)
++		os_memcpy(awork->go_dev_addr, go_dev_addr, ETH_ALEN);
++	if (bssid)
++		os_memcpy(awork->bssid, bssid, ETH_ALEN);
++	if (ssid_len) {
++		awork->ssid = os_zalloc(ssid_len);
++		if (!awork->ssid) {
++			os_free(awork);
++			return -1;
++		}
++		os_memcpy(awork->ssid, ssid, ssid_len);
++		awork->ssid_len = ssid_len;
++	}
++
++	if (radio_add_work(wpa_s, freq, "p2p-pasn-start-auth", 1,
++			   wpas_p2p_pasn_auth_start_cb, awork) < 0) {
++		wpas_p2p_pasn_free_auth_work(awork);
++		return -1;
++	}
++
++	wpa_printf(MSG_DEBUG, "P2P PASN: Auth work successfully added");
++	return 0;
++}
++
++
+ static int wpas_p2p_pasn_send_mgmt(void *ctx, const u8 *data, size_t data_len,
+ 				   int noack, unsigned int freq,
+ 				   unsigned int wait)
+@@ -8189,6 +8279,20 @@ int wpas_p2p_invite(struct wpa_supplicant *wpa_s, const u8 *peer_addr,
+ 	 */
+ 	wpas_p2p_stop_find_oper(wpa_s);
+ 
++#ifdef CONFIG_PASN
++	if (p2p2) {
++		if (wpas_p2p_initiate_pasn_verify(wpa_s, peer_addr, role, bssid,
++						  ssid->ssid, ssid->ssid_len,
++						  force_freq, go_dev_addr,
++						  pref_freq) < 0) {
++			if (wpa_s->create_p2p_iface)
++				wpas_p2p_remove_pending_group_interface(wpa_s);
++			return -1;
++		}
++		return 0;
++	}
++#endif /* CONFIG_PASN */
++
+ 	return p2p_invite(wpa_s->global->p2p, peer_addr, role, bssid,
+ 			  ssid->ssid, ssid->ssid_len, force_freq, go_dev_addr,
+ 			  1, pref_freq, -1, false);
+@@ -10720,8 +10824,14 @@ int wpas_p2p_pasn_auth_tx_status(struct wpa_supplicant *wpa_s, const u8 *data,
+ 				 size_t data_len, bool acked)
+ {
+ 	struct p2p_data *p2p = wpa_s->global->p2p;
++	struct wpa_p2p_pasn_auth_work *awork;
++
++	if (!wpa_s->p2p_pasn_auth_work)
++		return -1;
++	awork = wpa_s->p2p_pasn_auth_work->ctx;
+ 
+-	return p2p_pasn_auth_tx_status(p2p, data, data_len, acked);
++	return p2p_pasn_auth_tx_status(p2p, data, data_len, acked,
++				       awork->verify);
+ }
+ 
+ #endif /* CONFIG_PASN */
+-- 
+2.43.0
+

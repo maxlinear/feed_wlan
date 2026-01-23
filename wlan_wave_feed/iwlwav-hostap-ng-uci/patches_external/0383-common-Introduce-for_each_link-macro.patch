@@ -1,0 +1,32 @@
+From c9f8fe0664a83b3ebd363e0b9d3c9d4f95bd9c80 Mon Sep 17 00:00:00 2001
+From: Benjamin Berg <benjamin.berg@intel.com>
+Date: Tue, 20 Feb 2024 14:18:11 +0100
+Subject: [PATCH] common: Introduce for_each_link() macro
+
+This is a simple macro iterating the given bitmask using the given
+variable. Having the macro avoids the for loop-continuation making it
+more readable overall.
+
+Signed-off-by: Benjamin Berg <benjamin.berg@intel.com>
+---
+ src/utils/common.h | 4 ++++
+ 1 file changed, 4 insertions(+)
+
+diff --git a/src/utils/common.h b/src/utils/common.h
+index d4ffb998b..271b97daf 100644
+--- a/src/utils/common.h
++++ b/src/utils/common.h
+@@ -599,6 +599,10 @@ int str_starts(const char *str, const char *start);
+ u8 rssi_to_rcpi(int rssi);
+ char * get_param(const char *cmd, const char *param);
+ 
++#define for_each_link(__links, __i)                            \
++	for ((__i) = 0; (__i) < MAX_NUM_MLD_LINKS; (__i)++)    \
++		if ((__links) & BIT(__i))
++
+ void forced_memzero(void *ptr, size_t len);
+ 
+ /*
+-- 
+2.43.0
+

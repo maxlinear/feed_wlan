@@ -1,0 +1,33 @@
+From e9daa3fca56b4a8f4bc88f245dc18bc583a8a6c4 Mon Sep 17 00:00:00 2001
+From: Shivani Baranwal <quic_shivbara@quicinc.com>
+Date: Mon, 23 Sep 2024 03:05:49 +0530
+Subject: [PATCH] P2P2: Enable TWT and Channel Usage support by default
+
+It is mandatory to support Channel Usage and TWT in P2P2. Enable
+peer to peer TWT and Channel Usage support for P2P GO.
+
+Signed-off-by: Shivani Baranwal <quic_shivbara@quicinc.com>
+---
+ wpa_supplicant/p2p_supplicant.c | 6 ++++++
+ 1 file changed, 6 insertions(+)
+
+diff --git a/wpa_supplicant/p2p_supplicant.c b/wpa_supplicant/p2p_supplicant.c
+index e967efd89..f9c3596e6 100644
+--- a/wpa_supplicant/p2p_supplicant.c
++++ b/wpa_supplicant/p2p_supplicant.c
+@@ -7920,6 +7920,12 @@ static void wpas_p2p_ie_update(void *ctx, struct wpabuf *beacon_ies,
+ 		}
+ 		wpabuf_free(hapd->p2p_probe_resp_ie);
+ 		hapd->p2p_probe_resp_ie = proberesp_ies;
++
++		if (wpa_s->p2p2) {
++			hapd->iconf->peer_to_peer_twt = true;
++			hapd->iconf->channel_usage = true;
++		}
++
+ 	} else {
+ 		wpabuf_free(beacon_ies);
+ 		wpabuf_free(proberesp_ies);
+-- 
+2.43.0
+

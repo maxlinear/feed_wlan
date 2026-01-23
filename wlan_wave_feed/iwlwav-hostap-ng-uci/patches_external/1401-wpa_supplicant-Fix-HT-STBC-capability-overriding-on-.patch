@@ -1,0 +1,40 @@
+From 4fd90f61df3f832449e5e5a1bd074188087bbbe0 Mon Sep 17 00:00:00 2001
+From: Jouni Malinen <j@w1.fi>
+Date: Sat, 22 Feb 2025 11:09:05 +0200
+Subject: [PATCH] wpa_supplicant: Fix HT STBC capability overriding on
+ big-endian CPUs
+
+The STBC bits need to be converted to little-endian just like the mask
+they are ANDed with.
+
+Fixes: cdeea70f59d0 ("wpa_supplicant: Allow overriding HT STBC capabilities")
+Signed-off-by: Jouni Malinen <j@w1.fi>
+---
+ wpa_supplicant/wpa_supplicant.c | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/wpa_supplicant/wpa_supplicant.c b/wpa_supplicant/wpa_supplicant.c
+index b43692d33..661a7524c 100644
+--- a/wpa_supplicant/wpa_supplicant.c
++++ b/wpa_supplicant/wpa_supplicant.c
+@@ -6565,7 +6565,7 @@ static int wpa_set_tx_stbc(struct wpa_supplicant *wpa_s,
+ 
+ 	htcaps_mask->ht_capabilities_info |= msk;
+ 	htcaps->ht_capabilities_info &= ~msk;
+-	htcaps->ht_capabilities_info |= (tx_stbc << 7) & msk;
++	htcaps->ht_capabilities_info |= host_to_le16(tx_stbc << 7) & msk;
+ 
+ 	return 0;
+ }
+@@ -6591,7 +6591,7 @@ static int wpa_set_rx_stbc(struct wpa_supplicant *wpa_s,
+ 
+ 	htcaps_mask->ht_capabilities_info |= msk;
+ 	htcaps->ht_capabilities_info &= ~msk;
+-	htcaps->ht_capabilities_info |= (rx_stbc << 8) & msk;
++	htcaps->ht_capabilities_info |= host_to_le16(rx_stbc << 8) & msk;
+ 
+ 	return 0;
+ }
+-- 
+2.43.0
+

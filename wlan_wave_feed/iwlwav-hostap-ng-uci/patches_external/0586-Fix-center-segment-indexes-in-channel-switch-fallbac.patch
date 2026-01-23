@@ -1,0 +1,41 @@
+From 2e1f7d091c9cdd7a76cbf09ca675326f3b5f8cd9 Mon Sep 17 00:00:00 2001
+From: Jurijs Soloveckis <jsoloveckis@maxlinear.com>
+Date: Tue, 16 Apr 2024 11:47:36 +0000
+Subject: [PATCH] Fix center segment indexes in channel switch fallback to
+ non-5 GHz cases
+
+Hardcoded conversion for 5 GHz band was used, but this won't work for
+other cases. Set the correct center segment indexes in channel switch
+fallback for non-5GHz band.
+
+Signed-off-by: Jurijs Soloveckis <jsoloveckis@maxlinear.com>
+---
+ src/ap/hostapd.c | 6 +++---
+ 1 file changed, 3 insertions(+), 3 deletions(-)
+
+diff --git a/src/ap/hostapd.c b/src/ap/hostapd.c
+index 800e54501..130b6ebc6 100644
+--- a/src/ap/hostapd.c
++++ b/src/ap/hostapd.c
+@@ -4464,15 +4464,15 @@ void
+ hostapd_switch_channel_fallback(struct hostapd_iface *iface,
+ 				const struct hostapd_freq_params *freq_params)
+ {
+-	int seg0_idx = 0, seg1_idx = 0;
++	u8 seg0_idx = 0, seg1_idx = 0;
+ 	enum oper_chan_width bw = CONF_OPER_CHWIDTH_USE_HT;
+ 
+ 	wpa_printf(MSG_DEBUG, "Restarting all CSA-related BSSes");
+ 
+ 	if (freq_params->center_freq1)
+-		seg0_idx = 36 + (freq_params->center_freq1 - 5180) / 5;
++		ieee80211_freq_to_chan(freq_params->center_freq1, &seg0_idx);
+ 	if (freq_params->center_freq2)
+-		seg1_idx = 36 + (freq_params->center_freq2 - 5180) / 5;
++		ieee80211_freq_to_chan(freq_params->center_freq2, &seg1_idx);
+ 
+ 	switch (freq_params->bandwidth) {
+ 	case 0:
+-- 
+2.43.0
+

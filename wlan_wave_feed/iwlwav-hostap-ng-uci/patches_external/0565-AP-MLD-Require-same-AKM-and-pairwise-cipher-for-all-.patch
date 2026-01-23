@@ -1,0 +1,158 @@
+From 84d2a36da02a79bac945db2de110c356952ae336 Mon Sep 17 00:00:00 2001
+From: Rameshkumar Sundaram <quic_ramess@quicinc.com>
+Date: Thu, 28 Mar 2024 23:46:47 +0530
+Subject: [PATCH] AP MLD: Require same AKM and pairwise cipher for all links
+
+Signed-off-by: Rameshkumar Sundaram <quic_ramess@quicinc.com>
+Co-developed-by: Adil Saeed Musthafa <quic_adilm@quicinc.com>
+Signed-off-by: Adil Saeed Musthafa <quic_adilm@quicinc.com>
+Signed-off-by: Aditya Kumar Singh <quic_adisi@quicinc.com>
+---
+ src/ap/drv_callbacks.c                        |  2 +-
+ src/ap/ieee802_11.c                           | 13 ++++++++++---
+ src/ap/wpa_auth.h                             |  3 ++-
+ src/ap/wpa_auth_ie.c                          | 12 +++++++++++-
+ tests/fuzzing/eapol-key-auth/eapol-key-auth.c |  2 +-
+ wpa_supplicant/ibss_rsn.c                     |  4 ++--
+ 6 files changed, 27 insertions(+), 9 deletions(-)
+
+diff --git a/src/ap/drv_callbacks.c b/src/ap/drv_callbacks.c
+index 853801a8b..e026d9a6e 100644
+--- a/src/ap/drv_callbacks.c
++++ b/src/ap/drv_callbacks.c
+@@ -528,7 +528,7 @@ int hostapd_notif_assoc(struct hostapd_data *hapd, const u8 *addr,
+ 					  elems.rsnxe ? elems.rsnxe - 2 : NULL,
+ 					  elems.rsnxe ? elems.rsnxe_len + 2 : 0,
+ 					  elems.mdie, elems.mdie_len,
+-					  elems.owe_dh, elems.owe_dh_len);
++					  elems.owe_dh, elems.owe_dh_len, NULL);
+ 		reason = WLAN_REASON_INVALID_IE;
+ 		status = WLAN_STATUS_INVALID_IE;
+ 		switch (res) {
+diff --git a/src/ap/ieee802_11.c b/src/ap/ieee802_11.c
+index 1a2e44e85..6ef32568b 100644
+--- a/src/ap/ieee802_11.c
++++ b/src/ap/ieee802_11.c
+@@ -1882,7 +1882,7 @@ void handle_auth_fils(struct hostapd_data *hapd, struct sta_info *sta,
+ 				  elems.rsn_ie - 2, elems.rsn_ie_len + 2,
+ 				  elems.rsnxe ? elems.rsnxe - 2 : NULL,
+ 				  elems.rsnxe ? elems.rsnxe_len + 2 : 0,
+-				  elems.mdie, elems.mdie_len, NULL, 0);
++				  elems.mdie, elems.mdie_len, NULL, 0, NULL);
+ 	resp = wpa_res_to_status_code(res);
+ 	if (resp != WLAN_STATUS_SUCCESS)
+ 		goto fail;
+@@ -3770,7 +3770,7 @@ u16 owe_process_rsn_ie(struct hostapd_data *hapd,
+ 	rsn_ie_len += 2;
+ 	res = wpa_validate_wpa_ie(hapd->wpa_auth, sta->wpa_sm,
+ 				  hapd->iface->freq, rsn_ie, rsn_ie_len,
+-				  NULL, 0, NULL, 0, owe_dh, owe_dh_len);
++				  NULL, 0, NULL, 0, owe_dh, owe_dh_len, NULL);
+ 	status = wpa_res_to_status_code(res);
+ 	if (status != WLAN_STATUS_SUCCESS)
+ 		goto end;
+@@ -3859,6 +3859,8 @@ static int __check_assoc_ies(struct hostapd_data *hapd, struct sta_info *sta,
+ 	const u8 *wpa_ie;
+ 	size_t wpa_ie_len;
+ 	const u8 *p2p_dev_addr = NULL;
++	struct hostapd_data *assoc_hapd;
++	struct sta_info *assoc_sta = NULL;
+ 
+ 	resp = check_ssid(hapd, sta, elems->ssid, elems->ssid_len);
+ 	if (resp != WLAN_STATUS_SUCCESS)
+@@ -4033,6 +4035,10 @@ static int __check_assoc_ies(struct hostapd_data *hapd, struct sta_info *sta,
+ 		wpa_ie_len += 2;
+ 
+ 		if (!sta->wpa_sm) {
++			if (!link)
++				assoc_sta = hostapd_ml_get_assoc_sta(
++					hapd, sta, &assoc_hapd);
++
+ 			sta->wpa_sm = wpa_auth_sta_init(hapd->wpa_auth,
+ 							sta->addr,
+ 							p2p_dev_addr);
+@@ -4065,7 +4071,8 @@ static int __check_assoc_ies(struct hostapd_data *hapd, struct sta_info *sta,
+ 					  elems->rsnxe ? elems->rsnxe_len + 2 :
+ 					  0,
+ 					  elems->mdie, elems->mdie_len,
+-					  elems->owe_dh, elems->owe_dh_len);
++					  elems->owe_dh, elems->owe_dh_len,
++					  assoc_sta ? assoc_sta->wpa_sm : NULL);
+ 		resp = wpa_res_to_status_code(res);
+ 		if (resp != WLAN_STATUS_SUCCESS)
+ 			return resp;
+diff --git a/src/ap/wpa_auth.h b/src/ap/wpa_auth.h
+index 396fc4906..117ac1d48 100644
+--- a/src/ap/wpa_auth.h
++++ b/src/ap/wpa_auth.h
+@@ -435,7 +435,8 @@ wpa_validate_wpa_ie(struct wpa_authenticator *wpa_auth,
+ 		    const u8 *wpa_ie, size_t wpa_ie_len,
+ 		    const u8 *rsnxe, size_t rsnxe_len,
+ 		    const u8 *mdie, size_t mdie_len,
+-		    const u8 *owe_dh, size_t owe_dh_len);
++		    const u8 *owe_dh, size_t owe_dh_len,
++		    struct wpa_state_machine *assoc_sm);
+ int wpa_validate_osen(struct wpa_authenticator *wpa_auth,
+ 		      struct wpa_state_machine *sm,
+ 		      const u8 *osen_ie, size_t osen_ie_len);
+diff --git a/src/ap/wpa_auth_ie.c b/src/ap/wpa_auth_ie.c
+index a5f2861c9..5a17f7c34 100644
+--- a/src/ap/wpa_auth_ie.c
++++ b/src/ap/wpa_auth_ie.c
+@@ -608,7 +608,8 @@ wpa_validate_wpa_ie(struct wpa_authenticator *wpa_auth,
+ 		    const u8 *wpa_ie, size_t wpa_ie_len,
+ 		    const u8 *rsnxe, size_t rsnxe_len,
+ 		    const u8 *mdie, size_t mdie_len,
+-		    const u8 *owe_dh, size_t owe_dh_len)
++		    const u8 *owe_dh, size_t owe_dh_len,
++		    struct wpa_state_machine *assoc_sm)
+ {
+ 	struct wpa_auth_config *conf = &wpa_auth->conf;
+ 	struct wpa_ie_data data;
+@@ -956,6 +957,15 @@ wpa_validate_wpa_ie(struct wpa_authenticator *wpa_auth,
+ 	else
+ 		sm->wpa = WPA_VERSION_WPA;
+ 
++	if (assoc_sm) {
++		/* For ML association link STA cannot choose a different
++		 * AKM or pairwise cipher from association STA */
++		if (sm->wpa_key_mgmt != assoc_sm->wpa_key_mgmt)
++			return WPA_INVALID_AKMP;
++		if (sm->pairwise != assoc_sm->pairwise)
++			return WPA_INVALID_PAIRWISE;
++	}
++
+ #if defined(CONFIG_IEEE80211R_AP) && defined(CONFIG_FILS)
+ 	if ((sm->wpa_key_mgmt == WPA_KEY_MGMT_FT_FILS_SHA256 ||
+ 	     sm->wpa_key_mgmt == WPA_KEY_MGMT_FT_FILS_SHA384) &&
+diff --git a/tests/fuzzing/eapol-key-auth/eapol-key-auth.c b/tests/fuzzing/eapol-key-auth/eapol-key-auth.c
+index bb46422c6..17f69fd76 100644
+--- a/tests/fuzzing/eapol-key-auth/eapol-key-auth.c
++++ b/tests/fuzzing/eapol-key-auth/eapol-key-auth.c
+@@ -262,7 +262,7 @@ static int auth_init(struct wpa *wpa)
+ 	}
+ 
+ 	if (wpa_validate_wpa_ie(wpa->auth_group, wpa->auth, 2412, supp_ie,
+-				supp_ie_len, NULL, 0, NULL, 0, NULL, 0) !=
++				supp_ie_len, NULL, 0, NULL, 0, NULL, 0, NULL) !=
+ 	    WPA_IE_OK) {
+ 		wpa_printf(MSG_DEBUG, "AUTH: wpa_validate_wpa_ie() failed");
+ 		return -1;
+diff --git a/wpa_supplicant/ibss_rsn.c b/wpa_supplicant/ibss_rsn.c
+index 554268a47..25039a0f9 100644
+--- a/wpa_supplicant/ibss_rsn.c
++++ b/wpa_supplicant/ibss_rsn.c
+@@ -484,8 +484,8 @@ static int ibss_rsn_auth_init(struct ibss_rsn *ibss_rsn,
+ 				"\x00\x0f\xac\x04"
+ 				"\x01\x00\x00\x0f\xac\x04"
+ 				"\x01\x00\x00\x0f\xac\x02"
+-				"\x00\x00", 22, NULL, 0, NULL, 0, NULL, 0) !=
+-	    WPA_IE_OK) {
++				"\x00\x00", 22, NULL, 0, NULL, 0, NULL, 0,
++				NULL) != WPA_IE_OK) {
+ 		wpa_printf(MSG_DEBUG, "AUTH: wpa_validate_wpa_ie() failed");
+ 		return -1;
+ 	}
+-- 
+2.43.0
+

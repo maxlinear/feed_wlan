@@ -1,0 +1,190 @@
+From 103314d55f3555f1c3e0194628831c856c8a1d55 Mon Sep 17 00:00:00 2001
+From: Shivani Baranwal <quic_shivbara@quicinc.com>
+Date: Fri, 9 Aug 2024 13:10:11 +0530
+Subject: [PATCH] P2P2: Determine PASN KEK derivation based on peer
+ capabilities
+
+P2P pairing setup requires KEK derivation during PTK generation in PASN,
+as the Encrypted PASN element is needed to share the Device Identity Key
+or opportunistic SAE password for association. However, during the
+pairing verification process, the P2P peer might not indicate support
+for KEK derivation in its capabilities since strictly speaking KEK is
+not needed in that case even when the STAs are capable for deriving it.
+Therefore, based on the peer's capabilities, avoid generating KEK while
+deriving PTK.
+
+Signed-off-by: Shivani Baranwal <quic_shivbara@quicinc.com>
+---
+ src/p2p/p2p.c             | 34 +++++++++++++++++++++++++++++-----
+ src/p2p/p2p_i.h           |  3 ++-
+ src/p2p/p2p_pd.c          |  2 +-
+ src/pasn/pasn_common.h    |  1 +
+ src/pasn/pasn_responder.c |  8 ++++++++
+ 5 files changed, 41 insertions(+), 7 deletions(-)
+
+diff --git a/src/p2p/p2p.c b/src/p2p/p2p.c
+index 6eaf33011..646be7d68 100644
+--- a/src/p2p/p2p.c
++++ b/src/p2p/p2p.c
+@@ -6243,7 +6243,7 @@ static void p2p_pairing_set_password(struct pasn_data *pasn, u8 pasn_type,
+ 
+ 
+ void p2p_pasn_initialize(struct p2p_data *p2p, struct p2p_device *dev,
+-			 const u8 *addr, int freq, bool verify)
++			 const u8 *addr, int freq, bool verify, bool derive_kek)
+ {
+ 	struct pasn_data *pasn;
+ 	struct wpabuf *rsnxe;
+@@ -6274,10 +6274,17 @@ void p2p_pasn_initialize(struct p2p_data *p2p, struct p2p_device *dev,
+ 		pasn->group = 20;
+ 		pasn->cipher = WPA_CIPHER_GCMP_256;
+ 		pasn->kek_len = 32;
++		pasn->derive_kek = true;
+ 	} else {
+ 		pasn->group = 19;
+ 		pasn->cipher = WPA_CIPHER_CCMP;
+ 		pasn->kek_len = 16;
++		pasn->derive_kek = true;
++	}
++
++	if (!derive_kek) {
++		pasn->derive_kek = false;
++		pasn->kek_len = 0;
+ 	}
+ 
+ 	if (dev->password[0]) {
+@@ -6285,7 +6292,6 @@ void p2p_pasn_initialize(struct p2p_data *p2p, struct p2p_device *dev,
+ 		p2p_pairing_set_password(pasn,
+ 					 p2p->cfg->pairing_config.pasn_type,
+ 					 dev->password);
+-		pasn->rsnxe_capab |= BIT(WLAN_RSNX_CAPAB_SAE_H2E);
+ 	} else if (verify) {
+ 		pasn->akmp = WPA_KEY_MGMT_SAE;
+ 	} else {
+@@ -6379,7 +6385,7 @@ int p2p_initiate_pasn_verify(struct p2p_data *p2p, const u8 *peer_addr,
+ 	}
+ 
+ 	dev->role = P2P_ROLE_PAIRING_INITIATOR;
+-	p2p_pasn_initialize(p2p, dev, peer_addr, freq, true);
++	p2p_pasn_initialize(p2p, dev, peer_addr, freq, true, true);
+ 	pasn = dev->pasn;
+ 
+ 	req = p2p_build_invitation_req(p2p, dev, go_dev_addr, -1);
+@@ -6455,7 +6461,7 @@ int p2p_initiate_pasn_auth(struct p2p_data *p2p, const u8 *addr, int freq)
+ 	}
+ 
+ 	dev->role = P2P_ROLE_PAIRING_INITIATOR;
+-	p2p_pasn_initialize(p2p, dev, addr, freq, false);
++	p2p_pasn_initialize(p2p, dev, addr, freq, false, true);
+ 	pasn = dev->pasn;
+ 
+ 	pasn_initiator_pmksa_cache_remove(pasn->pmksa, (u8 *)addr);
+@@ -6514,8 +6520,10 @@ static int p2p_pasn_handle_action_wrapper(struct p2p_data *p2p,
+ 	const u8 *ies;
+ 	size_t ies_len;
+ 	size_t data_len = 0;
++	bool derive_kek;
+ 	const u8 *data = NULL;
+ 	struct p2p_message msg;
++	struct ieee802_11_elems elems;
+ 
+ 	ies = mgmt->u.auth.variable;
+ 	ies_len = len - offsetof(struct ieee80211_mgmt, u.auth.variable);
+@@ -6553,6 +6561,17 @@ static int p2p_pasn_handle_action_wrapper(struct p2p_data *p2p,
+ 	}
+ 
+ 	if (trans_seq == 1) {
++		if (ieee802_11_parse_elems(mgmt->u.auth.variable,
++					   len - offsetof(struct ieee80211_mgmt,
++							  u.auth.variable),
++					   &elems, 0) == ParseFailed) {
++			wpa_printf(MSG_DEBUG,
++				   "PASN: Failed parsing Authentication frame");
++			return -1;
++		}
++		derive_kek = ieee802_11_rsnx_capab_len(
++			elems.rsnxe, elems.rsnxe_len,
++			WLAN_RSNX_CAPAB_KEK_IN_PASN);
+ 		if (data && data_len >= 1 && data[0] == P2P_INVITATION_REQ) {
+ 			struct wpabuf *resp;
+ 
+@@ -6563,12 +6582,17 @@ static int p2p_pasn_handle_action_wrapper(struct p2p_data *p2p,
+ 				p2p_dbg(p2p, "No Invitation Response found");
+ 
+ 			dev->role = P2P_ROLE_PAIRING_RESPONDER;
+-			p2p_pasn_initialize(p2p, dev, mgmt->sa, freq, true);
++			p2p_pasn_initialize(p2p, dev, mgmt->sa, freq, true,
++					    derive_kek);
+ 			wpabuf_free(dev->action_frame_wrapper);
+ 			dev->action_frame_wrapper = resp;
+ 		} else if (data && data_len >= 1 && data[0] == P2P_GO_NEG_REQ) {
+ 			struct wpabuf *resp;
+ 
++			if (!derive_kek) {
++				p2p_dbg(p2p, "KEK-in-PASN not set in RSNXE");
++				return -1;
++			}
+ 			resp = p2p_process_go_neg_req(p2p, mgmt->sa, data + 1,
+ 						      data_len - 1, freq, true);
+ 			if (!resp)
+diff --git a/src/p2p/p2p_i.h b/src/p2p/p2p_i.h
+index f33263b56..17fa8cf86 100644
+--- a/src/p2p/p2p_i.h
++++ b/src/p2p/p2p_i.h
+@@ -1069,7 +1069,8 @@ void p2p_pref_channel_filter(const struct p2p_channels *a,
+ 
+ void p2p_sd_query_cb(struct p2p_data *p2p, int success);
+ void p2p_pasn_initialize(struct p2p_data *p2p, struct p2p_device *dev,
+-			 const u8 *addr, int freq, bool verify);
++			 const u8 *addr, int freq, bool verify,
++			 bool derive_kek);
+ 
+ void p2p_dbg(struct p2p_data *p2p, const char *fmt, ...)
+ PRINTF_FORMAT(2, 3);
+diff --git a/src/p2p/p2p_pd.c b/src/p2p/p2p_pd.c
+index 7581fbfde..f646bda2c 100644
+--- a/src/p2p/p2p_pd.c
++++ b/src/p2p/p2p_pd.c
+@@ -852,7 +852,7 @@ static void p2p_process_prov_disc_bootstrap_req(struct p2p_data *p2p,
+ 	if (status == P2P_SC_SUCCESS) {
+ 		dev->role = P2P_ROLE_PAIRING_RESPONDER;
+ #ifdef CONFIG_PASN
+-		p2p_pasn_initialize(p2p, dev, sa, rx_freq, false);
++		p2p_pasn_initialize(p2p, dev, sa, rx_freq, false, true);
+ #endif /* CONFIG_PASN */
+ 	}
+ out:
+diff --git a/src/pasn/pasn_common.h b/src/pasn/pasn_common.h
+index e514349c9..cc3abf6ea 100644
+--- a/src/pasn/pasn_common.h
++++ b/src/pasn/pasn_common.h
+@@ -66,6 +66,7 @@ struct pasn_data {
+ 	size_t extra_ies_len;
+ 
+ 	/* External modules do not access below variables */
++	bool derive_kek;
+ 	size_t kek_len;
+ 	u16 group;
+ 	bool secure_ltf;
+diff --git a/src/pasn/pasn_responder.c b/src/pasn/pasn_responder.c
+index 9ded253ee..11f27e16f 100644
+--- a/src/pasn/pasn_responder.c
++++ b/src/pasn/pasn_responder.c
+@@ -741,6 +741,14 @@ int handle_auth_pasn_1(struct pasn_data *pasn,
+ 
+ 	wpa_printf(MSG_DEBUG, "PASN: kdk_len=%zu", pasn->kdk_len);
+ 
++	if (!ieee802_11_rsnx_capab_len(elems.rsnxe, elems.rsnxe_len,
++				       WLAN_RSNX_CAPAB_KEK_IN_PASN)) {
++		pasn->kek_len = 0;
++		pasn->derive_kek = false;
++	}
++
++	wpa_printf(MSG_DEBUG, "PASN: kek_len=%zu", pasn->kek_len);
++
+ 	if (!elems.pasn_params || !elems.pasn_params_len) {
+ 		wpa_printf(MSG_DEBUG,
+ 			   "PASN: No PASN Parameters element found");
+-- 
+2.43.0
+

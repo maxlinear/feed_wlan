@@ -1,0 +1,37 @@
+From ff5248a8e91ec9cc0d1deff3b7aee85e4c4ab882 Mon Sep 17 00:00:00 2001
+From: Jouni Malinen <j@w1.fi>
+Date: Sat, 22 Feb 2025 11:22:36 +0200
+Subject: [PATCH] nl80211: Fix HE 6 GHz capability fetching on big-endian CPUs
+
+nla_get_u16() returns the value in host byte order and there should be
+no extra conversion from little-endian to host byte order.
+
+Fixes: 9272ebae83e6 ("nl80211: Fetch HE 6 GHz capability from the driver")
+Signed-off-by: Jouni Malinen <j@w1.fi>
+---
+ src/drivers/driver_nl80211_capa.c | 9 +++------
+ 1 file changed, 3 insertions(+), 6 deletions(-)
+
+diff --git a/src/drivers/driver_nl80211_capa.c b/src/drivers/driver_nl80211_capa.c
+index 62b166961..3442e7231 100644
+--- a/src/drivers/driver_nl80211_capa.c
++++ b/src/drivers/driver_nl80211_capa.c
+@@ -1993,12 +1993,9 @@ static void phy_info_iftype_copy(struct hostapd_hw_modes *mode,
+ 			  len);
+ 	}
+ 
+-	if (tb[NL80211_BAND_IFTYPE_ATTR_HE_6GHZ_CAPA]) {
+-		u16 capa;
+-
+-		capa = nla_get_u16(tb[NL80211_BAND_IFTYPE_ATTR_HE_6GHZ_CAPA]);
+-		he_capab->he_6ghz_capa = le_to_host16(capa);
+-	}
++	if (tb[NL80211_BAND_IFTYPE_ATTR_HE_6GHZ_CAPA])
++		he_capab->he_6ghz_capa =
++			nla_get_u16(tb[NL80211_BAND_IFTYPE_ATTR_HE_6GHZ_CAPA]);
+ 
+ 	if (!tb[NL80211_BAND_IFTYPE_ATTR_EHT_CAP_MAC] ||
+ 	    !tb[NL80211_BAND_IFTYPE_ATTR_EHT_CAP_PHY])
+-- 
+2.43.0
+

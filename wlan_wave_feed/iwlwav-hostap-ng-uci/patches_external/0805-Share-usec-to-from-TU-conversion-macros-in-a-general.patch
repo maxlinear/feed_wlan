@@ -1,0 +1,72 @@
+From 9f334fe683358ded6e31d798f291b1921ecd27b1 Mon Sep 17 00:00:00 2001
+From: Aditya Kumar Singh <quic_adisi@quicinc.com>
+Date: Tue, 16 Jul 2024 11:54:49 +0530
+Subject: [PATCH] Share usec-to/from-TU conversion macros in a general location
+
+These can be used outside the context of FST and hostapd.c, so move the
+macro definitions into a shared header file. In addition, fix the
+currently unused US_TO_TU() definition and rename "US" to "USEC".
+
+Signed-off-by: Aditya Kumar Singh <quic_adisi@quicinc.com>
+---
+ src/ap/hostapd.c      | 2 --
+ src/common/defs.h     | 5 +++++
+ src/fst/fst_session.c | 8 ++------
+ 3 files changed, 7 insertions(+), 8 deletions(-)
+
+diff --git a/src/ap/hostapd.c b/src/ap/hostapd.c
+index 9af5d9196..6bd4805d5 100644
+--- a/src/ap/hostapd.c
++++ b/src/ap/hostapd.c
+@@ -400,8 +400,6 @@ static int hostapd_broadcast_wep_set(struct hostapd_data *hapd)
+ #ifdef CONFIG_IEEE80211BE
+ #ifdef CONFIG_TESTING_OPTIONS
+ 
+-#define TU_TO_USEC(_val) ((_val) * 1024)
+-
+ static void hostapd_link_remove_timeout_handler(void *eloop_data,
+ 						void *user_ctx)
+ {
+diff --git a/src/common/defs.h b/src/common/defs.h
+index 8cca094e8..7bce6a64b 100644
+--- a/src/common/defs.h
++++ b/src/common/defs.h
+@@ -532,4 +532,9 @@ enum sae_pwe {
+ 	SAE_PWE_NOT_SET = 4,
+ };
+ 
++#define USEC_80211_TU 1024
++
++#define USEC_TO_TU(m) ((m) / USEC_80211_TU)
++#define TU_TO_USEC(m) ((m) * USEC_80211_TU)
++
+ #endif /* DEFS_H */
+diff --git a/src/fst/fst_session.c b/src/fst/fst_session.c
+index 49886ffaa..f8de9a100 100644
+--- a/src/fst/fst_session.c
++++ b/src/fst/fst_session.c
+@@ -18,11 +18,6 @@
+ #include "fst/fst_ctrl_defs.h"
+ #endif /* CONFIG_FST_TEST */
+ 
+-#define US_80211_TU 1024
+-
+-#define US_TO_TU(m) ((m) * / US_80211_TU)
+-#define TU_TO_US(m) ((m) * US_80211_TU)
+-
+ #define FST_LLT_SWITCH_IMMEDIATELY 0
+ 
+ #define fst_printf_session(s, level, format, ...) \
+@@ -182,7 +177,8 @@ static void fst_session_timeout_handler(void *eloop_data, void *user_ctx)
+ static void fst_session_stt_arm(struct fst_session *s)
+ {
+ 	/* Action frames sometimes get delayed. Use relaxed timeout (2*) */
+-	eloop_register_timeout(0, 2 * TU_TO_US(FST_DEFAULT_SESSION_TIMEOUT_TU),
++	eloop_register_timeout(0,
++			       2 * TU_TO_USEC(FST_DEFAULT_SESSION_TIMEOUT_TU),
+ 			       fst_session_timeout_handler, NULL, s);
+ 	s->stt_armed = true;
+ }
+-- 
+2.43.0
+

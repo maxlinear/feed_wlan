@@ -1,0 +1,139 @@
+From dbcf9ff15619df3e9a36c40416f18fbd38bcb0ab Mon Sep 17 00:00:00 2001
+From: Sunil Ravi <sunilravi@google.com>
+Date: Thu, 29 Feb 2024 01:36:40 +0000
+Subject: [PATCH] P2P: Notify the IP address of the connected P2P Client
+
+When wpa_supplicant assigns the IP address (WFA EAPOL IP address
+allocation feature), the assigned IP address of the P2P Client on the GO
+side is notified in the AP-STA-CONNECTED event. So to obtain the IP info
+to external programs, modify the STA authorized event to include the the
+assigned IP address of the P2P Client.
+
+Test: Establish P2P connection and verified from the logs that
+      the P2P Client IP address is notified.
+Signed-off-by: Sunil Ravi <sunilravi@google.com>
+---
+ src/ap/hostapd.h        |  3 ++-
+ src/ap/sta_info.c       | 11 +++++++----
+ wpa_supplicant/ap.c     |  5 +++--
+ wpa_supplicant/notify.c |  7 ++++---
+ wpa_supplicant/notify.h |  2 +-
+ 5 files changed, 17 insertions(+), 11 deletions(-)
+
+diff --git a/src/ap/hostapd.h b/src/ap/hostapd.h
+index 333955486..22540bb37 100644
+--- a/src/ap/hostapd.h
++++ b/src/ap/hostapd.h
+@@ -293,7 +293,8 @@ struct hostapd_data {
+ 	void *wps_event_cb_ctx;
+ 
+ 	void (*sta_authorized_cb)(void *ctx, const u8 *mac_addr,
+-				  int authorized, const u8 *p2p_dev_addr);
++				  int authorized, const u8 *p2p_dev_addr,
++				  const u8 *ip);
+ 	void *sta_authorized_cb_ctx;
+ 
+ 	void (*setup_complete_cb)(void *ctx);
+diff --git a/src/ap/sta_info.c b/src/ap/sta_info.c
+index 9de5b0a1c..dc5e3b419 100644
+--- a/src/ap/sta_info.c
++++ b/src/ap/sta_info.c
+@@ -1433,6 +1433,7 @@ void ap_sta_set_authorized_event(struct hostapd_data *hapd,
+ 	u8 addr[ETH_ALEN];
+ 	u8 ip_addr_buf[4];
+ #endif /* CONFIG_P2P */
++	const u8 *ip_ptr = NULL;
+ 
+ #ifdef CONFIG_P2P
+ 	if (hapd->p2p_group == NULL) {
+@@ -1449,10 +1450,6 @@ void ap_sta_set_authorized_event(struct hostapd_data *hapd,
+ #endif /* CONFIG_P2P */
+ 		os_snprintf(buf, sizeof(buf), MACSTR, MAC2STR(sta->addr));
+ 
+-	if (hapd->sta_authorized_cb)
+-		hapd->sta_authorized_cb(hapd->sta_authorized_cb_ctx,
+-					sta->addr, authorized, dev_addr);
+-
+ 	if (authorized) {
+ 		const u8 *dpp_pkhash;
+ 		const char *keyid;
+@@ -1469,6 +1466,7 @@ void ap_sta_set_authorized_event(struct hostapd_data *hapd,
+ 				    " ip_addr=%u.%u.%u.%u",
+ 				    ip_addr_buf[0], ip_addr_buf[1],
+ 				    ip_addr_buf[2], ip_addr_buf[3]);
++			ip_ptr = ip_addr_buf;
+ 		}
+ #endif /* CONFIG_P2P */
+ 
+@@ -1508,6 +1506,11 @@ void ap_sta_set_authorized_event(struct hostapd_data *hapd,
+ 					  AP_STA_DISCONNECTED "%s", buf);
+ 	}
+ 
++	if (hapd->sta_authorized_cb)
++		hapd->sta_authorized_cb(hapd->sta_authorized_cb_ctx,
++					sta->addr, authorized, dev_addr,
++					ip_ptr);
++
+ #ifdef CONFIG_FST
+ 	if (hapd->iface->fst) {
+ 		if (authorized)
+diff --git a/wpa_supplicant/ap.c b/wpa_supplicant/ap.c
+index ffe98fa8d..11bf53900 100644
+--- a/wpa_supplicant/ap.c
++++ b/wpa_supplicant/ap.c
+@@ -868,9 +868,10 @@ static void ap_wps_event_cb(void *ctx, enum wps_event event,
+ 
+ 
+ static void ap_sta_authorized_cb(void *ctx, const u8 *mac_addr,
+-				 int authorized, const u8 *p2p_dev_addr)
++				 int authorized, const u8 *p2p_dev_addr,
++				 const u8 *ip)
+ {
+-	wpas_notify_sta_authorized(ctx, mac_addr, authorized, p2p_dev_addr);
++	wpas_notify_sta_authorized(ctx, mac_addr, authorized, p2p_dev_addr, ip);
+ }
+ 
+ 
+diff --git a/wpa_supplicant/notify.c b/wpa_supplicant/notify.c
+index 745234dda..85150a010 100644
+--- a/wpa_supplicant/notify.c
++++ b/wpa_supplicant/notify.c
+@@ -776,7 +776,7 @@ void wpas_notify_p2p_invitation_received(struct wpa_supplicant *wpa_s,
+ 
+ static void wpas_notify_ap_sta_authorized(struct wpa_supplicant *wpa_s,
+ 					  const u8 *sta,
+-					  const u8 *p2p_dev_addr)
++					  const u8 *p2p_dev_addr, const u8 *ip)
+ {
+ #ifdef CONFIG_P2P
+ 	wpas_p2p_notify_ap_sta_authorized(wpa_s, p2p_dev_addr);
+@@ -820,10 +820,11 @@ static void wpas_notify_ap_sta_deauthorized(struct wpa_supplicant *wpa_s,
+ 
+ void wpas_notify_sta_authorized(struct wpa_supplicant *wpa_s,
+ 				const u8 *mac_addr, int authorized,
+-				const u8 *p2p_dev_addr)
++				const u8 *p2p_dev_addr, const u8 *ip)
+ {
+ 	if (authorized)
+-		wpas_notify_ap_sta_authorized(wpa_s, mac_addr, p2p_dev_addr);
++		wpas_notify_ap_sta_authorized(wpa_s, mac_addr, p2p_dev_addr,
++					      ip);
+ 	else
+ 		wpas_notify_ap_sta_deauthorized(wpa_s, mac_addr, p2p_dev_addr);
+ }
+diff --git a/wpa_supplicant/notify.h b/wpa_supplicant/notify.h
+index 2a0cf097a..5c8057836 100644
+--- a/wpa_supplicant/notify.h
++++ b/wpa_supplicant/notify.h
+@@ -94,7 +94,7 @@ void wpas_notify_resume(struct wpa_global *global);
+ 
+ void wpas_notify_sta_authorized(struct wpa_supplicant *wpa_s,
+ 				const u8 *mac_addr, int authorized,
+-				const u8 *p2p_dev_addr);
++				const u8 *p2p_dev_addr, const u8 *ip);
+ void wpas_notify_p2p_find_stopped(struct wpa_supplicant *wpa_s);
+ void wpas_notify_p2p_device_found(struct wpa_supplicant *wpa_s,
+ 				  const u8 *dev_addr, int new_device);
+-- 
+2.43.0
+

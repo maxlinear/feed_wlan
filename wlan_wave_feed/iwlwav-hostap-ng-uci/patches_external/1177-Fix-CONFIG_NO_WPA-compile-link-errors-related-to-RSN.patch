@@ -1,0 +1,95 @@
+From 24df236caec1fe84145db25483748e7185669a6a Mon Sep 17 00:00:00 2001
+From: Matthew Wang <matthewmwang@chromium.org>
+Date: Tue, 17 Sep 2024 16:33:39 +0000
+Subject: [PATCH] Fix CONFIG_NO_WPA compile/link errors related to RSNXE
+
+Enabling CONFIG_NO_WPA causes some errors. Fix them.
+
+Signed-off-by: Matthew Wang <matthewmwang@chromium.org>
+---
+ wpa_supplicant/events.c         | 9 ++++++++-
+ wpa_supplicant/wpa_supplicant.c | 6 ++++++
+ 2 files changed, 14 insertions(+), 1 deletion(-)
+
+diff --git a/wpa_supplicant/events.c b/wpa_supplicant/events.c
+index a7c56f771..03364e3f7 100644
+--- a/wpa_supplicant/events.c
++++ b/wpa_supplicant/events.c
+@@ -3427,7 +3427,10 @@ static int wpa_supplicant_use_own_rsne_params(struct wpa_supplicant *wpa_s,
+ static int wpa_supplicant_event_associnfo(struct wpa_supplicant *wpa_s,
+ 					  union wpa_event_data *data)
+ {
+-	int l, len, found = 0, found_x = 0, wpa_found, rsn_found;
++	int l, len, found = 0, wpa_found, rsn_found;
++#ifndef CONFIG_NO_WPA
++	int found_x = 0;
++#endif /* CONFIG_NO_WPA */
+ 	const u8 *p, *ie;
+ 	u8 bssid[ETH_ALEN];
+ 	bool bssid_known;
+@@ -3530,18 +3533,22 @@ static int wpa_supplicant_event_associnfo(struct wpa_supplicant *wpa_s,
+ 			wpa_find_assoc_pmkid(wpa_s,
+ 					     data->assoc_info.authorized);
+ 		}
++#ifndef CONFIG_NO_WPA
+ 		if (!found_x && p[0] == WLAN_EID_RSNX) {
+ 			if (wpa_sm_set_assoc_rsnxe(wpa_s->wpa, p, len))
+ 				break;
+ 			found_x = 1;
+ 		}
++#endif /* CONFIG_NO_WPA */
+ 		l -= len;
+ 		p += len;
+ 	}
+ 	if (!found && data->assoc_info.req_ies)
+ 		wpa_sm_set_assoc_wpa_ie(wpa_s->wpa, NULL, 0);
++#ifndef CONFIG_NO_WPA
+ 	if (!found_x && data->assoc_info.req_ies)
+ 		wpa_sm_set_assoc_rsnxe(wpa_s->wpa, NULL, 0);
++#endif /* CONFIG_NO_WPA */
+ 
+ 	rsn_override = RSN_OVERRIDE_NOT_USED;
+ 	ie = get_vendor_ie(data->assoc_info.req_ies,
+diff --git a/wpa_supplicant/wpa_supplicant.c b/wpa_supplicant/wpa_supplicant.c
+index 534d9821d..cfa66da08 100644
+--- a/wpa_supplicant/wpa_supplicant.c
++++ b/wpa_supplicant/wpa_supplicant.c
+@@ -420,7 +420,9 @@ void wpa_supplicant_set_non_wpa_policy(struct wpa_supplicant *wpa_s,
+ 	wpa_sm_set_ap_rsne_override_2(wpa_s->wpa, NULL, 0);
+ 	wpa_sm_set_ap_rsnxe_override(wpa_s->wpa, NULL, 0);
+ 	wpa_sm_set_assoc_wpa_ie(wpa_s->wpa, NULL, 0);
++#ifndef CONFIG_NO_WPA
+ 	wpa_sm_set_assoc_rsnxe(wpa_s->wpa, NULL, 0);
++#endif /* CONFIG_NO_WPA */
+ 	wpa_s->rsnxe_len = 0;
+ 	wpa_s->pairwise_cipher = WPA_CIPHER_NONE;
+ 	wpa_s->group_cipher = WPA_CIPHER_NONE;
+@@ -2278,6 +2280,7 @@ int wpa_supplicant_set_suites(struct wpa_supplicant *wpa_s,
+ 			return -1;
+ 		}
+ 
++#ifndef CONFIG_NO_WPA
+ 		wpa_s->rsnxe_len = sizeof(wpa_s->rsnxe);
+ 		if (wpa_sm_set_assoc_rsnxe_default(wpa_s->wpa, wpa_s->rsnxe,
+ 						   &wpa_s->rsnxe_len)) {
+@@ -2285,6 +2288,7 @@ int wpa_supplicant_set_suites(struct wpa_supplicant *wpa_s,
+ 				"RSN: Failed to generate RSNXE");
+ 			return -1;
+ 		}
++#endif /* CONFIG_NO_WPA */
+ 	}
+ 
+ 	if (0) {
+@@ -4455,7 +4459,9 @@ static void wpas_start_assoc_cb(struct wpa_radio_work *work, int deinit)
+ 	/* Starting new association, so clear the possibly used WPA IE from the
+ 	 * previous association. */
+ 	wpa_sm_set_assoc_wpa_ie(wpa_s->wpa, NULL, 0);
++#ifndef CONFIG_NO_WPA
+ 	wpa_sm_set_assoc_rsnxe(wpa_s->wpa, NULL, 0);
++#endif /* CONFIG_NO_WPA */
+ 	wpa_s->rsnxe_len = 0;
+ #ifndef CONFIG_NO_ROBUST_AV
+ 	wpa_s->mscs_setup_done = false;
+-- 
+2.43.0
+

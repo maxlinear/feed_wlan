@@ -1,0 +1,43 @@
+From 4200657338927bee4151c94d2375c42165d76e0d Mon Sep 17 00:00:00 2001
+From: Jouni Malinen <quic_jouni@quicinc.com>
+Date: Wed, 27 Mar 2024 11:31:25 +0200
+Subject: [PATCH] nl80211: Fix set_ap() to add frequency without
+ CONFIG_IEEE80211AX
+
+This call was added within a conditional CONFIG_IEEE80211AX block even
+though this can apply without that build option. Move this outside that
+conditional block.
+
+Fixes: b3921db426ea ("nl80211: Add frequency info in start AP command")
+Signed-off-by: Jouni Malinen <quic_jouni@quicinc.com>
+---
+ src/drivers/driver_nl80211.c | 6 +++---
+ 1 file changed, 3 insertions(+), 3 deletions(-)
+
+diff --git a/src/drivers/driver_nl80211.c b/src/drivers/driver_nl80211.c
+index 46f155e45..830b0fe33 100644
+--- a/src/drivers/driver_nl80211.c
++++ b/src/drivers/driver_nl80211.c
+@@ -5319,6 +5319,9 @@ static int wpa_driver_nl80211_set_ap(void *priv,
+ 		nla_nest_end(msg, ftm);
+ 	}
+ 
++	if (params->freq && nl80211_put_freq_params(msg, params->freq) < 0)
++		goto fail;
++
+ #ifdef CONFIG_IEEE80211AX
+ 	if (params->he_spr_ctrl) {
+ 		struct nlattr *spr;
+@@ -5353,9 +5356,6 @@ static int wpa_driver_nl80211_set_ap(void *priv,
+ 		nla_nest_end(msg, spr);
+ 	}
+ 
+-	if (params->freq && nl80211_put_freq_params(msg, params->freq) < 0)
+-		goto fail;
+-
+ 	if (params->freq && params->freq->he_enabled &&
+ 	    nl80211_attr_supported(drv, NL80211_ATTR_HE_BSS_COLOR)) {
+ 		struct nlattr *bss_color;
+-- 
+2.43.0
+

@@ -1,0 +1,61 @@
+From 1f88e0463d019f7532aecd50e789b7b2be49fffe Mon Sep 17 00:00:00 2001
+From: Tomas Paukrt <tomaspaukrt@email.cz>
+Date: Tue, 17 Sep 2024 07:13:27 +0200
+Subject: [PATCH] Include HMAC-SHA384/512 KDF for SAE if SHA384/512 is included
+
+It was possible to miss the HMAC functions if some other build
+configuration parameters ended up setting NEED_SHA384/512=y.
+
+Signed-off-by: Tomas Paukrt <tomaspaukrt@email.cz>
+---
+ hostapd/Android.mk | 11 +++++++++++
+ hostapd/Makefile   | 11 +++++++++++
+ 2 files changed, 22 insertions(+)
+
+diff --git a/hostapd/Android.mk b/hostapd/Android.mk
+index 573564d5b..e6c2fbf18 100644
+--- a/hostapd/Android.mk
++++ b/hostapd/Android.mk
+@@ -936,6 +936,17 @@ endif
+ endif
+ endif
+ 
++ifdef CONFIG_SAE
++ifdef NEED_SHA384
++# Need to add HMAC-SHA384 KDF as well, if SHA384 was enabled.
++NEED_HMAC_SHA384_KDF=y
++endif
++ifdef NEED_SHA512
++# Need to add HMAC-SHA512 KDF as well, if SHA512 was enabled.
++NEED_HMAC_SHA512_KDF=y
++endif
++endif
++
+ L_CFLAGS += -DCONFIG_SHA256
+ ifneq ($(CONFIG_TLS), openssl)
+ ifneq ($(CONFIG_TLS), gnutls)
+diff --git a/hostapd/Makefile b/hostapd/Makefile
+index ca4439234..fa0d366a8 100644
+--- a/hostapd/Makefile
++++ b/hostapd/Makefile
+@@ -1065,6 +1065,17 @@ endif
+ endif
+ endif
+ 
++ifdef CONFIG_SAE
++ifdef NEED_SHA384
++# Need to add HMAC-SHA384 KDF as well, if SHA384 was enabled.
++NEED_HMAC_SHA384_KDF=y
++endif
++ifdef NEED_SHA512
++# Need to add HMAC-SHA512 KDF as well, if SHA512 was enabled.
++NEED_HMAC_SHA512_KDF=y
++endif
++endif
++
+ CFLAGS += -DCONFIG_SHA256
+ ifneq ($(CONFIG_TLS), openssl)
+ ifneq ($(CONFIG_TLS), linux)
+-- 
+2.43.0
+

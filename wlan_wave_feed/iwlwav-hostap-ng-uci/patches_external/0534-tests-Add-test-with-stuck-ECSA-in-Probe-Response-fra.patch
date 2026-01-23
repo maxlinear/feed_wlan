@@ -1,0 +1,43 @@
+From ae1a9909e0817720942376454463e359898f454d Mon Sep 17 00:00:00 2001
+From: Johannes Berg <johannes.berg@intel.com>
+Date: Thu, 28 Mar 2024 14:07:00 +0100
+Subject: [PATCH] tests: Add test with stuck ECSA in Probe Response frames
+
+Add a test behaving like an Asus RT-AC53 with firmware
+3.0.0.4.380_10760-g21a5898, which (in some cases?) can have an ECSA
+element stuck in the probe response, when the channel switch is long
+finished.
+
+Signed-off-by: Johannes Berg <johannes.berg@intel.com>
+---
+ tests/hwsim/test_ap_csa.py | 17 +++++++++++++++++
+ 1 file changed, 17 insertions(+)
+
+diff --git a/tests/hwsim/test_ap_csa.py b/tests/hwsim/test_ap_csa.py
+index bcfad4ca1..ae1162c99 100644
+--- a/tests/hwsim/test_ap_csa.py
++++ b/tests/hwsim/test_ap_csa.py
+@@ -257,3 +257,20 @@ def test_assoc_while_csa_diff_blocktx(dev, apdev):
+ def test_assoc_while_csa_diff(dev, apdev):
+     """Check we don't associate while AP is doing CSA (different channel)"""
+     _assoc_while_csa(dev, apdev, 5200, False)
++
++def test_ap_stuck_ecsa(dev, apdev):
++    """ECSA element stuck in Probe Response frame"""
++
++    # Test behaving like an Asus RT-AC53, firmware 3.0.0.4.380_10760-g21a5898,
++    # which has stuck ECSA element in the Probe Response frames.
++    try:
++        ap = connect(dev[0], apdev, scan_freq=None,
++                     hw_mode='a', channel='36',
++                     country_code='FI',
++                     presp_elements="3c0401732409")
++        ap.wait_sta()
++        hwsim_utils.test_connectivity(dev[0], ap)
++    finally:
++        dev[0].request("DISCONNECT")
++        dev[0].wait_event(["CTRL-EVENT-DISCONNECTED"], timeout=1)
++        clear_regdom(ap, dev)
+-- 
+2.43.0
+

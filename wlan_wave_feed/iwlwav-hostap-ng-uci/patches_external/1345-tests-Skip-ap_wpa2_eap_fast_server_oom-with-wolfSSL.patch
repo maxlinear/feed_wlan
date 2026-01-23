@@ -1,0 +1,32 @@
+From 645d58859e4c96fc9dacca4c126429e39b2bcc7f Mon Sep 17 00:00:00 2001
+From: Juliusz Sosinowicz <juliusz@wolfssl.com>
+Date: Thu, 4 Apr 2024 20:16:30 +0200
+Subject: [PATCH] tests: Skip ap_wpa2_eap_fast_server_oom with wolfSSL
+
+wolfSSL sends the session ticket extension on the first TLS handshake.
+This causes the malloc error to be triggered on the first connection
+instead of the second and the failure event is not registered in this
+test case.
+
+Signed-off-by: Juliusz Sosinowicz <juliusz@wolfssl.com>
+---
+ tests/hwsim/test_ap_eap.py | 3 +++
+ 1 file changed, 3 insertions(+)
+
+diff --git a/tests/hwsim/test_ap_eap.py b/tests/hwsim/test_ap_eap.py
+index 498883f1a..96b6d0f27 100644
+--- a/tests/hwsim/test_ap_eap.py
++++ b/tests/hwsim/test_ap_eap.py
+@@ -4276,6 +4276,9 @@ def test_ap_wpa2_eap_fast_prf_oom(dev, apdev):
+ def test_ap_wpa2_eap_fast_server_oom(dev, apdev):
+     """EAP-FAST/MSCHAPv2 and server OOM"""
+     check_eap_capa(dev[0], "FAST")
++    tls = dev[0].request("GET tls_library")
++    if not tls.startswith("OpenSSL"):
++        raise HwsimSkip("TLS library is not OpenSSL: " + tls)
+ 
+     params = int_eap_server_params()
+     params['dh_file'] = 'auth_serv/dh.conf'
+-- 
+2.43.0
+

@@ -1,0 +1,31 @@
+From 1e541605157a0b6183eaa0e1e38e0f71ba6f69b2 Mon Sep 17 00:00:00 2001
+From: Johannes Berg <johannes.berg@intel.com>
+Date: Wed, 24 Jul 2024 19:37:07 +0200
+Subject: [PATCH] hostapd: Fix BSS parameters change count on link removal
+
+The value currently is simply incremented, but it must not
+reach 255 and rather wrap around from 254 to 0, since in
+the Reduced Neighbor Report 255 means unknown. Fix that.
+
+Fixes: d95838b7932b ("AP: Add support for testing ML link removal")
+Signed-off-by: Johannes Berg <johannes.berg@intel.com>
+---
+ src/ap/hostapd.c | 2 ++
+ 1 file changed, 2 insertions(+)
+
+diff --git a/src/ap/hostapd.c b/src/ap/hostapd.c
+index a05de030d..a0ac3a857 100644
+--- a/src/ap/hostapd.c
++++ b/src/ap/hostapd.c
+@@ -440,6 +440,8 @@ int hostapd_link_remove(struct hostapd_data *hapd, u32 count)
+ 
+ 	hapd->eht_mld_link_removal_count = count;
+ 	hapd->eht_mld_bss_param_change++;
++	if (hapd->eht_mld_bss_param_change == 255)
++		hapd->eht_mld_bss_param_change = 0;
+ 
+ 	eloop_register_timeout(0, TU_TO_USEC(hapd->iconf->beacon_int),
+ 			       hostapd_link_remove_timeout_handler,
+-- 
+2.43.0
+

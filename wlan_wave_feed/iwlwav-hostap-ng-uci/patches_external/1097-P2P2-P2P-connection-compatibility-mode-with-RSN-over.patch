@@ -1,0 +1,291 @@
+From 61a36a2262fab6f3815bafe62eac91f342d335db Mon Sep 17 00:00:00 2001
+From: Shivani Baranwal <quic_shivbara@quicinc.com>
+Date: Thu, 10 Oct 2024 20:46:42 +0530
+Subject: [PATCH] P2P2: P2P connection compatibility mode with RSN overriding
+
+P2P2 GO supporting PCC mode operates in WPA3-Personal Compatibility Mode
+and allows both P2P2 (WFD-R2) and WFD-R1 clients to connect. P2P2
+clients that support RSN overriding will connect with WPA3 SAE
+authentication, while the legacy clients connect with WPA2-PSK.
+
+Signed-off-by: Shivani Baranwal <quic_shivbara@quicinc.com>
+---
+ src/common/defs.h                           |  6 +++++
+ wpa_supplicant/ap.c                         | 12 ++++++++++
+ wpa_supplicant/config_ssid.h                |  5 +++++
+ wpa_supplicant/ctrl_iface.c                 | 10 +++++++--
+ wpa_supplicant/dbus/dbus_new_handlers_p2p.c |  2 +-
+ wpa_supplicant/p2p_supplicant.c             | 25 ++++++++++++++-------
+ wpa_supplicant/p2p_supplicant.h             |  2 +-
+ wpa_supplicant/wpa_supplicant.c             |  4 ++++
+ wpa_supplicant/wpa_supplicant_i.h           |  1 +
+ 9 files changed, 55 insertions(+), 12 deletions(-)
+
+diff --git a/src/common/defs.h b/src/common/defs.h
+index 7bce6a64b..f58977039 100644
+--- a/src/common/defs.h
++++ b/src/common/defs.h
+@@ -532,6 +532,12 @@ enum sae_pwe {
+ 	SAE_PWE_NOT_SET = 4,
+ };
+ 
++enum wpa_p2p_mode {
++	WPA_P2P_MODE_WFD_R1	= 0,
++	WPA_P2P_MODE_WFD_R2	= 1,
++	WPA_P2P_MODE_WFD_PCC	= 2,
++};
++
+ #define USEC_80211_TU 1024
+ 
+ #define USEC_TO_TU(m) ((m) / USEC_80211_TU)
+diff --git a/wpa_supplicant/ap.c b/wpa_supplicant/ap.c
+index 18d78d16b..c4e19aa3d 100644
+--- a/wpa_supplicant/ap.c
++++ b/wpa_supplicant/ap.c
+@@ -582,6 +582,18 @@ static int wpa_supplicant_conf_ap(struct wpa_supplicant *wpa_s,
+ 	else
+ 		bss->wpa_key_mgmt = ssid->key_mgmt;
+ 	bss->wpa_pairwise = ssid->pairwise_cipher;
++
++#ifdef CONFIG_P2P
++	if (ssid->p2p_mode == WPA_P2P_MODE_WFD_PCC) {
++		bss->wpa_key_mgmt = WPA_KEY_MGMT_PSK;
++		bss->rsn_override_key_mgmt = WPA_KEY_MGMT_SAE |
++			WPA_KEY_MGMT_PASN;
++		bss->wpa_pairwise = WPA_CIPHER_CCMP;
++		bss->rsn_override_pairwise = WPA_CIPHER_CCMP;
++		bss->rsn_override_mfp = 2;
++	}
++#endif /* CONFIG_P2P */
++
+ 	if (wpa_key_mgmt_sae(bss->wpa_key_mgmt) && ssid->passphrase) {
+ 		bss->ssid.wpa_passphrase = os_strdup(ssid->passphrase);
+ 	} else if (ssid->psk_set) {
+diff --git a/wpa_supplicant/config_ssid.h b/wpa_supplicant/config_ssid.h
+index b280258a4..c5a9dbccc 100644
+--- a/wpa_supplicant/config_ssid.h
++++ b/wpa_supplicant/config_ssid.h
+@@ -1308,6 +1308,11 @@ struct wpa_ssid {
+ 	 *	parameter with the same name)
+ 	 */
+ 	enum wpas_rsn_overriding rsn_overriding;
++
++	/**
++	 * p2p_mode - P2P R1 only, P2P R2 only, or PCC mode
++	 */
++	enum wpa_p2p_mode p2p_mode;
+ };
+ 
+ #endif /* CONFIG_SSID_H */
+diff --git a/wpa_supplicant/ctrl_iface.c b/wpa_supplicant/ctrl_iface.c
+index cfb51ca9f..1d578f4df 100644
+--- a/wpa_supplicant/ctrl_iface.c
++++ b/wpa_supplicant/ctrl_iface.c
+@@ -7213,6 +7213,7 @@ static int p2p_ctrl_group_add(struct wpa_supplicant *wpa_s, char *cmd)
+ {
+ 	int freq = 0, persistent = 0, group_id = -1;
+ 	bool p2p2 = false;
++	int p2pmode = WPA_P2P_MODE_WFD_R1;
+ 	bool allow_6ghz = false;
+ 	int vht = wpa_s->conf->p2p_go_vht;
+ 	int ht40 = wpa_s->conf->p2p_go_ht40 || vht;
+@@ -7228,7 +7229,8 @@ static int p2p_ctrl_group_add(struct wpa_supplicant *wpa_s, char *cmd)
+ 	while ((token = str_token(cmd, " ", &context))) {
+ 		if (sscanf(token, "freq2=%d", &freq2) == 1 ||
+ 		    sscanf(token, "persistent=%d", &group_id) == 1 ||
+-		    sscanf(token, "max_oper_chwidth=%d", &chwidth) == 1) {
++		    sscanf(token, "max_oper_chwidth=%d", &chwidth) == 1 ||
++		    sscanf(token, "p2pmode=%d", &p2pmode) == 1) {
+ 			continue;
+ #ifdef CONFIG_ACS
+ 		} else if (os_strcmp(token, "freq=acs") == 0) {
+@@ -7301,8 +7303,12 @@ static int p2p_ctrl_group_add(struct wpa_supplicant *wpa_s, char *cmd)
+ 						     edmg, allow_6ghz,
+ 						     go_bssid);
+ 
++	if (p2pmode < WPA_P2P_MODE_WFD_R1 || p2pmode > WPA_P2P_MODE_WFD_PCC)
++		return -1;
++
+ 	return wpas_p2p_group_add(wpa_s, persistent, freq, freq2, ht40, vht,
+-				  max_oper_chwidth, he, edmg, allow_6ghz, p2p2);
++				  max_oper_chwidth, he, edmg, allow_6ghz, p2p2,
++				  (enum wpa_p2p_mode) p2pmode);
+ }
+ 
+ 
+diff --git a/wpa_supplicant/dbus/dbus_new_handlers_p2p.c b/wpa_supplicant/dbus/dbus_new_handlers_p2p.c
+index 06cc92f4a..e3df6fe84 100644
+--- a/wpa_supplicant/dbus/dbus_new_handlers_p2p.c
++++ b/wpa_supplicant/dbus/dbus_new_handlers_p2p.c
+@@ -486,7 +486,7 @@ DBusMessage * wpas_dbus_handler_p2p_group_add(DBusMessage *message,
+ 		}
+ 	} else if (wpas_p2p_group_add(wpa_s, persistent_group, freq, freq2,
+ 				      ht40, vht, max_oper_chwidth, he, edmg,
+-				      allow_6ghz, wpa_s->p2p2))
++				      allow_6ghz, wpa_s->p2p2, wpa_s->p2p_mode))
+ 		goto inv_args;
+ 
+ out:
+diff --git a/wpa_supplicant/p2p_supplicant.c b/wpa_supplicant/p2p_supplicant.c
+index 71c510f75..dab64971e 100644
+--- a/wpa_supplicant/p2p_supplicant.c
++++ b/wpa_supplicant/p2p_supplicant.c
+@@ -2042,6 +2042,7 @@ static void wpas_start_gc(struct wpa_supplicant *wpa_s,
+ 	wpa_s->p2p_in_invitation = 1;
+ 	wpa_s->p2p_go_group_formation_completed = 0;
+ 	wpa_s->global->p2p_group_formation = wpa_s;
++	ssid->rsn_overriding = RSN_OVERRIDING_ENABLED;
+ 
+ 	wpa_s->current_ssid = ssid;
+ 	wpa_supplicant_update_scan_results(wpa_s, res->peer_interface_addr);
+@@ -2391,7 +2392,7 @@ int wpas_p2p_try_edmg_channel(struct wpa_supplicant *wpa_s,
+ 
+ static void wpas_start_go(struct wpa_supplicant *wpa_s,
+ 			  struct p2p_go_neg_results *params,
+-			  int group_formation)
++			  int group_formation, enum wpa_p2p_mode p2p_mode)
+ {
+ 	struct wpa_ssid *ssid;
+ 
+@@ -2486,6 +2487,7 @@ static void wpas_start_go(struct wpa_supplicant *wpa_s,
+ 		wpa_config_update_psk(ssid);
+ 	ssid->ap_max_inactivity = wpa_s->p2pdev->conf->p2p_go_max_inactivity;
+ 
++	ssid->p2p_mode = p2p_mode;
+ 	if (params->p2p2) {
+ 		if (params->akmp == WPA_KEY_MGMT_SAE)
+ 			ssid->auth_alg = WPA_AUTH_ALG_OPEN;
+@@ -2494,7 +2496,10 @@ static void wpas_start_go(struct wpa_supplicant *wpa_s,
+ 
+ 		ssid->key_mgmt = WPA_KEY_MGMT_SAE | WPA_KEY_MGMT_PASN;
+ 		ssid->sae_password = os_strdup(params->sae_password);
+-		ssid->ieee80211w = MGMT_FRAME_PROTECTION_REQUIRED;
++		/* In PCC, RSNE indicates PMF to be disabled while RSNOE/RSNO2E
++		 * requires PMF for SAE. */
++		if (ssid->p2p_mode != WPA_P2P_MODE_WFD_PCC)
++			ssid->ieee80211w = MGMT_FRAME_PROTECTION_REQUIRED;
+ 		ssid->sae_pwe = SAE_PWE_HASH_TO_ELEMENT;
+ 		if (params->cipher)
+ 			ssid->pairwise_cipher |= params->cipher;
+@@ -2948,7 +2953,7 @@ static void wpas_go_neg_completed(void *ctx, struct p2p_go_neg_results *res)
+ 	}
+ 
+ 	if (res->role_go) {
+-		wpas_start_go(group_wpa_s, res, 1);
++		wpas_start_go(group_wpa_s, res, 1, group_wpa_s->p2p_mode);
+ 	} else {
+ 		os_get_reltime(&group_wpa_s->scan_min_time);
+ 		if (res->p2p2)
+@@ -5114,7 +5119,8 @@ static void wpas_p2ps_prov_complete(void *ctx, enum p2p_status_code status,
+ 			} else if (response_done) {
+ 				wpas_p2p_group_add(wpa_s, 1, freq,
+ 						   0, 0, 0, 0, 0, 0, false,
+-						   wpa_s->p2p2);
++						   wpa_s->p2p2,
++						   WPA_P2P_MODE_WFD_R1);
+ 			}
+ 
+ 			if (passwd_id == DEV_PW_P2PS_DEFAULT) {
+@@ -5239,7 +5245,7 @@ static int wpas_prov_disc_resp_cb(void *ctx)
+ 	} else {
+ 		wpas_p2p_group_add(wpa_s, 1, freq, 0, 0, 0, 0, 0, 0,
+ 				   is_p2p_allow_6ghz(wpa_s->global->p2p),
+-				   wpa_s->p2p2);
++				   wpa_s->p2p2, WPA_P2P_MODE_WFD_R1);
+ 	}
+ 
+ 	return 1;
+@@ -6757,6 +6763,7 @@ int wpas_p2p_connect(struct wpa_supplicant *wpa_s, const u8 *peer_addr,
+ 	}
+ 
+ 	wpa_s->p2p2 = p2p2;
++	wpa_s->p2p_mode = p2p2 ? WPA_P2P_MODE_WFD_R2 : WPA_P2P_MODE_WFD_R1;
+ 
+ 	if (wpas_p2p_check_6ghz(wpa_s, peer_addr, allow_6ghz, freq))
+ 		return -2;
+@@ -7709,6 +7716,7 @@ wpas_p2p_get_group_iface(struct wpa_supplicant *wpa_s, int addr_allocated,
+  * @vht_chwidth: channel bandwidth for GO operating with VHT support
+  * @edmg: Start GO with EDMG support
+  * @allow_6ghz: Allow P2P group creation on a 6 GHz channel
++ * @p2p_mode: Operation mode for GO (R1/R2/PCC)
+  * Returns: 0 on success, -1 on failure
+  *
+  * This function creates a new P2P group with the local end as the Group Owner,
+@@ -7717,7 +7725,7 @@ wpas_p2p_get_group_iface(struct wpa_supplicant *wpa_s, int addr_allocated,
+ int wpas_p2p_group_add(struct wpa_supplicant *wpa_s, int persistent_group,
+ 		       int freq, int vht_center_freq2, int ht40, int vht,
+ 		       int max_oper_chwidth, int he, int edmg,
+-		       bool allow_6ghz, bool p2p2)
++		       bool allow_6ghz, bool p2p2, enum wpa_p2p_mode p2p_mode)
+ {
+ 	struct p2p_go_neg_results params;
+ 	int selected_freq = 0;
+@@ -7730,6 +7738,7 @@ int wpas_p2p_group_add(struct wpa_supplicant *wpa_s, int persistent_group,
+ 	os_free(wpa_s->global->add_psk);
+ 	wpa_s->global->add_psk = NULL;
+ 	wpa_s->p2p2 = p2p2;
++	wpa_s->p2p_mode = p2p_mode;
+ 
+ 	/* Make sure we are not running find during connection establishment */
+ 	wpa_printf(MSG_DEBUG, "P2P: Stop any on-going P2P FIND");
+@@ -7756,7 +7765,7 @@ int wpas_p2p_group_add(struct wpa_supplicant *wpa_s, int persistent_group,
+ 	if (freq > 0)
+ 		wpa_s->p2p_go_no_pri_sec_switch = 1;
+ 	params.p2p2 = wpa_s->p2p2;
+-	wpas_start_go(wpa_s, &params, 0);
++	wpas_start_go(wpa_s, &params, 0, p2p_mode);
+ 
+ 	return 0;
+ }
+@@ -8017,7 +8026,7 @@ int wpas_p2p_group_add_persistent(struct wpa_supplicant *wpa_s,
+ 
+ 	wpa_s->p2p_first_connection_timeout = connection_timeout;
+ 	params.p2p2 = wpa_s->p2p2;
+-	wpas_start_go(wpa_s, &params, 0);
++	wpas_start_go(wpa_s, &params, 0, wpa_s->p2p_mode);
+ 
+ 	return 0;
+ }
+diff --git a/wpa_supplicant/p2p_supplicant.h b/wpa_supplicant/p2p_supplicant.h
+index 1a0d11fe9..ced623d45 100644
+--- a/wpa_supplicant/p2p_supplicant.h
++++ b/wpa_supplicant/p2p_supplicant.h
+@@ -46,7 +46,7 @@ int wpas_p2p_handle_frequency_conflicts(struct wpa_supplicant *wpa_s,
+ int wpas_p2p_group_add(struct wpa_supplicant *wpa_s, int persistent_group,
+ 		       int freq, int vht_center_freq2, int ht40, int vht,
+ 		       int max_oper_chwidth, int he, int edmg, bool allow_6ghz,
+-		       bool p2p2);
++		       bool p2p2, enum wpa_p2p_mode p2p_mode);
+ int wpas_p2p_group_add_persistent(struct wpa_supplicant *wpa_s,
+ 				  struct wpa_ssid *ssid, int addr_allocated,
+ 				  int force_freq, int neg_freq,
+diff --git a/wpa_supplicant/wpa_supplicant.c b/wpa_supplicant/wpa_supplicant.c
+index 4184ae780..534d9821d 100644
+--- a/wpa_supplicant/wpa_supplicant.c
++++ b/wpa_supplicant/wpa_supplicant.c
+@@ -6262,6 +6262,10 @@ wpa_supplicant_alloc(struct wpa_supplicant *parent)
+ 	wpa_s->new_connection = 1;
+ 	wpa_s->parent = parent ? parent : wpa_s;
+ 	wpa_s->p2pdev = wpa_s->parent;
++#ifdef CONFIG_P2P
++	if (parent)
++		wpa_s->p2p_mode = parent->p2p_mode;
++#endif /* CONFIG_P2P */
+ 	wpa_s->sched_scanning = 0;
+ 	wpa_s->setband_mask = WPA_SETBAND_AUTO;
+ 
+diff --git a/wpa_supplicant/wpa_supplicant_i.h b/wpa_supplicant/wpa_supplicant_i.h
+index c500a6c65..c6ae8c37e 100644
+--- a/wpa_supplicant/wpa_supplicant_i.h
++++ b/wpa_supplicant/wpa_supplicant_i.h
+@@ -1179,6 +1179,7 @@ struct wpa_supplicant {
+ 	unsigned int p2p2:1;
+ 	u16 p2p_bootstrap;
+ 	enum hostapd_hw_mode p2p_go_acs_band;
++	enum wpa_p2p_mode p2p_mode;
+ 	int p2p_persistent_go_freq;
+ 	int p2p_persistent_id;
+ 	int p2p_go_intent;
+-- 
+2.43.0
+

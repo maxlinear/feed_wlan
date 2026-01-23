@@ -1,0 +1,230 @@
+From 2ea04435ecf5e7ed2aea658b8c36938783f9d9a1 Mon Sep 17 00:00:00 2001
+From: Damien Dejean <damiendejean@chromium.org>
+Date: Tue, 20 Feb 2024 12:12:11 +0000
+Subject: [PATCH] DBus: Signal ANQP query done
+
+Add a D-Bus signal "ANQPQueryDone" to notify of the result of an ANQP
+request.
+
+Signed-off-by: Damien Dejean <damiendejean@chromium.org>
+---
+ doc/dbus.doxygen               | 11 +++++++++
+ tests/hwsim/test_dbus.py       | 45 ++++++++++++++++++++++++++++++++++
+ wpa_supplicant/dbus/dbus_new.c | 41 +++++++++++++++++++++++++++++++
+ wpa_supplicant/dbus/dbus_new.h |  8 ++++++
+ wpa_supplicant/interworking.c  |  3 +--
+ wpa_supplicant/notify.c        | 10 ++++++++
+ wpa_supplicant/notify.h        |  2 ++
+ 7 files changed, 118 insertions(+), 2 deletions(-)
+
+diff --git a/doc/dbus.doxygen b/doc/dbus.doxygen
+index 93d387def..61d67dca1 100644
+--- a/doc/dbus.doxygen
++++ b/doc/dbus.doxygen
+@@ -1363,6 +1363,17 @@ fi.w1.wpa_supplicant1.CreateInterface.
+ 	  <dd>URL of the terms and conditions page.</dd>
+ 	</dl>
+       </li>
++
++      <li>
++	<h3>ANQPQueryDone ( s : addr, s : result )</h3>
++	<p>Result of an ANQP query.</p>
++	<dl>
++	  <dt>s : addr</dt>
++	  <dd>Address of the BSS targeted by the query.</dd>
++	  <dt>s : result</dt>
++	  <dd>Determine if the request was successful. If so fields are available in BSS.</dd>
++	</dl>
++      </li>
+     </ul>
+ 
+ 
+diff --git a/tests/hwsim/test_dbus.py b/tests/hwsim/test_dbus.py
+index 0abd6090e..97baa8f2c 100644
+--- a/tests/hwsim/test_dbus.py
++++ b/tests/hwsim/test_dbus.py
+@@ -6308,3 +6308,48 @@ def test_dbus_anqp_get(dev, apdev):
+     bss = dev[0].get_bss(bssid)
+     if 'anqp_capability_list' not in bss:
+         raise Exception("Capability List ANQP-element not seen")
++
++def test_dbus_anqp_query_done(dev, apdev):
++    """D-Bus ANQP get test"""
++    (bus, wpa_obj, path, if_obj) = prepare_dbus(dev[0])
++    iface = dbus.Interface(if_obj, WPAS_DBUS_IFACE)
++
++    bssid = apdev[0]['bssid']
++    params = hs20_ap_params(ssid="test-anqp")
++    params["hessid"] = bssid
++    params['mbo'] = '1'
++    params['mbo_cell_data_conn_pref'] = '1'
++    params['hs20_oper_friendly_name'] = ["eng:Example operator",
++                                         "fin:Esimerkkioperaattori"]
++    hapd = hostapd.add_ap(apdev[0], params)
++
++    class TestDbusANQPGet(TestDbus):
++        def __init__(self, bus):
++            TestDbus.__init__(self, bus)
++            self.anqp_query_done = False
++
++        def __enter__(self):
++            gobject.timeout_add(1, self.run_query)
++            gobject.timeout_add(15000, self.timeout)
++            self.add_signal(self.anqpQueryDone, WPAS_DBUS_IFACE,
++                            "ANQPQueryDone")
++            self.loop.run()
++            return self
++
++        def anqpQueryDone(self, addr, result):
++            logger.debug("anqpQueryDone: addr=%s result=%s" % (addr, result))
++            if addr == bssid and "SUCCESS" in result:
++                self.anqp_query_done = True
++
++        def run_query(self, *args):
++            dev[0].scan_for_bss(bssid, freq="2412", force_scan=True)
++            iface.ANQPGet({"addr": bssid,
++                           "ids": dbus.Array([257], dbus.Signature("q"))})
++            return False
++
++        def success(self):
++            return self.anqp_query_done
++
++    with TestDbusANQPGet(bus) as t:
++        if not t.success():
++            raise Exception("Expected signals not seen")
+diff --git a/wpa_supplicant/dbus/dbus_new.c b/wpa_supplicant/dbus/dbus_new.c
+index 25b5919c0..7c5e42c47 100644
+--- a/wpa_supplicant/dbus/dbus_new.c
++++ b/wpa_supplicant/dbus/dbus_new.c
+@@ -1023,6 +1023,40 @@ void wpas_dbus_signal_interworking_select_done(struct wpa_supplicant *wpa_s)
+ 	dbus_message_unref(msg);
+ }
+ 
++
++void wpas_dbus_signal_anqp_query_done(struct wpa_supplicant *wpa_s,
++				      const u8 *dst, const char *result)
++{
++	struct wpas_dbus_priv *iface;
++	DBusMessage *msg;
++	DBusMessageIter iter;
++	char addr[WPAS_DBUS_OBJECT_PATH_MAX], *bssid;
++
++	os_snprintf(addr, WPAS_DBUS_OBJECT_PATH_MAX, MACSTR, MAC2STR(dst));
++	bssid = addr;
++
++	iface = wpa_s->global->dbus;
++
++	/* Do nothing if the control interface is not turned on */
++	if (!iface || !wpa_s->dbus_new_path)
++		return;
++
++	msg = dbus_message_new_signal(wpa_s->dbus_new_path,
++				      WPAS_DBUS_NEW_IFACE_INTERFACE,
++				      "ANQPQueryDone");
++	if (!msg)
++		return;
++
++	dbus_message_iter_init_append(msg, &iter);
++
++	if (!dbus_message_iter_append_basic(&iter, DBUS_TYPE_STRING, &bssid) ||
++	    !dbus_message_iter_append_basic(&iter, DBUS_TYPE_STRING, &result))
++		wpa_printf(MSG_ERROR, "dbus: Failed to construct signal");
++	else
++		dbus_connection_send(iface->con, msg, NULL);
++	dbus_message_unref(msg);
++}
++
+ #endif /* CONFIG_INTERWORKING */
+ 
+ 
+@@ -4310,6 +4344,13 @@ static const struct wpa_dbus_signal_desc wpas_dbus_interface_signals[] = {
+ 		  END_ARGS
+ 	  }
+ 	},
++	{"ANQPQueryDone", WPAS_DBUS_NEW_IFACE_INTERFACE,
++	  {
++		  { "addr", "s", ARG_OUT },
++		  { "result", "s", ARG_OUT },
++		  END_ARGS
++	  }
++	},
+ #endif /* CONFIG_INTERWORKING */
+ #ifdef CONFIG_HS20
+ 	{ "HS20TermsAndConditions", WPAS_DBUS_NEW_IFACE_INTERFACE,
+diff --git a/wpa_supplicant/dbus/dbus_new.h b/wpa_supplicant/dbus/dbus_new.h
+index b653f10f9..7148eaaad 100644
+--- a/wpa_supplicant/dbus/dbus_new.h
++++ b/wpa_supplicant/dbus/dbus_new.h
+@@ -279,6 +279,8 @@ void wpas_dbus_signal_interworking_ap_added(struct wpa_supplicant *wpa_s,
+ 					    int bh, int bss_load,
+ 					    int conn_capab);
+ void wpas_dbus_signal_interworking_select_done(struct wpa_supplicant *wpa_s);
++void wpas_dbus_signal_anqp_query_done(struct wpa_supplicant *wpa_s,
++				      const u8 *dst, const char *result);
+ void wpas_dbus_signal_hs20_t_c_acceptance(struct wpa_supplicant *wpa_s,
+ 					  const char *url);
+ 
+@@ -652,6 +654,12 @@ void wpas_dbus_signal_interworking_select_done(struct wpa_supplicant *wpa_s)
+ {
+ }
+ 
++static inline
++void wpas_dbus_signal_anqp_query_done(struct wpa_supplicant *wpa_s,
++				      const u8 *dst, const char *result)
++{
++}
++
+ static inline
+ void wpas_dbus_signal_hs20_t_c_acceptance(struct wpa_supplicant *wpa_s,
+ 					  const char *url)
+diff --git a/wpa_supplicant/interworking.c b/wpa_supplicant/interworking.c
+index 3c6e9f17b..06b4d1116 100644
+--- a/wpa_supplicant/interworking.c
++++ b/wpa_supplicant/interworking.c
+@@ -3202,8 +3202,7 @@ out_parse_done:
+ 	hs20_notify_parse_done(wpa_s);
+ #endif /* CONFIG_HS20 */
+ out:
+-	wpa_msg(wpa_s, MSG_INFO, ANQP_QUERY_DONE "addr=" MACSTR " result=%s",
+-		MAC2STR(dst), anqp_result);
++	wpas_notify_anqp_query_done(wpa_s, dst, anqp_result);
+ }
+ 
+ 
+diff --git a/wpa_supplicant/notify.c b/wpa_supplicant/notify.c
+index 85150a010..57b1e5fc3 100644
+--- a/wpa_supplicant/notify.c
++++ b/wpa_supplicant/notify.c
+@@ -1013,6 +1013,16 @@ void wpas_notify_interworking_select_done(struct wpa_supplicant *wpa_s)
+ 	wpas_dbus_signal_interworking_select_done(wpa_s);
+ }
+ 
++
++void wpas_notify_anqp_query_done(struct wpa_supplicant *wpa_s,
++				 const u8 *dst, const char *result)
++{
++	wpa_msg(wpa_s, MSG_INFO, ANQP_QUERY_DONE "addr=" MACSTR " result=%s",
++		MAC2STR(dst), result);
++
++	wpas_dbus_signal_anqp_query_done(wpa_s, dst, result);
++}
++
+ #endif /* CONFIG_INTERWORKING */
+ 
+ 
+diff --git a/wpa_supplicant/notify.h b/wpa_supplicant/notify.h
+index 5c8057836..0c249a77e 100644
+--- a/wpa_supplicant/notify.h
++++ b/wpa_supplicant/notify.h
+@@ -166,6 +166,8 @@ void wpas_notify_interworking_ap_added(struct wpa_supplicant *wpa_s,
+ 				       const char *type, int bh, int bss_load,
+ 				       int conn_capab);
+ void wpas_notify_interworking_select_done(struct wpa_supplicant *wpa_s);
++void wpas_notify_anqp_query_done(struct wpa_supplicant *wpa_s,
++				 const u8 *dst, const char *result);
+ void wpas_notify_pmk_cache_added(struct wpa_supplicant *wpa_s,
+ 				 struct rsn_pmksa_cache_entry *entry);
+ void wpas_notify_signal_change(struct wpa_supplicant *wpa_s);
+-- 
+2.43.0
+

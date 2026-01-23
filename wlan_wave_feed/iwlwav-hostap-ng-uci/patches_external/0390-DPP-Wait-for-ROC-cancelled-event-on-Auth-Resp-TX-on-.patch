@@ -1,0 +1,158 @@
+From 451d299528a01d45dcc05f7fe1e99d6a5e5a2a54 Mon Sep 17 00:00:00 2001
+From: Jouni Malinen <j@w1.fi>
+Date: Sat, 2 Mar 2024 19:06:15 +0200
+Subject: [PATCH] DPP: Wait for ROC cancelled event on Auth Resp TX on another
+ channel
+
+Avoid potential race conditions with the driver operations between
+cancelling an ongoing ROC that was used to receive Authentication
+Request that requested a different channel to be used for the
+negotiation by waiting for the ROC cancelled event before issuing the
+offchannel TX command for the Authentication Response.
+
+In addition, speed up the retry on Authentication Response in this type
+of a case if the first attempt on the other channel is not AKC'ed since
+it might take the peer device a bit more time to be ready to listen
+there.
+
+Signed-off-by: Jouni Malinen <j@w1.fi>
+---
+ wpa_supplicant/dpp_supplicant.c   | 72 +++++++++++++++++++++++++++----
+ wpa_supplicant/wpa_supplicant_i.h |  2 +
+ 2 files changed, 66 insertions(+), 8 deletions(-)
+
+diff --git a/wpa_supplicant/dpp_supplicant.c b/wpa_supplicant/dpp_supplicant.c
+index d3a96ac0c..5c8cc594d 100644
+--- a/wpa_supplicant/dpp_supplicant.c
++++ b/wpa_supplicant/dpp_supplicant.c
+@@ -237,6 +237,12 @@ static void wpas_dpp_auth_resp_retry(struct wpa_supplicant *wpa_s)
+ 		wait_time = wpa_s->dpp_resp_retry_time;
+ 	else
+ 		wait_time = 1000;
++	if (wpa_s->dpp_tx_chan_change) {
++		wpa_s->dpp_tx_chan_change = false;
++		if (wait_time > 100)
++			wait_time = 100;
++	}
++
+ 	wpa_printf(MSG_DEBUG,
+ 		   "DPP: Schedule retransmission of Authentication Response frame in %u ms",
+ 		wait_time);
+@@ -1020,6 +1026,8 @@ static void dpp_start_listen_cb(struct wpa_radio_work *work, int deinit)
+ 	wpa_s->off_channel_freq = 0;
+ 	wpa_s->roc_waiting_drv_freq = lwork->freq;
+ 	wpa_drv_dpp_listen(wpa_s, true);
++	wpa_s->dpp_tx_auth_resp_on_roc_stop = false;
++	wpa_s->dpp_tx_chan_change = false;
+ }
+ 
+ 
+@@ -1119,11 +1127,58 @@ void wpas_dpp_remain_on_channel_cb(struct wpa_supplicant *wpa_s,
+ }
+ 
+ 
++static void wpas_dpp_tx_auth_resp(struct wpa_supplicant *wpa_s)
++{
++	struct dpp_authentication *auth = wpa_s->dpp_auth;
++
++	if (!auth)
++		return;
++
++	wpa_msg(wpa_s, MSG_INFO, DPP_EVENT_TX "dst=" MACSTR " freq=%u type=%d",
++		MAC2STR(auth->peer_mac_addr), auth->curr_freq,
++		DPP_PA_AUTHENTICATION_RESP);
++	offchannel_send_action(wpa_s, auth->curr_freq,
++			       auth->peer_mac_addr, wpa_s->own_addr, broadcast,
++			       wpabuf_head(auth->resp_msg),
++			       wpabuf_len(auth->resp_msg),
++			       500, wpas_dpp_tx_status, 0);
++}
++
++
++static void wpas_dpp_tx_auth_resp_roc_timeout(void *eloop_ctx,
++					      void *timeout_ctx)
++{
++	struct wpa_supplicant *wpa_s = eloop_ctx;
++	struct dpp_authentication *auth = wpa_s->dpp_auth;
++
++	if (!auth || !wpa_s->dpp_tx_auth_resp_on_roc_stop)
++		return;
++
++	wpa_s->dpp_tx_auth_resp_on_roc_stop = false;
++	wpa_s->dpp_tx_chan_change = true;
++	wpa_printf(MSG_DEBUG,
++		   "DPP: Send postponed Authentication Response on remain-on-channel termination timeout");
++	wpas_dpp_tx_auth_resp(wpa_s);
++}
++
++
+ void wpas_dpp_cancel_remain_on_channel_cb(struct wpa_supplicant *wpa_s,
+ 					  unsigned int freq)
+ {
++	wpa_printf(MSG_DEBUG, "DPP: Remain on channel cancel for %u MHz", freq);
+ 	wpas_dpp_listen_work_done(wpa_s);
+ 
++	if (wpa_s->dpp_auth && wpa_s->dpp_tx_auth_resp_on_roc_stop) {
++		eloop_cancel_timeout(wpas_dpp_tx_auth_resp_roc_timeout,
++				     wpa_s, NULL);
++		wpa_s->dpp_tx_auth_resp_on_roc_stop = false;
++		wpa_s->dpp_tx_chan_change = true;
++		wpa_printf(MSG_DEBUG,
++			   "DPP: Send postponed Authentication Response on remain-on-channel termination");
++		wpas_dpp_tx_auth_resp(wpa_s);
++		return;
++	}
++
+ 	if (wpa_s->dpp_auth && wpa_s->dpp_in_response_listen) {
+ 		unsigned int new_freq;
+ 
+@@ -1241,17 +1296,17 @@ static void wpas_dpp_rx_auth_req(struct wpa_supplicant *wpa_s, const u8 *src,
+ 		wpa_printf(MSG_DEBUG,
+ 			   "DPP: Stop listen on %u MHz to allow response on the request %u MHz",
+ 			   wpa_s->dpp_listen_freq, wpa_s->dpp_auth->curr_freq);
++		wpa_s->dpp_tx_auth_resp_on_roc_stop = true;
++		eloop_register_timeout(0, 100000,
++				       wpas_dpp_tx_auth_resp_roc_timeout,
++				       wpa_s, NULL);
+ 		wpas_dpp_listen_stop(wpa_s);
++		return;
+ 	}
++	wpa_s->dpp_tx_auth_resp_on_roc_stop = false;
++	wpa_s->dpp_tx_chan_change = false;
+ 
+-	wpa_msg(wpa_s, MSG_INFO, DPP_EVENT_TX "dst=" MACSTR " freq=%u type=%d",
+-		MAC2STR(src), wpa_s->dpp_auth->curr_freq,
+-		DPP_PA_AUTHENTICATION_RESP);
+-	offchannel_send_action(wpa_s, wpa_s->dpp_auth->curr_freq,
+-			       src, wpa_s->own_addr, broadcast,
+-			       wpabuf_head(wpa_s->dpp_auth->resp_msg),
+-			       wpabuf_len(wpa_s->dpp_auth->resp_msg),
+-			       500, wpas_dpp_tx_status, 0);
++	wpas_dpp_tx_auth_resp(wpa_s);
+ }
+ 
+ 
+@@ -4778,6 +4833,7 @@ void wpas_dpp_deinit(struct wpa_supplicant *wpa_s)
+ 	eloop_cancel_timeout(wpas_dpp_gas_initial_resp_timeout, wpa_s, NULL);
+ 	eloop_cancel_timeout(wpas_dpp_gas_client_timeout, wpa_s, NULL);
+ 	eloop_cancel_timeout(wpas_dpp_drv_wait_timeout, wpa_s, NULL);
++	eloop_cancel_timeout(wpas_dpp_tx_auth_resp_roc_timeout, wpa_s, NULL);
+ #ifdef CONFIG_DPP2
+ 	eloop_cancel_timeout(wpas_dpp_config_result_wait_timeout, wpa_s, NULL);
+ 	eloop_cancel_timeout(wpas_dpp_conn_status_result_wait_timeout,
+diff --git a/wpa_supplicant/wpa_supplicant_i.h b/wpa_supplicant/wpa_supplicant_i.h
+index c169dce67..1b018aff7 100644
+--- a/wpa_supplicant/wpa_supplicant_i.h
++++ b/wpa_supplicant/wpa_supplicant_i.h
+@@ -1474,6 +1474,8 @@ struct wpa_supplicant {
+ 	int dpp_netrole;
+ 	int dpp_auth_ok_on_ack;
+ 	int dpp_in_response_listen;
++	bool dpp_tx_auth_resp_on_roc_stop;
++	bool dpp_tx_chan_change;
+ 	int dpp_gas_client;
+ 	int dpp_gas_server;
+ 	int dpp_gas_dialog_token;
+-- 
+2.43.0
+

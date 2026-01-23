@@ -1,0 +1,55 @@
+From b0d9c51bac4667a12f329db697ce39049c93b2e7 Mon Sep 17 00:00:00 2001
+From: Tomas Paukrt <tomaspaukrt@email.cz>
+Date: Tue, 17 Sep 2024 07:14:08 +0200
+Subject: [PATCH] Add a top-level Makefile
+
+Add a top-level Makefile to make cross-compilation easier under
+various build systems.
+
+Signed-off-by: Tomas Paukrt <tomaspaukrt@email.cz>
+---
+ Makefile      | 10 ++++++++++
+ build_release |  6 +++---
+ 2 files changed, 13 insertions(+), 3 deletions(-)
+ create mode 100644 Makefile
+
+diff --git a/Makefile b/Makefile
+new file mode 100644
+index 000000000..c4b1498cf
+--- /dev/null
++++ b/Makefile
+@@ -0,0 +1,10 @@
++SUBDIRS=$(wildcard hostapd) $(wildcard wpa_supplicant)
++
++all:
++	for dir in $(SUBDIRS); do $(MAKE) -C $$dir; done
++
++clean distclean:
++	for dir in $(SUBDIRS); do $(MAKE) -C $$dir clean; done
++
++install:
++	for dir in $(SUBDIRS); do $(MAKE) -C $$dir install; done
+diff --git a/build_release b/build_release
+index 3aa9bf319..bb7f15d9f 100755
+--- a/build_release
++++ b/build_release
+@@ -30,13 +30,13 @@ mkdir $TMP
+ mkdir -p $RELDIR
+ 
+ git archive --format=tar --prefix=wpa-$VER/ HEAD \
+-	README COPYING CONTRIBUTIONS src wpa_supplicant hostapd hs20 |
++	README COPYING CONTRIBUTIONS Makefile src wpa_supplicant hostapd hs20 |
+ 	gzip > $RELDIR/wpa-$VER.tar.gz
+ git archive --format=tar --prefix=hostapd-$VER/ HEAD \
+-	README COPYING CONTRIBUTIONS src hostapd |
++	README COPYING CONTRIBUTIONS Makefile src hostapd |
+ 	gzip > $RELDIR/hostapd-$VER.tar.gz
+ git archive --format=tar --prefix=wpa_supplicant-$VER/ HEAD \
+-	README COPYING CONTRIBUTIONS src wpa_supplicant hs20/client |
++	README COPYING CONTRIBUTIONS Makefile src wpa_supplicant hs20/client |
+ 	tar --directory=$TMP -xf -
+ 
+ cd $TMP
+-- 
+2.43.0
+

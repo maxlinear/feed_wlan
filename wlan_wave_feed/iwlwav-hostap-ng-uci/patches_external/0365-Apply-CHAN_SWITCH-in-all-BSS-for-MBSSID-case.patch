@@ -1,0 +1,85 @@
+From 352ad5f1a2853ebca04ba9a6bdd75261213e954b Mon Sep 17 00:00:00 2001
+From: Haribabu Krishnasamy <quic_hkr@quicinc.com>
+Date: Thu, 25 Jan 2024 12:17:51 +0530
+Subject: [PATCH] Apply CHAN_SWITCH in all BSS for MBSSID case
+
+When the CHAN_SWITCH command is executed during multi BSSID case (say
+BSS1, BSS2, and BSS3), if one of the BSS is disabled (say BSS2), the
+CHAN_SWITCH command returns an error in BSS2 and does not proceed to the
+next BSS (BSS3).
+
+The CHAN_SWITCH command handler iterates over all configured BSSs and
+attempts to send the switch_channel to each one. However, if any one of
+the BSSs fails, the entire command is aborted and returns a failure.
+
+Continue the iteration even if one BSS is failing to make sure the
+configuration is applied to other BSSs.
+
+Signed-off-by: Haribabu Krishnasamy <quic_hkr@quicinc.com>
+---
+ hostapd/ctrl_iface.c | 13 +++++++------
+ src/ap/dfs.c         |  5 +++--
+ 2 files changed, 10 insertions(+), 8 deletions(-)
+
+diff --git a/hostapd/ctrl_iface.c b/hostapd/ctrl_iface.c
+index 5552cce6d..84d2e83e4 100644
+--- a/hostapd/ctrl_iface.c
++++ b/hostapd/ctrl_iface.c
+@@ -2638,6 +2638,8 @@ static int hostapd_ctrl_iface_chan_switch(struct hostapd_iface *iface,
+ 	unsigned int i;
+ 	int bandwidth;
+ 	u8 chan;
++	unsigned int num_err = 0;
++	int err = 0;
+ 
+ 	ret = hostapd_parse_csa_settings(pos, &settings);
+ 	if (ret)
+@@ -2721,15 +2723,14 @@ static int hostapd_ctrl_iface_chan_switch(struct hostapd_iface *iface,
+ 		hostapd_chan_switch_config(iface->bss[i],
+ 					   &settings.freq_params);
+ 
+-		ret = hostapd_switch_channel(iface->bss[i], &settings);
+-		if (ret) {
+-			/* FIX: What do we do if CSA fails in the middle of
+-			 * submitting multi-BSS CSA requests? */
+-			return ret;
++		err = hostapd_switch_channel(iface->bss[i], &settings);
++		if (err) {
++			ret = err;
++			num_err++;
+ 		}
+ 	}
+ 
+-	return 0;
++	return (iface->num_bss == num_err) ? ret : 0;
+ #else /* NEED_AP_MLME */
+ 	return -1;
+ #endif /* NEED_AP_MLME */
+diff --git a/src/ap/dfs.c b/src/ap/dfs.c
+index 5e4c81070..5e36cff10 100644
+--- a/src/ap/dfs.c
++++ b/src/ap/dfs.c
+@@ -972,6 +972,7 @@ static int hostapd_dfs_request_channel_switch(struct hostapd_iface *iface,
+ 	struct csa_settings csa_settings;
+ 	u8 new_vht_oper_chwidth;
+ 	unsigned int i;
++	unsigned int num_err = 0;
+ 
+ 	wpa_printf(MSG_DEBUG, "DFS will switch to a new channel %d", channel);
+ 	wpa_msg(iface->bss[0]->msg_ctx, MSG_INFO, DFS_EVENT_NEW_CHANNEL
+@@ -1021,10 +1022,10 @@ static int hostapd_dfs_request_channel_switch(struct hostapd_iface *iface,
+ 	for (i = 0; i < iface->num_bss; i++) {
+ 		err = hostapd_switch_channel(iface->bss[i], &csa_settings);
+ 		if (err)
+-			break;
++			num_err++;
+ 	}
+ 
+-	if (err) {
++	if (num_err == iface->num_bss) {
+ 		wpa_printf(MSG_WARNING,
+ 			   "DFS failed to schedule CSA (%d) - trying fallback",
+ 			   err);
+-- 
+2.43.0
+

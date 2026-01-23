@@ -1,0 +1,4002 @@
+From 2d83d224ff2b9ff629e7b96294e7768d5b494db3 Mon Sep 17 00:00:00 2001
+From: Jouni Malinen <j@w1.fi>
+Date: Sat, 13 Jan 2024 23:15:36 +0200
+Subject: [PATCH] Use ether_addr_equal() to compare whether two MAC addresses
+ are equal
+
+This was done with spatch using the following semantic patch and minor
+manual edits to clean up coding style and avoid compiler warnings in
+driver_wext.c:
+
+@@
+expression a,b;
+@@
+-	os_memcmp(a, b, ETH_ALEN) == 0
++	ether_addr_equal(a, b)
+
+@@
+expression a,b;
+@@
+-	os_memcmp(a, b, ETH_ALEN) != 0
++	!ether_addr_equal(a, b)
+
+@@
+expression a,b;
+@@
+-	!os_memcmp(a, b, ETH_ALEN)
++	ether_addr_equal(a, b)
+
+Signed-off-by: Jouni Malinen <j@w1.fi>
+---
+ hostapd/ctrl_iface.c               |  2 +-
+ src/ap/airtime_policy.c            |  2 +-
+ src/ap/ap_config.c                 |  7 ++-
+ src/ap/ap_list.c                   |  6 +--
+ src/ap/beacon.c                    |  4 +-
+ src/ap/dpp_hostapd.c               | 10 ++---
+ src/ap/drv_callbacks.c             |  9 ++--
+ src/ap/fils_hlp.c                  |  2 +-
+ src/ap/gas_query_ap.c              |  6 +--
+ src/ap/ieee802_11.c                | 26 +++++------
+ src/ap/ieee802_11_auth.c           |  4 +-
+ src/ap/ieee802_11_eht.c            |  4 +-
+ src/ap/neighbor_db.c               |  2 +-
+ src/ap/pmksa_cache_auth.c          | 10 ++---
+ src/ap/preauth_auth.c              |  2 +-
+ src/ap/sta_info.c                  |  6 +--
+ src/ap/wpa_auth.c                  |  8 ++--
+ src/ap/wpa_auth_ft.c               | 24 +++++-----
+ src/ap/wpa_auth_glue.c             |  8 ++--
+ src/ap/wps_hostapd.c               |  2 +-
+ src/common/dpp_tcp.c               |  4 +-
+ src/common/gas_server.c            |  4 +-
+ src/common/ptksa_cache.c           |  4 +-
+ src/drivers/driver_atheros.c       |  8 ++--
+ src/drivers/driver_ndis.c          |  8 ++--
+ src/drivers/driver_nl80211.c       |  8 ++--
+ src/drivers/driver_nl80211_event.c | 47 +++++++++-----------
+ src/drivers/driver_nl80211_scan.c  |  6 +--
+ src/drivers/driver_roboswitch.c    |  2 +-
+ src/drivers/driver_wext.c          |  7 +--
+ src/fst/fst_group.c                |  3 +-
+ src/fst/fst_iface.c                |  2 +-
+ src/fst/fst_session.c              |  6 +--
+ src/l2_packet/l2_packet_linux.c    |  4 +-
+ src/p2p/p2p.c                      | 40 ++++++++---------
+ src/p2p/p2p_dev_disc.c             | 10 ++---
+ src/p2p/p2p_go_neg.c               |  2 +-
+ src/p2p/p2p_group.c                | 14 +++---
+ src/p2p/p2p_invitation.c           |  8 ++--
+ src/p2p/p2p_pd.c                   | 19 ++++----
+ src/p2p/p2p_sd.c                   | 12 +++--
+ src/pae/ieee802_1x_kay.c           |  2 +-
+ src/pasn/pasn_initiator.c          | 10 ++---
+ src/radius/radius_client.c         |  2 +-
+ src/rsn_supp/pmksa_cache.c         |  8 ++--
+ src/rsn_supp/preauth.c             |  8 ++--
+ src/rsn_supp/tdls.c                | 40 ++++++++---------
+ src/rsn_supp/wpa.c                 |  9 ++--
+ src/rsn_supp/wpa_ft.c              |  4 +-
+ src/wps/wps.c                      |  4 +-
+ src/wps/wps_enrollee.c             |  6 +--
+ src/wps/wps_er.c                   |  4 +-
+ src/wps/wps_registrar.c            | 15 +++----
+ wlantest/bss.c                     |  6 +--
+ wlantest/ctrl.c                    |  6 +--
+ wlantest/inject.c                  |  4 +-
+ wlantest/process.c                 |  6 +--
+ wlantest/rx_data.c                 |  4 +-
+ wlantest/rx_eapol.c                | 19 ++++----
+ wlantest/rx_mgmt.c                 | 38 ++++++++--------
+ wlantest/sta.c                     | 30 ++++++-------
+ wlantest/tkip.c                    |  4 +-
+ wpa_supplicant/bgscan_learn.c      |  6 +--
+ wpa_supplicant/bss.c               | 19 ++++----
+ wpa_supplicant/bssid_ignore.c      |  4 +-
+ wpa_supplicant/config.c            |  2 +-
+ wpa_supplicant/ctrl_iface.c        | 10 ++---
+ wpa_supplicant/dpp_supplicant.c    | 20 ++++-----
+ wpa_supplicant/events.c            | 54 +++++++++++------------
+ wpa_supplicant/gas_query.c         | 10 ++---
+ wpa_supplicant/hs20_supplicant.c   |  8 ++--
+ wpa_supplicant/ibss_rsn.c          |  4 +-
+ wpa_supplicant/interworking.c      |  4 +-
+ wpa_supplicant/mesh_mpm.c          |  4 +-
+ wpa_supplicant/offchannel.c        | 10 ++---
+ wpa_supplicant/p2p_supplicant.c    | 71 ++++++++++++++----------------
+ wpa_supplicant/pasn_supplicant.c   |  8 ++--
+ wpa_supplicant/rrm.c               | 12 ++---
+ wpa_supplicant/scan.c              |  3 +-
+ wpa_supplicant/sme.c               | 21 +++++----
+ wpa_supplicant/wmm_ac.c            |  6 +--
+ wpa_supplicant/wnm_sta.c           | 31 ++++++-------
+ wpa_supplicant/wpa_supplicant.c    | 44 +++++++++---------
+ wpa_supplicant/wpas_glue.c         |  2 +-
+ wpa_supplicant/wps_supplicant.c    | 13 +++---
+ 85 files changed, 460 insertions(+), 497 deletions(-)
+
+diff --git a/hostapd/ctrl_iface.c b/hostapd/ctrl_iface.c
+index f9a78651c..273e7bd7e 100644
+--- a/hostapd/ctrl_iface.c
++++ b/hostapd/ctrl_iface.c
+@@ -1431,7 +1431,7 @@ hostapd_ctrl_iface_kick_mismatch_psk_sta_iter(struct hostapd_data *hapd,
+ 		pmk_match = PMK_LEN == pmk_len &&
+ 			os_memcmp(psk->psk, pmk, pmk_len) == 0;
+ 		sta_match = psk->group == 0 &&
+-			os_memcmp(sta->addr, psk->addr, ETH_ALEN) == 0;
++			ether_addr_equal(sta->addr, psk->addr);
+ 		bss_match = psk->group == 1;
+ 
+ 		if (pmk_match && (sta_match || bss_match))
+diff --git a/src/ap/airtime_policy.c b/src/ap/airtime_policy.c
+index abe817c5b..68443115f 100644
+--- a/src/ap/airtime_policy.c
++++ b/src/ap/airtime_policy.c
+@@ -232,7 +232,7 @@ static int get_weight_for_sta(struct hostapd_data *hapd, const u8 *sta)
+ 	struct airtime_sta_weight *wt;
+ 
+ 	wt = hapd->conf->airtime_weight_list;
+-	while (wt && os_memcmp(wt->addr, sta, ETH_ALEN) != 0)
++	while (wt && !ether_addr_equal(wt->addr, sta))
+ 		wt = wt->next;
+ 
+ 	return wt ? wt->weight : hapd->conf->airtime_weight;
+diff --git a/src/ap/ap_config.c b/src/ap/ap_config.c
+index 89fd12d1d..040f39e7f 100644
+--- a/src/ap/ap_config.c
++++ b/src/ap/ap_config.c
+@@ -1135,10 +1135,9 @@ const u8 * hostapd_get_psk(const struct hostapd_bss_config *conf,
+ 	for (psk = conf->ssid.wpa_psk; psk != NULL; psk = psk->next) {
+ 		if (next_ok &&
+ 		    (psk->group ||
+-		     (addr && os_memcmp(psk->addr, addr, ETH_ALEN) == 0) ||
++		     (addr && ether_addr_equal(psk->addr, addr)) ||
+ 		     (!addr && p2p_dev_addr &&
+-		      os_memcmp(psk->p2p_dev_addr, p2p_dev_addr, ETH_ALEN) ==
+-		      0))) {
++		      ether_addr_equal(psk->p2p_dev_addr, p2p_dev_addr)))) {
+ 			if (vlan_id)
+ 				*vlan_id = psk->vlan_id;
+ 			return psk->psk;
+@@ -1758,7 +1757,7 @@ void hostapd_remove_acl_mac(struct mac_acl_entry **acl, int *num,
+ 	int i = 0;
+ 
+ 	while (i < *num) {
+-		if (os_memcmp((*acl)[i].addr, addr, ETH_ALEN) == 0) {
++		if (ether_addr_equal((*acl)[i].addr, addr)) {
+ 			os_remove_in_array(*acl, *num, sizeof(**acl), i);
+ 			(*num)--;
+ 		} else {
+diff --git a/src/ap/ap_list.c b/src/ap/ap_list.c
+index 20be7f8f8..13facab30 100644
+--- a/src/ap/ap_list.c
++++ b/src/ap/ap_list.c
+@@ -55,7 +55,7 @@ static struct ap_info * ap_get_ap(struct hostapd_iface *iface, const u8 *ap)
+ 	struct ap_info *s;
+ 
+ 	s = iface->ap_hash[STA_HASH(ap)];
+-	while (s != NULL && os_memcmp(s->addr, ap, ETH_ALEN) != 0)
++	while (s != NULL && !ether_addr_equal(s->addr, ap))
+ 		s = s->hnext;
+ 	return s;
+ }
+@@ -100,13 +100,13 @@ static void ap_ap_hash_del(struct hostapd_iface *iface, struct ap_info *ap)
+ 
+ 	s = iface->ap_hash[STA_HASH(ap->addr)];
+ 	if (s == NULL) return;
+-	if (os_memcmp(s->addr, ap->addr, ETH_ALEN) == 0) {
++	if (ether_addr_equal(s->addr, ap->addr)) {
+ 		iface->ap_hash[STA_HASH(ap->addr)] = s->hnext;
+ 		return;
+ 	}
+ 
+ 	while (s->hnext != NULL &&
+-	       os_memcmp(s->hnext->addr, ap->addr, ETH_ALEN) != 0)
++	       !ether_addr_equal(s->hnext->addr, ap->addr))
+ 		s = s->hnext;
+ 	if (s->hnext != NULL)
+ 		s->hnext = s->hnext->hnext;
+diff --git a/src/ap/beacon.c b/src/ap/beacon.c
+index 89e360874..9b08f65a7 100644
+--- a/src/ap/beacon.c
++++ b/src/ap/beacon.c
+@@ -1147,7 +1147,7 @@ static struct hostapd_sta_info * sta_track_get(struct hostapd_iface *iface,
+ 	struct hostapd_sta_info *info;
+ 
+ 	dl_list_for_each(info, &iface->sta_seen, struct hostapd_sta_info, list)
+-		if (os_memcmp(addr, info->addr, ETH_ALEN) == 0)
++		if (ether_addr_equal(addr, info->addr))
+ 			return info;
+ 
+ 	return NULL;
+@@ -1499,7 +1499,7 @@ void handle_probe_req(struct hostapd_data *hapd,
+ 		else
+ 			hessid = elems.interworking + 1 + 2;
+ 		if (!is_broadcast_ether_addr(hessid) &&
+-		    os_memcmp(hessid, hapd->conf->hessid, ETH_ALEN) != 0) {
++		    !ether_addr_equal(hessid, hapd->conf->hessid)) {
+ 			wpa_printf(MSG_MSGDUMP, "Probe Request from " MACSTR
+ 				   " for mismatching HESSID " MACSTR
+ 				   " ignored",
+diff --git a/src/ap/dpp_hostapd.c b/src/ap/dpp_hostapd.c
+index 1fee2d6a8..c4baa8014 100644
+--- a/src/ap/dpp_hostapd.c
++++ b/src/ap/dpp_hostapd.c
+@@ -1413,7 +1413,7 @@ static void hostapd_dpp_rx_auth_resp(struct hostapd_data *hapd, const u8 *src,
+ 	}
+ 
+ 	if (!is_zero_ether_addr(auth->peer_mac_addr) &&
+-	    os_memcmp(src, auth->peer_mac_addr, ETH_ALEN) != 0) {
++	    !ether_addr_equal(src, auth->peer_mac_addr)) {
+ 		wpa_printf(MSG_DEBUG, "DPP: MAC address mismatch (expected "
+ 			   MACSTR ") - drop", MAC2STR(auth->peer_mac_addr));
+ 		return;
+@@ -1463,7 +1463,7 @@ static void hostapd_dpp_rx_auth_conf(struct hostapd_data *hapd, const u8 *src,
+ 		return;
+ 	}
+ 
+-	if (os_memcmp(src, auth->peer_mac_addr, ETH_ALEN) != 0) {
++	if (!ether_addr_equal(src, auth->peer_mac_addr)) {
+ 		wpa_printf(MSG_DEBUG, "DPP: MAC address mismatch (expected "
+ 			   MACSTR ") - drop", MAC2STR(auth->peer_mac_addr));
+ 		return;
+@@ -1572,7 +1572,7 @@ static void hostapd_dpp_rx_conf_result(struct hostapd_data *hapd, const u8 *src,
+ 		return;
+ 	}
+ 
+-	if (os_memcmp(src, auth->peer_mac_addr, ETH_ALEN) != 0) {
++	if (!ether_addr_equal(src, auth->peer_mac_addr)) {
+ 		wpa_printf(MSG_DEBUG, "DPP: MAC address mismatch (expected "
+ 			   MACSTR ") - drop", MAC2STR(auth->peer_mac_addr));
+ 		return;
+@@ -1858,7 +1858,7 @@ hostapd_dpp_rx_reconfig_auth_resp(struct hostapd_data *hapd, const u8 *src,
+ 		return;
+ 	}
+ 
+-	if (os_memcmp(src, auth->peer_mac_addr, ETH_ALEN) != 0) {
++	if (!ether_addr_equal(src, auth->peer_mac_addr)) {
+ 		wpa_printf(MSG_DEBUG, "DPP: MAC address mismatch (expected "
+ 			   MACSTR ") - drop", MAC2STR(auth->peer_mac_addr));
+ 		return;
+@@ -3073,7 +3073,7 @@ hostapd_dpp_gas_req_handler(struct hostapd_data *hapd, const u8 *sa,
+ 
+ 	wpa_printf(MSG_DEBUG, "DPP: GAS request from " MACSTR, MAC2STR(sa));
+ 	if (!auth || (!auth->auth_success && !auth->reconfig_success) ||
+-	    os_memcmp(sa, auth->peer_mac_addr, ETH_ALEN) != 0) {
++	    !ether_addr_equal(sa, auth->peer_mac_addr)) {
+ #ifdef CONFIG_DPP2
+ 		if (dpp_relay_rx_gas_req(hapd->iface->interfaces->dpp, sa, data,
+ 				     data_len) == 0) {
+diff --git a/src/ap/drv_callbacks.c b/src/ap/drv_callbacks.c
+index 9878a79df..15baa7bbe 100644
+--- a/src/ap/drv_callbacks.c
++++ b/src/ap/drv_callbacks.c
+@@ -283,7 +283,7 @@ int hostapd_notif_assoc(struct hostapd_data *hapd, const u8 *addr,
+ 
+ 	if (is_multicast_ether_addr(addr) ||
+ 	    is_zero_ether_addr(addr) ||
+-	    os_memcmp(addr, hapd->own_addr, ETH_ALEN) == 0) {
++	    ether_addr_equal(addr, hapd->own_addr)) {
+ 		/* Do not process any frames with unexpected/invalid SA so that
+ 		 * we do not add any state for unexpected STA addresses or end
+ 		 * up sending out frames to unexpected destination. */
+@@ -1636,7 +1636,7 @@ static struct hostapd_data * get_hapd_bssid(struct hostapd_iface *iface,
+ 		return HAPD_BROADCAST;
+ 
+ 	for (i = 0; i < iface->num_bss; i++) {
+-		if (os_memcmp(bssid, iface->bss[i]->own_addr, ETH_ALEN) == 0)
++		if (ether_addr_equal(bssid, iface->bss[i]->own_addr))
+ 			return iface->bss[i];
+ 	}
+ 
+@@ -1690,7 +1690,7 @@ static int hostapd_mgmt_rx(struct hostapd_data *hapd, struct rx_mgmt *rx_mgmt)
+ 
+ #ifdef CONFIG_IEEE80211BE
+ 	if (hapd->conf->mld_ap &&
+-	    os_memcmp(hapd->mld_addr, bssid, ETH_ALEN) == 0)
++	    ether_addr_equal(hapd->mld_addr, bssid))
+ 		is_mld = true;
+ #endif /* CONFIG_IEEE80211BE */
+ 
+@@ -1762,8 +1762,7 @@ static void hostapd_mgmt_tx_cb(struct hostapd_data *hapd, const u8 *buf,
+ 		hapd = tmp_hapd;
+ #ifdef CONFIG_IEEE80211BE
+ 	} else if (hapd->conf->mld_ap &&
+-		   os_memcmp(hapd->mld_addr, get_hdr_bssid(hdr, len),
+-			     ETH_ALEN) == 0) {
++		   ether_addr_equal(hapd->mld_addr, get_hdr_bssid(hdr, len))) {
+ 		/* AP MLD address match - use hapd pointer as-is */
+ #endif /* CONFIG_IEEE80211BE */
+ 	} else {
+diff --git a/src/ap/fils_hlp.c b/src/ap/fils_hlp.c
+index d64fb8c40..a34b5ba1d 100644
+--- a/src/ap/fils_hlp.c
++++ b/src/ap/fils_hlp.c
+@@ -546,7 +546,7 @@ static int fils_process_hlp_req(struct hostapd_data *hapd,
+ 		   " src=" MACSTR " len=%u)",
+ 		   MAC2STR(sta->addr), MAC2STR(pos), MAC2STR(pos + ETH_ALEN),
+ 		   (unsigned int) len);
+-	if (os_memcmp(sta->addr, pos + ETH_ALEN, ETH_ALEN) != 0) {
++	if (!ether_addr_equal(sta->addr, pos + ETH_ALEN)) {
+ 		wpa_printf(MSG_DEBUG,
+ 			   "FILS: Ignore HLP request with unexpected source address"
+ 			   MACSTR, MAC2STR(pos + ETH_ALEN));
+diff --git a/src/ap/gas_query_ap.c b/src/ap/gas_query_ap.c
+index 3d944072d..a471c793c 100644
+--- a/src/ap/gas_query_ap.c
++++ b/src/ap/gas_query_ap.c
+@@ -185,7 +185,7 @@ gas_query_get_pending(struct gas_query_ap *gas, const u8 *addr, u8 dialog_token)
+ {
+ 	struct gas_query_pending *q;
+ 	dl_list_for_each(q, &gas->pending, struct gas_query_pending, list) {
+-		if (os_memcmp(q->addr, addr, ETH_ALEN) == 0 &&
++		if (ether_addr_equal(q->addr, addr) &&
+ 		    q->dialog_token == dialog_token)
+ 			return q;
+ 	}
+@@ -223,7 +223,7 @@ void gas_query_ap_tx_status(struct gas_query_ap *gas, const u8 *dst,
+ 	wpa_printf(MSG_DEBUG, "GAS: TX status: dst=" MACSTR
+ 		   " ok=%d query=%p dialog_token=%u dur=%d ms",
+ 		   MAC2STR(dst), ok, query, query->dialog_token, dur);
+-	if (os_memcmp(dst, query->addr, ETH_ALEN) != 0) {
++	if (!ether_addr_equal(dst, query->addr)) {
+ 		wpa_printf(MSG_DEBUG, "GAS: TX status for unexpected destination");
+ 		return;
+ 	}
+@@ -618,7 +618,7 @@ static int gas_query_dialog_token_available(struct gas_query_ap *gas,
+ {
+ 	struct gas_query_pending *q;
+ 	dl_list_for_each(q, &gas->pending, struct gas_query_pending, list) {
+-		if (os_memcmp(dst, q->addr, ETH_ALEN) == 0 &&
++		if (ether_addr_equal(dst, q->addr) &&
+ 		    dialog_token == q->dialog_token)
+ 			return 0;
+ 	}
+diff --git a/src/ap/ieee802_11.c b/src/ap/ieee802_11.c
+index c448ce0a9..2c57eb635 100644
+--- a/src/ap/ieee802_11.c
++++ b/src/ap/ieee802_11.c
+@@ -556,7 +556,7 @@ const char * sae_get_password(struct hostapd_data *hapd,
+ 	for (pw = hapd->conf->sae_passwords; pw; pw = pw->next) {
+ 		if (!is_broadcast_ether_addr(pw->peer_addr) &&
+ 		    (!sta ||
+-		     os_memcmp(pw->peer_addr, sta->addr, ETH_ALEN) != 0))
++		     !ether_addr_equal(pw->peer_addr, sta->addr)))
+ 			continue;
+ 		if ((rx_id && !pw->identifier) || (!rx_id && pw->identifier))
+ 			continue;
+@@ -1671,7 +1671,7 @@ static void auth_sae_queue(struct hostapd_data *hapd,
+ 	dl_list_for_each(q2, &hapd->sae_commit_queue,
+ 			 struct hostapd_sae_commit_queue, list) {
+ 		mgmt2 = (const struct ieee80211_mgmt *) q2->msg;
+-		if (os_memcmp(mgmt->sa, mgmt2->sa, ETH_ALEN) == 0 &&
++		if (ether_addr_equal(mgmt->sa, mgmt2->sa) &&
+ 		    mgmt->u.auth.auth_transaction ==
+ 		    mgmt2->u.auth.auth_transaction) {
+ 			wpa_printf(MSG_DEBUG,
+@@ -1702,7 +1702,7 @@ static int auth_sae_queued_addr(struct hostapd_data *hapd, const u8 *addr)
+ 	dl_list_for_each(q, &hapd->sae_commit_queue,
+ 			 struct hostapd_sae_commit_queue, list) {
+ 		mgmt = (const struct ieee80211_mgmt *) q->msg;
+-		if (os_memcmp(addr, mgmt->sa, ETH_ALEN) == 0)
++		if (ether_addr_equal(addr, mgmt->sa))
+ 			return 1;
+ 	}
+ 
+@@ -2620,7 +2620,7 @@ static int pasn_set_keys_from_cache(struct hostapd_data *hapd,
+ 		return -1;
+ 	}
+ 
+-	if (os_memcmp(entry->own_addr, own_addr, ETH_ALEN) != 0) {
++	if (!ether_addr_equal(entry->own_addr, own_addr)) {
+ 		wpa_printf(MSG_DEBUG,
+ 			   "PASN: own addr " MACSTR " and PTKSA entry own addr "
+ 			   MACSTR " differ",
+@@ -2916,7 +2916,7 @@ static void handle_auth(struct hostapd_data *hapd,
+ 		goto fail;
+ 	}
+ 
+-	if (os_memcmp(mgmt->sa, hapd->own_addr, ETH_ALEN) == 0) {
++	if (ether_addr_equal(mgmt->sa, hapd->own_addr)) {
+ 		wpa_printf(MSG_INFO, "Station " MACSTR " not allowed to authenticate",
+ 			   MAC2STR(sa));
+ 		resp = WLAN_STATUS_UNSPECIFIED_FAILURE;
+@@ -2924,8 +2924,8 @@ static void handle_auth(struct hostapd_data *hapd,
+ 	}
+ 
+ 	if (mld_sta &&
+-	    (os_memcmp(sa, hapd->own_addr, ETH_ALEN) == 0 ||
+-	     os_memcmp(sa, hapd->mld_addr, ETH_ALEN) == 0)) {
++	    (ether_addr_equal(sa, hapd->own_addr) ||
++	     ether_addr_equal(sa, hapd->mld_addr))) {
+ 		wpa_printf(MSG_INFO,
+ 			   "Station " MACSTR " not allowed to authenticate",
+ 			   MAC2STR(sa));
+@@ -6141,7 +6141,7 @@ int ieee802_11_mgmt(struct hostapd_data *hapd, const u8 *buf, size_t len,
+ 
+ 	if (is_multicast_ether_addr(mgmt->sa) ||
+ 	    is_zero_ether_addr(mgmt->sa) ||
+-	    os_memcmp(mgmt->sa, hapd->own_addr, ETH_ALEN) == 0) {
++	    ether_addr_equal(mgmt->sa, hapd->own_addr)) {
+ 		/* Do not process any frames with unexpected/invalid SA so that
+ 		 * we do not add any state for unexpected STA addresses or end
+ 		 * up sending out frames to unexpected destination. */
+@@ -6167,9 +6167,9 @@ int ieee802_11_mgmt(struct hostapd_data *hapd, const u8 *buf, size_t len,
+ #endif /* CONFIG_MESH */
+ #ifdef CONFIG_IEEE80211BE
+ 	    !(hapd->conf->mld_ap &&
+-	      os_memcmp(hapd->mld_addr, mgmt->bssid, ETH_ALEN) == 0) &&
++	      ether_addr_equal(hapd->mld_addr, mgmt->bssid)) &&
+ #endif /* CONFIG_IEEE80211BE */
+-	    os_memcmp(mgmt->bssid, hapd->own_addr, ETH_ALEN) != 0) {
++	    !ether_addr_equal(mgmt->bssid, hapd->own_addr)) {
+ 		wpa_printf(MSG_INFO, "MGMT: BSSID=" MACSTR " not our address",
+ 			   MAC2STR(mgmt->bssid));
+ 		return 0;
+@@ -6190,9 +6190,9 @@ int ieee802_11_mgmt(struct hostapd_data *hapd, const u8 *buf, size_t len,
+ 	     stype != WLAN_FC_STYPE_ACTION) &&
+ #ifdef CONFIG_IEEE80211BE
+ 	    !(hapd->conf->mld_ap &&
+-	      os_memcmp(hapd->mld_addr, mgmt->bssid, ETH_ALEN) == 0) &&
++	      ether_addr_equal(hapd->mld_addr, mgmt->bssid)) &&
+ #endif /* CONFIG_IEEE80211BE */
+-	    os_memcmp(mgmt->da, hapd->own_addr, ETH_ALEN) != 0) {
++	    !ether_addr_equal(mgmt->da, hapd->own_addr)) {
+ 		hostapd_logger(hapd, mgmt->sa, HOSTAPD_MODULE_IEEE80211,
+ 			       HOSTAPD_LEVEL_DEBUG,
+ 			       "MGMT: DA=" MACSTR " not our address",
+@@ -6929,7 +6929,7 @@ void ieee802_11_rx_from_unknown(struct hostapd_data *hapd, const u8 *src,
+ 	wpa_printf(MSG_DEBUG, "Data/PS-poll frame from not associated STA "
+ 		   MACSTR, MAC2STR(src));
+ 	if (is_multicast_ether_addr(src) || is_zero_ether_addr(src) ||
+-	    os_memcmp(src, hapd->own_addr, ETH_ALEN) == 0) {
++	    ether_addr_equal(src, hapd->own_addr)) {
+ 		/* Broadcast bit set in SA or unexpected SA?! Ignore the frame
+ 		 * silently. */
+ 		return;
+diff --git a/src/ap/ieee802_11_auth.c b/src/ap/ieee802_11_auth.c
+index 4277d82cb..e723ae74b 100644
+--- a/src/ap/ieee802_11_auth.c
++++ b/src/ap/ieee802_11_auth.c
+@@ -84,7 +84,7 @@ static int hostapd_acl_cache_get(struct hostapd_data *hapd, const u8 *addr,
+ 	os_get_reltime(&now);
+ 
+ 	for (entry = hapd->acl_cache; entry; entry = entry->next) {
+-		if (os_memcmp(entry->addr, addr, ETH_ALEN) != 0)
++		if (!ether_addr_equal(entry->addr, addr))
+ 			continue;
+ 
+ 		if (os_reltime_expired(&now, &entry->timestamp,
+@@ -281,7 +281,7 @@ int hostapd_allowed_address(struct hostapd_data *hapd, const u8 *addr,
+ 
+ 		query = hapd->acl_queries;
+ 		while (query) {
+-			if (os_memcmp(query->addr, addr, ETH_ALEN) == 0) {
++			if (ether_addr_equal(query->addr, addr)) {
+ 				/* pending query in RADIUS retransmit queue;
+ 				 * do not generate a new one */
+ 				return HOSTAPD_ACL_PENDING;
+diff --git a/src/ap/ieee802_11_eht.c b/src/ap/ieee802_11_eht.c
+index d03416b3d..f1cfd18a9 100644
+--- a/src/ap/ieee802_11_eht.c
++++ b/src/ap/ieee802_11_eht.c
+@@ -1240,8 +1240,8 @@ u16 hostapd_process_ml_assoc_req(struct hostapd_data *hapd,
+ 		   info->common_info.eml_capa, info->common_info.mld_capa);
+ 
+ 	/* Check the MLD MAC Address */
+-	if (os_memcmp(info->common_info.mld_addr, common_info->mld_addr,
+-		      ETH_ALEN) != 0) {
++	if (!ether_addr_equal(info->common_info.mld_addr,
++			      common_info->mld_addr)) {
+ 		wpa_printf(MSG_DEBUG,
+ 			   "MLD: MLD address mismatch between authentication ("
+ 			   MACSTR ") and association (" MACSTR ")",
+diff --git a/src/ap/neighbor_db.c b/src/ap/neighbor_db.c
+index 5b276e8da..2a25ae20e 100644
+--- a/src/ap/neighbor_db.c
++++ b/src/ap/neighbor_db.c
+@@ -24,7 +24,7 @@ hostapd_neighbor_get(struct hostapd_data *hapd, const u8 *bssid,
+ 
+ 	dl_list_for_each(nr, &hapd->nr_db, struct hostapd_neighbor_entry,
+ 			 list) {
+-		if (os_memcmp(bssid, nr->bssid, ETH_ALEN) == 0 &&
++		if (ether_addr_equal(bssid, nr->bssid) &&
+ 		    (!ssid ||
+ 		     (ssid->ssid_len == nr->ssid.ssid_len &&
+ 		      os_memcmp(ssid->ssid, nr->ssid.ssid,
+diff --git a/src/ap/pmksa_cache_auth.c b/src/ap/pmksa_cache_auth.c
+index ee4232fd7..2fce8383d 100644
+--- a/src/ap/pmksa_cache_auth.c
++++ b/src/ap/pmksa_cache_auth.c
+@@ -487,14 +487,14 @@ pmksa_cache_auth_get(struct rsn_pmksa_cache *pmksa,
+ 		for (entry = pmksa->pmkid[PMKID_HASH(pmkid)]; entry;
+ 		     entry = entry->hnext) {
+ 			if ((spa == NULL ||
+-			     os_memcmp(entry->spa, spa, ETH_ALEN) == 0) &&
++			     ether_addr_equal(entry->spa, spa)) &&
+ 			    os_memcmp(entry->pmkid, pmkid, PMKID_LEN) == 0)
+ 				return entry;
+ 		}
+ 	} else {
+ 		for (entry = pmksa->pmksa; entry; entry = entry->next) {
+ 			if (spa == NULL ||
+-			    os_memcmp(entry->spa, spa, ETH_ALEN) == 0)
++			    ether_addr_equal(entry->spa, spa))
+ 				return entry;
+ 		}
+ 	}
+@@ -521,7 +521,7 @@ struct rsn_pmksa_cache_entry * pmksa_cache_get_okc(
+ 	u8 new_pmkid[PMKID_LEN];
+ 
+ 	for (entry = pmksa->pmksa; entry; entry = entry->next) {
+-		if (os_memcmp(entry->spa, spa, ETH_ALEN) != 0)
++		if (!ether_addr_equal(entry->spa, spa))
+ 			continue;
+ 		if (wpa_key_mgmt_sae(entry->akmp) ||
+ 		    wpa_key_mgmt_fils(entry->akmp)) {
+@@ -575,7 +575,7 @@ static int das_attr_match(struct rsn_pmksa_cache_entry *entry,
+ 	int match = 0;
+ 
+ 	if (attr->sta_addr) {
+-		if (os_memcmp(attr->sta_addr, entry->spa, ETH_ALEN) != 0)
++		if (!ether_addr_equal(attr->sta_addr, entry->spa))
+ 			return 0;
+ 		match++;
+ 	}
+@@ -717,7 +717,7 @@ int pmksa_cache_auth_list_mesh(struct rsn_pmksa_cache *pmksa, const u8 *addr,
+ 	 * <BSSID> <PMKID> <PMK> <expiration in seconds>
+ 	 */
+ 	for (entry = pmksa->pmksa; entry; entry = entry->next) {
+-		if (addr && os_memcmp(entry->spa, addr, ETH_ALEN) != 0)
++		if (addr && !ether_addr_equal(entry->spa, addr))
+ 			continue;
+ 
+ 		ret = os_snprintf(pos, end - pos, MACSTR " ",
+diff --git a/src/ap/preauth_auth.c b/src/ap/preauth_auth.c
+index 3284a10a9..cb225c681 100644
+--- a/src/ap/preauth_auth.c
++++ b/src/ap/preauth_auth.c
+@@ -58,7 +58,7 @@ static void rsn_preauth_receive(void *ctx, const u8 *src_addr,
+ 	ethhdr = (struct l2_ethhdr *) buf;
+ 	hdr = (struct ieee802_1x_hdr *) (ethhdr + 1);
+ 
+-	if (os_memcmp(ethhdr->h_dest, hapd->own_addr, ETH_ALEN) != 0) {
++	if (!ether_addr_equal(ethhdr->h_dest, hapd->own_addr)) {
+ 		wpa_printf(MSG_DEBUG, "RSN: pre-auth for foreign address "
+ 			   MACSTR, MAC2STR(ethhdr->h_dest));
+ 		return;
+diff --git a/src/ap/sta_info.c b/src/ap/sta_info.c
+index 519a89874..0da24fc41 100644
+--- a/src/ap/sta_info.c
++++ b/src/ap/sta_info.c
+@@ -92,7 +92,7 @@ struct sta_info * ap_get_sta_p2p(struct hostapd_data *hapd, const u8 *addr)
+ 		if (p2p_dev_addr == NULL)
+ 			continue;
+ 
+-		if (os_memcmp(p2p_dev_addr, addr, ETH_ALEN) == 0)
++		if (ether_addr_equal(p2p_dev_addr, addr))
+ 			return sta;
+ 	}
+ 
+@@ -140,7 +140,7 @@ static void ap_sta_hash_del(struct hostapd_data *hapd, struct sta_info *sta)
+ 	}
+ 
+ 	while (s->hnext != NULL &&
+-	       os_memcmp(s->hnext->addr, sta->addr, ETH_ALEN) != 0)
++	       !ether_addr_equal(s->hnext->addr, sta->addr))
+ 		s = s->hnext;
+ 	if (s->hnext != NULL)
+ 		s->hnext = s->hnext->hnext;
+@@ -1732,7 +1732,7 @@ static void ap_sta_remove_link_sta(struct hostapd_data *hapd,
+ 		for (tmp_sta = tmp_hapd->sta_list; tmp_sta;
+ 		     tmp_sta = tmp_sta->next) {
+ 			if (tmp_sta == sta ||
+-			    os_memcmp(tmp_sta->addr, sta->addr, ETH_ALEN) != 0)
++			    !ether_addr_equal(tmp_sta->addr, sta->addr))
+ 				continue;
+ 
+ 			ap_free_sta(tmp_hapd, tmp_sta);
+diff --git a/src/ap/wpa_auth.c b/src/ap/wpa_auth.c
+index 74a10a4af..74925a4ff 100644
+--- a/src/ap/wpa_auth.c
++++ b/src/ap/wpa_auth.c
+@@ -3178,7 +3178,7 @@ static int wpa_auth_validate_ml_kdes_m2(struct wpa_state_machine *sm,
+ 
+ 	/* MLD MAC address must be the same */
+ 	if (!kde->mac_addr ||
+-	    os_memcmp(kde->mac_addr, sm->peer_mld_addr, ETH_ALEN) != 0) {
++	    !ether_addr_equal(kde->mac_addr, sm->peer_mld_addr)) {
+ 		wpa_printf(MSG_DEBUG, "RSN: MLD: Invalid MLD address");
+ 		return -1;
+ 	}
+@@ -3205,8 +3205,8 @@ static int wpa_auth_validate_ml_kdes_m2(struct wpa_state_machine *sm,
+ 			return -1;
+ 		}
+ 
+-		if (os_memcmp(sm->mld_links[i].peer_addr, kde->mlo_link[i] + 1,
+-			      ETH_ALEN) != 0) {
++		if (!ether_addr_equal(sm->mld_links[i].peer_addr,
++				      kde->mlo_link[i] + 1)) {
+ 			wpa_printf(MSG_DEBUG,
+ 				   "RSN: MLD: invalid MAC address=" MACSTR
+ 				   " expected " MACSTR " (link ID %u)",
+@@ -4425,7 +4425,7 @@ static int wpa_auth_validate_ml_kdes_m4(struct wpa_state_machine *sm)
+ 
+ 	/* MLD MAC address must be the same */
+ 	if (!kde.mac_addr ||
+-	    os_memcmp(kde.mac_addr, sm->peer_mld_addr, ETH_ALEN) != 0) {
++	    !ether_addr_equal(kde.mac_addr, sm->peer_mld_addr)) {
+ 		wpa_printf(MSG_DEBUG,
+ 			   "MLD: Mismatching or missing MLD address in EAPOL-Key msg 4/4");
+ 		return -1;
+diff --git a/src/ap/wpa_auth_ft.c b/src/ap/wpa_auth_ft.c
+index daf4cab46..7744ed626 100644
+--- a/src/ap/wpa_auth_ft.c
++++ b/src/ap/wpa_auth_ft.c
+@@ -1427,7 +1427,7 @@ static int wpa_ft_fetch_pmk_r0(struct wpa_authenticator *wpa_auth,
+ 
+ 	os_get_reltime(&now);
+ 	dl_list_for_each(r0, &cache->pmk_r0, struct wpa_ft_pmk_r0_sa, list) {
+-		if (os_memcmp(r0->spa, spa, ETH_ALEN) == 0 &&
++		if (ether_addr_equal(r0->spa, spa) &&
+ 		    os_memcmp_const(r0->pmk_r0_name, pmk_r0_name,
+ 				    WPA_PMK_NAME_LEN) == 0) {
+ 			*r0_out = r0;
+@@ -1522,7 +1522,7 @@ int wpa_ft_fetch_pmk_r1(struct wpa_authenticator *wpa_auth,
+ 	os_get_reltime(&now);
+ 
+ 	dl_list_for_each(r1, &cache->pmk_r1, struct wpa_ft_pmk_r1_sa, list) {
+-		if (os_memcmp(r1->spa, spa, ETH_ALEN) == 0 &&
++		if (ether_addr_equal(r1->spa, spa) &&
+ 		    os_memcmp_const(r1->pmk_r1_name, pmk_r1_name,
+ 				    WPA_PMK_NAME_LEN) == 0) {
+ 			os_memcpy(pmk_r1, r1->pmk_r1, r1->pmk_r1_len);
+@@ -2024,7 +2024,7 @@ static int wpa_ft_pull_pmk_r1(struct wpa_state_machine *sm,
+ 			    sm->r0kh_id, sm->r0kh_id_len);
+ 		return -1;
+ 	}
+-	if (os_memcmp(r0kh->addr, sm->wpa_auth->addr, ETH_ALEN) == 0) {
++	if (ether_addr_equal(r0kh->addr, sm->wpa_auth->addr)) {
+ 		wpa_printf(MSG_DEBUG,
+ 			   "FT: R0KH-ID points to self - no matching key available");
+ 		return -1;
+@@ -3766,7 +3766,7 @@ int wpa_ft_action_rx(struct wpa_state_machine *sm, const u8 *data, size_t len)
+ 		   " Target AP=" MACSTR " Action=%d)",
+ 		   MAC2STR(sta_addr), MAC2STR(target_ap), action);
+ 
+-	if (os_memcmp(sta_addr, sm->addr, ETH_ALEN) != 0) {
++	if (!ether_addr_equal(sta_addr, sm->addr)) {
+ 		wpa_printf(MSG_DEBUG, "FT: Mismatch in FT Action STA address: "
+ 			   "STA=" MACSTR " STA-Address=" MACSTR,
+ 			   MAC2STR(sm->addr), MAC2STR(sta_addr));
+@@ -3779,7 +3779,7 @@ int wpa_ft_action_rx(struct wpa_state_machine *sm, const u8 *data, size_t len)
+ 	 * APs in the MD (if such a list were configured).
+ 	 */
+ 	if ((target_ap[0] & 0x01) ||
+-	    os_memcmp(target_ap, sm->wpa_auth->addr, ETH_ALEN) == 0) {
++	    ether_addr_equal(target_ap, sm->wpa_auth->addr)) {
+ 		wpa_printf(MSG_DEBUG, "FT: Invalid Target AP in FT Action "
+ 			   "frame");
+ 		return -1;
+@@ -4037,7 +4037,7 @@ static int wpa_ft_rrb_rx_pull(struct wpa_authenticator *wpa_auth,
+ 		seq_ret = wpa_ft_rrb_seq_chk(r1kh->seq, src_addr, enc, enc_len,
+ 					     auth, auth_len, msgtype, no_defer);
+ 	if (!no_defer && r1kh_wildcard &&
+-	    (!r1kh || os_memcmp(r1kh->addr, src_addr, ETH_ALEN) != 0)) {
++	    (!r1kh || !ether_addr_equal(r1kh->addr, src_addr))) {
+ 		/* wildcard: r1kh-id unknown or changed addr -> do a seq req */
+ 		seq_ret = FT_RRB_SEQ_DEFER;
+ 	}
+@@ -4204,7 +4204,7 @@ static int wpa_ft_rrb_rx_r1(struct wpa_authenticator *wpa_auth,
+ 					     cb ? 0 : 1);
+ 	}
+ 	if (cb && r0kh_wildcard &&
+-	    (!r0kh || os_memcmp(r0kh->addr, src_addr, ETH_ALEN) != 0)) {
++	    (!r0kh || !ether_addr_equal(r0kh->addr, src_addr))) {
+ 		/* wildcard: r0kh-id unknown or changed addr -> do a seq req */
+ 		seq_ret = FT_RRB_SEQ_DEFER;
+ 	}
+@@ -4358,7 +4358,7 @@ static int ft_get_sta_cb(struct wpa_state_machine *sm, void *ctx)
+ 	struct ft_get_sta_ctx *info = ctx;
+ 
+ 	if ((info->s1kh_id &&
+-	     os_memcmp(info->s1kh_id, sm->addr, ETH_ALEN) != 0) ||
++	     !ether_addr_equal(info->s1kh_id, sm->addr)) ||
+ 	    os_memcmp(info->nonce, sm->ft_pending_pull_nonce,
+ 		      FT_RRB_NONCE_LEN) != 0 ||
+ 	    sm->ft_pending_cb == NULL || sm->ft_pending_req_ies == NULL)
+@@ -4483,7 +4483,7 @@ static int wpa_ft_rrb_rx_seq(struct wpa_authenticator *wpa_auth,
+ 		wpa_ft_rrb_lookup_r0kh(wpa_auth, f_r0kh_id, f_r0kh_id_len,
+ 				       &r0kh, &r0kh_wildcard);
+ 		if (!r0kh_wildcard &&
+-		    (!r0kh || os_memcmp(r0kh->addr, src_addr, ETH_ALEN) != 0)) {
++		    (!r0kh || !ether_addr_equal(r0kh->addr, src_addr))) {
+ 			wpa_hexdump(MSG_DEBUG, "FT: Did not find R0KH-ID",
+ 				    f_r0kh_id, f_r0kh_id_len);
+ 			goto out;
+@@ -4501,7 +4501,7 @@ static int wpa_ft_rrb_rx_seq(struct wpa_authenticator *wpa_auth,
+ 		wpa_ft_rrb_lookup_r1kh(wpa_auth, f_r1kh_id, &r1kh,
+ 				       &r1kh_wildcard);
+ 		if (!r1kh_wildcard &&
+-		    (!r1kh || os_memcmp(r1kh->addr, src_addr, ETH_ALEN) != 0)) {
++		    (!r1kh || !ether_addr_equal(r1kh->addr, src_addr))) {
+ 			wpa_hexdump(MSG_DEBUG, "FT: Did not find R1KH-ID",
+ 				    f_r1kh_id, FT_R1KH_ID_LEN);
+ 			goto out;
+@@ -4807,7 +4807,7 @@ int wpa_ft_rrb_rx(struct wpa_authenticator *wpa_auth, const u8 *src_addr,
+ 			return -1;
+ 		}
+ 
+-		if (os_memcmp(target_ap_addr, wpa_auth->addr, ETH_ALEN) != 0) {
++		if (!ether_addr_equal(target_ap_addr, wpa_auth->addr)) {
+ 			wpa_printf(MSG_DEBUG, "FT: Target AP address in the "
+ 				   "RRB Request does not match with own "
+ 				   "address");
+@@ -4970,7 +4970,7 @@ void wpa_ft_push_pmk_r1(struct wpa_authenticator *wpa_auth, const u8 *addr)
+ 		return;
+ 
+ 	dl_list_for_each(r0, &cache->pmk_r0, struct wpa_ft_pmk_r0_sa, list) {
+-		if (os_memcmp(r0->spa, addr, ETH_ALEN) == 0) {
++		if (ether_addr_equal(r0->spa, addr)) {
+ 			r0found = r0;
+ 			break;
+ 		}
+diff --git a/src/ap/wpa_auth_glue.c b/src/ap/wpa_auth_glue.c
+index 94b6a7247..76e854156 100644
+--- a/src/ap/wpa_auth_glue.c
++++ b/src/ap/wpa_auth_glue.c
+@@ -667,7 +667,7 @@ static int hostapd_wpa_auth_ft_iter(struct hostapd_iface *iface, void *ctx)
+ 		hapd = iface->bss[j];
+ 		if (hapd == idata->src_hapd ||
+ 		    !hapd->wpa_auth ||
+-		    os_memcmp(hapd->own_addr, idata->dst, ETH_ALEN) != 0)
++		    !ether_addr_equal(hapd->own_addr, idata->dst))
+ 			continue;
+ 
+ 		wpa_printf(MSG_DEBUG,
+@@ -857,7 +857,7 @@ static int hostapd_wpa_auth_oui_iter(struct hostapd_iface *iface, void *ctx)
+ 			      MOBILITY_DOMAIN_ID_LEN) != 0)
+ 			continue; /* no matching FT SSID/mobility domain */
+ 		if (!is_multicast_ether_addr(idata->dst_addr) &&
+-		    os_memcmp(hapd->own_addr, idata->dst_addr, ETH_ALEN) != 0)
++		    !ether_addr_equal(hapd->own_addr, idata->dst_addr))
+ 			continue; /* destination address does not match */
+ 
+ 		/* defer eth_p_oui_deliver until next eloop step as this is
+@@ -1407,7 +1407,7 @@ static void hostapd_rrb_receive(void *ctx, const u8 *src_addr, const u8 *buf,
+ 	wpa_printf(MSG_DEBUG, "FT: RRB received packet " MACSTR " -> "
+ 		   MACSTR, MAC2STR(ethhdr->h_source), MAC2STR(ethhdr->h_dest));
+ 	if (!is_multicast_ether_addr(ethhdr->h_dest) &&
+-	    os_memcmp(hapd->own_addr, ethhdr->h_dest, ETH_ALEN) != 0)
++	    !ether_addr_equal(hapd->own_addr, ethhdr->h_dest))
+ 		return;
+ 	wpa_ft_rrb_rx(hapd->wpa_auth, ethhdr->h_source, buf + sizeof(*ethhdr),
+ 		      len - sizeof(*ethhdr));
+@@ -1423,7 +1423,7 @@ static void hostapd_rrb_oui_receive(void *ctx, const u8 *src_addr,
+ 	wpa_printf(MSG_DEBUG, "FT: RRB received packet " MACSTR " -> "
+ 		   MACSTR, MAC2STR(src_addr), MAC2STR(dst_addr));
+ 	if (!is_multicast_ether_addr(dst_addr) &&
+-	    os_memcmp(hapd->own_addr, dst_addr, ETH_ALEN) != 0)
++	    !ether_addr_equal(hapd->own_addr, dst_addr))
+ 		return;
+ 	wpa_ft_rrb_oui_rx(hapd->wpa_auth, src_addr, dst_addr, oui_suffix, buf,
+ 			  len);
+diff --git a/src/ap/wps_hostapd.c b/src/ap/wps_hostapd.c
+index aacfa3372..82d4d5fdd 100644
+--- a/src/ap/wps_hostapd.c
++++ b/src/ap/wps_hostapd.c
+@@ -288,7 +288,7 @@ static int hostapd_wps_lookup_pskfile_cb(void *ctx, const u8 *mac_addr,
+ 			any_psk = wpa_psk->psk;
+ 
+ 		if (mac_addr && !dev_psk &&
+-		    os_memcmp(mac_addr, wpa_psk->addr, ETH_ALEN) == 0) {
++		    ether_addr_equal(mac_addr, wpa_psk->addr)) {
+ 			dev_psk = wpa_psk->psk;
+ 			break;
+ 		}
+diff --git a/src/common/dpp_tcp.c b/src/common/dpp_tcp.c
+index d226a8a88..d28a41e48 100644
+--- a/src/common/dpp_tcp.c
++++ b/src/common/dpp_tcp.c
+@@ -563,7 +563,7 @@ dpp_relay_match_ctrl(struct dpp_relay_controller *ctrl, const u8 *src,
+ 	struct dpp_connection *conn;
+ 
+ 	dl_list_for_each(conn, &ctrl->conn, struct dpp_connection, list) {
+-		if (os_memcmp(src, conn->mac_addr, ETH_ALEN) == 0)
++		if (ether_addr_equal(src, conn->mac_addr))
+ 			return conn;
+ 		if ((type == DPP_PA_PKEX_EXCHANGE_RESP ||
+ 		     type == DPP_PA_AUTHENTICATION_RESP) &&
+@@ -661,7 +661,7 @@ dpp_relay_find_conn(struct dpp_relay_controller *ctrl, const u8 *src)
+ 	struct dpp_connection *conn;
+ 
+ 	dl_list_for_each(conn, &ctrl->conn, struct dpp_connection, list) {
+-		if (os_memcmp(src, conn->mac_addr, ETH_ALEN) == 0)
++		if (ether_addr_equal(src, conn->mac_addr))
+ 			return conn;
+ 	}
+ 
+diff --git a/src/common/gas_server.c b/src/common/gas_server.c
+index 745a13fc0..107550039 100644
+--- a/src/common/gas_server.c
++++ b/src/common/gas_server.c
+@@ -352,7 +352,7 @@ gas_server_rx_comeback_req(struct gas_server *gas, const u8 *da, const u8 *sa,
+ 	dl_list_for_each(response, &gas->responses, struct gas_server_response,
+ 			 list) {
+ 		if (response->dialog_token != dialog_token ||
+-		    os_memcmp(sa, response->dst, ETH_ALEN) != 0)
++		    !ether_addr_equal(sa, response->dst))
+ 			continue;
+ 		gas_server_handle_rx_comeback_req(response);
+ 		return 0;
+@@ -470,7 +470,7 @@ void gas_server_tx_status(struct gas_server *gas, const u8 *dst, const u8 *data,
+ 	dl_list_for_each(response, &gas->responses, struct gas_server_response,
+ 			 list) {
+ 		if (response->dialog_token != dialog_token ||
+-		    os_memcmp(dst, response->dst, ETH_ALEN) != 0)
++		    !ether_addr_equal(dst, response->dst))
+ 			continue;
+ 		gas_server_handle_tx_status(response, ack);
+ 		return;
+diff --git a/src/common/ptksa_cache.c b/src/common/ptksa_cache.c
+index 3b5c0b8e5..c00f28876 100644
+--- a/src/common/ptksa_cache.c
++++ b/src/common/ptksa_cache.c
+@@ -141,7 +141,7 @@ struct ptksa_cache_entry * ptksa_cache_get(struct ptksa_cache *ptksa,
+ 		return NULL;
+ 
+ 	dl_list_for_each(e, &ptksa->ptksa, struct ptksa_cache_entry, list) {
+-		if ((!addr || os_memcmp(e->addr, addr, ETH_ALEN) == 0) &&
++		if ((!addr || ether_addr_equal(e->addr, addr)) &&
+ 		    (cipher == WPA_CIPHER_NONE || cipher == e->cipher))
+ 			return e;
+ 	}
+@@ -238,7 +238,7 @@ void ptksa_cache_flush(struct ptksa_cache *ptksa, const u8 *addr, u32 cipher)
+ 
+ 	dl_list_for_each_safe(e, next, &ptksa->ptksa, struct ptksa_cache_entry,
+ 			      list) {
+-		if ((!addr || os_memcmp(e->addr, addr, ETH_ALEN) == 0) &&
++		if ((!addr || ether_addr_equal(e->addr, addr)) &&
+ 		    (cipher == WPA_CIPHER_NONE || cipher == e->cipher)) {
+ 			wpa_printf(MSG_DEBUG,
+ 				   "Flush PTKSA cache entry for " MACSTR,
+diff --git a/src/drivers/driver_atheros.c b/src/drivers/driver_atheros.c
+index 59f65b810..ae7f0e535 100644
+--- a/src/drivers/driver_atheros.c
++++ b/src/drivers/driver_atheros.c
+@@ -659,7 +659,7 @@ atheros_read_sta_driver_data(void *priv, struct hostap_sta_driver_data *data,
+ 			 &stats, sizeof(stats))) {
+ 		wpa_printf(MSG_DEBUG, "%s: Failed to fetch STA stats (addr "
+ 			   MACSTR ")", __func__, MAC2STR(addr));
+-		if (os_memcmp(addr, drv->acct_mac, ETH_ALEN) == 0) {
++		if (ether_addr_equal(addr, drv->acct_mac)) {
+ 			os_memcpy(data, &drv->acct_data, sizeof(*data));
+ 			return 0;
+ 		}
+@@ -892,7 +892,7 @@ static void atheros_raw_receive(void *ctx, const u8 *src_addr, const u8 *buf,
+ 	}
+ 
+ 	if (stype == WLAN_FC_STYPE_ACTION &&
+-	    (os_memcmp(drv->own_addr, mgmt->bssid, ETH_ALEN) == 0 ||
++	    (ether_addr_equal(drv->own_addr, mgmt->bssid) ||
+ 	     is_broadcast_ether_addr(mgmt->bssid))) {
+ 		os_memset(&event, 0, sizeof(event));
+ 		event.rx_mgmt.frame = buf;
+@@ -901,7 +901,7 @@ static void atheros_raw_receive(void *ctx, const u8 *src_addr, const u8 *buf,
+ 		return;
+ 	}
+ 
+-	if (os_memcmp(drv->own_addr, mgmt->bssid, ETH_ALEN) != 0) {
++	if (!ether_addr_equal(drv->own_addr, mgmt->bssid)) {
+ 		wpa_printf(MSG_DEBUG, "%s: BSSID does not match - ignore",
+ 			   __func__);
+ 		return;
+@@ -1226,7 +1226,7 @@ atheros_new_sta(struct atheros_driver_data *drv, u8 addr[IEEE80211_ADDR_LEN])
+ no_ie:
+ 	drv_event_assoc(hapd, addr, iebuf, ielen, NULL, 0, NULL, -1, 0);
+ 
+-	if (os_memcmp(addr, drv->acct_mac, ETH_ALEN) == 0) {
++	if (ether_addr_equal(addr, drv->acct_mac)) {
+ 		/* Cached accounting data is not valid anymore. */
+ 		os_memset(drv->acct_mac, 0, ETH_ALEN);
+ 		os_memset(&drv->acct_data, 0, sizeof(drv->acct_data));
+diff --git a/src/drivers/driver_ndis.c b/src/drivers/driver_ndis.c
+index b32e00967..035170522 100644
+--- a/src/drivers/driver_ndis.c
++++ b/src/drivers/driver_ndis.c
+@@ -1248,7 +1248,7 @@ static int wpa_driver_ndis_add_pmkid(void *priv,
+ 	prev = NULL;
+ 	entry = drv->pmkid;
+ 	while (entry) {
+-		if (os_memcmp(entry->bssid, bssid, ETH_ALEN) == 0)
++		if (ether_addr_equal(entry->bssid, bssid))
+ 			break;
+ 		prev = entry;
+ 		entry = entry->next;
+@@ -1293,7 +1293,7 @@ static int wpa_driver_ndis_remove_pmkid(void *priv,
+ 	entry = drv->pmkid;
+ 	prev = NULL;
+ 	while (entry) {
+-		if (os_memcmp(entry->bssid, bssid, ETH_ALEN) == 0 &&
++		if (ether_addr_equal(entry->bssid, bssid) &&
+ 		    os_memcmp(entry->pmkid, pmkid, 16) == 0) {
+ 			if (prev)
+ 				prev->next = entry->next;
+@@ -1434,7 +1434,7 @@ static int wpa_driver_ndis_get_associnfo(struct wpa_driver_ndis_data *drv)
+ 	pos = (char *) &b->Bssid[0];
+ 	for (i = 0; i < b->NumberOfItems; i++) {
+ 		NDIS_WLAN_BSSID_EX *bss = (NDIS_WLAN_BSSID_EX *) pos;
+-		if (os_memcmp(drv->bssid, bss->MacAddress, ETH_ALEN) == 0 &&
++		if (ether_addr_equal(drv->bssid, bss->MacAddress) &&
+ 		    bss->IELength > sizeof(NDIS_802_11_FIXED_IEs)) {
+ 			data.assoc_info.beacon_ies =
+ 				((u8 *) bss->IEs) +
+@@ -1477,7 +1477,7 @@ static void wpa_driver_ndis_poll_timeout(void *eloop_ctx, void *timeout_ctx)
+ 		}
+ 	} else {
+ 		/* Connected */
+-		if (os_memcmp(drv->bssid, bssid, ETH_ALEN) != 0) {
++		if (!ether_addr_equal(drv->bssid, bssid)) {
+ 			os_memcpy(drv->bssid, bssid, ETH_ALEN);
+ 			wpa_driver_ndis_get_associnfo(drv);
+ 			wpa_supplicant_event(drv->ctx, EVENT_ASSOC, NULL);
+diff --git a/src/drivers/driver_nl80211.c b/src/drivers/driver_nl80211.c
+index a5dea1db3..39c9362d0 100644
+--- a/src/drivers/driver_nl80211.c
++++ b/src/drivers/driver_nl80211.c
+@@ -1261,7 +1261,7 @@ static void nl80211_refresh_mac(struct wpa_driver_nl80211_data *drv,
+ 		wpa_printf(MSG_DEBUG,
+ 			   "nl80211: %s: failed to re-read MAC address",
+ 			   bss->ifname);
+-	} else if (bss && os_memcmp(addr, bss->addr, ETH_ALEN) != 0) {
++	} else if (bss && !ether_addr_equal(addr, bss->addr)) {
+ 		wpa_printf(MSG_DEBUG,
+ 			   "nl80211: Own MAC address on ifindex %d (%s) changed from "
+ 			   MACSTR " to " MACSTR,
+@@ -4162,7 +4162,7 @@ static int nl80211_get_link_freq(struct i802_bss *bss, const u8 *addr,
+ 	size_t i;
+ 
+ 	for (i = 0; i < bss->n_links; i++) {
+-		if (os_memcmp(bss->links[i].addr, addr, ETH_ALEN) == 0) {
++		if (ether_addr_equal(bss->links[i].addr, addr)) {
+ 			wpa_printf(MSG_DEBUG,
+ 				   "nl80211: Use link freq=%d for address "
+ 				   MACSTR,
+@@ -8691,7 +8691,7 @@ static int nl80211_addr_in_use(struct nl80211_global *global, const u8 *addr)
+ 	struct wpa_driver_nl80211_data *drv;
+ 	dl_list_for_each(drv, &global->interfaces,
+ 			 struct wpa_driver_nl80211_data, list) {
+-		if (os_memcmp(addr, drv->first_bss->addr, ETH_ALEN) == 0)
++		if (ether_addr_equal(addr, drv->first_bss->addr))
+ 			return 1;
+ 	}
+ 	return 0;
+@@ -9112,7 +9112,7 @@ static int wpa_driver_nl80211_send_action(struct i802_bss *bss,
+ 	os_memcpy(hdr->addr2, src, ETH_ALEN);
+ 	os_memcpy(hdr->addr3, bssid, ETH_ALEN);
+ 
+-	if (os_memcmp(bss->addr, src, ETH_ALEN) != 0) {
++	if (!ether_addr_equal(bss->addr, src)) {
+ 		wpa_printf(MSG_DEBUG, "nl80211: Use random TA " MACSTR,
+ 			   MAC2STR(src));
+ 		os_memcpy(bss->rand_addr, src, ETH_ALEN);
+diff --git a/src/drivers/driver_nl80211_event.c b/src/drivers/driver_nl80211_event.c
+index a0f32cdca..06da93617 100644
+--- a/src/drivers/driver_nl80211_event.c
++++ b/src/drivers/driver_nl80211_event.c
+@@ -443,7 +443,7 @@ static void qca_nl80211_link_reconfig_event(struct wpa_driver_nl80211_data *drv,
+ 	wpa_printf(MSG_DEBUG, "nl80211: AP MLD address " MACSTR
+ 		   " received in link reconfig event", MAC2STR(ap_mld));
+ 	if (!drv->sta_mlo_info.valid_links ||
+-	    os_memcmp(drv->sta_mlo_info.ap_mld_addr, ap_mld, ETH_ALEN) != 0) {
++	    !ether_addr_equal(drv->sta_mlo_info.ap_mld_addr, ap_mld)) {
+ 		if (drv->pending_link_reconfig_data == data) {
+ 			wpa_printf(MSG_DEBUG,
+ 				   "nl80211: Drop pending link reconfig event since AP MLD not matched even after new connect/roam event");
+@@ -812,7 +812,7 @@ qca_nl80211_tid_to_link_map_event(struct wpa_driver_nl80211_data *drv,
+ 	wpa_printf(MSG_DEBUG, "nl80211: AP MLD address " MACSTR
+ 		   " received in TID to link mapping event", MAC2STR(ap_mld));
+ 	if (!drv->sta_mlo_info.valid_links ||
+-	    os_memcmp(drv->sta_mlo_info.ap_mld_addr, ap_mld, ETH_ALEN) != 0) {
++	    !ether_addr_equal(drv->sta_mlo_info.ap_mld_addr, ap_mld)) {
+ 		if (drv->pending_t2lm_data == data) {
+ 			wpa_printf(MSG_DEBUG,
+ 				   "nl80211: Drop pending TID-to-link mapping event since AP MLD not matched even after new connect/roam event");
+@@ -960,9 +960,8 @@ static void mlme_event_connect(struct wpa_driver_nl80211_data *drv,
+ 		if (drv->ignore_next_local_disconnect) {
+ 			drv->ignore_next_local_disconnect = 0;
+ 			if (!event.assoc_reject.bssid ||
+-			    (os_memcmp(event.assoc_reject.bssid,
+-				       drv->auth_attempt_bssid,
+-				       ETH_ALEN) != 0)) {
++			    !ether_addr_equal(event.assoc_reject.bssid,
++					      drv->auth_attempt_bssid)) {
+ 				/*
+ 				 * Ignore the event that came without a BSSID or
+ 				 * for the old connection since this is likely
+@@ -1457,9 +1456,9 @@ static void mlme_event_deauth_disassoc(struct wpa_driver_nl80211_data *drv,
+ 
+ 		if ((drv->capa.flags & WPA_DRIVER_FLAGS_SME) &&
+ 		    !drv->associated &&
+-		    os_memcmp(bssid, drv->auth_bssid, ETH_ALEN) != 0 &&
+-		    os_memcmp(bssid, drv->auth_attempt_bssid, ETH_ALEN) != 0 &&
+-		    os_memcmp(bssid, drv->prev_bssid, ETH_ALEN) == 0) {
++		    !ether_addr_equal(bssid, drv->auth_bssid) &&
++		    !ether_addr_equal(bssid, drv->auth_attempt_bssid) &&
++		    ether_addr_equal(bssid, drv->prev_bssid)) {
+ 			/*
+ 			 * Avoid issues with some roaming cases where
+ 			 * disconnection event for the old AP may show up after
+@@ -1468,11 +1467,10 @@ static void mlme_event_deauth_disassoc(struct wpa_driver_nl80211_data *drv,
+ 			 * ignore_next_local_deauth as well, to avoid next local
+ 			 * deauth event be wrongly ignored.
+ 			 */
+-			if (os_memcmp(mgmt->sa, drv->first_bss->addr,
+-				      ETH_ALEN) == 0 ||
++			if (ether_addr_equal(mgmt->sa, drv->first_bss->addr) ||
+ 			    (!is_zero_ether_addr(drv->first_bss->prev_addr) &&
+-			     os_memcmp(mgmt->sa, drv->first_bss->prev_addr,
+-				       ETH_ALEN) == 0)) {
++			     ether_addr_equal(mgmt->sa,
++					      drv->first_bss->prev_addr))) {
+ 				wpa_printf(MSG_DEBUG,
+ 					   "nl80211: Received a locally generated deauth event. Clear ignore_next_local_deauth flag");
+ 				drv->ignore_next_local_deauth = 0;
+@@ -1487,8 +1485,8 @@ static void mlme_event_deauth_disassoc(struct wpa_driver_nl80211_data *drv,
+ 
+ 		if (!(drv->capa.flags & WPA_DRIVER_FLAGS_SME) &&
+ 		    drv->connect_reassoc && drv->associated &&
+-		    os_memcmp(bssid, drv->prev_bssid, ETH_ALEN) == 0 &&
+-		    os_memcmp(bssid, drv->auth_attempt_bssid, ETH_ALEN) != 0) {
++		    ether_addr_equal(bssid, drv->prev_bssid) &&
++		    !ether_addr_equal(bssid, drv->auth_attempt_bssid)) {
+ 			/*
+ 			 * Avoid issues with some roaming cases where
+ 			 * disconnection event for the old AP may show up after
+@@ -1504,8 +1502,8 @@ static void mlme_event_deauth_disassoc(struct wpa_driver_nl80211_data *drv,
+ 		}
+ 
+ 		if (drv->associated != 0 &&
+-		    os_memcmp(bssid, drv->bssid, ETH_ALEN) != 0 &&
+-		    os_memcmp(bssid, drv->auth_bssid, ETH_ALEN) != 0) {
++		    !ether_addr_equal(bssid, drv->bssid) &&
++		    !ether_addr_equal(bssid, drv->auth_bssid)) {
+ 			/*
+ 			 * We have presumably received this deauth as a
+ 			 * response to a clear_state_mismatch() outgoing
+@@ -1527,7 +1525,7 @@ static void mlme_event_deauth_disassoc(struct wpa_driver_nl80211_data *drv,
+ 
+ 	if (type == EVENT_DISASSOC) {
+ 		event.disassoc_info.locally_generated =
+-			!os_memcmp(mgmt->sa, drv->first_bss->addr, ETH_ALEN);
++			ether_addr_equal(mgmt->sa, drv->first_bss->addr);
+ 		event.disassoc_info.addr = bssid;
+ 		event.disassoc_info.reason_code = reason_code;
+ 		if (frame + len > mgmt->u.disassoc.variable) {
+@@ -1537,7 +1535,7 @@ static void mlme_event_deauth_disassoc(struct wpa_driver_nl80211_data *drv,
+ 		}
+ 	} else {
+ 		event.deauth_info.locally_generated =
+-			!os_memcmp(mgmt->sa, drv->first_bss->addr, ETH_ALEN);
++			ether_addr_equal(mgmt->sa, drv->first_bss->addr);
+ 		if (drv->ignore_deauth_event) {
+ 			wpa_printf(MSG_DEBUG, "nl80211: Ignore deauth event due to previous forced deauth-during-auth");
+ 			drv->ignore_deauth_event = 0;
+@@ -1707,15 +1705,14 @@ static void mlme_event(struct i802_bss *bss,
+ 			   bss->ifname);
+ 	} else if (cmd != NL80211_CMD_FRAME_TX_STATUS  &&
+ 		   !(data[4] & 0x01) &&
+-		   os_memcmp(bss->addr, data + 4, ETH_ALEN) != 0 &&
++		   !ether_addr_equal(bss->addr, data + 4) &&
+ 		   (is_zero_ether_addr(bss->rand_addr) ||
+-		    os_memcmp(bss->rand_addr, data + 4, ETH_ALEN) != 0) &&
+-		   os_memcmp(bss->addr, data + 4 + ETH_ALEN, ETH_ALEN) != 0 &&
++		    !ether_addr_equal(bss->rand_addr, data + 4)) &&
++		   !ether_addr_equal(bss->addr, data + 4 + ETH_ALEN) &&
+ 		   (is_zero_ether_addr(drv->first_bss->prev_addr) ||
+-		    os_memcmp(bss->prev_addr, data + 4 + ETH_ALEN,
+-			      ETH_ALEN) != 0) &&
++		    !ether_addr_equal(bss->prev_addr, data + 4 + ETH_ALEN)) &&
+ 		   (!mld_link ||
+-		    os_memcmp(mld_link->addr, data + 4, ETH_ALEN) != 0)) {
++		    !ether_addr_equal(mld_link->addr, data + 4))) {
+ 		wpa_printf(MSG_MSGDUMP, "nl80211: %s: Ignore MLME frame event "
+ 			   "for foreign address", bss->ifname);
+ 		return;
+@@ -3556,7 +3553,7 @@ static void nl80211_port_authorized(struct wpa_driver_nl80211_data *drv,
+ 
+ 		connected_addr = drv->sta_mlo_info.valid_links ?
+ 			drv->sta_mlo_info.ap_mld_addr : drv->bssid;
+-		if (os_memcmp(addr, connected_addr, ETH_ALEN) != 0) {
++		if (!ether_addr_equal(addr, connected_addr)) {
+ 			wpa_printf(MSG_DEBUG,
+ 				   "nl80211: Ignore port authorized event for "
+ 				   MACSTR " (not the currently connected BSSID "
+diff --git a/src/drivers/driver_nl80211_scan.c b/src/drivers/driver_nl80211_scan.c
+index c482b0548..b9c317d4d 100644
+--- a/src/drivers/driver_nl80211_scan.c
++++ b/src/drivers/driver_nl80211_scan.c
+@@ -921,14 +921,14 @@ static void nl80211_check_bss_status(struct wpa_driver_nl80211_data *drv,
+ 			   "nl80211: Local state (not associated) does not match with BSS state");
+ 		clear_state_mismatch(drv, r->bssid);
+ 	} else if (is_sta_interface(drv->nlmode) &&
+-		   os_memcmp(drv->bssid, r->bssid, ETH_ALEN) != 0) {
++		   !ether_addr_equal(drv->bssid, r->bssid)) {
+ 		wpa_printf(MSG_DEBUG,
+ 			   "nl80211: Local state (associated with " MACSTR
+ 			   ") does not match with BSS state",
+ 			   MAC2STR(drv->bssid));
+ 
+-		if (os_memcmp(drv->sta_mlo_info.ap_mld_addr, drv->bssid,
+-			      ETH_ALEN) != 0) {
++		if (!ether_addr_equal(drv->sta_mlo_info.ap_mld_addr,
++				      drv->bssid)) {
+ 			clear_state_mismatch(drv, r->bssid);
+ 
+ 			if (!is_zero_ether_addr(drv->sta_mlo_info.ap_mld_addr))
+diff --git a/src/drivers/driver_roboswitch.c b/src/drivers/driver_roboswitch.c
+index 9beb6c46d..23c7086b2 100644
+--- a/src/drivers/driver_roboswitch.c
++++ b/src/drivers/driver_roboswitch.c
+@@ -175,7 +175,7 @@ static void wpa_driver_roboswitch_receive(void *priv, const u8 *src_addr,
+ 	struct wpa_driver_roboswitch_data *drv = priv;
+ 
+ 	if (len > 14 && WPA_GET_BE16(buf + 12) == ETH_P_EAPOL &&
+-	    os_memcmp(buf, drv->own_addr, ETH_ALEN) == 0)
++	    ether_addr_equal(buf, drv->own_addr))
+ 		drv_event_eapol_rx(drv->ctx, src_addr, buf + 14, len - 14);
+ }
+ 
+diff --git a/src/drivers/driver_wext.c b/src/drivers/driver_wext.c
+index cf201fe86..2c656fb6f 100644
+--- a/src/drivers/driver_wext.c
++++ b/src/drivers/driver_wext.c
+@@ -452,9 +452,10 @@ static void wpa_driver_wext_event_wireless(struct wpa_driver_wext_data *drv,
+ 				   MAC2STR((u8 *) iwe->u.ap_addr.sa_data));
+ 			if (is_zero_ether_addr(
+ 				    (const u8 *) iwe->u.ap_addr.sa_data) ||
+-			    os_memcmp(iwe->u.ap_addr.sa_data,
+-				      "\x44\x44\x44\x44\x44\x44", ETH_ALEN) ==
+-			    0) {
++			    ether_addr_equal((const u8 *)
++					     iwe->u.ap_addr.sa_data,
++					     (const u8 *)
++					     "\x44\x44\x44\x44\x44\x44")) {
+ 				os_free(drv->assoc_req_ies);
+ 				drv->assoc_req_ies = NULL;
+ 				os_free(drv->assoc_resp_ies);
+diff --git a/src/fst/fst_group.c b/src/fst/fst_group.c
+index 255d0fdc9..61c729902 100644
+--- a/src/fst/fst_group.c
++++ b/src/fst/fst_group.c
+@@ -364,8 +364,7 @@ fst_group_get_peer_other_connection_2(struct fst_iface *iface,
+ 				cur_mbie, this_band_id);
+ 			if (!this_peer_addr)
+ 				continue;
+-			if (os_memcmp(this_peer_addr, peer_addr, ETH_ALEN) ==
+-			    0) {
++			if (ether_addr_equal(this_peer_addr, peer_addr)) {
+ 				os_memcpy(other_peer_addr, cur_peer_addr,
+ 					  ETH_ALEN);
+ 				return other_iface;
+diff --git a/src/fst/fst_iface.c b/src/fst/fst_iface.c
+index 90c5fc035..96b284738 100644
+--- a/src/fst/fst_iface.c
++++ b/src/fst/fst_iface.c
+@@ -56,7 +56,7 @@ bool fst_iface_is_connected(struct fst_iface *iface, const u8 *addr,
+ 	const u8 *a = fst_iface_get_peer_first(iface, &ctx, mb_only);
+ 
+ 	for (; a != NULL; a = fst_iface_get_peer_next(iface, &ctx, mb_only))
+-		if (os_memcmp(addr, a, ETH_ALEN) == 0)
++		if (ether_addr_equal(addr, a))
+ 			return true;
+ 
+ 	return false;
+diff --git a/src/fst/fst_session.c b/src/fst/fst_session.c
+index e42a85c04..49886ffaa 100644
+--- a/src/fst/fst_session.c
++++ b/src/fst/fst_session.c
+@@ -238,10 +238,8 @@ fst_find_session_in_progress(const u8 *peer_addr, struct fst_group *g)
+ 
+ 	foreach_fst_session(s) {
+ 		if (s->group == g &&
+-		    (os_memcmp(s->data.old_peer_addr, peer_addr,
+-			       ETH_ALEN) == 0 ||
+-		     os_memcmp(s->data.new_peer_addr, peer_addr,
+-			       ETH_ALEN) == 0) &&
++		    (ether_addr_equal(s->data.old_peer_addr, peer_addr) ||
++		     ether_addr_equal(s->data.new_peer_addr, peer_addr)) &&
+ 		    fst_session_is_in_progress(s))
+ 			return s;
+ 	}
+diff --git a/src/l2_packet/l2_packet_linux.c b/src/l2_packet/l2_packet_linux.c
+index 7897bc026..5da05056f 100644
+--- a/src/l2_packet/l2_packet_linux.c
++++ b/src/l2_packet/l2_packet_linux.c
+@@ -179,7 +179,7 @@ static void l2_packet_receive(int sock, void *eloop_ctx, void *sock_ctx)
+ 		 * authorization has been completed (in dormant state).
+ 		 */
+ 		if (l2->num_rx_br <= 1 &&
+-		    (os_memcmp(eth->h_dest, l2->own_addr, ETH_ALEN) == 0 ||
++		    (ether_addr_equal(eth->h_dest, l2->own_addr) ||
+ 		     is_multicast_ether_addr(eth->h_dest))) {
+ 			wpa_printf(MSG_DEBUG,
+ 				   "l2_packet_receive: Main packet socket for %s seems to have working RX - close workaround bridge socket",
+@@ -241,7 +241,7 @@ static void l2_packet_receive_br(int sock, void *eloop_ctx, void *sock_ctx)
+ 	wpa_printf(MSG_DEBUG, "%s: src=" MACSTR " len=%d",
+ 		   __func__, MAC2STR(ll.sll_addr), (int) res);
+ 
+-	if (os_memcmp(ll.sll_addr, l2->own_addr, ETH_ALEN) == 0) {
++	if (ether_addr_equal(ll.sll_addr, l2->own_addr)) {
+ 		wpa_printf(MSG_DEBUG, "%s: Drop RX of own frame", __func__);
+ 		return;
+ 	}
+diff --git a/src/p2p/p2p.c b/src/p2p/p2p.c
+index 7e11abff4..7b17eb908 100644
+--- a/src/p2p/p2p.c
++++ b/src/p2p/p2p.c
+@@ -380,7 +380,7 @@ struct p2p_device * p2p_get_device(struct p2p_data *p2p, const u8 *addr)
+ {
+ 	struct p2p_device *dev;
+ 	dl_list_for_each(dev, &p2p->devices, struct p2p_device, list) {
+-		if (os_memcmp(dev->info.p2p_device_addr, addr, ETH_ALEN) == 0)
++		if (ether_addr_equal(dev->info.p2p_device_addr, addr))
+ 			return dev;
+ 	}
+ 	return NULL;
+@@ -398,7 +398,7 @@ struct p2p_device * p2p_get_device_interface(struct p2p_data *p2p,
+ {
+ 	struct p2p_device *dev;
+ 	dl_list_for_each(dev, &p2p->devices, struct p2p_device, list) {
+-		if (os_memcmp(dev->interface_addr, addr, ETH_ALEN) == 0)
++		if (ether_addr_equal(dev->interface_addr, addr))
+ 			return dev;
+ 	}
+ 	return NULL;
+@@ -486,8 +486,8 @@ static int p2p_add_group_clients(struct p2p_data *p2p, const u8 *go_dev_addr,
+ 	 * group, the information will be restored in the loop following this.
+ 	 */
+ 	dl_list_for_each(dev, &p2p->devices, struct p2p_device, list) {
+-		if (os_memcmp(dev->member_in_go_iface, go_interface_addr,
+-			      ETH_ALEN) == 0) {
++		if (ether_addr_equal(dev->member_in_go_iface,
++				     go_interface_addr)) {
+ 			os_memset(dev->member_in_go_iface, 0, ETH_ALEN);
+ 			os_memset(dev->member_in_go_dev, 0, ETH_ALEN);
+ 		}
+@@ -495,8 +495,7 @@ static int p2p_add_group_clients(struct p2p_data *p2p, const u8 *go_dev_addr,
+ 
+ 	for (c = 0; c < info.num_clients; c++) {
+ 		struct p2p_client_info *cli = &info.client[c];
+-		if (os_memcmp(cli->p2p_device_addr, p2p->cfg->dev_addr,
+-			      ETH_ALEN) == 0)
++		if (ether_addr_equal(cli->p2p_device_addr, p2p->cfg->dev_addr))
+ 			continue; /* ignore our own entry */
+ 		dev = p2p_get_device(p2p, cli->p2p_device_addr);
+ 		if (dev) {
+@@ -754,7 +753,7 @@ int p2p_add_device(struct p2p_data *p2p, const u8 *addr, int freq,
+ 	}
+ 
+ 	if (!is_zero_ether_addr(p2p->peer_filter) &&
+-	    os_memcmp(p2p_dev_addr, p2p->peer_filter, ETH_ALEN) != 0) {
++	    !ether_addr_equal(p2p_dev_addr, p2p->peer_filter)) {
+ 		p2p_dbg(p2p, "Do not add peer filter for " MACSTR
+ 			" due to peer filter", MAC2STR(p2p_dev_addr));
+ 		p2p_parse_free(&msg);
+@@ -799,7 +798,7 @@ int p2p_add_device(struct p2p_data *p2p, const u8 *addr, int freq,
+ 	dev->flags &= ~(P2P_DEV_PROBE_REQ_ONLY | P2P_DEV_GROUP_CLIENT_ONLY |
+ 			P2P_DEV_LAST_SEEN_AS_GROUP_CLIENT);
+ 
+-	if (os_memcmp(addr, p2p_dev_addr, ETH_ALEN) != 0)
++	if (!ether_addr_equal(addr, p2p_dev_addr))
+ 		os_memcpy(dev->interface_addr, addr, ETH_ALEN);
+ 	if (msg.ssid &&
+ 	    msg.ssid[1] <= sizeof(dev->oper_ssid) &&
+@@ -2394,7 +2393,7 @@ p2p_reply_probe(struct p2p_data *p2p, const u8 *addr, const u8 *dst,
+ 	}
+ 
+ 	if (dst && !is_broadcast_ether_addr(dst) &&
+-	    os_memcmp(dst, p2p->cfg->dev_addr, ETH_ALEN) != 0) {
++	    !ether_addr_equal(dst, p2p->cfg->dev_addr)) {
+ 		/* Not sent to the broadcast address or our P2P Device Address
+ 		 */
+ 		p2p_dbg(p2p, "Probe Req DA " MACSTR " not ours - ignore it",
+@@ -2478,7 +2477,7 @@ p2p_reply_probe(struct p2p_data *p2p, const u8 *addr, const u8 *dst,
+ 	}
+ 
+ 	if (msg.device_id &&
+-	    os_memcmp(msg.device_id, p2p->cfg->dev_addr, ETH_ALEN) != 0) {
++	    !ether_addr_equal(msg.device_id, p2p->cfg->dev_addr)) {
+ 		/* Device ID did not match */
+ 		p2p_dbg(p2p, "Probe Req requested Device ID " MACSTR " did not match - ignore it",
+ 			MAC2STR(msg.device_id));
+@@ -2567,8 +2566,7 @@ p2p_probe_req_rx(struct p2p_data *p2p, const u8 *addr, const u8 *dst,
+ 	 */
+ 	if ((p2p->state == P2P_CONNECT || p2p->state == P2P_CONNECT_LISTEN) &&
+ 	    p2p->go_neg_peer &&
+-	    os_memcmp(addr, p2p->go_neg_peer->info.p2p_device_addr, ETH_ALEN)
+-	    == 0 &&
++	    ether_addr_equal(addr, p2p->go_neg_peer->info.p2p_device_addr) &&
+ 	    !(p2p->go_neg_peer->flags & P2P_DEV_WAIT_GO_NEG_CONFIRM)) {
+ 		/* Received a Probe Request from GO Negotiation peer */
+ 		p2p_dbg(p2p, "Found GO Negotiation peer - try to start GO negotiation from timeout");
+@@ -2580,8 +2578,7 @@ p2p_probe_req_rx(struct p2p_data *p2p, const u8 *addr, const u8 *dst,
+ 	if ((p2p->state == P2P_INVITE || p2p->state == P2P_INVITE_LISTEN) &&
+ 	    p2p->invite_peer &&
+ 	    (p2p->invite_peer->flags & P2P_DEV_WAIT_INV_REQ_ACK) &&
+-	    os_memcmp(addr, p2p->invite_peer->info.p2p_device_addr, ETH_ALEN)
+-	    == 0) {
++	    ether_addr_equal(addr, p2p->invite_peer->info.p2p_device_addr)) {
+ 		/* Received a Probe Request from Invite peer */
+ 		p2p_dbg(p2p, "Found Invite peer - try to start Invite from timeout");
+ 		eloop_cancel_timeout(p2p_invite_start, p2p, NULL);
+@@ -2934,8 +2931,7 @@ void p2p_wps_success_cb(struct p2p_data *p2p, const u8 *mac_addr)
+ 		return; /* No pending Group Formation */
+ 	}
+ 
+-	if (os_memcmp(mac_addr, p2p->go_neg_peer->intended_addr, ETH_ALEN) !=
+-	    0) {
++	if (!ether_addr_equal(mac_addr, p2p->go_neg_peer->intended_addr)) {
+ 		p2p_dbg(p2p, "Ignore WPS registration success notification for "
+ 			MACSTR " (GO Negotiation peer " MACSTR ")",
+ 			MAC2STR(mac_addr),
+@@ -3400,8 +3396,8 @@ static void p2p_retry_pd(struct p2p_data *p2p)
+ 	 */
+ 
+ 	dl_list_for_each(dev, &p2p->devices, struct p2p_device, list) {
+-		if (os_memcmp(p2p->pending_pd_devaddr,
+-			      dev->info.p2p_device_addr, ETH_ALEN) != 0)
++		if (!ether_addr_equal(p2p->pending_pd_devaddr,
++				      dev->info.p2p_device_addr))
+ 			continue;
+ 		if (!dev->req_config_methods)
+ 			continue;
+@@ -4094,8 +4090,8 @@ static void p2p_timeout_prov_disc_req(struct p2p_data *p2p)
+ 		int for_join = 0;
+ 
+ 		dl_list_for_each(dev, &p2p->devices, struct p2p_device, list) {
+-			if (os_memcmp(p2p->pending_pd_devaddr,
+-				      dev->info.p2p_device_addr, ETH_ALEN) != 0)
++			if (!ether_addr_equal(p2p->pending_pd_devaddr,
++					      dev->info.p2p_device_addr))
+ 				continue;
+ 			if (dev->req_config_methods &&
+ 			    (dev->flags & P2P_DEV_PD_FOR_JOIN))
+@@ -4563,8 +4559,8 @@ static void p2p_process_presence_req(struct p2p_data *p2p, const u8 *da,
+ 	p2p_dbg(p2p, "Received P2P Action - P2P Presence Request");
+ 
+ 	for (g = 0; g < p2p->num_groups; g++) {
+-		if (os_memcmp(da, p2p_group_get_interface_addr(p2p->groups[g]),
+-			      ETH_ALEN) == 0) {
++		if (ether_addr_equal(
++			    da, p2p_group_get_interface_addr(p2p->groups[g]))) {
+ 			group = p2p->groups[g];
+ 			break;
+ 		}
+diff --git a/src/p2p/p2p_dev_disc.c b/src/p2p/p2p_dev_disc.c
+index 98805fee2..ff2bdfcd9 100644
+--- a/src/p2p/p2p_dev_disc.c
++++ b/src/p2p/p2p_dev_disc.c
+@@ -223,7 +223,7 @@ void p2p_process_dev_disc_resp(struct p2p_data *p2p, const u8 *sa,
+ 
+ 	go = p2p->pending_client_disc_go;
+ 	if (go == NULL ||
+-	    os_memcmp(sa, go->info.p2p_device_addr, ETH_ALEN) != 0) {
++	    !ether_addr_equal(sa, go->info.p2p_device_addr)) {
+ 		p2p_dbg(p2p, "Ignore unexpected Device Discoverability Response");
+ 		return;
+ 	}
+@@ -249,10 +249,10 @@ void p2p_process_dev_disc_resp(struct p2p_data *p2p, const u8 *sa,
+ 	p2p_dbg(p2p, "Device Discoverability Response status %u", status);
+ 
+ 	if (p2p->go_neg_peer == NULL ||
+-	    os_memcmp(p2p->pending_client_disc_addr,
+-		      p2p->go_neg_peer->info.p2p_device_addr, ETH_ALEN) != 0 ||
+-	    os_memcmp(p2p->go_neg_peer->member_in_go_dev,
+-		      go->info.p2p_device_addr, ETH_ALEN) != 0) {
++	    !ether_addr_equal(p2p->pending_client_disc_addr,
++			      p2p->go_neg_peer->info.p2p_device_addr) ||
++	    !ether_addr_equal(p2p->go_neg_peer->member_in_go_dev,
++			      go->info.p2p_device_addr)) {
+ 		p2p_dbg(p2p, "No pending operation with the client discoverability peer anymore");
+ 		return;
+ 	}
+diff --git a/src/p2p/p2p_go_neg.c b/src/p2p/p2p_go_neg.c
+index 55db8a5c6..30901b34d 100644
+--- a/src/p2p/p2p_go_neg.c
++++ b/src/p2p/p2p_go_neg.c
+@@ -859,7 +859,7 @@ void p2p_process_go_neg_req(struct p2p_data *p2p, const u8 *sa,
+ 		goto fail;
+ 	}
+ 
+-	if (os_memcmp(msg.p2p_device_addr, sa, ETH_ALEN) != 0) {
++	if (!ether_addr_equal(msg.p2p_device_addr, sa)) {
+ 		p2p_dbg(p2p, "Unexpected GO Negotiation Request SA=" MACSTR
+ 			" != dev_addr=" MACSTR,
+ 			MAC2STR(sa), MAC2STR(msg.p2p_device_addr));
+diff --git a/src/p2p/p2p_group.c b/src/p2p/p2p_group.c
+index aa18af6c1..c036f92a3 100644
+--- a/src/p2p/p2p_group.c
++++ b/src/p2p/p2p_group.c
+@@ -579,7 +579,7 @@ static int p2p_group_remove_member(struct p2p_group *group, const u8 *addr)
+ 	m = group->members;
+ 	prev = NULL;
+ 	while (m) {
+-		if (os_memcmp(m->addr, addr, ETH_ALEN) == 0)
++		if (ether_addr_equal(m->addr, addr))
+ 			break;
+ 		prev = m;
+ 		m = m->next;
+@@ -785,11 +785,11 @@ int p2p_group_match_dev_id(struct p2p_group *group, struct wpabuf *p2p)
+ 	if (!msg.device_id)
+ 		return 1; /* No filter on Device ID */
+ 
+-	if (os_memcmp(msg.device_id, group->p2p->cfg->dev_addr, ETH_ALEN) == 0)
++	if (ether_addr_equal(msg.device_id, group->p2p->cfg->dev_addr))
+ 		return 1; /* Match with our P2P Device Address */
+ 
+ 	for (m = group->members; m; m = m->next) {
+-		if (os_memcmp(msg.device_id, m->dev_addr, ETH_ALEN) == 0)
++		if (ether_addr_equal(msg.device_id, m->dev_addr))
+ 			return 1; /* Match with group client P2P Device Address */
+ 	}
+ 
+@@ -844,7 +844,7 @@ static struct p2p_group_member * p2p_group_get_client(struct p2p_group *group,
+ 	struct p2p_group_member *m;
+ 
+ 	for (m = group->members; m; m = m->next) {
+-		if (os_memcmp(dev_id, m->dev_addr, ETH_ALEN) == 0)
++		if (ether_addr_equal(dev_id, m->dev_addr))
+ 			return m;
+ 	}
+ 
+@@ -872,7 +872,7 @@ static struct p2p_group_member * p2p_group_get_client_iface(
+ 	struct p2p_group_member *m;
+ 
+ 	for (m = group->members; m; m = m->next) {
+-		if (os_memcmp(interface_addr, m->addr, ETH_ALEN) == 0)
++		if (ether_addr_equal(interface_addr, m->addr))
+ 			return m;
+ 	}
+ 
+@@ -1038,7 +1038,7 @@ int p2p_group_is_client_connected(struct p2p_group *group, const u8 *dev_addr)
+ 	struct p2p_group_member *m;
+ 
+ 	for (m = group->members; m; m = m->next) {
+-		if (os_memcmp(m->dev_addr, dev_addr, ETH_ALEN) == 0)
++		if (ether_addr_equal(m->dev_addr, dev_addr))
+ 			return 1;
+ 	}
+ 
+@@ -1051,7 +1051,7 @@ int p2p_group_is_group_id_match(struct p2p_group *group, const u8 *group_id,
+ {
+ 	if (group_id_len != ETH_ALEN + group->cfg->ssid_len)
+ 		return 0;
+-	if (os_memcmp(group_id, group->p2p->cfg->dev_addr, ETH_ALEN) != 0)
++	if (!ether_addr_equal(group_id, group->p2p->cfg->dev_addr))
+ 		return 0;
+ 	return os_memcmp(group_id + ETH_ALEN, group->cfg->ssid,
+ 			 group->cfg->ssid_len) == 0;
+diff --git a/src/p2p/p2p_invitation.c b/src/p2p/p2p_invitation.c
+index 941ec004b..70a7f6fa6 100644
+--- a/src/p2p/p2p_invitation.c
++++ b/src/p2p/p2p_invitation.c
+@@ -33,8 +33,8 @@ static struct wpabuf * p2p_build_invitation_req(struct p2p_data *p2p,
+ 		for (i = 0; i < p2p->num_groups; i++) {
+ 			struct p2p_group *g = p2p->groups[i];
+ 			struct wpabuf *ie;
+-			if (os_memcmp(p2p_group_get_interface_addr(g),
+-				      p2p->inv_bssid, ETH_ALEN) != 0)
++			if (!ether_addr_equal(p2p_group_get_interface_addr(g),
++					      p2p->inv_bssid))
+ 				continue;
+ 			ie = p2p_group_get_wfd_ie(g);
+ 			if (ie) {
+@@ -127,8 +127,8 @@ static struct wpabuf * p2p_build_invitation_resp(struct p2p_data *p2p,
+ 		for (i = 0; i < p2p->num_groups; i++) {
+ 			struct p2p_group *g = p2p->groups[i];
+ 			struct wpabuf *ie;
+-			if (os_memcmp(p2p_group_get_interface_addr(g),
+-				      group_bssid, ETH_ALEN) != 0)
++			if (!ether_addr_equal(p2p_group_get_interface_addr(g),
++					      group_bssid))
+ 				continue;
+ 			ie = p2p_group_get_wfd_ie(g);
+ 			if (ie) {
+diff --git a/src/p2p/p2p_pd.c b/src/p2p/p2p_pd.c
+index f75cee8ae..542521edb 100644
+--- a/src/p2p/p2p_pd.c
++++ b/src/p2p/p2p_pd.c
+@@ -544,7 +544,7 @@ do { \
+ 	if (msg->persistent_dev) {
+ 		channel_list = 1;
+ 		config_timeout = 1;
+-		if (os_memcmp(msg->persistent_dev, addr, ETH_ALEN) == 0) {
++		if (ether_addr_equal(msg->persistent_dev, addr)) {
+ 			intended_addr = 1;
+ 			operating_channel = 1;
+ 		}
+@@ -730,7 +730,7 @@ void p2p_process_prov_disc_req(struct p2p_data *p2p, const u8 *sa,
+ 	if (!msg.status) {
+ 		unsigned int forced_freq, pref_freq;
+ 
+-		if (os_memcmp(p2p->cfg->dev_addr, msg.adv_mac, ETH_ALEN)) {
++		if (!ether_addr_equal(p2p->cfg->dev_addr, msg.adv_mac)) {
+ 			p2p_dbg(p2p,
+ 				"P2PS PD adv mac does not match the local one");
+ 			reject = P2P_SC_FAIL_INCOMPATIBLE_PARAMS;
+@@ -892,14 +892,14 @@ void p2p_process_prov_disc_req(struct p2p_data *p2p, const u8 *sa,
+ 		goto out;
+ 
+ 	if (p2p->p2ps_prov->adv_id != adv_id ||
+-	    os_memcmp(p2p->p2ps_prov->adv_mac, msg.adv_mac, ETH_ALEN)) {
++	    !ether_addr_equal(p2p->p2ps_prov->adv_mac, msg.adv_mac)) {
+ 		p2p_dbg(p2p,
+ 			"P2PS Follow-on PD with mismatch Advertisement ID/MAC");
+ 		goto out;
+ 	}
+ 
+ 	if (p2p->p2ps_prov->session_id != session_id ||
+-	    os_memcmp(p2p->p2ps_prov->session_mac, msg.session_mac, ETH_ALEN)) {
++	    !ether_addr_equal(p2p->p2ps_prov->session_mac, msg.session_mac)) {
+ 		p2p_dbg(p2p, "P2PS Follow-on PD with mismatch Session ID/MAC");
+ 		goto out;
+ 	}
+@@ -1239,8 +1239,7 @@ static int p2p_validate_p2ps_pd_resp(struct p2p_data *p2p,
+ 		return -1;
+ 	}
+ 
+-	if (os_memcmp(p2p->p2ps_prov->session_mac, msg->session_mac,
+-		      ETH_ALEN)) {
++	if (!ether_addr_equal(p2p->p2ps_prov->session_mac, msg->session_mac)) {
+ 		p2p_dbg(p2p,
+ 			"Ignore PD Response with unexpected Session MAC");
+ 		return -1;
+@@ -1252,7 +1251,7 @@ static int p2p_validate_p2ps_pd_resp(struct p2p_data *p2p,
+ 		return -1;
+ 	}
+ 
+-	if (os_memcmp(p2p->p2ps_prov->adv_mac, msg->adv_mac, ETH_ALEN) != 0) {
++	if (!ether_addr_equal(p2p->p2ps_prov->adv_mac, msg->adv_mac)) {
+ 		p2p_dbg(p2p,
+ 			"Ignore PD Response with unexpected Advertisement MAC");
+ 		return -1;
+@@ -1396,7 +1395,7 @@ void p2p_process_prov_disc_resp(struct p2p_data *p2p, const u8 *sa,
+ 	 * was sent earlier, we reset that state info here.
+ 	 */
+ 	if (p2p->user_initiated_pd &&
+-	    os_memcmp(p2p->pending_pd_devaddr, sa, ETH_ALEN) == 0)
++	    ether_addr_equal(p2p->pending_pd_devaddr, sa))
+ 		p2p_reset_pending_pd(p2p);
+ 
+ 	if (msg.wps_config_methods != req_config_methods) {
+@@ -1758,8 +1757,8 @@ void p2p_reset_pending_pd(struct p2p_data *p2p)
+ 	struct p2p_device *dev;
+ 
+ 	dl_list_for_each(dev, &p2p->devices, struct p2p_device, list) {
+-		if (os_memcmp(p2p->pending_pd_devaddr,
+-			      dev->info.p2p_device_addr, ETH_ALEN))
++		if (!ether_addr_equal(p2p->pending_pd_devaddr,
++				      dev->info.p2p_device_addr))
+ 			continue;
+ 		if (!dev->req_config_methods)
+ 			continue;
+diff --git a/src/p2p/p2p_sd.c b/src/p2p/p2p_sd.c
+index b9e753f20..050b6fd88 100644
+--- a/src/p2p/p2p_sd.c
++++ b/src/p2p/p2p_sd.c
+@@ -79,8 +79,7 @@ struct p2p_sd_query * p2p_pending_sd_req(struct p2p_data *p2p,
+ 			count++;
+ 		}
+ 		if (!q->for_all_peers &&
+-		    os_memcmp(q->peer, dev->info.p2p_device_addr, ETH_ALEN) ==
+-		    0)
++		    ether_addr_equal(q->peer, dev->info.p2p_device_addr))
+ 			goto found;
+ 	}
+ 
+@@ -289,8 +288,7 @@ int p2p_start_sd(struct p2p_data *p2p, struct p2p_device *dev)
+ 	if (query == NULL)
+ 		return -1;
+ 	if (p2p->state == P2P_SEARCH &&
+-	    os_memcmp(p2p->sd_query_no_ack, dev->info.p2p_device_addr,
+-		      ETH_ALEN) == 0) {
++	    ether_addr_equal(p2p->sd_query_no_ack, dev->info.p2p_device_addr)) {
+ 		p2p_dbg(p2p, "Do not start Service Discovery with " MACSTR
+ 			" due to it being the first no-ACK peer in this search iteration",
+ 			MAC2STR(dev->info.p2p_device_addr));
+@@ -492,7 +490,7 @@ void p2p_rx_gas_initial_resp(struct p2p_data *p2p, const u8 *sa,
+ 	u16 update_indic;
+ 
+ 	if (p2p->state != P2P_SD_DURING_FIND || p2p->sd_peer == NULL ||
+-	    os_memcmp(sa, p2p->sd_peer->info.p2p_device_addr, ETH_ALEN) != 0) {
++	    !ether_addr_equal(sa, p2p->sd_peer->info.p2p_device_addr)) {
+ 		p2p_dbg(p2p, "Ignore unexpected GAS Initial Response from "
+ 			MACSTR, MAC2STR(sa));
+ 		return;
+@@ -642,7 +640,7 @@ void p2p_rx_gas_comeback_req(struct p2p_data *p2p, const u8 *sa,
+ 		p2p_dbg(p2p, "No pending SD response fragment available");
+ 		return;
+ 	}
+-	if (os_memcmp(sa, p2p->sd_resp_addr, ETH_ALEN) != 0) {
++	if (!ether_addr_equal(sa, p2p->sd_resp_addr)) {
+ 		p2p_dbg(p2p, "No pending SD response fragment for " MACSTR,
+ 			MAC2STR(sa));
+ 		return;
+@@ -707,7 +705,7 @@ void p2p_rx_gas_comeback_resp(struct p2p_data *p2p, const u8 *sa,
+ 	wpa_hexdump(MSG_DEBUG, "P2P: RX GAS Comeback Response", data, len);
+ 
+ 	if (p2p->state != P2P_SD_DURING_FIND || p2p->sd_peer == NULL ||
+-	    os_memcmp(sa, p2p->sd_peer->info.p2p_device_addr, ETH_ALEN) != 0) {
++	    !ether_addr_equal(sa, p2p->sd_peer->info.p2p_device_addr)) {
+ 		p2p_dbg(p2p, "Ignore unexpected GAS Comeback Response from "
+ 			MACSTR, MAC2STR(sa));
+ 		return;
+diff --git a/src/pae/ieee802_1x_kay.c b/src/pae/ieee802_1x_kay.c
+index ae1b06c50..b0a418ef0 100644
+--- a/src/pae/ieee802_1x_kay.c
++++ b/src/pae/ieee802_1x_kay.c
+@@ -3125,7 +3125,7 @@ static int ieee802_1x_kay_mkpdu_validity_check(struct ieee802_1x_kay *kay,
+ 		   be_to_host16(eth_hdr->ethertype));
+ 
+ 	/* the destination address shall not be an individual address */
+-	if (os_memcmp(eth_hdr->dest, pae_group_addr, ETH_ALEN) != 0) {
++	if (!ether_addr_equal(eth_hdr->dest, pae_group_addr)) {
+ 		wpa_printf(MSG_DEBUG,
+ 			   "KaY: ethernet destination address is not PAE group address");
+ 		return -1;
+diff --git a/src/pasn/pasn_initiator.c b/src/pasn/pasn_initiator.c
+index 5d73f8195..35c620605 100644
+--- a/src/pasn/pasn_initiator.c
++++ b/src/pasn/pasn_initiator.c
+@@ -1024,15 +1024,15 @@ static bool is_pasn_auth_frame(struct pasn_data *pasn,
+ 		return false;
+ 
+ 	/* Not our frame; do nothing */
+-	if (os_memcmp(mgmt->bssid, pasn->bssid, ETH_ALEN) != 0)
++	if (!ether_addr_equal(mgmt->bssid, pasn->bssid))
+ 		return false;
+ 
+-	if (rx && (os_memcmp(mgmt->da, pasn->own_addr, ETH_ALEN) != 0 ||
+-		   os_memcmp(mgmt->sa, pasn->peer_addr, ETH_ALEN) != 0))
++	if (rx && (!ether_addr_equal(mgmt->da, pasn->own_addr) ||
++		   !ether_addr_equal(mgmt->sa, pasn->peer_addr)))
+ 		return false;
+ 
+-	if (!rx && (os_memcmp(mgmt->sa, pasn->own_addr, ETH_ALEN) != 0 ||
+-		    os_memcmp(mgmt->da, pasn->peer_addr, ETH_ALEN) != 0))
++	if (!rx && (!ether_addr_equal(mgmt->sa, pasn->own_addr) ||
++		    !ether_addr_equal(mgmt->da, pasn->peer_addr)))
+ 		return false;
+ 
+ 	/* Not PASN; do nothing */
+diff --git a/src/radius/radius_client.c b/src/radius/radius_client.c
+index ee9e46d2a..18aaec1bb 100644
+--- a/src/radius/radius_client.c
++++ b/src/radius/radius_client.c
+@@ -1556,7 +1556,7 @@ void radius_client_flush_auth(struct radius_client_data *radius,
+ 	entry = radius->msgs;
+ 	while (entry) {
+ 		if (entry->msg_type == RADIUS_AUTH &&
+-		    os_memcmp(entry->addr, addr, ETH_ALEN) == 0) {
++		    ether_addr_equal(entry->addr, addr)) {
+ 			hostapd_logger(radius->ctx, addr,
+ 				       HOSTAPD_MODULE_RADIUS,
+ 				       HOSTAPD_LEVEL_DEBUG,
+diff --git a/src/rsn_supp/pmksa_cache.c b/src/rsn_supp/pmksa_cache.c
+index c97242815..ed33dbae8 100644
+--- a/src/rsn_supp/pmksa_cache.c
++++ b/src/rsn_supp/pmksa_cache.c
+@@ -296,8 +296,8 @@ pmksa_cache_add_entry(struct rsn_pmksa_cache *pmksa,
+ 	pos = pmksa->pmksa;
+ 	prev = NULL;
+ 	while (pos) {
+-		if (os_memcmp(entry->aa, pos->aa, ETH_ALEN) == 0 &&
+-		    os_memcmp(entry->spa, pos->spa, ETH_ALEN) == 0) {
++		if (ether_addr_equal(entry->aa, pos->aa) &&
++		    ether_addr_equal(entry->spa, pos->spa)) {
+ 			if (pos->pmk_len == entry->pmk_len &&
+ 			    os_memcmp_const(pos->pmk, entry->pmk,
+ 					    entry->pmk_len) == 0 &&
+@@ -483,8 +483,8 @@ struct rsn_pmksa_cache_entry * pmksa_cache_get(struct rsn_pmksa_cache *pmksa,
+ {
+ 	struct rsn_pmksa_cache_entry *entry = pmksa->pmksa;
+ 	while (entry) {
+-		if ((aa == NULL || os_memcmp(entry->aa, aa, ETH_ALEN) == 0) &&
+-		    (!spa || os_memcmp(entry->spa, spa, ETH_ALEN) == 0) &&
++		if ((aa == NULL || ether_addr_equal(entry->aa, aa)) &&
++		    (!spa || ether_addr_equal(entry->spa, spa)) &&
+ 		    (pmkid == NULL ||
+ 		     os_memcmp(entry->pmkid, pmkid, PMKID_LEN) == 0) &&
+ 		    (!akmp || akmp == entry->akmp) &&
+diff --git a/src/rsn_supp/preauth.c b/src/rsn_supp/preauth.c
+index 1a288844a..026a98d9f 100644
+--- a/src/rsn_supp/preauth.c
++++ b/src/rsn_supp/preauth.c
+@@ -69,7 +69,7 @@ static void rsn_preauth_receive(void *ctx, const u8 *src_addr,
+ 
+ 	if (sm->preauth_eapol == NULL ||
+ 	    is_zero_ether_addr(sm->preauth_bssid) ||
+-	    os_memcmp(sm->preauth_bssid, src_addr, ETH_ALEN) != 0) {
++	    !ether_addr_equal(sm->preauth_bssid, src_addr)) {
+ 		wpa_printf(MSG_WARNING, "RSN pre-auth frame received from "
+ 			   "unexpected source " MACSTR " - dropped",
+ 			   MAC2STR(src_addr));
+@@ -333,7 +333,7 @@ void rsn_preauth_candidate_process(struct wpa_sm *sm)
+ 		struct rsn_pmksa_cache_entry *p = NULL;
+ 		p = pmksa_cache_get(sm->pmksa, candidate->bssid, sm->own_addr,
+ 				    NULL, NULL, 0);
+-		if (os_memcmp(sm->bssid, candidate->bssid, ETH_ALEN) != 0 &&
++		if (!ether_addr_equal(sm->bssid, candidate->bssid) &&
+ 		    (p == NULL || p->opportunistic)) {
+ 			wpa_msg(sm->ctx->msg_ctx, MSG_DEBUG, "RSN: PMKSA "
+ 				"candidate " MACSTR
+@@ -395,7 +395,7 @@ void pmksa_candidate_add(struct wpa_sm *sm, const u8 *bssid,
+ 	cand = NULL;
+ 	dl_list_for_each(pos, &sm->pmksa_candidates,
+ 			 struct rsn_pmksa_candidate, list) {
+-		if (os_memcmp(pos->bssid, bssid, ETH_ALEN) == 0) {
++		if (ether_addr_equal(pos->bssid, bssid)) {
+ 			cand = pos;
+ 			break;
+ 		}
+@@ -487,7 +487,7 @@ void rsn_preauth_scan_result(struct wpa_sm *sm, const u8 *bssid,
+ 	    os_memcmp(ssid + 2, sm->ssid, sm->ssid_len) != 0)
+ 		return; /* Not for the current SSID */
+ 
+-	if (os_memcmp(bssid, sm->bssid, ETH_ALEN) == 0)
++	if (ether_addr_equal(bssid, sm->bssid))
+ 		return; /* Ignore current AP */
+ 
+ 	if (wpa_parse_wpa_ie(rsn, 2 + rsn[1], &ie))
+diff --git a/src/rsn_supp/tdls.c b/src/rsn_supp/tdls.c
+index 47b1cd45e..8a7509170 100644
+--- a/src/rsn_supp/tdls.c
++++ b/src/rsn_supp/tdls.c
+@@ -294,7 +294,7 @@ static int wpa_tdls_tpk_send(struct wpa_sm *sm, const u8 *dest, u8 action_code,
+ 		return 0; /* No retries */
+ 
+ 	for (peer = sm->tdls; peer; peer = peer->next) {
+-		if (os_memcmp(peer->addr, dest, ETH_ALEN) == 0)
++		if (ether_addr_equal(peer->addr, dest))
+ 			break;
+ 	}
+ 
+@@ -791,7 +791,7 @@ static int wpa_tdls_send_teardown(struct wpa_sm *sm, const u8 *addr,
+ 
+ 	/* Find the node and free from the list */
+ 	for (peer = sm->tdls; peer; peer = peer->next) {
+-		if (os_memcmp(peer->addr, addr, ETH_ALEN) == 0)
++		if (ether_addr_equal(peer->addr, addr))
+ 			break;
+ 	}
+ 
+@@ -880,7 +880,7 @@ int wpa_tdls_teardown_link(struct wpa_sm *sm, const u8 *addr, u16 reason_code)
+ 		return -1;
+ 
+ 	for (peer = sm->tdls; peer; peer = peer->next) {
+-		if (os_memcmp(peer->addr, addr, ETH_ALEN) == 0)
++		if (ether_addr_equal(peer->addr, addr))
+ 			break;
+ 	}
+ 
+@@ -913,7 +913,7 @@ void wpa_tdls_disable_unreachable_link(struct wpa_sm *sm, const u8 *addr)
+ 	struct wpa_tdls_peer *peer;
+ 
+ 	for (peer = sm->tdls; peer; peer = peer->next) {
+-		if (os_memcmp(peer->addr, addr, ETH_ALEN) == 0)
++		if (ether_addr_equal(peer->addr, addr))
+ 			break;
+ 	}
+ 
+@@ -949,7 +949,7 @@ const char * wpa_tdls_get_link_status(struct wpa_sm *sm, const u8 *addr)
+ 		return "disabled";
+ 
+ 	for (peer = sm->tdls; peer; peer = peer->next) {
+-		if (os_memcmp(peer->addr, addr, ETH_ALEN) == 0)
++		if (ether_addr_equal(peer->addr, addr))
+ 			break;
+ 	}
+ 
+@@ -976,7 +976,7 @@ static int wpa_tdls_recv_teardown(struct wpa_sm *sm, const u8 *src_addr,
+ 
+ 	/* Find the node and free from the list */
+ 	for (peer = sm->tdls; peer; peer = peer->next) {
+-		if (os_memcmp(peer->addr, src_addr, ETH_ALEN) == 0)
++		if (ether_addr_equal(peer->addr, src_addr))
+ 			break;
+ 	}
+ 
+@@ -1072,7 +1072,7 @@ wpa_tdls_add_peer(struct wpa_sm *sm, const u8 *addr, int *existing)
+ 	if (existing)
+ 		*existing = 0;
+ 	for (peer = sm->tdls; peer; peer = peer->next) {
+-		if (os_memcmp(peer->addr, addr, ETH_ALEN) == 0) {
++		if (ether_addr_equal(peer->addr, addr)) {
+ 			if (existing)
+ 				*existing = 1;
+ 			return peer; /* re-use existing entry */
+@@ -1564,15 +1564,15 @@ static bool wpa_tdls_is_lnkid_bss_valid(struct wpa_sm *sm,
+ 	*link_id = -1;
+ 
+ 	if (!sm->mlo.valid_links) {
+-		if (os_memcmp(sm->bssid, lnkid->bssid, ETH_ALEN) != 0)
++		if (!ether_addr_equal(sm->bssid, lnkid->bssid))
+ 			return false;
+ 	} else {
+ 		int i;
+ 
+ 		for (i = 0; i < MAX_NUM_MLD_LINKS; i++) {
+ 			if ((sm->mlo.valid_links & BIT(i)) &&
+-			    os_memcmp(lnkid->bssid, sm->mlo.links[i].bssid,
+-				      ETH_ALEN) == 0) {
++			    ether_addr_equal(lnkid->bssid,
++					     sm->mlo.links[i].bssid)) {
+ 				*link_id = i;
+ 				break;
+ 			}
+@@ -2371,7 +2371,7 @@ static int wpa_tdls_process_tpk_m2(struct wpa_sm *sm, const u8 *src_addr,
+ 	wpa_printf(MSG_DEBUG, "TDLS: Received TDLS Setup Response / TPK M2 "
+ 		   "(Peer " MACSTR ")", MAC2STR(src_addr));
+ 	for (peer = sm->tdls; peer; peer = peer->next) {
+-		if (os_memcmp(peer->addr, src_addr, ETH_ALEN) == 0)
++		if (ether_addr_equal(peer->addr, src_addr))
+ 			break;
+ 	}
+ 	if (peer == NULL) {
+@@ -2460,8 +2460,8 @@ static int wpa_tdls_process_tpk_m2(struct wpa_sm *sm, const u8 *src_addr,
+ 		    kde.lnkid, kde.lnkid_len);
+ 	lnkid = (struct wpa_tdls_lnkid *) kde.lnkid;
+ 
+-	if (os_memcmp(sm->bssid, wpa_tdls_get_link_bssid(sm, peer->mld_link_id),
+-		      ETH_ALEN) != 0) {
++	if (!ether_addr_equal(sm->bssid,
++			      wpa_tdls_get_link_bssid(sm, peer->mld_link_id))) {
+ 		wpa_printf(MSG_INFO, "TDLS: TPK M2 from different BSS");
+ 		status = WLAN_STATUS_NOT_IN_SAME_BSS;
+ 		goto error;
+@@ -2668,7 +2668,7 @@ static int wpa_tdls_process_tpk_m3(struct wpa_sm *sm, const u8 *src_addr,
+ 	wpa_printf(MSG_DEBUG, "TDLS: Received TDLS Setup Confirm / TPK M3 "
+ 		   "(Peer " MACSTR ")", MAC2STR(src_addr));
+ 	for (peer = sm->tdls; peer; peer = peer->next) {
+-		if (os_memcmp(peer->addr, src_addr, ETH_ALEN) == 0)
++		if (ether_addr_equal(peer->addr, src_addr))
+ 			break;
+ 	}
+ 	if (peer == NULL) {
+@@ -2713,8 +2713,8 @@ static int wpa_tdls_process_tpk_m3(struct wpa_sm *sm, const u8 *src_addr,
+ 		    (u8 *) kde.lnkid, kde.lnkid_len);
+ 	lnkid = (struct wpa_tdls_lnkid *) kde.lnkid;
+ 
+-	if (os_memcmp(wpa_tdls_get_link_bssid(sm, peer->mld_link_id),
+-		      lnkid->bssid, ETH_ALEN) != 0) {
++	if (!ether_addr_equal(wpa_tdls_get_link_bssid(sm, peer->mld_link_id),
++			      lnkid->bssid)) {
+ 		wpa_printf(MSG_INFO, "TDLS: TPK M3 from diff BSS");
+ 		goto error;
+ 	}
+@@ -2899,7 +2899,7 @@ void wpa_tdls_remove(struct wpa_sm *sm, const u8 *addr)
+ 		return;
+ 
+ 	for (peer = sm->tdls; peer; peer = peer->next) {
+-		if (os_memcmp(peer->addr, addr, ETH_ALEN) == 0)
++		if (ether_addr_equal(peer->addr, addr))
+ 			break;
+ 	}
+ 
+@@ -2937,7 +2937,7 @@ static void wpa_supplicant_rx_tdls(void *ctx, const u8 *src_addr,
+ 		return;
+ 	}
+ 
+-	if (os_memcmp(src_addr, sm->own_addr, ETH_ALEN) == 0) {
++	if (ether_addr_equal(src_addr, sm->own_addr)) {
+ 		wpa_printf(MSG_DEBUG, "TDLS: Discard copy of own message");
+ 		return;
+ 	}
+@@ -3263,7 +3263,7 @@ int wpa_tdls_enable_chan_switch(struct wpa_sm *sm, const u8 *addr,
+ 	}
+ 
+ 	for (peer = sm->tdls; peer; peer = peer->next) {
+-		if (os_memcmp(peer->addr, addr, ETH_ALEN) == 0)
++		if (ether_addr_equal(peer->addr, addr))
+ 			break;
+ 	}
+ 
+@@ -3297,7 +3297,7 @@ int wpa_tdls_disable_chan_switch(struct wpa_sm *sm, const u8 *addr)
+ 		return -1;
+ 
+ 	for (peer = sm->tdls; peer; peer = peer->next) {
+-		if (os_memcmp(peer->addr, addr, ETH_ALEN) == 0)
++		if (ether_addr_equal(peer->addr, addr))
+ 			break;
+ 	}
+ 
+diff --git a/src/rsn_supp/wpa.c b/src/rsn_supp/wpa.c
+index 5f222dd3d..950d91bfd 100644
+--- a/src/rsn_supp/wpa.c
++++ b/src/rsn_supp/wpa.c
+@@ -768,7 +768,7 @@ static u8 * wpa_mlo_link_kde(struct wpa_sm *sm, u8 *pos)
+ static bool is_valid_ap_mld_mac_kde(struct wpa_sm *sm, const u8 *mac_kde)
+ {
+ 	return mac_kde &&
+-		os_memcmp(mac_kde, sm->mlo.ap_mld_addr, ETH_ALEN) == 0;
++		ether_addr_equal(mac_kde, sm->mlo.ap_mld_addr);
+ }
+ 
+ 
+@@ -2225,9 +2225,8 @@ static int wpa_supplicant_validate_link_kde(struct wpa_sm *sm, u8 link_id,
+ 		return -1;
+ 	}
+ 
+-	if (os_memcmp(sm->mlo.links[link_id].bssid,
+-		      &link_kde[RSN_MLO_LINK_KDE_LINK_MAC_INDEX],
+-		      ETH_ALEN) != 0) {
++	if (!ether_addr_equal(sm->mlo.links[link_id].bssid,
++			      &link_kde[RSN_MLO_LINK_KDE_LINK_MAC_INDEX])) {
+ 		wpa_msg(sm->ctx->msg_ctx, MSG_INFO,
+ 			"RSN: MLO Link %u MAC address (" MACSTR
+ 			") not matching association response (" MACSTR ")",
+@@ -4110,7 +4109,7 @@ void wpa_sm_notify_assoc(struct wpa_sm *sm, const u8 *bssid)
+ 	os_memset(sm->rx_replay_counter, 0, WPA_REPLAY_COUNTER_LEN);
+ 	sm->rx_replay_counter_set = 0;
+ 	sm->renew_snonce = 1;
+-	if (os_memcmp(sm->preauth_bssid, bssid, ETH_ALEN) == 0)
++	if (ether_addr_equal(sm->preauth_bssid, bssid))
+ 		rsn_preauth_deinit(sm);
+ 
+ #ifdef CONFIG_IEEE80211R
+diff --git a/src/rsn_supp/wpa_ft.c b/src/rsn_supp/wpa_ft.c
+index 69de046c0..9fb5668ef 100644
+--- a/src/rsn_supp/wpa_ft.c
++++ b/src/rsn_supp/wpa_ft.c
+@@ -607,7 +607,7 @@ int wpa_ft_process_response(struct wpa_sm *sm, const u8 *ies, size_t ies_len,
+ 			goto fail;
+ 		}
+ 
+-		if (os_memcmp(target_ap, sm->target_ap, ETH_ALEN) != 0) {
++		if (!ether_addr_equal(target_ap, sm->target_ap)) {
+ 			wpa_printf(MSG_DEBUG, "FT: No over-the-DS in progress "
+ 				   "with this Target AP - drop FT Action "
+ 				   "Response");
+@@ -1330,7 +1330,7 @@ static struct pasn_ft_r1kh * wpa_ft_pasn_get_r1kh(struct wpa_sm *sm,
+ 	size_t i;
+ 
+ 	for (i = 0; i < sm->n_pasn_r1kh; i++)
+-		if (os_memcmp(sm->pasn_r1kh[i].bssid, bssid, ETH_ALEN) == 0)
++		if (ether_addr_equal(sm->pasn_r1kh[i].bssid, bssid))
+ 			return &sm->pasn_r1kh[i];
+ 
+ 	return NULL;
+diff --git a/src/wps/wps.c b/src/wps/wps.c
+index 1fe38063b..7cfebfabc 100644
+--- a/src/wps/wps.c
++++ b/src/wps/wps.c
+@@ -336,9 +336,9 @@ int wps_is_addr_authorized(const struct wpabuf *msg, const u8 *addr,
+ 
+ 	pos = attr.authorized_macs;
+ 	for (i = 0; i < attr.authorized_macs_len / ETH_ALEN; i++) {
+-		if (os_memcmp(pos, addr, ETH_ALEN) == 0)
++		if (ether_addr_equal(pos, addr))
+ 			return 2;
+-		if (os_memcmp(pos, bcast, ETH_ALEN) == 0)
++		if (ether_addr_equal(pos, bcast))
+ 			return 1;
+ 		pos += ETH_ALEN;
+ 	}
+diff --git a/src/wps/wps_enrollee.c b/src/wps/wps_enrollee.c
+index 819cd43f6..af828e5c9 100644
+--- a/src/wps/wps_enrollee.c
++++ b/src/wps/wps_enrollee.c
+@@ -715,8 +715,7 @@ static int wps_process_cred_e(struct wps_data *wps, const u8 *cred,
+ 	    wps_process_cred(&attr, &wps->cred))
+ 		return -1;
+ 
+-	if (os_memcmp(wps->cred.mac_addr, wps->wps->dev.mac_addr, ETH_ALEN) !=
+-	    0) {
++	if (!ether_addr_equal(wps->cred.mac_addr, wps->wps->dev.mac_addr)) {
+ 		wpa_printf(MSG_DEBUG, "WPS: MAC Address in the Credential ("
+ 			   MACSTR ") does not match with own address (" MACSTR
+ 			   ")", MAC2STR(wps->cred.mac_addr),
+@@ -815,8 +814,7 @@ static int wps_process_ap_settings_e(struct wps_data *wps,
+ 	wpa_printf(MSG_INFO, "WPS: Received new AP configuration from "
+ 		   "Registrar");
+ 
+-	if (os_memcmp(cred.mac_addr, wps->wps->dev.mac_addr, ETH_ALEN) !=
+-	    0) {
++	if (!ether_addr_equal(cred.mac_addr, wps->wps->dev.mac_addr)) {
+ 		wpa_printf(MSG_DEBUG, "WPS: MAC Address in the AP Settings ("
+ 			   MACSTR ") does not match with own address (" MACSTR
+ 			   ")", MAC2STR(cred.mac_addr),
+diff --git a/src/wps/wps_er.c b/src/wps/wps_er.c
+index 31d2e50e4..dede64b01 100644
+--- a/src/wps/wps_er.c
++++ b/src/wps/wps_er.c
+@@ -62,7 +62,7 @@ static struct wps_er_sta * wps_er_sta_get(struct wps_er_ap *ap, const u8 *addr,
+ 	struct wps_er_sta *sta;
+ 	dl_list_for_each(sta, &ap->sta, struct wps_er_sta, list) {
+ 		if ((addr == NULL ||
+-		     os_memcmp(sta->addr, addr, ETH_ALEN) == 0) &&
++		     ether_addr_equal(sta->addr, addr)) &&
+ 		    (uuid == NULL ||
+ 		     os_memcmp(uuid, sta->uuid, WPS_UUID_LEN) == 0))
+ 			return sta;
+@@ -106,7 +106,7 @@ static struct wps_er_ap * wps_er_ap_get(struct wps_er *er,
+ 		    (uuid == NULL ||
+ 		     os_memcmp(uuid, ap->uuid, WPS_UUID_LEN) == 0) &&
+ 		    (mac_addr == NULL ||
+-		     os_memcmp(mac_addr, ap->mac_addr, ETH_ALEN) == 0))
++		     ether_addr_equal(mac_addr, ap->mac_addr)))
+ 			return ap;
+ 	}
+ 	return NULL;
+diff --git a/src/wps/wps_registrar.c b/src/wps/wps_registrar.c
+index 2b9c469aa..f49784f95 100644
+--- a/src/wps/wps_registrar.c
++++ b/src/wps/wps_registrar.c
+@@ -238,7 +238,7 @@ static void wps_registrar_add_authorized_mac(struct wps_registrar *reg,
+ 	wpa_printf(MSG_DEBUG, "WPS: Add authorized MAC " MACSTR,
+ 		   MAC2STR(addr));
+ 	for (i = 0; i < WPS_MAX_AUTHORIZED_MACS; i++)
+-		if (os_memcmp(reg->authorized_macs[i], addr, ETH_ALEN) == 0) {
++		if (ether_addr_equal(reg->authorized_macs[i], addr)) {
+ 			wpa_printf(MSG_DEBUG, "WPS: Authorized MAC was "
+ 				   "already in the list");
+ 			return; /* already in list */
+@@ -259,7 +259,7 @@ static void wps_registrar_remove_authorized_mac(struct wps_registrar *reg,
+ 	wpa_printf(MSG_DEBUG, "WPS: Remove authorized MAC " MACSTR,
+ 		   MAC2STR(addr));
+ 	for (i = 0; i < WPS_MAX_AUTHORIZED_MACS; i++) {
+-		if (os_memcmp(reg->authorized_macs[i], addr, ETH_ALEN) == 0)
++		if (ether_addr_equal(reg->authorized_macs[i], addr))
+ 			break;
+ 	}
+ 	if (i == WPS_MAX_AUTHORIZED_MACS) {
+@@ -296,7 +296,7 @@ static struct wps_registrar_device * wps_device_get(struct wps_registrar *reg,
+ 	struct wps_registrar_device *dev;
+ 
+ 	for (dev = reg->devices; dev; dev = dev->next) {
+-		if (os_memcmp(dev->dev.mac_addr, addr, ETH_ALEN) == 0)
++		if (ether_addr_equal(dev->dev.mac_addr, addr))
+ 			return dev;
+ 	}
+ 	return NULL;
+@@ -353,7 +353,7 @@ static void wps_registrar_add_pbc_session(struct wps_registrar *reg,
+ 
+ 	pbc = reg->pbc_sessions;
+ 	while (pbc) {
+-		if (os_memcmp(pbc->addr, addr, ETH_ALEN) == 0 &&
++		if (ether_addr_equal(pbc->addr, addr) &&
+ 		    os_memcmp(pbc->uuid_e, uuid_e, WPS_UUID_LEN) == 0) {
+ 			if (prev)
+ 				prev->next = pbc->next;
+@@ -405,8 +405,7 @@ static void wps_registrar_remove_pbc_session(struct wps_registrar *reg,
+ 	while (pbc) {
+ 		if (os_memcmp(pbc->uuid_e, uuid_e, WPS_UUID_LEN) == 0 ||
+ 		    (p2p_dev_addr && !is_zero_ether_addr(reg->p2p_dev_addr) &&
+-		     os_memcmp(reg->p2p_dev_addr, p2p_dev_addr, ETH_ALEN) ==
+-		     0)) {
++		     ether_addr_equal(reg->p2p_dev_addr, p2p_dev_addr))) {
+ 			if (prev)
+ 				prev->next = pbc->next;
+ 			else
+@@ -2611,7 +2610,7 @@ static int wps_registrar_p2p_dev_addr_match(struct wps_data *wps)
+ 	if (is_zero_ether_addr(reg->p2p_dev_addr))
+ 		return 1; /* no filtering in use */
+ 
+-	if (os_memcmp(reg->p2p_dev_addr, wps->p2p_dev_addr, ETH_ALEN) != 0) {
++	if (!ether_addr_equal(reg->p2p_dev_addr, wps->p2p_dev_addr)) {
+ 		wpa_printf(MSG_DEBUG, "WPS: No match on P2P Device Address "
+ 			   "filtering for PBC: expected " MACSTR " was "
+ 			   MACSTR " - indicate PBC session overlap",
+@@ -2632,7 +2631,7 @@ static int wps_registrar_skip_overlap(struct wps_data *wps)
+ 	if (is_zero_ether_addr(reg->p2p_dev_addr))
+ 		return 0; /* no specific Enrollee selected */
+ 
+-	if (os_memcmp(reg->p2p_dev_addr, wps->p2p_dev_addr, ETH_ALEN) == 0) {
++	if (ether_addr_equal(reg->p2p_dev_addr, wps->p2p_dev_addr)) {
+ 		wpa_printf(MSG_DEBUG, "WPS: Skip PBC overlap due to selected "
+ 			   "Enrollee match");
+ 		return 1;
+diff --git a/wlantest/bss.c b/wlantest/bss.c
+index 7b669966f..b0de1d4eb 100644
+--- a/wlantest/bss.c
++++ b/wlantest/bss.c
+@@ -21,7 +21,7 @@ struct wlantest_bss * bss_find(struct wlantest *wt, const u8 *bssid)
+ 	struct wlantest_bss *bss;
+ 
+ 	dl_list_for_each(bss, &wt->bss, struct wlantest_bss, list) {
+-		if (os_memcmp(bss->bssid, bssid, ETH_ALEN) == 0)
++		if (ether_addr_equal(bss->bssid, bssid))
+ 			return bss;
+ 	}
+ 
+@@ -35,7 +35,7 @@ struct wlantest_bss * bss_find_mld(struct wlantest *wt, const u8 *mld_mac_addr,
+ 	struct wlantest_bss *bss;
+ 
+ 	dl_list_for_each(bss, &wt->bss, struct wlantest_bss, list) {
+-		if (os_memcmp(bss->mld_mac_addr, mld_mac_addr, ETH_ALEN) == 0 &&
++		if (ether_addr_equal(bss->mld_mac_addr, mld_mac_addr) &&
+ 		    (link_id < 0 ||
+ 		     (bss->link_id_set && bss->link_id == link_id)))
+ 			return bss;
+@@ -132,7 +132,7 @@ static void bss_add_pmk(struct wlantest *wt, struct wlantest_bss *bss)
+ 	dl_list_for_each(p, &wt->passphrase, struct wlantest_passphrase, list)
+ 	{
+ 		if (!is_zero_ether_addr(p->bssid) &&
+-		    os_memcmp(p->bssid, bss->bssid, ETH_ALEN) != 0)
++		    !ether_addr_equal(p->bssid, bss->bssid))
+ 			continue;
+ 		if (p->ssid_len &&
+ 		    (p->ssid_len != bss->ssid_len ||
+diff --git a/wlantest/ctrl.c b/wlantest/ctrl.c
+index 68a2b410c..01c8cb145 100644
+--- a/wlantest/ctrl.c
++++ b/wlantest/ctrl.c
+@@ -832,7 +832,7 @@ static void ctrl_add_passphrase(struct wlantest *wt, int sock, u8 *cmd,
+ 	dl_list_for_each(pa, &wt->passphrase, struct wlantest_passphrase, list)
+ 	{
+ 		if (os_strcmp(p->passphrase, pa->passphrase) == 0 &&
+-		    os_memcmp(p->bssid, pa->bssid, ETH_ALEN) == 0) {
++		    ether_addr_equal(p->bssid, pa->bssid)) {
+ 			wpa_printf(MSG_INFO, "Passphrase was already known");
+ 			os_free(p);
+ 			p = NULL;
+@@ -845,7 +845,7 @@ static void ctrl_add_passphrase(struct wlantest *wt, int sock, u8 *cmd,
+ 		dl_list_add(&wt->passphrase, &p->list);
+ 		dl_list_for_each(bss, &wt->bss, struct wlantest_bss, list) {
+ 			if (bssid &&
+-			    os_memcmp(p->bssid, bss->bssid, ETH_ALEN) != 0)
++			    !ether_addr_equal(p->bssid, bss->bssid))
+ 				continue;
+ 			bss_add_pmk_from_passphrase(bss, p->passphrase);
+ 		}
+@@ -1151,7 +1151,7 @@ static void ctrl_send_(struct wlantest *wt, int sock, u8 *cmd, size_t clen)
+ 	switch (WLAN_FC_GET_TYPE(fc)) {
+ 	case WLAN_FC_TYPE_MGMT:
+ 		bssid = hdr->addr3;
+-		if (os_memcmp(hdr->addr2, hdr->addr3, ETH_ALEN) == 0)
++		if (ether_addr_equal(hdr->addr2, hdr->addr3))
+ 			sta_addr = hdr->addr1;
+ 		else
+ 			sta_addr = hdr->addr2;
+diff --git a/wlantest/inject.c b/wlantest/inject.c
+index bac956d3b..1f89ea9d1 100644
+--- a/wlantest/inject.c
++++ b/wlantest/inject.c
+@@ -233,11 +233,11 @@ static int wlantest_inject_prot(struct wlantest *wt, struct wlantest_bss *bss,
+ 		}
+ 	}
+ 	if (tk) {
+-		if (os_memcmp(hdr->addr2, tdls->init->addr, ETH_ALEN) == 0)
++		if (ether_addr_equal(hdr->addr2, tdls->init->addr))
+ 			pn = tdls->rsc_init[tid];
+ 		else
+ 			pn = tdls->rsc_resp[tid];
+-	} else if (os_memcmp(hdr->addr2, bss->bssid, ETH_ALEN) == 0)
++	} else if (ether_addr_equal(hdr->addr2, bss->bssid))
+ 		pn = sta->rsc_fromds[tid];
+ 	else
+ 		pn = sta->rsc_tods[tid];
+diff --git a/wlantest/process.c b/wlantest/process.c
+index 92dd0a6d8..16f312c1b 100644
+--- a/wlantest/process.c
++++ b/wlantest/process.c
+@@ -35,11 +35,11 @@ static struct wlantest_sta * rx_get_sta(struct wlantest *wt,
+ 		if (len < 24)
+ 			return NULL;
+ 		bssid = hdr->addr3;
+-		if (os_memcmp(bssid, hdr->addr2, ETH_ALEN) == 0) {
++		if (ether_addr_equal(bssid, hdr->addr2)) {
+ 			sta_addr = hdr->addr1;
+ 			*to_ap = 0;
+ 		} else {
+-			if (os_memcmp(bssid, hdr->addr1, ETH_ALEN) != 0)
++			if (!ether_addr_equal(bssid, hdr->addr1))
+ 				return NULL; /* Unsupported STA-to-STA frame */
+ 			sta_addr = hdr->addr2;
+ 			*to_ap = 1;
+@@ -184,7 +184,7 @@ static void rx_ack(struct wlantest *wt, const struct ieee80211_hdr *hdr)
+ 	u16 fc;
+ 
+ 	if (wt->last_len < 24 || (last->addr1[0] & 0x01) ||
+-	    os_memcmp(hdr->addr1, last->addr2, ETH_ALEN) != 0) {
++	    !ether_addr_equal(hdr->addr1, last->addr2)) {
+ 		add_note(wt, MSG_MSGDUMP, "Unknown Ack frame (previous frame "
+ 			 "not seen)");
+ 		return;
+diff --git a/wlantest/rx_data.c b/wlantest/rx_data.c
+index 6dc32cf8f..4b0a2244e 100644
+--- a/wlantest/rx_data.c
++++ b/wlantest/rx_data.c
+@@ -588,7 +588,7 @@ static void rx_data_bss_prot(struct wlantest *wt,
+ 			sta->rx_tid[16]++;
+ 	}
+ 	if (tk) {
+-		if (os_memcmp(hdr->addr2, tdls->init->addr, ETH_ALEN) == 0)
++		if (ether_addr_equal(hdr->addr2, tdls->init->addr))
+ 			rsc = tdls->rsc_init[tid];
+ 		else
+ 			rsc = tdls->rsc_resp[tid];
+@@ -641,7 +641,7 @@ skip_replay_det:
+ 			a2 = sta->mld_mac_addr;
+ 		}
+ 
+-		if (os_memcmp(hdr->addr3, bss->bssid, ETH_ALEN) == 0)
++		if (ether_addr_equal(hdr->addr3, bss->bssid))
+ 			a3 = bss->mld_mac_addr;
+ 	}
+ 
+diff --git a/wlantest/rx_eapol.c b/wlantest/rx_eapol.c
+index c1fe1f224..23e082e55 100644
+--- a/wlantest/rx_eapol.c
++++ b/wlantest/rx_eapol.c
+@@ -100,7 +100,7 @@ static void rx_data_eapol_key_1_of_4(struct wlantest *wt, const u8 *dst,
+ 	wpa_printf(MSG_DEBUG, "EAPOL-Key 1/4 " MACSTR " -> " MACSTR " (BSSID "
+ 		   MACSTR ")",
+ 		   MAC2STR(src), MAC2STR(dst), MAC2STR(bssid));
+-	if (os_memcmp(src, bssid, ETH_ALEN) == 0) {
++	if (ether_addr_equal(src, bssid)) {
+ 		bss = bss_get(wt, src);
+ 	} else {
+ 		bss = bss_find(wt, bssid);
+@@ -162,8 +162,7 @@ static void rx_data_eapol_key_1_of_4(struct wlantest *wt, const u8 *dst,
+ 			wpa_printf(MSG_DEBUG,
+ 				   "Learned AP MLD MAC Address from EAPOL-Key 1/4: "
+ 				   MACSTR, MAC2STR(ie.mac_addr));
+-		} else if (os_memcmp(bss->mld_mac_addr, ie.mac_addr,
+-				     ETH_ALEN) != 0) {
++		} else if (!ether_addr_equal(bss->mld_mac_addr, ie.mac_addr)) {
+ 			wpa_printf(MSG_DEBUG,
+ 				   "Updated AP MLD MAC Address from EAPOL-Key 1/4: "
+ 				   MACSTR " --> " MACSTR,
+@@ -357,7 +356,7 @@ static void rx_data_eapol_key_2_of_4(struct wlantest *wt, const u8 *dst,
+ 	wpa_printf(MSG_DEBUG, "EAPOL-Key 2/4 " MACSTR " -> " MACSTR " (BSSID "
+ 		   MACSTR ")",
+ 		   MAC2STR(src), MAC2STR(dst), MAC2STR(bssid));
+-	if (os_memcmp(dst, bssid, ETH_ALEN) == 0) {
++	if (ether_addr_equal(dst, bssid)) {
+ 		bss = bss_get(wt, dst);
+ 	} else {
+ 		bss = bss_find(wt, bssid);
+@@ -893,7 +892,7 @@ static void learn_kde_keys(struct wlantest *wt, struct wlantest_bss *bss,
+ 		if (!ie.mlo_link[link_id])
+ 			continue;
+ 		addr = &ie.mlo_link[link_id][RSN_MLO_LINK_KDE_LINK_MAC_INDEX];
+-		if (os_memcmp(addr, bss->bssid, ETH_ALEN) == 0) {
++		if (ether_addr_equal(addr, bss->bssid)) {
+ 			wpa_printf(MSG_DEBUG,
+ 				   "Trying to learn keys for the current MLO link (ID %u)",
+ 				   link_id);
+@@ -940,7 +939,7 @@ static void rx_data_eapol_key_3_of_4(struct wlantest *wt, const u8 *dst,
+ 	wpa_printf(MSG_DEBUG, "EAPOL-Key 3/4 " MACSTR " -> " MACSTR " (BSSID "
+ 		   MACSTR ")",
+ 		   MAC2STR(src), MAC2STR(dst), MAC2STR(bssid));
+-	if (os_memcmp(src, bssid, ETH_ALEN) == 0) {
++	if (ether_addr_equal(src, bssid)) {
+ 		bss = bss_get(wt, src);
+ 	} else {
+ 		bss = bss_find(wt, bssid);
+@@ -1106,7 +1105,7 @@ static void rx_data_eapol_key_3_of_4(struct wlantest *wt, const u8 *dst,
+ 		if (!ie.mlo_link[link_id])
+ 			continue;
+ 		addr = &ie.mlo_link[link_id][RSN_MLO_LINK_KDE_LINK_MAC_INDEX];
+-		if (os_memcmp(addr, bss->bssid, ETH_ALEN) != 0)
++		if (!ether_addr_equal(addr, bss->bssid))
+ 			continue;
+ 		if (!(ie.mlo_link[link_id][0] & RSN_MLO_LINK_KDE_LI_RSNE_INFO))
+ 			continue;
+@@ -1172,7 +1171,7 @@ static void rx_data_eapol_key_4_of_4(struct wlantest *wt, const u8 *dst,
+ 	wpa_printf(MSG_DEBUG, "EAPOL-Key 4/4 " MACSTR " -> " MACSTR " (BSSID "
+ 		   MACSTR ")",
+ 		   MAC2STR(src), MAC2STR(dst), MAC2STR(bssid));
+-	if (os_memcmp(dst, bssid, ETH_ALEN) == 0) {
++	if (ether_addr_equal(dst, bssid)) {
+ 		bss = bss_get(wt, dst);
+ 	} else {
+ 		bss = bss_find(wt, bssid);
+@@ -1243,7 +1242,7 @@ static void rx_data_eapol_key_1_of_2(struct wlantest *wt, const u8 *dst,
+ 	wpa_printf(MSG_DEBUG, "EAPOL-Key 1/2 " MACSTR " -> " MACSTR " (BSSID "
+ 		   MACSTR ")",
+ 		   MAC2STR(src), MAC2STR(dst), MAC2STR(bssid));
+-	if (os_memcmp(src, bssid, ETH_ALEN) == 0) {
++	if (ether_addr_equal(src, bssid)) {
+ 		bss = bss_get(wt, src);
+ 	} else {
+ 		bss = bss_find(wt, bssid);
+@@ -1380,7 +1379,7 @@ static void rx_data_eapol_key_2_of_2(struct wlantest *wt, const u8 *dst,
+ 	wpa_printf(MSG_DEBUG, "EAPOL-Key 2/2 " MACSTR " -> " MACSTR " (BSSID "
+ 		   MACSTR ")",
+ 		   MAC2STR(src), MAC2STR(dst), MAC2STR(bssid));
+-	if (os_memcmp(dst, bssid, ETH_ALEN) == 0) {
++	if (ether_addr_equal(dst, bssid)) {
+ 		bss = bss_get(wt, dst);
+ 	} else {
+ 		bss = bss_find(wt, bssid);
+diff --git a/wlantest/rx_mgmt.c b/wlantest/rx_mgmt.c
+index c6bf65ddf..6fa61612c 100644
+--- a/wlantest/rx_mgmt.c
++++ b/wlantest/rx_mgmt.c
+@@ -572,7 +572,7 @@ static void process_fils_auth(struct wlantest *wt, struct wlantest_bss *bss,
+ 		return;
+ 	}
+ 
+-	if (os_memcmp(mgmt->sa, mgmt->bssid, ETH_ALEN) == 0)
++	if (ether_addr_equal(mgmt->sa, mgmt->bssid))
+ 		os_memcpy(sta->anonce, elems.fils_nonce, FILS_NONCE_LEN);
+ 	else
+ 		os_memcpy(sta->snonce, elems.fils_nonce, FILS_NONCE_LEN);
+@@ -717,7 +717,7 @@ static void rx_mgmt_auth(struct wlantest *wt, const u8 *data, size_t len)
+ 	bss = bss_get(wt, mgmt->bssid);
+ 	if (bss == NULL)
+ 		return;
+-	from_ap = os_memcmp(mgmt->sa, mgmt->bssid, ETH_ALEN) == 0;
++	from_ap = ether_addr_equal(mgmt->sa, mgmt->bssid);
+ 	if (from_ap)
+ 		sta = sta_get(bss, mgmt->da);
+ 	else
+@@ -751,7 +751,7 @@ static void rx_mgmt_auth(struct wlantest *wt, const u8 *data, size_t len)
+ 		}
+ 	}
+ 
+-	if (os_memcmp(mgmt->sa, mgmt->bssid, ETH_ALEN) == 0)
++	if (ether_addr_equal(mgmt->sa, mgmt->bssid))
+ 		sta->counters[WLANTEST_STA_COUNTER_AUTH_RX]++;
+ 	else
+ 		sta->counters[WLANTEST_STA_COUNTER_AUTH_TX]++;
+@@ -803,7 +803,7 @@ static void rx_mgmt_deauth(struct wlantest *wt, const u8 *data, size_t len,
+ 	bss = bss_get(wt, mgmt->bssid);
+ 	if (bss == NULL)
+ 		return;
+-	if (os_memcmp(mgmt->sa, mgmt->bssid, ETH_ALEN) == 0)
++	if (ether_addr_equal(mgmt->sa, mgmt->bssid))
+ 		sta = sta_get(bss, mgmt->da);
+ 	else
+ 		sta = sta_get(bss, mgmt->sa);
+@@ -827,7 +827,7 @@ static void rx_mgmt_deauth(struct wlantest *wt, const u8 *data, size_t len,
+ 		return;
+ 	}
+ 
+-	if (os_memcmp(mgmt->sa, mgmt->bssid, ETH_ALEN) == 0) {
++	if (ether_addr_equal(mgmt->sa, mgmt->bssid)) {
+ 		sta->counters[valid ? WLANTEST_STA_COUNTER_VALID_DEAUTH_RX :
+ 			      WLANTEST_STA_COUNTER_INVALID_DEAUTH_RX]++;
+ 		if (sta->pwrmgt && !sta->pspoll)
+@@ -2375,7 +2375,7 @@ static void rx_mgmt_disassoc(struct wlantest *wt, const u8 *data, size_t len,
+ 	bss = bss_get(wt, mgmt->bssid);
+ 	if (bss == NULL)
+ 		return;
+-	if (os_memcmp(mgmt->sa, mgmt->bssid, ETH_ALEN) == 0)
++	if (ether_addr_equal(mgmt->sa, mgmt->bssid))
+ 		sta = sta_get(bss, mgmt->da);
+ 	else
+ 		sta = sta_get(bss, mgmt->sa);
+@@ -2399,7 +2399,7 @@ static void rx_mgmt_disassoc(struct wlantest *wt, const u8 *data, size_t len,
+ 		return;
+ 	}
+ 
+-	if (os_memcmp(mgmt->sa, mgmt->bssid, ETH_ALEN) == 0) {
++	if (ether_addr_equal(mgmt->sa, mgmt->bssid)) {
+ 		sta->counters[valid ? WLANTEST_STA_COUNTER_VALID_DISASSOC_RX :
+ 			      WLANTEST_STA_COUNTER_INVALID_DISASSOC_RX]++;
+ 		if (sta->pwrmgt && !sta->pspoll)
+@@ -2620,7 +2620,7 @@ static void rx_mgmt_action_sa_query_req(struct wlantest *wt,
+ 	u8 *id;
+ 
+ 	rx_id = (const u8 *) mgmt->u.action.u.sa_query_req.trans_id;
+-	if (os_memcmp(mgmt->sa, mgmt->bssid, ETH_ALEN) == 0)
++	if (ether_addr_equal(mgmt->sa, mgmt->bssid))
+ 		id = sta->ap_sa_query_tr;
+ 	else
+ 		id = sta->sta_sa_query_tr;
+@@ -2629,7 +2629,7 @@ static void rx_mgmt_action_sa_query_req(struct wlantest *wt,
+ 		 MAC2STR(mgmt->sa), MAC2STR(mgmt->da), rx_id[0], rx_id[1],
+ 		 valid ? "" : " (invalid protection)");
+ 	os_memcpy(id, mgmt->u.action.u.sa_query_req.trans_id, 2);
+-	if (os_memcmp(mgmt->sa, sta->addr, ETH_ALEN) == 0)
++	if (ether_addr_equal(mgmt->sa, sta->addr))
+ 		sta->counters[valid ?
+ 			      WLANTEST_STA_COUNTER_VALID_SAQUERYREQ_TX :
+ 			      WLANTEST_STA_COUNTER_INVALID_SAQUERYREQ_TX]++;
+@@ -2650,7 +2650,7 @@ static void rx_mgmt_action_sa_query_resp(struct wlantest *wt,
+ 	int match;
+ 
+ 	rx_id = (const u8 *) mgmt->u.action.u.sa_query_resp.trans_id;
+-	if (os_memcmp(mgmt->sa, mgmt->bssid, ETH_ALEN) == 0)
++	if (ether_addr_equal(mgmt->sa, mgmt->bssid))
+ 		id = sta->sta_sa_query_tr;
+ 	else
+ 		id = sta->ap_sa_query_tr;
+@@ -2660,7 +2660,7 @@ static void rx_mgmt_action_sa_query_resp(struct wlantest *wt,
+ 		 MAC2STR(mgmt->sa), MAC2STR(mgmt->da), rx_id[0], rx_id[1],
+ 		 match ? "match" : "mismatch",
+ 		 valid ? "" : " (invalid protection)");
+-	if (os_memcmp(mgmt->sa, sta->addr, ETH_ALEN) == 0)
++	if (ether_addr_equal(mgmt->sa, sta->addr))
+ 		sta->counters[(valid && match) ?
+ 			      WLANTEST_STA_COUNTER_VALID_SAQUERYRESP_TX :
+ 			      WLANTEST_STA_COUNTER_INVALID_SAQUERYRESP_TX]++;
+@@ -2862,7 +2862,7 @@ static void rx_mgmt_action(struct wlantest *wt, const u8 *data, size_t len,
+ 	bss = bss_get(wt, mgmt->bssid);
+ 	if (bss == NULL)
+ 		return;
+-	if (os_memcmp(mgmt->sa, mgmt->bssid, ETH_ALEN) == 0) {
++	if (ether_addr_equal(mgmt->sa, mgmt->bssid)) {
+ 		sta = sta_find_mlo(wt, bss, mgmt->da);
+ 		if (!sta)
+ 			sta = sta_get(bss, mgmt->da);
+@@ -3176,7 +3176,7 @@ static u8 * mgmt_decrypt(struct wlantest *wt, const u8 *data, size_t len,
+ 	bss = bss_get(wt, hdr->addr3);
+ 	if (bss == NULL)
+ 		return mgmt_decrypt_tk(wt, data, len, dlen);
+-	if (os_memcmp(hdr->addr1, hdr->addr3, ETH_ALEN) == 0) {
++	if (ether_addr_equal(hdr->addr1, hdr->addr3)) {
+ 		sta = sta_find_mlo(wt, bss, hdr->addr2);
+ 		if (!sta)
+ 			sta = sta_get(bss, hdr->addr2);
+@@ -3193,7 +3193,7 @@ static u8 * mgmt_decrypt(struct wlantest *wt, const u8 *data, size_t len,
+ 		return decrypted;
+ 	}
+ 
+-	if (os_memcmp(hdr->addr1, hdr->addr3, ETH_ALEN) == 0)
++	if (ether_addr_equal(hdr->addr1, hdr->addr3))
+ 		rsc = sta->rsc_tods[16];
+ 	else
+ 		rsc = sta->rsc_fromds[16];
+@@ -3288,7 +3288,7 @@ static int check_mgmt_ccmp_gcmp(struct wlantest *wt, const u8 *data, size_t len)
+ 	bss = bss_get(wt, mgmt->bssid);
+ 	if (bss == NULL)
+ 		return 0;
+-	if (os_memcmp(mgmt->da, mgmt->bssid, ETH_ALEN) == 0)
++	if (ether_addr_equal(mgmt->da, mgmt->bssid))
+ 		sta = sta_get(bss, mgmt->sa);
+ 	else
+ 		sta = sta_get(bss, mgmt->da);
+@@ -3425,7 +3425,7 @@ static void rx_mgmt_deauth_ack(struct wlantest *wt,
+ 	bss = bss_get(wt, mgmt->bssid);
+ 	if (bss == NULL)
+ 		return;
+-	if (os_memcmp(mgmt->sa, mgmt->bssid, ETH_ALEN) == 0)
++	if (ether_addr_equal(mgmt->sa, mgmt->bssid))
+ 		sta = sta_get(bss, mgmt->da);
+ 	else
+ 		sta = sta_get(bss, mgmt->sa);
+@@ -3434,7 +3434,7 @@ static void rx_mgmt_deauth_ack(struct wlantest *wt,
+ 
+ 	add_note(wt, MSG_DEBUG, "DEAUTH from " MACSTR " acknowledged by "
+ 		 MACSTR, MAC2STR(mgmt->sa), MAC2STR(mgmt->da));
+-	if (os_memcmp(mgmt->sa, mgmt->bssid, ETH_ALEN) == 0) {
++	if (ether_addr_equal(mgmt->sa, mgmt->bssid)) {
+ 		int c;
+ 		c = wt->last_mgmt_valid ?
+ 			WLANTEST_STA_COUNTER_VALID_DEAUTH_RX_ACK :
+@@ -3455,7 +3455,7 @@ static void rx_mgmt_disassoc_ack(struct wlantest *wt,
+ 	bss = bss_get(wt, mgmt->bssid);
+ 	if (bss == NULL)
+ 		return;
+-	if (os_memcmp(mgmt->sa, mgmt->bssid, ETH_ALEN) == 0)
++	if (ether_addr_equal(mgmt->sa, mgmt->bssid))
+ 		sta = sta_get(bss, mgmt->da);
+ 	else
+ 		sta = sta_get(bss, mgmt->sa);
+@@ -3464,7 +3464,7 @@ static void rx_mgmt_disassoc_ack(struct wlantest *wt,
+ 
+ 	add_note(wt, MSG_DEBUG, "DISASSOC from " MACSTR " acknowledged by "
+ 		 MACSTR, MAC2STR(mgmt->sa), MAC2STR(mgmt->da));
+-	if (os_memcmp(mgmt->sa, mgmt->bssid, ETH_ALEN) == 0) {
++	if (ether_addr_equal(mgmt->sa, mgmt->bssid)) {
+ 		int c;
+ 		c = wt->last_mgmt_valid ?
+ 			WLANTEST_STA_COUNTER_VALID_DISASSOC_RX_ACK :
+diff --git a/wlantest/sta.c b/wlantest/sta.c
+index dc23e5457..eb46dc5c6 100644
+--- a/wlantest/sta.c
++++ b/wlantest/sta.c
+@@ -20,7 +20,7 @@ struct wlantest_sta * sta_find(struct wlantest_bss *bss, const u8 *addr)
+ 	struct wlantest_sta *sta;
+ 
+ 	dl_list_for_each(sta, &bss->sta, struct wlantest_sta, list) {
+-		if (os_memcmp(sta->addr, addr, ETH_ALEN) == 0)
++		if (ether_addr_equal(sta->addr, addr))
+ 			return sta;
+ 	}
+ 
+@@ -36,9 +36,9 @@ struct wlantest_sta * sta_find_mlo(struct wlantest *wt,
+ 	int link_id;
+ 
+ 	dl_list_for_each(sta, &bss->sta, struct wlantest_sta, list) {
+-		if (os_memcmp(sta->addr, addr, ETH_ALEN) == 0)
++		if (ether_addr_equal(sta->addr, addr))
+ 			return sta;
+-		if (os_memcmp(sta->mld_mac_addr, addr, ETH_ALEN) == 0)
++		if (ether_addr_equal(sta->mld_mac_addr, addr))
+ 			return sta;
+ 	}
+ 
+@@ -47,8 +47,7 @@ struct wlantest_sta * sta_find_mlo(struct wlantest *wt,
+ 
+ 	dl_list_for_each(sta, &bss->sta, struct wlantest_sta, list) {
+ 		for (link_id = 0; link_id < MAX_NUM_MLO_LINKS; link_id++) {
+-			if (os_memcmp(sta->link_addr[link_id], addr,
+-				      ETH_ALEN) == 0)
++			if (ether_addr_equal(sta->link_addr[link_id], addr))
+ 				return sta;
+ 		}
+ 	}
+@@ -57,18 +56,17 @@ struct wlantest_sta * sta_find_mlo(struct wlantest *wt,
+ 		if (obss == bss)
+ 			continue;
+ 		if (!is_zero_ether_addr(bss->mld_mac_addr) &&
+-		    os_memcmp(obss->mld_mac_addr, bss->mld_mac_addr,
+-			      ETH_ALEN) != 0)
++		    !ether_addr_equal(obss->mld_mac_addr, bss->mld_mac_addr))
+ 			continue;
+ 		dl_list_for_each(sta, &obss->sta, struct wlantest_sta, list) {
+-			if (os_memcmp(sta->addr, addr, ETH_ALEN) == 0)
++			if (ether_addr_equal(sta->addr, addr))
+ 				return sta;
+-			if (os_memcmp(sta->mld_mac_addr, addr, ETH_ALEN) == 0)
++			if (ether_addr_equal(sta->mld_mac_addr, addr))
+ 				return sta;
+ 			for (link_id = 0; link_id < MAX_NUM_MLO_LINKS;
+ 			     link_id++) {
+-				if (os_memcmp(sta->link_addr[link_id], addr,
+-					      ETH_ALEN) == 0)
++				if (ether_addr_equal(sta->link_addr[link_id],
++						     addr))
+ 					return sta;
+ 			}
+ 		}
+@@ -336,19 +334,19 @@ void sta_new_ptk(struct wlantest *wt, struct wlantest_sta *sta,
+ 
+ 			if (osta == sta)
+ 				continue;
+-			if (os_memcmp(sta->addr, osta->addr, ETH_ALEN) == 0)
++			if (ether_addr_equal(sta->addr, osta->addr))
+ 				match = true;
+ 			for (link_id = 0; !match && link_id < MAX_NUM_MLO_LINKS;
+ 			     link_id++) {
+-				if (os_memcmp(osta->link_addr[link_id],
+-					      sta->addr, ETH_ALEN) == 0)
++				if (ether_addr_equal(osta->link_addr[link_id],
++						     sta->addr))
+ 					match = true;
+ 			}
+ 
+ 			if (!match)
+ 				continue;
+-			if (os_memcmp(sta->bss->mld_mac_addr,
+-				      osta->bss->mld_mac_addr, ETH_ALEN) != 0)
++			if (!ether_addr_equal(sta->bss->mld_mac_addr,
++					      osta->bss->mld_mac_addr))
+ 				continue;
+ 			wpa_printf(MSG_DEBUG,
+ 				   "Add PTK to another MLO STA entry " MACSTR
+diff --git a/wlantest/tkip.c b/wlantest/tkip.c
+index 201561150..b9628d096 100644
+--- a/wlantest/tkip.c
++++ b/wlantest/tkip.c
+@@ -362,8 +362,8 @@ u8 * tkip_decrypt(const u8 *tk, const struct ieee80211_hdr *hdr,
+ 
+ 		if (frag->buf && (fn || (fc & WLAN_FC_MOREFRAG)) &&
+ 		    sn == frag->sn && fn == frag->fn + 1 &&
+-		    os_memcmp(frag->ra, hdr->addr1, ETH_ALEN) == 0 &&
+-		    os_memcmp(frag->ta, hdr->addr2, ETH_ALEN) == 0) {
++		    ether_addr_equal(frag->ra, hdr->addr1) &&
++		    ether_addr_equal(frag->ta, hdr->addr2)) {
+ 			/* Add the next fragment */
+ 			if (wpabuf_resize(&frag->buf, plain_len) == 0) {
+ 				wpabuf_put_data(frag->buf, plain, plain_len);
+diff --git a/wpa_supplicant/bgscan_learn.c b/wpa_supplicant/bgscan_learn.c
+index 9830c4aa1..cab4ae2ac 100644
+--- a/wpa_supplicant/bgscan_learn.c
++++ b/wpa_supplicant/bgscan_learn.c
+@@ -57,7 +57,7 @@ static int bssid_in_array(u8 *array, size_t array_len, const u8 *bssid)
+ 		return 0;
+ 
+ 	for (i = 0; i < array_len; i++) {
+-		if (os_memcmp(array + i * ETH_ALEN, bssid, ETH_ALEN) == 0)
++		if (ether_addr_equal(array + i * ETH_ALEN, bssid))
+ 			return 1;
+ 	}
+ 
+@@ -70,7 +70,7 @@ static void bgscan_learn_add_neighbor(struct bgscan_learn_bss *bss,
+ {
+ 	u8 *n;
+ 
+-	if (os_memcmp(bss->bssid, bssid, ETH_ALEN) == 0)
++	if (ether_addr_equal(bss->bssid, bssid))
+ 		return;
+ 	if (bssid_in_array(bss->neigh, bss->num_neigh, bssid))
+ 		return;
+@@ -91,7 +91,7 @@ static struct bgscan_learn_bss * bgscan_learn_get_bss(
+ 	struct bgscan_learn_bss *bss;
+ 
+ 	dl_list_for_each(bss, &data->bss, struct bgscan_learn_bss, list) {
+-		if (os_memcmp(bss->bssid, bssid, ETH_ALEN) == 0)
++		if (ether_addr_equal(bss->bssid, bssid))
+ 			return bss;
+ 	}
+ 	return NULL;
+diff --git a/wpa_supplicant/bss.c b/wpa_supplicant/bss.c
+index ae71d2777..2f3b2794a 100644
+--- a/wpa_supplicant/bss.c
++++ b/wpa_supplicant/bss.c
+@@ -265,7 +265,7 @@ struct wpa_bss * wpa_bss_get(struct wpa_supplicant *wpa_s, const u8 *bssid,
+ 	if (bssid && !wpa_supplicant_filter_bssid_match(wpa_s, bssid))
+ 		return NULL;
+ 	dl_list_for_each(bss, &wpa_s->bss, struct wpa_bss, list) {
+-		if ((!bssid || os_memcmp(bss->bssid, bssid, ETH_ALEN) == 0) &&
++		if ((!bssid || ether_addr_equal(bss->bssid, bssid)) &&
+ 		    bss->ssid_len == ssid_len &&
+ 		    os_memcmp(bss->ssid, ssid, ssid_len) == 0)
+ 			return bss;
+@@ -360,12 +360,11 @@ static bool is_p2p_pending_bss(struct wpa_supplicant *wpa_s,
+ #ifdef CONFIG_P2P
+ 	u8 addr[ETH_ALEN];
+ 
+-	if (os_memcmp(bss->bssid, wpa_s->pending_join_iface_addr,
+-		      ETH_ALEN) == 0)
++	if (ether_addr_equal(bss->bssid, wpa_s->pending_join_iface_addr))
+ 		return true;
+ 	if (!is_zero_ether_addr(wpa_s->pending_join_dev_addr) &&
+ 	    p2p_parse_dev_addr(wpa_bss_ie_ptr(bss), bss->ie_len, addr) == 0 &&
+-	    os_memcmp(addr, wpa_s->pending_join_dev_addr, ETH_ALEN) == 0)
++	    ether_addr_equal(addr, wpa_s->pending_join_dev_addr))
+ 		return true;
+ #endif /* CONFIG_P2P */
+ 	return false;
+@@ -408,8 +407,8 @@ static int wpa_bss_in_use(struct wpa_supplicant *wpa_s, struct wpa_bss *bss)
+ 		return 0; /* SSID has changed */
+ 
+ 	if (!is_zero_ether_addr(bss->bssid) &&
+-	    (os_memcmp(bss->bssid, wpa_s->bssid, ETH_ALEN) == 0 ||
+-	     os_memcmp(bss->bssid, wpa_s->pending_bssid, ETH_ALEN) == 0))
++	    (ether_addr_equal(bss->bssid, wpa_s->bssid) ||
++	     ether_addr_equal(bss->bssid, wpa_s->pending_bssid)))
+ 		return 1;
+ 
+ 	if (!wpa_s->valid_links)
+@@ -419,7 +418,7 @@ static int wpa_bss_in_use(struct wpa_supplicant *wpa_s, struct wpa_bss *bss)
+ 		if (!(wpa_s->valid_links & BIT(i)))
+ 			continue;
+ 
+-		if (os_memcmp(bss->bssid, wpa_s->links[i].bssid, ETH_ALEN) == 0)
++		if (ether_addr_equal(bss->bssid, wpa_s->links[i].bssid))
+ 			return 1;
+ 	}
+ 
+@@ -1104,7 +1103,7 @@ struct wpa_bss * wpa_bss_get_bssid(struct wpa_supplicant *wpa_s,
+ 	if (!wpa_supplicant_filter_bssid_match(wpa_s, bssid))
+ 		return NULL;
+ 	dl_list_for_each_reverse(bss, &wpa_s->bss, struct wpa_bss, list) {
+-		if (os_memcmp(bss->bssid, bssid, ETH_ALEN) == 0)
++		if (ether_addr_equal(bss->bssid, bssid))
+ 			return bss;
+ 	}
+ 	return NULL;
+@@ -1129,7 +1128,7 @@ struct wpa_bss * wpa_bss_get_bssid_latest(struct wpa_supplicant *wpa_s,
+ 	if (!wpa_supplicant_filter_bssid_match(wpa_s, bssid))
+ 		return NULL;
+ 	dl_list_for_each_reverse(bss, &wpa_s->bss, struct wpa_bss, list) {
+-		if (os_memcmp(bss->bssid, bssid, ETH_ALEN) != 0)
++		if (!ether_addr_equal(bss->bssid, bssid))
+ 			continue;
+ 		if (found == NULL ||
+ 		    os_reltime_before(&found->last_update, &bss->last_update))
+@@ -1158,7 +1157,7 @@ struct wpa_bss * wpa_bss_get_p2p_dev_addr(struct wpa_supplicant *wpa_s,
+ 		u8 addr[ETH_ALEN];
+ 		if (p2p_parse_dev_addr(wpa_bss_ie_ptr(bss), bss->ie_len,
+ 				       addr) != 0 ||
+-		    os_memcmp(addr, dev_addr, ETH_ALEN) != 0)
++		    !ether_addr_equal(addr, dev_addr))
+ 			continue;
+ 		if (!found ||
+ 		    os_reltime_before(&found->last_update, &bss->last_update))
+diff --git a/wpa_supplicant/bssid_ignore.c b/wpa_supplicant/bssid_ignore.c
+index c837c5178..ab16fc5da 100644
+--- a/wpa_supplicant/bssid_ignore.c
++++ b/wpa_supplicant/bssid_ignore.c
+@@ -37,7 +37,7 @@ struct wpa_bssid_ignore * wpa_bssid_ignore_get(struct wpa_supplicant *wpa_s,
+ 
+ 	e = wpa_s->bssid_ignore;
+ 	while (e) {
+-		if (os_memcmp(e->bssid, bssid, ETH_ALEN) == 0)
++		if (ether_addr_equal(e->bssid, bssid))
+ 			return e;
+ 		e = e->next;
+ 	}
+@@ -123,7 +123,7 @@ int wpa_bssid_ignore_del(struct wpa_supplicant *wpa_s, const u8 *bssid)
+ 
+ 	e = wpa_s->bssid_ignore;
+ 	while (e) {
+-		if (os_memcmp(e->bssid, bssid, ETH_ALEN) == 0) {
++		if (ether_addr_equal(e->bssid, bssid)) {
+ 			if (prev == NULL) {
+ 				wpa_s->bssid_ignore = e->next;
+ 			} else {
+diff --git a/wpa_supplicant/config.c b/wpa_supplicant/config.c
+index 1aff67be2..fca4320a1 100644
+--- a/wpa_supplicant/config.c
++++ b/wpa_supplicant/config.c
+@@ -2368,7 +2368,7 @@ static int wpa_config_parse_mac_value(const struct parse_data *data,
+ 	u8 mac_value[ETH_ALEN];
+ 
+ 	if (hwaddr_aton(value, mac_value) == 0) {
+-		if (os_memcmp(mac_value, ssid->mac_value, ETH_ALEN) == 0)
++		if (ether_addr_equal(mac_value, ssid->mac_value))
+ 			return 1;
+ 		os_memcpy(ssid->mac_value, mac_value, ETH_ALEN);
+ 		return 0;
+diff --git a/wpa_supplicant/ctrl_iface.c b/wpa_supplicant/ctrl_iface.c
+index b67b3b305..fed6b6c4d 100644
+--- a/wpa_supplicant/ctrl_iface.c
++++ b/wpa_supplicant/ctrl_iface.c
+@@ -445,7 +445,7 @@ static int wpas_ctrl_iface_set_dso(struct wpa_supplicant *wpa_s,
+ 
+ 	dl_list_for_each(tmp, &wpa_s->drv_signal_override,
+ 			 struct driver_signal_override, list) {
+-		if (os_memcmp(bssid, tmp->bssid, ETH_ALEN) == 0) {
++		if (ether_addr_equal(bssid, tmp->bssid)) {
+ 			dso = tmp;
+ 			break;
+ 		}
+@@ -3691,7 +3691,7 @@ static int wpa_supplicant_ctrl_iface_set_network(
+ 						       value);
+ 	if (ret == 0 &&
+ 	    (ssid->bssid_set != prev_bssid_set ||
+-	     os_memcmp(ssid->bssid, prev_bssid, ETH_ALEN) != 0))
++	     !ether_addr_equal(ssid->bssid, prev_bssid)))
+ 		wpas_notify_network_bssid_set_changed(wpa_s, ssid);
+ 
+ 	if (prev_disabled != ssid->disabled &&
+@@ -7822,7 +7822,7 @@ static int ctrl_interworking_connect(struct wpa_supplicant *wpa_s, char *dst,
+ 
+ 		dl_list_for_each_reverse(bss, &wpa_s->bss, struct wpa_bss,
+ 					 list) {
+-			if (os_memcmp(bss->bssid, bssid, ETH_ALEN) == 0 &&
++			if (ether_addr_equal(bss->bssid, bssid) &&
+ 			    bss->ssid_len > 0) {
+ 				found = 1;
+ 				break;
+@@ -7989,11 +7989,11 @@ static int gas_response_get(struct wpa_supplicant *wpa_s, char *cmd, char *buf,
+ 	dialog_token = atoi(pos);
+ 
+ 	if (wpa_s->last_gas_resp &&
+-	    os_memcmp(addr, wpa_s->last_gas_addr, ETH_ALEN) == 0 &&
++	    ether_addr_equal(addr, wpa_s->last_gas_addr) &&
+ 	    dialog_token == wpa_s->last_gas_dialog_token)
+ 		resp = wpa_s->last_gas_resp;
+ 	else if (wpa_s->prev_gas_resp &&
+-		 os_memcmp(addr, wpa_s->prev_gas_addr, ETH_ALEN) == 0 &&
++		 ether_addr_equal(addr, wpa_s->prev_gas_addr) &&
+ 		 dialog_token == wpa_s->prev_gas_dialog_token)
+ 		resp = wpa_s->prev_gas_resp;
+ 	else
+diff --git a/wpa_supplicant/dpp_supplicant.c b/wpa_supplicant/dpp_supplicant.c
+index 4dd6a2ce1..a0505aa91 100644
+--- a/wpa_supplicant/dpp_supplicant.c
++++ b/wpa_supplicant/dpp_supplicant.c
+@@ -1782,7 +1782,7 @@ static void wpas_dpp_gas_resp_cb(void *ctx, const u8 *addr, u8 dialog_token,
+ 	wpa_s->dpp_gas_dialog_token = -1;
+ 
+ 	if (!auth || (!auth->auth_success && !auth->reconfig_success) ||
+-	    os_memcmp(addr, auth->peer_mac_addr, ETH_ALEN) != 0) {
++	    !ether_addr_equal(addr, auth->peer_mac_addr)) {
+ 		wpa_printf(MSG_DEBUG, "DPP: No matching exchange in progress");
+ 		return;
+ 	}
+@@ -1999,7 +1999,7 @@ static void wpas_dpp_rx_auth_resp(struct wpa_supplicant *wpa_s, const u8 *src,
+ 	}
+ 
+ 	if (!is_zero_ether_addr(auth->peer_mac_addr) &&
+-	    os_memcmp(src, auth->peer_mac_addr, ETH_ALEN) != 0) {
++	    !ether_addr_equal(src, auth->peer_mac_addr)) {
+ 		wpa_printf(MSG_DEBUG, "DPP: MAC address mismatch (expected "
+ 			   MACSTR ") - drop", MAC2STR(auth->peer_mac_addr));
+ 		return;
+@@ -2053,7 +2053,7 @@ static void wpas_dpp_rx_auth_conf(struct wpa_supplicant *wpa_s, const u8 *src,
+ 		return;
+ 	}
+ 
+-	if (os_memcmp(src, auth->peer_mac_addr, ETH_ALEN) != 0) {
++	if (!ether_addr_equal(src, auth->peer_mac_addr)) {
+ 		wpa_printf(MSG_DEBUG, "DPP: MAC address mismatch (expected "
+ 			   MACSTR ") - drop", MAC2STR(auth->peer_mac_addr));
+ 		return;
+@@ -2154,7 +2154,7 @@ static void wpas_dpp_rx_conf_result(struct wpa_supplicant *wpa_s, const u8 *src,
+ 
+ 	if (!auth || !auth->waiting_conf_result) {
+ 		if (auth &&
+-		    os_memcmp(src, auth->peer_mac_addr, ETH_ALEN) == 0 &&
++		    ether_addr_equal(src, auth->peer_mac_addr) &&
+ 		    gas_server_response_sent(wpa_s->gas_server,
+ 					     auth->gas_server_ctx)) {
+ 			/* This could happen if the TX status event gets delayed
+@@ -2171,7 +2171,7 @@ static void wpas_dpp_rx_conf_result(struct wpa_supplicant *wpa_s, const u8 *src,
+ 		}
+ 	}
+ 
+-	if (os_memcmp(src, auth->peer_mac_addr, ETH_ALEN) != 0) {
++	if (!ether_addr_equal(src, auth->peer_mac_addr)) {
+ 		wpa_printf(MSG_DEBUG, "DPP: MAC address mismatch (expected "
+ 			   MACSTR ") - drop", MAC2STR(auth->peer_mac_addr));
+ 		return;
+@@ -2580,7 +2580,7 @@ wpas_dpp_rx_reconfig_auth_resp(struct wpa_supplicant *wpa_s, const u8 *src,
+ 		return;
+ 	}
+ 
+-	if (os_memcmp(src, auth->peer_mac_addr, ETH_ALEN) != 0) {
++	if (!ether_addr_equal(src, auth->peer_mac_addr)) {
+ 		wpa_printf(MSG_DEBUG, "DPP: MAC address mismatch (expected "
+ 			   MACSTR ") - drop", MAC2STR(auth->peer_mac_addr));
+ 		return;
+@@ -2624,7 +2624,7 @@ wpas_dpp_rx_reconfig_auth_conf(struct wpa_supplicant *wpa_s, const u8 *src,
+ 		return;
+ 	}
+ 
+-	if (os_memcmp(src, auth->peer_mac_addr, ETH_ALEN) != 0) {
++	if (!ether_addr_equal(src, auth->peer_mac_addr)) {
+ 		wpa_printf(MSG_DEBUG, "DPP: MAC address mismatch (expected "
+ 			   MACSTR ") - drop", MAC2STR(auth->peer_mac_addr));
+ 		return;
+@@ -2662,7 +2662,7 @@ static void wpas_dpp_rx_peer_disc_resp(struct wpa_supplicant *wpa_s,
+ 	wpa_printf(MSG_DEBUG, "DPP: Peer Discovery Response from " MACSTR,
+ 		   MAC2STR(src));
+ 	if (is_zero_ether_addr(wpa_s->dpp_intro_bssid) ||
+-	    os_memcmp(src, wpa_s->dpp_intro_bssid, ETH_ALEN) != 0) {
++	    !ether_addr_equal(src, wpa_s->dpp_intro_bssid)) {
+ 		wpa_printf(MSG_DEBUG, "DPP: Not waiting for response from "
+ 			   MACSTR " - drop", MAC2STR(src));
+ 		return;
+@@ -3826,7 +3826,7 @@ wpas_dpp_rx_priv_peer_intro_notify(struct wpa_supplicant *wpa_s,
+ 	wpa_printf(MSG_DEBUG, "DPP: Private Peer Introduction Notify from "
+ 		   MACSTR, MAC2STR(src));
+ 	if (is_zero_ether_addr(wpa_s->dpp_intro_bssid) ||
+-	    os_memcmp(src, wpa_s->dpp_intro_bssid, ETH_ALEN) != 0) {
++	    !ether_addr_equal(src, wpa_s->dpp_intro_bssid)) {
+ 		wpa_printf(MSG_DEBUG, "DPP: Not waiting for response from "
+ 			   MACSTR " - drop", MAC2STR(src));
+ 		return;
+@@ -4117,7 +4117,7 @@ wpas_dpp_gas_req_handler(void *ctx, void *resp_ctx, const u8 *sa,
+ 	wpa_printf(MSG_DEBUG, "DPP: GAS request from " MACSTR,
+ 		   MAC2STR(sa));
+ 	if (!auth || (!auth->auth_success && !auth->reconfig_success) ||
+-	    os_memcmp(sa, auth->peer_mac_addr, ETH_ALEN) != 0) {
++	    !ether_addr_equal(sa, auth->peer_mac_addr)) {
+ 		wpa_printf(MSG_DEBUG, "DPP: No matching exchange in progress");
+ 		return NULL;
+ 	}
+diff --git a/wpa_supplicant/events.c b/wpa_supplicant/events.c
+index d56703f6f..6dddcf116 100644
+--- a/wpa_supplicant/events.c
++++ b/wpa_supplicant/events.c
+@@ -1307,7 +1307,7 @@ static bool wpa_scan_res_ok(struct wpa_supplicant *wpa_s, struct wpa_ssid *ssid,
+ #endif /* CONFIG_WPS */
+ 
+ 	if (ssid->bssid_set && ssid->ssid_len == 0 &&
+-	    os_memcmp(bss->bssid, ssid->bssid, ETH_ALEN) == 0)
++	    ether_addr_equal(bss->bssid, ssid->bssid))
+ 		check_ssid = false;
+ 
+ 	if (check_ssid &&
+@@ -1319,7 +1319,7 @@ static bool wpa_scan_res_ok(struct wpa_supplicant *wpa_s, struct wpa_ssid *ssid,
+ 	}
+ 
+ 	if (ssid->bssid_set &&
+-	    os_memcmp(bss->bssid, ssid->bssid, ETH_ALEN) != 0) {
++	    !ether_addr_equal(bss->bssid, ssid->bssid)) {
+ 		if (debug_print)
+ 			wpa_dbg(wpa_s, MSG_DEBUG, "   skip - BSSID mismatch");
+ 		return false;
+@@ -1485,7 +1485,7 @@ static bool wpa_scan_res_ok(struct wpa_supplicant *wpa_s, struct wpa_ssid *ssid,
+ 		}
+ 
+ 		if (p2p_parse_dev_addr_in_p2p_ie(p2p_ie, dev_addr) < 0 ||
+-		    os_memcmp(dev_addr, ssid->go_p2p_dev_addr, ETH_ALEN) != 0) {
++		    !ether_addr_equal(dev_addr, ssid->go_p2p_dev_addr)) {
+ 			if (debug_print)
+ 				wpa_dbg(wpa_s, MSG_DEBUG,
+ 					"   skip - no matching GO P2P Device Address in P2P element");
+@@ -2010,12 +2010,11 @@ int wpa_supplicant_connect(struct wpa_supplicant *wpa_s,
+ 	 * the selected BSSID, do not trigger new attempt.
+ 	 */
+ 	if (wpa_s->reassociate ||
+-	    (os_memcmp(selected->bssid, wpa_s->bssid, ETH_ALEN) != 0 &&
++	    (!ether_addr_equal(selected->bssid, wpa_s->bssid) &&
+ 	     ((wpa_s->wpa_state != WPA_ASSOCIATING &&
+ 	       wpa_s->wpa_state != WPA_AUTHENTICATING) ||
+ 	      (!is_zero_ether_addr(wpa_s->pending_bssid) &&
+-	       os_memcmp(selected->bssid, wpa_s->pending_bssid, ETH_ALEN) !=
+-	       0) ||
++	       !ether_addr_equal(selected->bssid, wpa_s->pending_bssid)) ||
+ 	      (is_zero_ether_addr(wpa_s->pending_bssid) &&
+ 	       ssid != wpa_s->current_ssid)))) {
+ 		if (wpa_supplicant_scard_init(wpa_s, ssid)) {
+@@ -2158,8 +2157,7 @@ int wpa_supplicant_need_to_roam_within_ess(struct wpa_supplicant *wpa_s,
+ 		selected->snr, selected->est_throughput);
+ 
+ 	if (wpa_s->current_ssid->bssid_set &&
+-	    os_memcmp(selected->bssid, wpa_s->current_ssid->bssid, ETH_ALEN) ==
+-	    0) {
++	    ether_addr_equal(selected->bssid, wpa_s->current_ssid->bssid)) {
+ 		wpa_dbg(wpa_s, MSG_DEBUG, "Allow reassociation - selected BSS "
+ 			"has preferred BSSID");
+ 		return 1;
+@@ -3777,8 +3775,7 @@ static unsigned int wpas_ml_parse_assoc(struct wpa_supplicant *wpa_s,
+ 	wpa_printf(MSG_DEBUG, "MLD: address: " MACSTR,
+ 		   MAC2STR(common_info->mld_addr));
+ 
+-	if (os_memcmp(wpa_s->ap_mld_addr, common_info->mld_addr, ETH_ALEN) !=
+-	    0) {
++	if (!ether_addr_equal(wpa_s->ap_mld_addr, common_info->mld_addr)) {
+ 		wpa_printf(MSG_DEBUG, "MLD: Mismatching MLD address (expected "
+ 			   MACSTR ")", MAC2STR(wpa_s->ap_mld_addr));
+ 		goto out;
+@@ -3976,18 +3973,17 @@ static int wpa_drv_get_mlo_info(struct wpa_supplicant *wpa_s)
+ 			if (!(mlo.valid_links & BIT(i)))
+ 				continue;
+ 
+-			if (os_memcmp(wpa_s->links[i].addr, mlo.links[i].addr,
+-				      ETH_ALEN) != 0 ||
+-			    os_memcmp(wpa_s->links[i].bssid, mlo.links[i].bssid,
+-				      ETH_ALEN) != 0) {
++			if (!ether_addr_equal(wpa_s->links[i].addr,
++					      mlo.links[i].addr) ||
++			    !ether_addr_equal(wpa_s->links[i].bssid,
++					      mlo.links[i].bssid)) {
+ 				match = false;
+ 				break;
+ 			}
+ 		}
+ 
+ 		if (match && wpa_s->mlo_assoc_link_id == mlo.assoc_link_id &&
+-		    os_memcmp(wpa_s->ap_mld_addr, mlo.ap_mld_addr,
+-			      ETH_ALEN) == 0)
++		    ether_addr_equal(wpa_s->ap_mld_addr, mlo.ap_mld_addr))
+ 			return 0;
+ 	}
+ 
+@@ -4133,7 +4129,7 @@ static void wpa_supplicant_event_assoc(struct wpa_supplicant *wpa_s,
+ 		ft_completed = wpa_fils_is_completed(wpa_s->wpa);
+ 
+ 	wpa_supplicant_set_state(wpa_s, WPA_ASSOCIATED);
+-	if (os_memcmp(bssid, wpa_s->bssid, ETH_ALEN) != 0) {
++	if (!ether_addr_equal(bssid, wpa_s->bssid)) {
+ 		if (os_reltime_initialized(&wpa_s->session_start)) {
+ 			os_reltime_age(&wpa_s->session_start,
+ 				       &wpa_s->session_length);
+@@ -4317,9 +4313,9 @@ static void wpa_supplicant_event_assoc(struct wpa_supplicant *wpa_s,
+ 		os_get_reltime(&now);
+ 		os_reltime_sub(&now, &wpa_s->pending_eapol_rx_time, &age);
+ 		if (age.sec == 0 && age.usec < 200000 &&
+-		    os_memcmp(wpa_s->pending_eapol_rx_src,
+-			      wpa_s->valid_links ? wpa_s->ap_mld_addr : bssid,
+-			      ETH_ALEN) == 0) {
++		    ether_addr_equal(wpa_s->pending_eapol_rx_src,
++				     wpa_s->valid_links ? wpa_s->ap_mld_addr :
++				     bssid)) {
+ 			wpa_dbg(wpa_s, MSG_DEBUG, "Process pending EAPOL "
+ 				"frame that was received just before "
+ 				"association notification");
+@@ -4916,7 +4912,7 @@ static void ft_rx_action(struct wpa_supplicant *wpa_s, const u8 *data,
+ 		MACSTR " TargetAP " MACSTR " status %u",
+ 		MAC2STR(sta_addr), MAC2STR(target_ap_addr), status);
+ 
+-	if (os_memcmp(sta_addr, wpa_s->own_addr, ETH_ALEN) != 0) {
++	if (!ether_addr_equal(sta_addr, wpa_s->own_addr)) {
+ 		wpa_dbg(wpa_s, MSG_DEBUG, "FT: Foreign STA Address " MACSTR
+ 			" in FT Action Response", MAC2STR(sta_addr));
+ 		return;
+@@ -5314,7 +5310,7 @@ static void wpas_event_rx_mgmt_action(struct wpa_supplicant *wpa_s,
+ 		size_t qlen = plen - 1;
+ 		wpa_dbg(wpa_s, MSG_DEBUG, "Interworking: Received QoS Map Configure frame from "
+ 			MACSTR, MAC2STR(mgmt->sa));
+-		if (os_memcmp(mgmt->sa, wpa_s->bssid, ETH_ALEN) == 0 &&
++		if (ether_addr_equal(mgmt->sa, wpa_s->bssid) &&
+ 		    qlen > 2 && pos[0] == WLAN_EID_QOS_MAP_SET &&
+ 		    pos[1] <= qlen - 2 && pos[1] >= 16)
+ 			wpas_qos_map_set(wpa_s, pos + 2, pos[1]);
+@@ -5795,7 +5791,7 @@ static void wpas_event_unprot_beacon(struct wpa_supplicant *wpa_s,
+ 	int res;
+ 
+ 	if (!data || wpa_s->wpa_state != WPA_COMPLETED ||
+-	    os_memcmp(data->sa, wpa_s->bssid, ETH_ALEN) != 0)
++	    !ether_addr_equal(data->sa, wpa_s->bssid))
+ 		return;
+ 	wpa_msg(wpa_s, MSG_INFO, WPA_EVENT_UNPROT_BEACON MACSTR,
+ 		MAC2STR(data->sa));
+@@ -5884,7 +5880,7 @@ static void wpas_link_reconfig(struct wpa_supplicant *wpa_s)
+ 		return;
+ 	}
+ 
+-	if (os_memcmp(bssid, wpa_s->bssid, ETH_ALEN) != 0) {
++	if (!ether_addr_equal(bssid, wpa_s->bssid)) {
+ 		os_memcpy(wpa_s->bssid, bssid, ETH_ALEN);
+ 		wpa_supplicant_update_current_bss(wpa_s, wpa_s->bssid);
+ 		wpas_notify_bssid_changed(wpa_s);
+@@ -6168,8 +6164,8 @@ void wpa_supplicant_event(void *ctx, enum wpa_event_type event,
+ 		 */
+ 		if (data->tx_status.type == WLAN_FC_TYPE_MGMT &&
+ 		    data->tx_status.stype == WLAN_FC_STYPE_ACTION &&
+-		    os_memcmp(wpa_s->p2pdev->pending_action_dst,
+-			      data->tx_status.dst, ETH_ALEN) == 0) {
++		    ether_addr_equal(wpa_s->p2pdev->pending_action_dst,
++				     data->tx_status.dst)) {
+ 			offchannel_send_action_tx_status(
+ 				wpa_s->p2pdev, data->tx_status.dst,
+ 				data->tx_status.data,
+@@ -6536,7 +6532,7 @@ void wpa_supplicant_event(void *ctx, enum wpa_event_type event,
+ 					     wpa_s, NULL);
+ 			os_memcpy(addr, wpa_s->own_addr, ETH_ALEN);
+ 			wpa_supplicant_update_mac_addr(wpa_s);
+-			if (os_memcmp(addr, wpa_s->own_addr, ETH_ALEN) != 0)
++			if (!ether_addr_equal(addr, wpa_s->own_addr))
+ 				wpa_sm_pmksa_cache_flush(wpa_s->wpa, NULL);
+ 			else
+ 				wpa_sm_pmksa_cache_reconfig(wpa_s->wpa);
+@@ -6670,8 +6666,8 @@ void wpa_supplicant_event(void *ctx, enum wpa_event_type event,
+ #endif /* CONFIG_IBSS_RSN */
+ 		break;
+ 	case EVENT_DRIVER_GTK_REKEY:
+-		if (os_memcmp(data->driver_gtk_rekey.bssid,
+-			      wpa_s->bssid, ETH_ALEN))
++		if (!ether_addr_equal(data->driver_gtk_rekey.bssid,
++				      wpa_s->bssid))
+ 			break;
+ 		if (!wpa_s->wpa)
+ 			break;
+diff --git a/wpa_supplicant/gas_query.c b/wpa_supplicant/gas_query.c
+index 0cebe8c10..7d2993179 100644
+--- a/wpa_supplicant/gas_query.c
++++ b/wpa_supplicant/gas_query.c
+@@ -202,11 +202,11 @@ gas_query_get_pending(struct gas_query *gas, const u8 *addr, u8 dialog_token)
+ 	struct wpa_supplicant *wpa_s = gas->wpa_s;
+ 
+ 	dl_list_for_each(q, &gas->pending, struct gas_query_pending, list) {
+-		if (os_memcmp(q->addr, addr, ETH_ALEN) == 0 &&
++		if (ether_addr_equal(q->addr, addr) &&
+ 		    q->dialog_token == dialog_token)
+ 			return q;
+ 		if (wpa_s->valid_links &&
+-		    os_memcmp(wpa_s->ap_mld_addr, addr, ETH_ALEN) == 0 &&
++		    ether_addr_equal(wpa_s->ap_mld_addr, addr) &&
+ 		    wpas_ap_link_address(wpa_s, q->addr))
+ 			return q;
+ 	}
+@@ -249,7 +249,7 @@ static void gas_query_tx_status(struct wpa_supplicant *wpa_s,
+ 	wpa_printf(MSG_DEBUG, "GAS: TX status: freq=%u dst=" MACSTR
+ 		   " result=%d query=%p dialog_token=%u dur=%d ms",
+ 		   freq, MAC2STR(dst), result, query, query->dialog_token, dur);
+-	if (os_memcmp(dst, query->addr, ETH_ALEN) != 0) {
++	if (!ether_addr_equal(dst, query->addr)) {
+ 		wpa_printf(MSG_DEBUG, "GAS: TX status for unexpected destination");
+ 		return;
+ 	}
+@@ -306,7 +306,7 @@ static int gas_query_tx(struct gas_query *gas, struct gas_query_pending *query,
+ 	    (!gas->wpa_s->conf->gas_address3 ||
+ 	     (gas->wpa_s->current_ssid &&
+ 	      gas->wpa_s->wpa_state >= WPA_ASSOCIATED &&
+-	      os_memcmp(query->addr, gas->wpa_s->bssid, ETH_ALEN) == 0)))
++	      ether_addr_equal(query->addr, gas->wpa_s->bssid))))
+ 		bssid = query->addr;
+ 	else
+ 		bssid = wildcard_bssid;
+@@ -674,7 +674,7 @@ static int gas_query_dialog_token_available(struct gas_query *gas,
+ {
+ 	struct gas_query_pending *q;
+ 	dl_list_for_each(q, &gas->pending, struct gas_query_pending, list) {
+-		if (os_memcmp(dst, q->addr, ETH_ALEN) == 0 &&
++		if (ether_addr_equal(dst, q->addr) &&
+ 		    dialog_token == q->dialog_token)
+ 			return 0;
+ 	}
+diff --git a/wpa_supplicant/hs20_supplicant.c b/wpa_supplicant/hs20_supplicant.c
+index 272f2be53..4a25753a0 100644
+--- a/wpa_supplicant/hs20_supplicant.c
++++ b/wpa_supplicant/hs20_supplicant.c
+@@ -324,7 +324,7 @@ static struct icon_entry * hs20_find_icon(struct wpa_supplicant *wpa_s,
+ 	struct icon_entry *icon;
+ 
+ 	dl_list_for_each(icon, &wpa_s->icon_head, struct icon_entry, list) {
+-		if (os_memcmp(icon->bssid, bssid, ETH_ALEN) == 0 &&
++		if (ether_addr_equal(icon->bssid, bssid) &&
+ 		    os_strcmp(icon->file_name, file_name) == 0 && icon->image)
+ 			return icon;
+ 	}
+@@ -400,7 +400,7 @@ int hs20_del_icon(struct wpa_supplicant *wpa_s, const u8 *bssid,
+ 
+ 	dl_list_for_each_safe(icon, tmp, &wpa_s->icon_head, struct icon_entry,
+ 			      list) {
+-		if ((!bssid || os_memcmp(icon->bssid, bssid, ETH_ALEN) == 0) &&
++		if ((!bssid || ether_addr_equal(icon->bssid, bssid)) &&
+ 		    (!file_name ||
+ 		     os_strcmp(icon->file_name, file_name) == 0)) {
+ 			dl_list_del(&icon->list);
+@@ -446,7 +446,7 @@ static void hs20_remove_duplicate_icons(struct wpa_supplicant *wpa_s,
+ 			      list) {
+ 		if (icon == new_icon)
+ 			continue;
+-		if (os_memcmp(icon->bssid, new_icon->bssid, ETH_ALEN) == 0 &&
++		if (ether_addr_equal(icon->bssid, new_icon->bssid) &&
+ 		    os_strcmp(icon->file_name, new_icon->file_name) == 0) {
+ 			dl_list_del(&icon->list);
+ 			hs20_free_icon_entry(icon);
+@@ -467,7 +467,7 @@ static int hs20_process_icon_binary_file(struct wpa_supplicant *wpa_s,
+ 
+ 	dl_list_for_each(icon, &wpa_s->icon_head, struct icon_entry, list) {
+ 		if (icon->dialog_token == dialog_token && !icon->image &&
+-		    os_memcmp(icon->bssid, sa, ETH_ALEN) == 0) {
++		    ether_addr_equal(icon->bssid, sa)) {
+ 			icon->image = os_memdup(pos, slen);
+ 			if (!icon->image)
+ 				return -1;
+diff --git a/wpa_supplicant/ibss_rsn.c b/wpa_supplicant/ibss_rsn.c
+index 5b31f7bb0..554268a47 100644
+--- a/wpa_supplicant/ibss_rsn.c
++++ b/wpa_supplicant/ibss_rsn.c
+@@ -30,7 +30,7 @@ static struct ibss_rsn_peer * ibss_rsn_get_peer(struct ibss_rsn *ibss_rsn,
+ 	struct ibss_rsn_peer *peer;
+ 
+ 	for (peer = ibss_rsn->peers; peer; peer = peer->next)
+-		if (os_memcmp(addr, peer->addr, ETH_ALEN) == 0)
++		if (ether_addr_equal(addr, peer->addr))
+ 			break;
+ 	return peer;
+ }
+@@ -672,7 +672,7 @@ void ibss_rsn_stop(struct ibss_rsn *ibss_rsn, const u8 *peermac)
+ 
+ 		for (prev = NULL, peer = ibss_rsn->peers; peer != NULL;
+ 		     prev = peer, peer = peer->next) {
+-			if (os_memcmp(peermac, peer->addr, ETH_ALEN) == 0) {
++			if (ether_addr_equal(peermac, peer->addr)) {
+ 				if (prev == NULL)
+ 					ibss_rsn->peers = peer->next;
+ 				else
+diff --git a/wpa_supplicant/interworking.c b/wpa_supplicant/interworking.c
+index e33f3617a..3c6e9f17b 100644
+--- a/wpa_supplicant/interworking.c
++++ b/wpa_supplicant/interworking.c
+@@ -2666,7 +2666,7 @@ interworking_match_anqp_info(struct wpa_supplicant *wpa_s, struct wpa_bss *bss)
+ 			continue;
+ 		if (!(other->flags & WPA_BSS_ANQP_FETCH_TRIED))
+ 			continue;
+-		if (os_memcmp(bss->hessid, other->hessid, ETH_ALEN) != 0)
++		if (!ether_addr_equal(bss->hessid, other->hessid))
+ 			continue;
+ 		if (bss->ssid_len != other->ssid_len ||
+ 		    os_memcmp(bss->ssid, other->ssid, bss->ssid_len) != 0)
+@@ -3161,7 +3161,7 @@ void anqp_resp_cb(void *ctx, const u8 *dst, u8 dialog_token,
+ 	 */
+ 	dl_list_for_each_reverse(tmp, &wpa_s->bss, struct wpa_bss, list) {
+ 		if (tmp == wpa_s->interworking_gas_bss &&
+-		    os_memcmp(tmp->bssid, dst, ETH_ALEN) == 0) {
++		    ether_addr_equal(tmp->bssid, dst)) {
+ 			bss = tmp;
+ 			break;
+ 		}
+diff --git a/wpa_supplicant/mesh_mpm.c b/wpa_supplicant/mesh_mpm.c
+index 41707759e..b2fc1271e 100644
+--- a/wpa_supplicant/mesh_mpm.c
++++ b/wpa_supplicant/mesh_mpm.c
+@@ -854,7 +854,7 @@ void wpa_mesh_new_mesh_peer(struct wpa_supplicant *wpa_s, const u8 *addr,
+ 
+ 	if (ssid && ssid->no_auto_peer &&
+ 	    (is_zero_ether_addr(data->mesh_required_peer) ||
+-	     os_memcmp(data->mesh_required_peer, addr, ETH_ALEN) != 0)) {
++	     !ether_addr_equal(data->mesh_required_peer, addr))) {
+ 		wpa_msg(wpa_s, MSG_INFO, "will not initiate new peer link with "
+ 			MACSTR " because of no_auto_peer", MAC2STR(addr));
+ 		if (data->mesh_pending_auth) {
+@@ -865,7 +865,7 @@ void wpa_mesh_new_mesh_peer(struct wpa_supplicant *wpa_s, const u8 *addr,
+ 			mgmt = wpabuf_head(data->mesh_pending_auth);
+ 			os_reltime_age(&data->mesh_pending_auth_time, &age);
+ 			if (age.sec < 2 &&
+-			    os_memcmp(mgmt->sa, addr, ETH_ALEN) == 0) {
++			    ether_addr_equal(mgmt->sa, addr)) {
+ 				wpa_printf(MSG_DEBUG,
+ 					   "mesh: Process pending Authentication frame from %u.%06u seconds ago",
+ 					   (unsigned int) age.sec,
+diff --git a/wpa_supplicant/offchannel.c b/wpa_supplicant/offchannel.c
+index e40cf5bbe..9e591d7d6 100644
+--- a/wpa_supplicant/offchannel.c
++++ b/wpa_supplicant/offchannel.c
+@@ -23,12 +23,12 @@ wpas_get_tx_interface(struct wpa_supplicant *wpa_s, const u8 *src)
+ {
+ 	struct wpa_supplicant *iface;
+ 
+-	if (os_memcmp(src, wpa_s->own_addr, ETH_ALEN) == 0) {
++	if (ether_addr_equal(src, wpa_s->own_addr)) {
+ #ifdef CONFIG_P2P
+ 		if (wpa_s->p2p_mgmt && wpa_s != wpa_s->parent &&
+ 		    wpa_s->parent->ap_iface &&
+-		    os_memcmp(wpa_s->parent->own_addr,
+-			      wpa_s->own_addr, ETH_ALEN) == 0 &&
++		    ether_addr_equal(wpa_s->parent->own_addr,
++				     wpa_s->own_addr) &&
+ 		    wpabuf_len(wpa_s->pending_action_tx) >= 2 &&
+ 		    *wpabuf_head_u8(wpa_s->pending_action_tx) !=
+ 		    WLAN_ACTION_PUBLIC) {
+@@ -52,7 +52,7 @@ wpas_get_tx_interface(struct wpa_supplicant *wpa_s, const u8 *src)
+ 	 */
+ 	iface = wpa_s->global->ifaces;
+ 	while (iface) {
+-		if (os_memcmp(src, iface->own_addr, ETH_ALEN) == 0)
++		if (ether_addr_equal(src, iface->own_addr))
+ 			break;
+ 		iface = iface->next;
+ 	}
+@@ -186,7 +186,7 @@ void offchannel_send_action_tx_status(
+ 		return;
+ 	}
+ 
+-	if (os_memcmp(dst, wpa_s->pending_action_dst, ETH_ALEN) != 0) {
++	if (!ether_addr_equal(dst, wpa_s->pending_action_dst)) {
+ 		wpa_printf(MSG_DEBUG, "Off-channel: Ignore Action TX status - "
+ 			   "unknown destination address");
+ 		return;
+diff --git a/wpa_supplicant/p2p_supplicant.c b/wpa_supplicant/p2p_supplicant.c
+index 6193fe13b..0904d60ef 100644
+--- a/wpa_supplicant/p2p_supplicant.c
++++ b/wpa_supplicant/p2p_supplicant.c
+@@ -1184,7 +1184,7 @@ static int wpas_p2p_store_persistent_group(struct wpa_supplicant *wpa_s,
+ 		   "group (GO Dev Addr " MACSTR ")", MAC2STR(go_dev_addr));
+ 	for (s = wpa_s->conf->ssid; s; s = s->next) {
+ 		if (s->disabled == 2 &&
+-		    os_memcmp(go_dev_addr, s->bssid, ETH_ALEN) == 0 &&
++		    ether_addr_equal(go_dev_addr, s->bssid) &&
+ 		    s->ssid_len == ssid->ssid_len &&
+ 		    os_memcmp(ssid->ssid, s->ssid, ssid->ssid_len) == 0)
+ 			break;
+@@ -1290,8 +1290,8 @@ static void wpas_p2p_add_persistent_group_client(struct wpa_supplicant *wpa_s,
+ 		return;
+ 
+ 	for (i = 0; s->p2p_client_list && i < s->num_p2p_clients; i++) {
+-		if (os_memcmp(s->p2p_client_list + i * 2 * ETH_ALEN, addr,
+-			      ETH_ALEN) != 0)
++		if (!ether_addr_equal(s->p2p_client_list + i * 2 * ETH_ALEN,
++				      addr))
+ 			continue;
+ 
+ 		if (i == s->num_p2p_clients - 1)
+@@ -1590,8 +1590,8 @@ static void wpas_p2p_send_action_tx_status(struct wpa_supplicant *wpa_s,
+ 
+ 	if (result != OFFCHANNEL_SEND_ACTION_SUCCESS &&
+ 	    wpa_s->pending_pd_before_join &&
+-	    (os_memcmp(dst, wpa_s->pending_join_dev_addr, ETH_ALEN) == 0 ||
+-	     os_memcmp(dst, wpa_s->pending_join_iface_addr, ETH_ALEN) == 0) &&
++	    (ether_addr_equal(dst, wpa_s->pending_join_dev_addr) ||
++	     ether_addr_equal(dst, wpa_s->pending_join_iface_addr)) &&
+ 	    wpa_s->p2p_fallback_to_go_neg) {
+ 		wpa_s->pending_pd_before_join = 0;
+ 		wpa_dbg(wpa_s, MSG_DEBUG, "P2P: No ACK for PD Req "
+@@ -2904,8 +2904,8 @@ static void wpas_prov_disc_resp(void *ctx, const u8 *peer, u16 config_methods)
+ 	char params[20];
+ 
+ 	if (wpa_s->pending_pd_before_join &&
+-	    (os_memcmp(peer, wpa_s->pending_join_dev_addr, ETH_ALEN) == 0 ||
+-	     os_memcmp(peer, wpa_s->pending_join_iface_addr, ETH_ALEN) == 0)) {
++	    (ether_addr_equal(peer, wpa_s->pending_join_dev_addr) ||
++	     ether_addr_equal(peer, wpa_s->pending_join_iface_addr))) {
+ 		wpa_s->pending_pd_before_join = 0;
+ 		wpa_printf(MSG_DEBUG, "P2P: Starting pending "
+ 			   "join-existing-group operation");
+@@ -3198,9 +3198,8 @@ static u8 wpas_invitation_process(void *ctx, const u8 *sa, const u8 *bssid,
+ 			   " to join an active group (SSID: %s)",
+ 			   MAC2STR(sa), wpa_ssid_txt(ssid, ssid_len));
+ 		if (!is_zero_ether_addr(wpa_s->p2p_auth_invite) &&
+-		    (os_memcmp(go_dev_addr, wpa_s->p2p_auth_invite, ETH_ALEN)
+-		     == 0 ||
+-		     os_memcmp(sa, wpa_s->p2p_auth_invite, ETH_ALEN) == 0)) {
++		    (ether_addr_equal(go_dev_addr, wpa_s->p2p_auth_invite) ||
++		     ether_addr_equal(sa, wpa_s->p2p_auth_invite))) {
+ 			wpa_printf(MSG_DEBUG, "P2P: Accept previously "
+ 				   "authorized invitation");
+ 			goto accept_inv;
+@@ -3237,7 +3236,7 @@ static u8 wpas_invitation_process(void *ctx, const u8 *sa, const u8 *bssid,
+ 	}
+ 
+ 	if (!is_zero_ether_addr(wpa_s->p2p_auth_invite) &&
+-	    os_memcmp(sa, wpa_s->p2p_auth_invite, ETH_ALEN) == 0) {
++	    ether_addr_equal(sa, wpa_s->p2p_auth_invite)) {
+ 		wpa_printf(MSG_DEBUG, "P2P: Accept previously initiated "
+ 			   "invitation to re-invoke a persistent group");
+ 		os_memset(wpa_s->p2p_auth_invite, 0, ETH_ALEN);
+@@ -3246,7 +3245,7 @@ static u8 wpas_invitation_process(void *ctx, const u8 *sa, const u8 *bssid,
+ 
+ 	for (s = wpa_s->conf->ssid; s; s = s->next) {
+ 		if (s->disabled == 2 &&
+-		    os_memcmp(s->bssid, go_dev_addr, ETH_ALEN) == 0 &&
++		    ether_addr_equal(s->bssid, go_dev_addr) &&
+ 		    s->ssid_len == ssid_len &&
+ 		    os_memcmp(ssid, s->ssid, ssid_len) == 0)
+ 			break;
+@@ -3448,13 +3447,13 @@ static void wpas_remove_persistent_peer(struct wpa_supplicant *wpa_s,
+ 		return;
+ 
+ 	for (i = 0; ssid->p2p_client_list && i < ssid->num_p2p_clients; i++) {
+-		if (os_memcmp(ssid->p2p_client_list + i * 2 * ETH_ALEN, peer,
+-			      ETH_ALEN) == 0)
++		if (ether_addr_equal(ssid->p2p_client_list + i * 2 * ETH_ALEN,
++				     peer))
+ 			break;
+ 	}
+ 	if (i >= ssid->num_p2p_clients || !ssid->p2p_client_list) {
+ 		if (ssid->mode != WPAS_MODE_P2P_GO &&
+-		    os_memcmp(ssid->bssid, peer, ETH_ALEN) == 0) {
++		    ether_addr_equal(ssid->bssid, peer)) {
+ 			wpa_printf(MSG_DEBUG, "P2P: Remove persistent group %d "
+ 				   "due to invitation result", ssid->id);
+ 			wpas_notify_network_removed(wpa_s, ssid);
+@@ -4149,7 +4148,7 @@ static int wpas_get_noa(void *ctx, const u8 *interface_addr, u8 *buf,
+ 	struct wpa_supplicant *wpa_s = ctx;
+ 
+ 	for (wpa_s = wpa_s->global->ifaces; wpa_s; wpa_s = wpa_s->next) {
+-		if (os_memcmp(wpa_s->own_addr, interface_addr, ETH_ALEN) == 0)
++		if (ether_addr_equal(wpa_s->own_addr, interface_addr))
+ 			break;
+ 	}
+ 	if (wpa_s == NULL)
+@@ -4188,7 +4187,7 @@ struct wpa_supplicant * wpas_get_p2p_client_iface(struct wpa_supplicant *wpa_s,
+ 		struct wpa_ssid *ssid = wpa_s->current_ssid;
+ 		if (ssid && (ssid->mode != WPAS_MODE_INFRA || !ssid->p2p_group))
+ 			continue;
+-		if (os_memcmp(wpa_s->go_dev_addr, peer_dev_addr, ETH_ALEN) == 0)
++		if (ether_addr_equal(wpa_s->go_dev_addr, peer_dev_addr))
+ 			return wpa_s;
+ 	}
+ 
+@@ -4399,7 +4398,7 @@ static int wpas_remove_stale_groups(void *ctx, const u8 *peer, const u8 *go,
+ 	while ((s = wpas_p2p_get_persistent(wpa_s, peer, NULL, 0))) {
+ 		if (go && ssid && ssid_len &&
+ 		    s->ssid_len == ssid_len &&
+-		    os_memcmp(go, s->bssid, ETH_ALEN) == 0 &&
++		    ether_addr_equal(go, s->bssid) &&
+ 		    os_memcmp(ssid, s->ssid, ssid_len) == 0)
+ 			break;
+ 
+@@ -4415,8 +4414,8 @@ static int wpas_remove_stale_groups(void *ctx, const u8 *peer, const u8 *go,
+ 		}
+ 
+ 		for (i = 0; i < s->num_p2p_clients; i++) {
+-			if (os_memcmp(s->p2p_client_list + i * 2 * ETH_ALEN,
+-				      peer, ETH_ALEN) != 0)
++			if (!ether_addr_equal(s->p2p_client_list +
++					      i * 2 * ETH_ALEN, peer))
+ 				continue;
+ 
+ 			os_memmove(s->p2p_client_list + i * 2 * ETH_ALEN,
+@@ -4570,7 +4569,7 @@ static void wpas_p2ps_prov_complete(void *ctx, u8 status, const u8 *dev,
+ 			break;
+ 
+ 		if (s && s->ssid_len == stale->ssid_len &&
+-		    os_memcmp(stale->bssid, s->bssid, ETH_ALEN) == 0 &&
++		    ether_addr_equal(stale->bssid, s->bssid) &&
+ 		    os_memcmp(stale->ssid, s->ssid, s->ssid_len) == 0)
+ 			break;
+ 
+@@ -4586,9 +4585,8 @@ static void wpas_p2ps_prov_complete(void *ctx, u8 status, const u8 *dev,
+ 			size_t i;
+ 
+ 			for (i = 0; i < stale->num_p2p_clients; i++) {
+-				if (os_memcmp(stale->p2p_client_list +
+-					      i * ETH_ALEN,
+-					      dev, ETH_ALEN) == 0) {
++				if (ether_addr_equal(stale->p2p_client_list +
++						     i * ETH_ALEN, dev)) {
+ 					os_memmove(stale->p2p_client_list +
+ 						   i * ETH_ALEN,
+ 						   stale->p2p_client_list +
+@@ -5434,8 +5432,8 @@ static void wpas_p2p_scan_res_join(struct wpa_supplicant *wpa_s,
+ 	    p2p_get_interface_addr(wpa_s->global->p2p,
+ 				   wpa_s->pending_join_dev_addr,
+ 				   iface_addr) == 0 &&
+-	    os_memcmp(iface_addr, wpa_s->pending_join_dev_addr, ETH_ALEN) != 0
+-	    && !wpa_bss_get_bssid(wpa_s, wpa_s->pending_join_iface_addr)) {
++	    !ether_addr_equal(iface_addr, wpa_s->pending_join_dev_addr) &&
++	    !wpa_bss_get_bssid(wpa_s, wpa_s->pending_join_iface_addr)) {
+ 		wpa_printf(MSG_DEBUG, "P2P: Overwrite pending interface "
+ 			   "address for join from " MACSTR " to " MACSTR
+ 			   " based on newly discovered P2P peer entry",
+@@ -5475,10 +5473,9 @@ static void wpas_p2p_scan_res_join(struct wpa_supplicant *wpa_s,
+ 			   wpa_ssid_txt(bss->ssid, bss->ssid_len));
+ 		if (p2p_parse_dev_addr(wpa_bss_ie_ptr(bss), bss->ie_len,
+ 				       dev_addr) == 0 &&
+-		    os_memcmp(wpa_s->pending_join_dev_addr,
+-			      wpa_s->pending_join_iface_addr, ETH_ALEN) == 0 &&
+-		    os_memcmp(dev_addr, wpa_s->pending_join_dev_addr,
+-			      ETH_ALEN) != 0) {
++		    ether_addr_equal(wpa_s->pending_join_dev_addr,
++				     wpa_s->pending_join_iface_addr) &&
++		    !ether_addr_equal(dev_addr, wpa_s->pending_join_dev_addr)) {
+ 			wpa_printf(MSG_DEBUG,
+ 				   "P2P: Update target GO device address based on BSS entry: " MACSTR " (was " MACSTR ")",
+ 				   MAC2STR(dev_addr),
+@@ -8651,13 +8648,13 @@ struct wpa_ssid * wpas_p2p_get_persistent(struct wpa_supplicant *wpa_s,
+ 				return s;
+ 			continue;
+ 		}
+-		if (os_memcmp(s->bssid, addr, ETH_ALEN) == 0)
++		if (ether_addr_equal(s->bssid, addr))
+ 			return s; /* peer is GO in the persistent group */
+ 		if (s->mode != WPAS_MODE_P2P_GO || s->p2p_client_list == NULL)
+ 			continue;
+ 		for (i = 0; i < s->num_p2p_clients; i++) {
+-			if (os_memcmp(s->p2p_client_list + i * 2 * ETH_ALEN,
+-				      addr, ETH_ALEN) == 0)
++			if (ether_addr_equal(s->p2p_client_list +
++					     i * 2 * ETH_ALEN, addr))
+ 				return s; /* peer is P2P client in persistent
+ 					   * group */
+ 		}
+@@ -8799,9 +8796,9 @@ static int wpas_p2p_remove_psk_entry(struct wpa_supplicant *wpa_s,
+ 	dl_list_for_each_safe(psk, tmp, &s->psk_list, struct psk_list_entry,
+ 			      list) {
+ 		if ((iface_addr && !psk->p2p &&
+-		     os_memcmp(addr, psk->addr, ETH_ALEN) == 0) ||
++		     ether_addr_equal(addr, psk->addr)) ||
+ 		    (!iface_addr && psk->p2p &&
+-		     os_memcmp(addr, psk->addr, ETH_ALEN) == 0)) {
++		     ether_addr_equal(addr, psk->addr))) {
+ 			wpa_dbg(wpa_s, MSG_DEBUG,
+ 				"P2P: Remove persistent group PSK list entry for "
+ 				MACSTR " p2p=%u",
+@@ -8940,9 +8937,9 @@ static void wpas_p2p_remove_client_go(struct wpa_supplicant *wpa_s,
+ 	prev = NULL;
+ 	psk = hapd->conf->ssid.wpa_psk;
+ 	while (psk) {
+-		if ((iface_addr && os_memcmp(peer, psk->addr, ETH_ALEN) == 0) ||
++		if ((iface_addr && ether_addr_equal(peer, psk->addr)) ||
+ 		    (!iface_addr &&
+-		     os_memcmp(peer, psk->p2p_dev_addr, ETH_ALEN) == 0)) {
++		     ether_addr_equal(peer, psk->p2p_dev_addr))) {
+ 			wpa_dbg(wpa_s, MSG_DEBUG, "P2P: Remove operating group PSK entry for "
+ 				MACSTR " iface_addr=%d",
+ 				MAC2STR(peer), iface_addr);
+diff --git a/wpa_supplicant/pasn_supplicant.c b/wpa_supplicant/pasn_supplicant.c
+index 9bbaab80d..2e65cf085 100644
+--- a/wpa_supplicant/pasn_supplicant.c
++++ b/wpa_supplicant/pasn_supplicant.c
+@@ -320,7 +320,7 @@ static int wpas_pasn_set_keys_from_cache(struct wpa_supplicant *wpa_s,
+ 		return -1;
+ 	}
+ 
+-	if (os_memcmp(entry->own_addr, own_addr, ETH_ALEN) != 0) {
++	if (!ether_addr_equal(entry->own_addr, own_addr)) {
+ 		wpa_printf(MSG_DEBUG,
+ 			   "PASN: own addr " MACSTR " and PTKSA entry own addr "
+ 			   MACSTR " differ",
+@@ -352,7 +352,7 @@ static void wpas_pasn_configure_next_peer(struct wpa_supplicant *wpa_s,
+ 	while (wpa_s->pasn_count < pasn_params->num_peers) {
+ 		peer = &pasn_params->peer[wpa_s->pasn_count];
+ 
+-		if (os_memcmp(wpa_s->bssid, peer->peer_addr, ETH_ALEN) == 0) {
++		if (ether_addr_equal(wpa_s->bssid, peer->peer_addr)) {
+ 			wpa_printf(MSG_DEBUG,
+ 				   "PASN: Associated peer is not expected");
+ 			peer->status = PASN_STATUS_FAILURE;
+@@ -468,7 +468,7 @@ static struct wpa_bss * wpas_pasn_allowed(struct wpa_supplicant *wpa_s,
+ 	struct wpa_ie_data rsne_data;
+ 	int ret;
+ 
+-	if (os_memcmp(wpa_s->bssid, peer_addr, ETH_ALEN) == 0) {
++	if (ether_addr_equal(wpa_s->bssid, peer_addr)) {
+ 		wpa_printf(MSG_DEBUG,
+ 			   "PASN: Not doing authentication with current BSS");
+ 		return NULL;
+@@ -925,7 +925,7 @@ int wpas_pasn_deauthenticate(struct wpa_supplicant *wpa_s, const u8 *own_addr,
+ 	struct ieee80211_mgmt *deauth;
+ 	int ret;
+ 
+-	if (os_memcmp(wpa_s->bssid, peer_addr, ETH_ALEN) == 0) {
++	if (ether_addr_equal(wpa_s->bssid, peer_addr)) {
+ 		wpa_printf(MSG_DEBUG,
+ 			   "PASN: Cannot deauthenticate from current BSS");
+ 		return -1;
+diff --git a/wpa_supplicant/rrm.c b/wpa_supplicant/rrm.c
+index 1aa87bb01..2aaf7d35f 100644
+--- a/wpa_supplicant/rrm.c
++++ b/wpa_supplicant/rrm.c
+@@ -936,8 +936,8 @@ static int wpas_add_beacon_rep(struct wpa_supplicant *wpa_s,
+ 	struct rrm_measurement_beacon_report rep;
+ 	u8 idx = 0;
+ 
+-	if (os_memcmp(data->bssid, broadcast_ether_addr, ETH_ALEN) != 0 &&
+-	    os_memcmp(data->bssid, bss->bssid, ETH_ALEN) != 0)
++	if (!ether_addr_equal(data->bssid, broadcast_ether_addr) &&
++	    !ether_addr_equal(data->bssid, bss->bssid))
+ 		return 0;
+ 
+ 	if (data->ssid_len &&
+@@ -1515,8 +1515,8 @@ int wpas_beacon_rep_scan_process(struct wpa_supplicant *wpa_s,
+ 		   MAC2STR(info->scan_start_tsf_bssid),
+ 		   MAC2STR(wpa_s->current_bss->bssid));
+ 	if ((wpa_s->drv_rrm_flags & WPA_DRIVER_FLAGS_SUPPORT_BEACON_REPORT) &&
+-	    os_memcmp(info->scan_start_tsf_bssid, wpa_s->current_bss->bssid,
+-		      ETH_ALEN) != 0) {
++	    !ether_addr_equal(info->scan_start_tsf_bssid,
++			      wpa_s->current_bss->bssid)) {
+ 		wpa_printf(MSG_DEBUG,
+ 			   "RRM: Ignore scan results due to mismatching TSF BSSID");
+ 		goto out;
+@@ -1531,8 +1531,8 @@ int wpas_beacon_rep_scan_process(struct wpa_supplicant *wpa_s,
+ 
+ 		if ((wpa_s->drv_rrm_flags &
+ 		     WPA_DRIVER_FLAGS_SUPPORT_BEACON_REPORT) &&
+-		    os_memcmp(scan_res->res[i]->tsf_bssid,
+-			      wpa_s->current_bss->bssid, ETH_ALEN) != 0) {
++		    !ether_addr_equal(scan_res->res[i]->tsf_bssid,
++				      wpa_s->current_bss->bssid)) {
+ 			wpa_printf(MSG_DEBUG,
+ 				   "RRM: Ignore scan result for " MACSTR
+ 				   " due to mismatching TSF BSSID" MACSTR,
+diff --git a/wpa_supplicant/scan.c b/wpa_supplicant/scan.c
+index 6e03a13ce..aef85461c 100644
+--- a/wpa_supplicant/scan.c
++++ b/wpa_supplicant/scan.c
+@@ -2602,8 +2602,7 @@ int wpa_supplicant_filter_bssid_match(struct wpa_supplicant *wpa_s,
+ 		return 1;
+ 
+ 	for (i = 0; i < wpa_s->bssid_filter_count; i++) {
+-		if (os_memcmp(wpa_s->bssid_filter + i * ETH_ALEN, bssid,
+-			      ETH_ALEN) == 0)
++		if (ether_addr_equal(wpa_s->bssid_filter + i * ETH_ALEN, bssid))
+ 			return 1;
+ 	}
+ 
+diff --git a/wpa_supplicant/sme.c b/wpa_supplicant/sme.c
+index c791e116b..632a787b0 100644
+--- a/wpa_supplicant/sme.c
++++ b/wpa_supplicant/sme.c
+@@ -166,7 +166,7 @@ static struct wpabuf * sme_auth_build_sae_commit(struct wpa_supplicant *wpa_s,
+ 	}
+ 
+ 	if (reuse && wpa_s->sme.sae.tmp &&
+-	    os_memcmp(addr, wpa_s->sme.sae.tmp->bssid, ETH_ALEN) == 0) {
++	    ether_addr_equal(addr, wpa_s->sme.sae.tmp->bssid)) {
+ 		wpa_printf(MSG_DEBUG,
+ 			   "SAE: Reuse previously generated PWE on a retry with the same AP");
+ 		use_pt = wpa_s->sme.sae.h2e;
+@@ -412,9 +412,9 @@ static struct wpa_bss * wpas_ml_connect_pref(struct wpa_supplicant *wpa_s,
+ 			if (wpa_s->mlo_assoc_link_id == i)
+ 				continue;
+ 
+-			if (os_memcmp(wpa_s->links[i].bssid,
+-				      wpa_s->conf->mld_connect_bssid_pref,
+-				      ETH_ALEN) == 0)
++			if (ether_addr_equal(
++				    wpa_s->links[i].bssid,
++				    wpa_s->conf->mld_connect_bssid_pref))
+ 				goto found;
+ 		}
+ 	}
+@@ -506,7 +506,7 @@ static void wpas_sme_ml_auth(struct wpa_supplicant *wpa_s,
+ 
+ 	wpa_printf(MSG_DEBUG, "MLD: mld_address=" MACSTR, MAC2STR(mld_addr));
+ 
+-	if (os_memcmp(wpa_s->ap_mld_addr, mld_addr, ETH_ALEN) != 0) {
++	if (!ether_addr_equal(wpa_s->ap_mld_addr, mld_addr)) {
+ 		wpa_printf(MSG_DEBUG, "MLD: Unexpected MLD address (expected "
+ 			   MACSTR ")", MAC2STR(wpa_s->ap_mld_addr));
+ 		goto out;
+@@ -1622,8 +1622,7 @@ static int sme_external_ml_auth(struct wpa_supplicant *wpa_s,
+ 
+ 	wpa_printf(MSG_DEBUG, "MLD: mld_address=" MACSTR, MAC2STR(mld_addr));
+ 
+-	if (os_memcmp(wpa_s->sme.ext_auth_ap_mld_addr, mld_addr, ETH_ALEN) !=
+-	    0) {
++	if (!ether_addr_equal(wpa_s->sme.ext_auth_ap_mld_addr, mld_addr)) {
+ 		wpa_printf(MSG_DEBUG, "MLD: Unexpected MLD address (expected "
+ 			   MACSTR ")",
+ 			   MAC2STR(wpa_s->sme.ext_auth_ap_mld_addr));
+@@ -1978,9 +1977,9 @@ void sme_event_auth(struct wpa_supplicant *wpa_s, union wpa_event_data *data)
+ 		return;
+ 	}
+ 
+-	if (os_memcmp(wpa_s->pending_bssid, data->auth.peer, ETH_ALEN) != 0 &&
++	if (!ether_addr_equal(wpa_s->pending_bssid, data->auth.peer) &&
+ 	    !(wpa_s->valid_links &&
+-	      os_memcmp(wpa_s->ap_mld_addr, data->auth.peer, ETH_ALEN) == 0)) {
++	      ether_addr_equal(wpa_s->ap_mld_addr, data->auth.peer))) {
+ 		wpa_dbg(wpa_s, MSG_DEBUG, "SME: Ignore authentication with "
+ 			"unexpected peer " MACSTR,
+ 			MAC2STR(data->auth.peer));
+@@ -3304,7 +3303,7 @@ void sme_event_unprot_disconnect(struct wpa_supplicant *wpa_s, const u8 *sa,
+ 	ssid = wpa_s->current_ssid;
+ 	if (wpas_get_ssid_pmf(wpa_s, ssid) == NO_MGMT_FRAME_PROTECTION)
+ 		return;
+-	if (os_memcmp(sa, wpa_s->bssid, ETH_ALEN) != 0)
++	if (!ether_addr_equal(sa, wpa_s->bssid))
+ 		return;
+ 	if (reason_code != WLAN_REASON_CLASS2_FRAME_FROM_NONAUTH_STA &&
+ 	    reason_code != WLAN_REASON_CLASS3_FRAME_FROM_NONASSOC_STA)
+@@ -3409,7 +3408,7 @@ static void sme_process_sa_query_response(struct wpa_supplicant *wpa_s,
+ 	wpa_dbg(wpa_s, MSG_DEBUG, "SME: Received SA Query response from "
+ 		MACSTR " (trans_id %02x%02x)", MAC2STR(sa), data[1], data[2]);
+ 
+-	if (os_memcmp(sa, wpa_s->bssid, ETH_ALEN) != 0)
++	if (!ether_addr_equal(sa, wpa_s->bssid))
+ 		return;
+ 
+ 	for (i = 0; i < wpa_s->sme.sa_query_count; i++) {
+diff --git a/wpa_supplicant/wmm_ac.c b/wpa_supplicant/wmm_ac.c
+index d0fdd55d3..37e2ed4e6 100644
+--- a/wpa_supplicant/wmm_ac.c
++++ b/wpa_supplicant/wmm_ac.c
+@@ -678,7 +678,7 @@ static void wmm_ac_handle_addts_resp(struct wpa_supplicant *wpa_s, const u8 *sa,
+ 	}
+ 
+ 	/* make sure the params are the same */
+-	if (os_memcmp(req->address, sa, ETH_ALEN) != 0 ||
++	if (!ether_addr_equal(req->address, sa) ||
+ 	    tsid != wmm_ac_get_tsid(&req->tspec) ||
+ 	    up != wmm_ac_get_user_priority(&req->tspec) ||
+ 	    dir != wmm_ac_get_direction(&req->tspec)) {
+@@ -755,13 +755,13 @@ void wmm_ac_rx_action(struct wpa_supplicant *wpa_s, const u8 *da,
+ 	}
+ 
+ 	/* WMM AC action frame */
+-	if (os_memcmp(da, wpa_s->own_addr, ETH_ALEN) != 0) {
++	if (!ether_addr_equal(da, wpa_s->own_addr)) {
+ 		wpa_printf(MSG_DEBUG, "WMM AC: frame destination addr="MACSTR
+ 			   " is other than ours, ignoring frame", MAC2STR(da));
+ 		return;
+ 	}
+ 
+-	if (os_memcmp(sa, wpa_s->bssid, ETH_ALEN) != 0) {
++	if (!ether_addr_equal(sa, wpa_s->bssid)) {
+ 		wpa_printf(MSG_DEBUG, "WMM AC: ignore frame with sa " MACSTR
+ 			   " different other than our bssid", MAC2STR(da));
+ 		return;
+diff --git a/wpa_supplicant/wnm_sta.c b/wpa_supplicant/wnm_sta.c
+index d121c1bb9..3fc11b24e 100644
+--- a/wpa_supplicant/wnm_sta.c
++++ b/wpa_supplicant/wnm_sta.c
+@@ -686,9 +686,8 @@ get_mbo_transition_candidate(struct wpa_supplicant *wpa_s,
+ 	if (reason) {
+ 		for (i = 0; i < info->num; i++) {
+ 			if (first_candidate_bssid &&
+-			    os_memcmp(first_candidate_bssid,
+-				      info->candidates[i].bssid, ETH_ALEN) == 0)
+-			{
++			    ether_addr_equal(first_candidate_bssid,
++					     info->candidates[i].bssid)) {
+ 				*reason = info->candidates[i].reject_reason;
+ 				break;
+ 			}
+@@ -1194,8 +1193,8 @@ int wnm_scan_process(struct wpa_supplicant *wpa_s, int reply_on_fail)
+ 	}
+ 
+ 	if (!wpa_s->current_bss ||
+-	    os_memcmp(wpa_s->wnm_cand_from_bss, wpa_s->current_bss->bssid,
+-		      ETH_ALEN) != 0) {
++	    !ether_addr_equal(wpa_s->wnm_cand_from_bss,
++			      wpa_s->current_bss->bssid)) {
+ 		wpa_printf(MSG_DEBUG, "WNM: Stored BSS transition candidate list not from the current BSS - ignore it");
+ 		return 0;
+ 	}
+@@ -1388,7 +1387,7 @@ static int wnm_fetch_scan_results(struct wpa_supplicant *wpa_s)
+ 			const u8 *ssid_ie;
+ 
+ 			res = scan_res->res[j];
+-			if (os_memcmp(nei->bssid, res->bssid, ETH_ALEN) != 0 ||
++			if (!ether_addr_equal(nei->bssid, res->bssid) ||
+ 			    res->age > WNM_SCAN_RESULT_AGE * 1000)
+ 				continue;
+ 			bss = wpa_s->current_bss;
+@@ -1581,8 +1580,7 @@ static void ieee802_11_rx_bss_trans_mgmt_req(struct wpa_supplicant *wpa_s,
+ 				wnm_parse_neighbor_report(wpa_s, pos, len, rep);
+ 				if ((wpa_s->wnm_mode &
+ 				     WNM_BSS_TM_REQ_DISASSOC_IMMINENT) &&
+-				    os_memcmp(rep->bssid, wpa_s->bssid,
+-					      ETH_ALEN) == 0)
++				    ether_addr_equal(rep->bssid, wpa_s->bssid))
+ 					rep->disassoc_imminent = 1;
+ 
+ 				wpa_s->wnm_num_neighbor_report++;
+@@ -1901,9 +1899,9 @@ static void ieee802_11_rx_wnm_notif_req(struct wpa_supplicant *wpa_s,
+ 		    pos, end - pos);
+ 
+ 	if (wpa_s->wpa_state != WPA_COMPLETED ||
+-	    (os_memcmp(sa, wpa_s->bssid, ETH_ALEN) != 0 &&
++	    (!ether_addr_equal(sa, wpa_s->bssid) &&
+ 	     (!wpa_s->valid_links ||
+-	      os_memcmp(sa, wpa_s->ap_mld_addr, ETH_ALEN) != 0))) {
++	      !ether_addr_equal(sa, wpa_s->ap_mld_addr)))) {
+ 		wpa_dbg(wpa_s, MSG_DEBUG, "WNM: WNM-Notification frame not "
+ 			"from our AP - ignore it");
+ 		return;
+@@ -1947,9 +1945,9 @@ static void ieee802_11_rx_wnm_coloc_intf_req(struct wpa_supplicant *wpa_s,
+ 		return; /* only nonzero values are used for request */
+ 
+ 	if (wpa_s->wpa_state != WPA_COMPLETED ||
+-	    (os_memcmp(sa, wpa_s->bssid, ETH_ALEN) != 0 &&
++	    (!ether_addr_equal(sa, wpa_s->bssid) &&
+ 	     (!wpa_s->valid_links ||
+-	      os_memcmp(sa, wpa_s->ap_mld_addr, ETH_ALEN) != 0))) {
++	      !ether_addr_equal(sa, wpa_s->ap_mld_addr)))) {
+ 		wpa_dbg(wpa_s, MSG_DEBUG,
+ 			"WNM: Collocated Interference Request frame not from current AP - ignore it");
+ 		return;
+@@ -1979,9 +1977,9 @@ void ieee802_11_rx_wnm_action(struct wpa_supplicant *wpa_s,
+ 	wpa_printf(MSG_DEBUG, "WNM: RX action %u from " MACSTR,
+ 		   act, MAC2STR(mgmt->sa));
+ 	if (wpa_s->wpa_state < WPA_ASSOCIATED ||
+-	    (os_memcmp(mgmt->sa, wpa_s->bssid, ETH_ALEN) != 0 &&
++	    (!ether_addr_equal(mgmt->sa, wpa_s->bssid) &&
+ 	     (!wpa_s->valid_links ||
+-	      os_memcmp(mgmt->sa, wpa_s->ap_mld_addr, ETH_ALEN) != 0))) {
++	      !ether_addr_equal(mgmt->sa, wpa_s->ap_mld_addr)))) {
+ 		wpa_printf(MSG_DEBUG, "WNM: Ignore unexpected WNM Action "
+ 			   "frame");
+ 		return;
+@@ -2083,7 +2081,7 @@ bool wnm_is_bss_excluded(struct wpa_supplicant *wpa_s, struct wpa_bss *bss)
+ 	 */
+ 
+ 	if (wpa_s->current_bss &&
+-	    os_memcmp(wpa_s->current_bss->bssid, bss->bssid, ETH_ALEN) == 0) {
++	    ether_addr_equal(wpa_s->current_bss->bssid, bss->bssid)) {
+ 		wpa_dbg(wpa_s, MSG_DEBUG,
+ 			"WNM: Disassociation imminent: current BSS");
+ 		return true;
+@@ -2096,8 +2094,7 @@ bool wnm_is_bss_excluded(struct wpa_supplicant *wpa_s, struct wpa_bss *bss)
+ 		if (!(wpa_s->valid_links & BIT(i)))
+ 			continue;
+ 
+-		if (os_memcmp(wpa_s->links[i].bssid, bss->bssid,
+-			      ETH_ALEN) == 0) {
++		if (ether_addr_equal(wpa_s->links[i].bssid, bss->bssid)) {
+ 			wpa_dbg(wpa_s, MSG_DEBUG,
+ 				"WNM: MLD: Disassociation imminent: current link");
+ 			return true;
+diff --git a/wpa_supplicant/wpa_supplicant.c b/wpa_supplicant/wpa_supplicant.c
+index 63201b3da..b8d15e409 100644
+--- a/wpa_supplicant/wpa_supplicant.c
++++ b/wpa_supplicant/wpa_supplicant.c
+@@ -2312,8 +2312,7 @@ int wpas_update_random_addr(struct wpa_supplicant *wpa_s,
+ 		if (style == WPAS_MAC_ADDR_STYLE_DEDICATED_PER_ESS) {
+ 			/* Pregenerated addresses do not expire but their value
+ 			 * might have changed, so let's check that. */
+-			if (os_memcmp(wpa_s->own_addr, ssid->mac_value,
+-				      ETH_ALEN) == 0)
++			if (ether_addr_equal(wpa_s->own_addr, ssid->mac_value))
+ 				return 0;
+ 		} else if ((wpa_s->last_mac_addr_change.sec != 0 ||
+ 			    wpa_s->last_mac_addr_change.usec != 0) &&
+@@ -5328,14 +5327,14 @@ struct wpa_ssid * wpa_supplicant_get_ssid(struct wpa_supplicant *wpa_s)
+ 		       os_memcmp(ssid, entry->ssid, ssid_len) == 0)) ||
+ 		     wired) &&
+ 		    (!entry->bssid_set ||
+-		     os_memcmp(bssid, entry->bssid, ETH_ALEN) == 0))
++		     ether_addr_equal(bssid, entry->bssid)))
+ 			return entry;
+ #ifdef CONFIG_WPS
+ 		if (!wpas_network_disabled(wpa_s, entry) &&
+ 		    (entry->key_mgmt & WPA_KEY_MGMT_WPS) &&
+ 		    (entry->ssid == NULL || entry->ssid_len == 0) &&
+ 		    (!entry->bssid_set ||
+-		     os_memcmp(bssid, entry->bssid, ETH_ALEN) == 0))
++		     ether_addr_equal(bssid, entry->bssid)))
+ 			return entry;
+ #endif /* CONFIG_WPS */
+ 
+@@ -5345,13 +5344,13 @@ struct wpa_ssid * wpa_supplicant_get_ssid(struct wpa_supplicant *wpa_s)
+ 		     owe_trans_ssid_match(wpa_s, bssid, entry->ssid,
+ 					  entry->ssid_len)) &&
+ 		    (!entry->bssid_set ||
+-		     os_memcmp(bssid, entry->bssid, ETH_ALEN) == 0))
++		     ether_addr_equal(bssid, entry->bssid)))
+ 			return entry;
+ #endif /* CONFIG_OWE */
+ 
+ 		if (!wpas_network_disabled(wpa_s, entry) && entry->bssid_set &&
+ 		    entry->ssid_len == 0 &&
+-		    os_memcmp(bssid, entry->bssid, ETH_ALEN) == 0)
++		    ether_addr_equal(bssid, entry->bssid))
+ 			return entry;
+ 
+ 		entry = entry->next;
+@@ -5479,7 +5478,7 @@ void wpa_supplicant_rx_eapol(void *ctx, const u8 *src_addr,
+ #ifdef CONFIG_AP
+ 	     !wpa_s->ap_iface &&
+ #endif /* CONFIG_AP */
+-	     os_memcmp(src_addr, connected_addr, ETH_ALEN) != 0)) {
++	     !ether_addr_equal(src_addr, connected_addr))) {
+ 		/*
+ 		 * There is possible race condition between receiving the
+ 		 * association event and the EAPOL frame since they are coming
+@@ -5509,7 +5508,7 @@ void wpa_supplicant_rx_eapol(void *ctx, const u8 *src_addr,
+ 	}
+ 
+ 	wpa_s->last_eapol_matches_bssid =
+-		os_memcmp(src_addr, connected_addr, ETH_ALEN) == 0;
++		ether_addr_equal(src_addr, connected_addr);
+ 
+ #ifdef CONFIG_AP
+ 	if (wpa_s->ap_iface) {
+@@ -5666,7 +5665,7 @@ int wpa_supplicant_update_mac_addr(struct wpa_supplicant *wpa_s)
+ 		fst_update_mac_addr(wpa_s->fst, wpa_s->own_addr);
+ #endif /* CONFIG_FST */
+ 
+-	if (os_memcmp(prev_mac_addr, wpa_s->own_addr, ETH_ALEN) != 0)
++	if (!ether_addr_equal(prev_mac_addr, wpa_s->own_addr))
+ 		wpas_notify_mac_address_changed(wpa_s);
+ 
+ 	return 0;
+@@ -5683,7 +5682,7 @@ static void wpa_supplicant_rx_eapol_bridge(void *ctx, const u8 *src_addr,
+ 		return;
+ 	eth = (const struct l2_ethhdr *) buf;
+ 
+-	if (os_memcmp(eth->h_dest, wpa_s->own_addr, ETH_ALEN) != 0 &&
++	if (!ether_addr_equal(eth->h_dest, wpa_s->own_addr) &&
+ 	    !(eth->h_dest[0] & 0x01)) {
+ 		wpa_dbg(wpa_s, MSG_DEBUG, "RX EAPOL from " MACSTR " to " MACSTR
+ 			" (bridge - not for this interface - ignore)",
+@@ -6374,7 +6373,7 @@ static int wpas_fst_send_action_cb(void *ctx, const u8 *da, struct wpabuf *data)
+ {
+ 	struct wpa_supplicant *wpa_s = ctx;
+ 
+-	if (os_memcmp(wpa_s->bssid, da, ETH_ALEN) != 0) {
++	if (!ether_addr_equal(wpa_s->bssid, da)) {
+ 		wpa_printf(MSG_INFO, "FST:%s:bssid=" MACSTR " != da=" MACSTR,
+ 			   __func__, MAC2STR(wpa_s->bssid), MAC2STR(da));
+ 		return -1;
+@@ -6390,7 +6389,7 @@ static const struct wpabuf * wpas_fst_get_mb_ie_cb(void *ctx, const u8 *addr)
+ {
+ 	struct wpa_supplicant *wpa_s = ctx;
+ 
+-	WPA_ASSERT(os_memcmp(wpa_s->bssid, addr, ETH_ALEN) == 0);
++	WPA_ASSERT(ether_addr_equal(wpa_s->bssid, addr));
+ 	return wpa_s->received_mb_ies;
+ }
+ 
+@@ -6401,7 +6400,7 @@ static void wpas_fst_update_mb_ie_cb(void *ctx, const u8 *addr,
+ 	struct wpa_supplicant *wpa_s = ctx;
+ 	struct mb_ies_info info;
+ 
+-	WPA_ASSERT(os_memcmp(wpa_s->bssid, addr, ETH_ALEN) == 0);
++	WPA_ASSERT(ether_addr_equal(wpa_s->bssid, addr));
+ 
+ 	if (!mb_ies_info_by_ies(&info, buf, size)) {
+ 		wpabuf_free(wpa_s->received_mb_ies);
+@@ -8640,11 +8639,11 @@ int pmf_in_use(struct wpa_supplicant *wpa_s, const u8 *addr)
+ 	    wpa_s->wpa_state < WPA_4WAY_HANDSHAKE)
+ 		return 0;
+ 	if (wpa_s->valid_links) {
+-		if (os_memcmp(addr, wpa_s->ap_mld_addr, ETH_ALEN) != 0 &&
++		if (!ether_addr_equal(addr, wpa_s->ap_mld_addr) &&
+ 		    !wpas_ap_link_address(wpa_s, addr))
+ 			return 0;
+ 	} else {
+-		if (os_memcmp(addr, wpa_s->bssid, ETH_ALEN) != 0)
++		if (!ether_addr_equal(addr, wpa_s->bssid))
+ 			return 0;
+ 	}
+ 	return wpa_sm_pmf_enabled(wpa_s->wpa);
+@@ -8758,8 +8757,8 @@ int disallowed_bssid(struct wpa_supplicant *wpa_s, const u8 *bssid)
+ 		return 0;
+ 
+ 	for (i = 0; i < wpa_s->disallow_aps_bssid_count; i++) {
+-		if (os_memcmp(wpa_s->disallow_aps_bssid + i * ETH_ALEN,
+-			      bssid, ETH_ALEN) == 0)
++		if (ether_addr_equal(wpa_s->disallow_aps_bssid + i * ETH_ALEN,
++				     bssid))
+ 			return 1;
+ 	}
+ 
+@@ -9069,7 +9068,7 @@ wpa_bss_tmp_disallowed * wpas_get_disallowed_bss(struct wpa_supplicant *wpa_s,
+ 
+ 	dl_list_for_each(bss, &wpa_s->bss_tmp_disallowed,
+ 			 struct wpa_bss_tmp_disallowed, list) {
+-		if (os_memcmp(bssid, bss->bssid, ETH_ALEN) == 0)
++		if (ether_addr_equal(bssid, bss->bssid))
+ 			return bss;
+ 	}
+ 
+@@ -9152,7 +9151,7 @@ int wpa_is_bss_tmp_disallowed(struct wpa_supplicant *wpa_s,
+ 
+ 	dl_list_for_each_safe(tmp, prev, &wpa_s->bss_tmp_disallowed,
+ 			 struct wpa_bss_tmp_disallowed, list) {
+-		if (os_memcmp(bss->bssid, tmp->bssid, ETH_ALEN) == 0) {
++		if (ether_addr_equal(bss->bssid, tmp->bssid)) {
+ 			disallowed = tmp;
+ 			break;
+ 		}
+@@ -9250,8 +9249,7 @@ int wpa_drv_signal_poll(struct wpa_supplicant *wpa_s,
+ 
+ 		dl_list_for_each(dso, &wpa_s->drv_signal_override,
+ 				 struct driver_signal_override, list) {
+-			if (os_memcmp(wpa_s->bssid, dso->bssid,
+-				      ETH_ALEN) != 0)
++			if (!ether_addr_equal(wpa_s->bssid, dso->bssid))
+ 				continue;
+ 			wpa_printf(MSG_DEBUG,
+ 				   "Override driver signal_poll information: current_signal: %d->%d avg_signal: %d->%d avg_beacon_signal: %d->%d current_noise: %d->%d",
+@@ -9296,7 +9294,7 @@ wpa_drv_get_scan_results2(struct wpa_supplicant *wpa_s)
+ 
+ 		dl_list_for_each(dso, &wpa_s->drv_signal_override,
+ 				 struct driver_signal_override, list) {
+-			if (os_memcmp(res->bssid, dso->bssid, ETH_ALEN) != 0)
++			if (!ether_addr_equal(res->bssid, dso->bssid))
+ 				continue;
+ 			wpa_printf(MSG_DEBUG,
+ 				   "Override driver scan signal level %d->%d for "
+@@ -9329,7 +9327,7 @@ bool wpas_ap_link_address(struct wpa_supplicant *wpa_s, const u8 *addr)
+ 		if (!(wpa_s->valid_links & BIT(i)))
+ 			continue;
+ 
+-		if (os_memcmp(wpa_s->links[i].bssid, addr, ETH_ALEN) == 0)
++		if (ether_addr_equal(wpa_s->links[i].bssid, addr))
+ 			return true;
+ 	}
+ 
+diff --git a/wpa_supplicant/wpas_glue.c b/wpa_supplicant/wpas_glue.c
+index 55d996d5c..16463a47c 100644
+--- a/wpa_supplicant/wpas_glue.c
++++ b/wpa_supplicant/wpas_glue.c
+@@ -402,7 +402,7 @@ static int wpa_get_beacon_ie(struct wpa_supplicant *wpa_s)
+ 	const u8 *ie;
+ 
+ 	dl_list_for_each(bss, &wpa_s->bss, struct wpa_bss, list) {
+-		if (os_memcmp(bss->bssid, wpa_s->bssid, ETH_ALEN) != 0)
++		if (!ether_addr_equal(bss->bssid, wpa_s->bssid))
+ 			continue;
+ 		if (ssid == NULL ||
+ 		    ((bss->ssid_len == ssid->ssid_len &&
+diff --git a/wpa_supplicant/wps_supplicant.c b/wpa_supplicant/wps_supplicant.c
+index 220a5f8b5..2c08401b3 100644
+--- a/wpa_supplicant/wps_supplicant.c
++++ b/wpa_supplicant/wps_supplicant.c
+@@ -295,8 +295,7 @@ static void wpas_wps_remove_dup_network(struct wpa_supplicant *wpa_s,
+ 		if (ssid->bssid_set || new_ssid->bssid_set) {
+ 			if (ssid->bssid_set != new_ssid->bssid_set)
+ 				continue;
+-			if (os_memcmp(ssid->bssid, new_ssid->bssid, ETH_ALEN) !=
+-			    0)
++			if (!ether_addr_equal(ssid->bssid, new_ssid->bssid))
+ 				continue;
+ 		}
+ 
+@@ -1062,7 +1061,7 @@ static struct wpa_ssid * wpas_wps_add_network(struct wpa_supplicant *wpa_s,
+ 		 */
+ #ifndef CONFIG_P2P
+ 		dl_list_for_each(bss, &wpa_s->bss, struct wpa_bss, list) {
+-			if (os_memcmp(bssid, bss->bssid, ETH_ALEN) != 0)
++			if (!ether_addr_equal(bssid, bss->bssid))
+ 				continue;
+ 
+ 			os_free(ssid->ssid);
+@@ -1812,7 +1811,7 @@ int wpas_wps_ssid_wildcard_ok(struct wpa_supplicant *wpa_s,
+ 	}
+ 
+ 	if (!ret && ssid->bssid_set &&
+-	    os_memcmp(ssid->bssid, bss->bssid, ETH_ALEN) == 0) {
++	    ether_addr_equal(ssid->bssid, bss->bssid)) {
+ 		/* allow wildcard SSID due to hardcoded BSSID match */
+ 		ret = 1;
+ 	}
+@@ -1851,11 +1850,11 @@ static bool wpas_wps_is_pbc_overlap(struct wps_ap_info *ap,
+ 				    const u8 *sel_uuid)
+ {
+ 	if (!ap->pbc_active ||
+-	    os_memcmp(selected->bssid, ap->bssid, ETH_ALEN) == 0)
++	    ether_addr_equal(selected->bssid, ap->bssid))
+ 		return false;
+ 
+ 	if (!is_zero_ether_addr(ssid->bssid) &&
+-	    os_memcmp(ap->bssid, ssid->bssid, ETH_ALEN) != 0) {
++	    !ether_addr_equal(ap->bssid, ssid->bssid)) {
+ 		wpa_printf(MSG_DEBUG, "WPS: Ignore another BSS " MACSTR
+ 			   " in active PBC mode due to local BSSID limitation",
+ 			   MAC2STR(ap->bssid));
+@@ -2943,7 +2942,7 @@ static struct wps_ap_info * wpas_wps_get_ap_info(struct wpa_supplicant *wpa_s,
+ 
+ 	for (i = 0; i < wpa_s->num_wps_ap; i++) {
+ 		struct wps_ap_info *ap = &wpa_s->wps_ap[i];
+-		if (os_memcmp(ap->bssid, bssid, ETH_ALEN) == 0)
++		if (ether_addr_equal(ap->bssid, bssid))
+ 			return ap;
+ 	}
+ 
+-- 
+2.43.0
+

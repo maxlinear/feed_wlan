@@ -1,0 +1,33 @@
+From 2c0cadd6ee5ae6eb0e2fd08a03eaf22c5cc55708 Mon Sep 17 00:00:00 2001
+From: Veerendranath Jakkam <quic_vjakkam@quicinc.com>
+Date: Wed, 24 Jan 2024 08:47:15 +0530
+Subject: [PATCH] wlantest: Adjust kdk_len according to RSNX capability for FT
+
+Commit 0660f31ba0d0 ("wlantest: wlantest: Adjust kdk_len according to
+RSNX capability") added support for PTK derivation and the additional
+KDK component when Secure LTF support is used in the non-FT case.
+
+Cover the same for the FT case to derive the correct PTK and consider
+the additional KDK component when Secure LTF support is used.
+
+Signed-off-by: Veerendranath Jakkam <quic_vjakkam@quicinc.com>
+---
+ wlantest/rx_eapol.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/wlantest/rx_eapol.c b/wlantest/rx_eapol.c
+index 23e082e55..1610b145c 100644
+--- a/wlantest/rx_eapol.c
++++ b/wlantest/rx_eapol.c
+@@ -222,7 +222,7 @@ static int try_pmk(struct wlantest *wt, struct wlantest_bss *bss,
+ 				      sta->snonce, sta->anonce, sa,
+ 				      aa, sta->pmk_r1_name,
+ 				      &ptk, ptk_name, sta->key_mgmt,
+-				      sta->pairwise_cipher, 0) < 0 ||
++				      sta->pairwise_cipher, kdk_len) < 0 ||
+ 		    check_mic(sta, ptk.kck, ptk.kck_len, ver, data, len) < 0)
+ 			return -1;
+ 	} else if (wpa_pmk_to_ptk(pmk->pmk, pmk->pmk_len,
+-- 
+2.43.0
+

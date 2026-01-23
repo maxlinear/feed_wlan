@@ -1,0 +1,39 @@
+From cf3883f3d15442cce0e3226a8580ec0f1d5b3c49 Mon Sep 17 00:00:00 2001
+From: Benjamin Berg <benjamin.berg@intel.com>
+Date: Fri, 14 Jun 2024 10:13:42 +0200
+Subject: [PATCH] MLD: Ensure link BSSIDs remain on stack for ignore
+
+When ignoring a link BSSID the multi-link information was parsed out
+into a struct ml_sta_link_info on the stack. However, this stack
+variable went out of scope before it was used by passing the link_bssids
+pointer array to another function.
+
+Fixes: 5af986c75af4 ("MLD: Also mark links as failed after association failure")
+Signed-off-by: Benjamin Berg <benjamin.berg@intel.com>
+---
+ wpa_supplicant/events.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/wpa_supplicant/events.c b/wpa_supplicant/events.c
+index 4ab9f0b88..952816db2 100644
+--- a/wpa_supplicant/events.c
++++ b/wpa_supplicant/events.c
+@@ -5636,6 +5636,7 @@ static void wpas_event_assoc_reject(struct wpa_supplicant *wpa_s,
+ {
+ 	const u8 *bssid = data->assoc_reject.bssid;
+ 	struct ieee802_11_elems elems;
++	struct ml_sta_link_info ml_info[MAX_NUM_MLD_LINKS];
+ 	const u8 *link_bssids[MAX_NUM_MLD_LINKS];
+ #ifdef CONFIG_MBO
+ 	struct wpa_bss *reject_bss;
+@@ -5768,7 +5769,6 @@ static void wpas_event_assoc_reject(struct wpa_supplicant *wpa_s,
+ 	if (ieee802_11_parse_elems(data->assoc_reject.resp_ies,
+ 				   data->assoc_reject.resp_ies_len,
+ 				   &elems, 1) != ParseFailed) {
+-		struct ml_sta_link_info ml_info[MAX_NUM_MLD_LINKS];
+ 		unsigned int n_links, i, idx;
+ 
+ 		idx = 0;
+-- 
+2.43.0
+

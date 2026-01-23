@@ -1,0 +1,39 @@
+From 2112f0572f111cb152a46f4277e308036e8432c6 Mon Sep 17 00:00:00 2001
+From: Ilan Peer <ilan.peer@intel.com>
+Date: Mon, 25 Dec 2023 11:57:09 +0200
+Subject: [PATCH] AP MLD: Correctly set the BSS parameters change count in RNR
+
+Set the current value instead of hardcoded 1.
+
+Signed-off-by: Ilan Peer <ilan.peer@intel.com>
+Signed-off-by: Andrei Otcheretianski <andrei.otcheretianski@intel.com>
+---
+ src/ap/ieee802_11.c | 6 ++++--
+ 1 file changed, 4 insertions(+), 2 deletions(-)
+
+diff --git a/src/ap/ieee802_11.c b/src/ap/ieee802_11.c
+index 9aba561b2..948e46b5d 100644
+--- a/src/ap/ieee802_11.c
++++ b/src/ap/ieee802_11.c
+@@ -7575,14 +7575,16 @@ static bool hostapd_eid_rnr_bss(struct hostapd_data *hapd,
+ 		*len += RNR_TBTT_INFO_LEN;
+ 	} else {
+ #ifdef CONFIG_IEEE80211BE
++		u8 param_ch = hapd->eht_mld_bss_param_change;
++
+ 		if (reporting_hapd->conf->mld_ap &&
+ 		    bss->conf->mld_id == reporting_hapd->conf->mld_id)
+ 			*eid++ = 0;
+ 		else
+ 			*eid++ = hapd->conf->mld_id;
+ 
+-		*eid++ = hapd->mld_link_id | (1 << 4);
+-		*eid = 0;
++		*eid++ = hapd->mld_link_id | ((param_ch & 0xF) << 4);
++		*eid = (param_ch >> 4) & 0xF;
+ #ifdef CONFIG_TESTING_OPTIONS
+ 		if (hapd->conf->mld_indicate_disabled)
+ 			*eid |= RNR_TBTT_INFO_MLD_PARAM2_LINK_DISABLED;
+-- 
+2.43.0
+

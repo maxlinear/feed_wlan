@@ -1,0 +1,82 @@
+From fa79e46c781bef7eb8f5672743eb131505355572 Mon Sep 17 00:00:00 2001
+From: Jouni Malinen <j@w1.fi>
+Date: Sun, 21 Jan 2024 19:06:36 +0200
+Subject: [PATCH] AP MLD: Use a helper function to set whether a STA is a
+ non-AP MLD
+
+This makes it easier to change the struct sta_info design for MLD by
+reducing the number of direct references.
+
+Signed-off-by: Jouni Malinen <j@w1.fi>
+---
+ src/ap/drv_callbacks.c | 6 +++---
+ src/ap/ieee802_11.c    | 4 ++--
+ src/ap/sta_info.h      | 8 ++++++++
+ 3 files changed, 13 insertions(+), 5 deletions(-)
+
+diff --git a/src/ap/drv_callbacks.c b/src/ap/drv_callbacks.c
+index 5ceb084a1..39deacd3d 100644
+--- a/src/ap/drv_callbacks.c
++++ b/src/ap/drv_callbacks.c
+@@ -362,7 +362,7 @@ int hostapd_notif_assoc(struct hostapd_data *hapd, const u8 *addr,
+ 		int i, num_valid_links = 0;
+ 		u8 link_id = hapd->mld_link_id;
+ 
+-		info->mld_sta = true;
++		ap_sta_set_mld(sta, true);
+ 		sta->mld_assoc_link_id = link_id;
+ 		os_memcpy(info->common_info.mld_addr, addr, ETH_ALEN);
+ 		info->links[link_id].valid = true;
+@@ -2191,8 +2191,8 @@ static int hostapd_notif_update_dh_ie(struct hostapd_data *hapd,
+ 		struct mld_info *info = &sta->mld_info;
+ 		u8 link_id = hapd->mld_link_id;
+ 
+-		info->mld_sta = true;
+-		sta->mld_assoc_link_id = link_id;;
++		ap_sta_set_mld(sta, true);
++		sta->mld_assoc_link_id = link_id;
+ 		os_memcpy(info->common_info.mld_addr, peer, ETH_ALEN);
+ 		info->links[link_id].valid = true;
+ 		os_memcpy(info->links[link_id].local_addr, hapd->own_addr,
+diff --git a/src/ap/ieee802_11.c b/src/ap/ieee802_11.c
+index c1299c90d..114a01eb1 100644
+--- a/src/ap/ieee802_11.c
++++ b/src/ap/ieee802_11.c
+@@ -3083,7 +3083,7 @@ static void handle_auth(struct hostapd_data *hapd,
+ 		if (mld_sta) {
+ 			u8 link_id = hapd->mld_link_id;
+ 
+-			sta->mld_info.mld_sta = true;
++			ap_sta_set_mld(sta, true);
+ 			sta->mld_assoc_link_id = link_id;
+ 
+ 			/*
+@@ -4431,7 +4431,7 @@ static void ieee80211_ml_process_link(struct hostapd_data *hapd,
+ 		goto out;
+ 	}
+ 
+-	sta->mld_info.mld_sta = true;
++	ap_sta_set_mld(sta, true);
+ 	sta->mld_assoc_link_id = origin_sta->mld_assoc_link_id;
+ 
+ 	os_memcpy(&sta->mld_info, &origin_sta->mld_info, sizeof(sta->mld_info));
+diff --git a/src/ap/sta_info.h b/src/ap/sta_info.h
+index ef6073481..d2ff03b3f 100644
+--- a/src/ap/sta_info.h
++++ b/src/ap/sta_info.h
+@@ -430,4 +430,12 @@ static inline bool ap_sta_is_mld(struct hostapd_data *hapd,
+ #endif /* CONFIG_IEEE80211BE */
+ }
+ 
++static inline void ap_sta_set_mld(struct sta_info *sta, bool mld)
++{
++#ifdef CONFIG_IEEE80211BE
++	if (sta)
++		sta->mld_info.mld_sta = mld;
++#endif /* CONFIG_IEEE80211BE */
++}
++
+ #endif /* STA_INFO_H */
+-- 
+2.43.0
+

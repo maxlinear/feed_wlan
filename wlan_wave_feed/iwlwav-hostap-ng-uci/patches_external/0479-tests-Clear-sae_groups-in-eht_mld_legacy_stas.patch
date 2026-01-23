@@ -1,0 +1,28 @@
+From 272c253dc99030a8a8ddd02ad3ec16dc840e125f Mon Sep 17 00:00:00 2001
+From: Jouni Malinen <quic_jouni@quicinc.com>
+Date: Tue, 26 Mar 2024 19:13:47 +0200
+Subject: [PATCH] tests: Clear sae_groups in eht_mld_legacy_stas
+
+This is needed to avoid failures due to previous test cases having left
+sae_groups set to something else than the default.
+
+Signed-off-by: Jouni Malinen <quic_jouni@quicinc.com>
+---
+ tests/hwsim/test_eht.py | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/tests/hwsim/test_eht.py b/tests/hwsim/test_eht.py
+index 1d0ec5195..c56001fd1 100644
+--- a/tests/hwsim/test_eht.py
++++ b/tests/hwsim/test_eht.py
+@@ -1694,6 +1694,7 @@ def test_eht_mld_legacy_stas(dev, apdev):
+         hapd0 = eht_mld_enable_ap(hapd_iface, params)
+ 
+         for i in range(3):
++            dev[i].set("sae_groups", "")
+             dev[i].connect(ssid, sae_password=password, scan_freq="2412",
+                            key_mgmt="SAE", ieee80211w="2", disable_eht="1")
+         hapd0.wait_sta()
+-- 
+2.43.0
+

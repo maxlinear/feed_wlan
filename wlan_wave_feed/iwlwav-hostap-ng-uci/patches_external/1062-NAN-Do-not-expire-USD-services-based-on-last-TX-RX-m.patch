@@ -1,0 +1,39 @@
+From eea566cfa1b7f260b98b9303b495acabe9609a50 Mon Sep 17 00:00:00 2001
+From: Jouni Malinen <quic_jouni@quicinc.com>
+Date: Mon, 4 Nov 2024 23:03:19 +0200
+Subject: [PATCH] NAN: Do not expire USD services based on last TX/RX message
+
+This behavior is not described in the Wi-Fi Aware specification, so
+remove it and instead, expect services to terminate USD explicitly when
+no further Follow-up messages are needed.
+
+Signed-off-by: Jouni Malinen <quic_jouni@quicinc.com>
+---
+ src/common/nan_de.c | 4 ----
+ 1 file changed, 4 deletions(-)
+
+diff --git a/src/common/nan_de.c b/src/common/nan_de.c
+index 2783d9e11..7a40c9bb7 100644
+--- a/src/common/nan_de.c
++++ b/src/common/nan_de.c
+@@ -406,8 +406,6 @@ static bool nan_de_srv_expired(struct nan_de_service *srv,
+ 			return false;
+ 		if (!srv->publish.fsd)
+ 			return true;
+-		if (os_reltime_expired(now, &srv->last_multicast, 1))
+-			return true;
+ 	}
+ 
+ 	if (srv->type == NAN_DE_SUBSCRIBE) {
+@@ -417,8 +415,6 @@ static bool nan_de_srv_expired(struct nan_de_service *srv,
+ 			return false;
+ 		if (!srv->needs_fsd)
+ 			return true;
+-		if (os_reltime_expired(now, &srv->first_discovered, 1))
+-			return true;
+ 	}
+ 
+ 	return false;
+-- 
+2.43.0
+

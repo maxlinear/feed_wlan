@@ -1,0 +1,36 @@
+From e5f76b91532b31c75927b6d2fb36098a3fea3a33 Mon Sep 17 00:00:00 2001
+From: Ilan Peer <ilan.peer@intel.com>
+Date: Sun, 30 Jun 2024 19:39:46 +0300
+Subject: [PATCH] dbus: Fix error path in scan request handling
+
+In case the scan request handling fails, exit cleanly, i.e., without
+setting internal state such as the 'scan_res_handler' pointer.
+
+Signed-off-by: Ilan Peer <ilan.peer@intel.com>
+---
+ wpa_supplicant/dbus/dbus_new_handlers.c | 2 ++
+ 1 file changed, 2 insertions(+)
+
+diff --git a/wpa_supplicant/dbus/dbus_new_handlers.c b/wpa_supplicant/dbus/dbus_new_handlers.c
+index 3897d98f4..db1213196 100644
+--- a/wpa_supplicant/dbus/dbus_new_handlers.c
++++ b/wpa_supplicant/dbus/dbus_new_handlers.c
+@@ -1731,6 +1731,7 @@ DBusMessage * wpas_dbus_handler_scan(DBusMessage *message,
+ 					reply = wpas_dbus_error_scan_error(
+ 						message,
+ 						"Scan request rejected");
++					goto out;
+ 				}
+ 			} else {
+ 				wpa_s->scan_req = MANUAL_SCAN_REQ;
+@@ -1757,6 +1758,7 @@ DBusMessage * wpas_dbus_handler_scan(DBusMessage *message,
+ 						false)) {
+ 			reply = wpas_dbus_error_scan_error(
+ 				message, "Scan request rejected");
++			goto out;
+ 		}
+ 	} else {
+ 		wpa_printf(MSG_DEBUG, "%s[dbus]: Unknown scan type: %s",
+-- 
+2.43.0
+

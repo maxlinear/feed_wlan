@@ -1,0 +1,29 @@
+From ecb1e04d85f11d91ac93edfb2357f2fd3b99b17f Mon Sep 17 00:00:00 2001
+From: Jouni Malinen <quic_jouni@quicinc.com>
+Date: Tue, 19 Dec 2023 13:49:15 +0200
+Subject: [PATCH] tests: Wait for the dpp_init_enrollee_pkex thread to complete
+
+One of the sigma_dut testing cases missed the t.join() call to make
+surte the separate thread terminated. This could result in confusing
+"unexpected stdout output" in a middle of an unrelated test case.
+
+Signed-off-by: Jouni Malinen <quic_jouni@quicinc.com>
+---
+ tests/hwsim/test_sigma_dut.py | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/tests/hwsim/test_sigma_dut.py b/tests/hwsim/test_sigma_dut.py
+index 2a5354e94..973a13f5f 100644
+--- a/tests/hwsim/test_sigma_dut.py
++++ b/tests/hwsim/test_sigma_dut.py
+@@ -2736,6 +2736,7 @@ def run_sigma_dut_dpp_pkex_responder(dev, apdev, v1=False):
+         t.start()
+         dppbs = "PKEXv1" if v1 else "PKEX"
+         res = sigma_dut_cmd("dev_exec_action,program,DPP,DPPActionType,AutomaticDPP,DPPAuthRole,Responder,DPPProvisioningRole,Configurator,DPPConfIndex,1,DPPSigningKeyECC,P-256,DPPConfEnrolleeRole,STA,DPPBS,%s,DPPPKEXCodeIdentifier,test,DPPPKEXCode,secret,DPPTimeout,16" % dppbs, timeout=20)
++        t.join()
+         if "BootstrapResult,OK,AuthResult,OK,ConfResult,OK" not in res:
+             raise Exception("Unexpected result: " + res)
+     finally:
+-- 
+2.43.0
+

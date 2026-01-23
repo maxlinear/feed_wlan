@@ -1,0 +1,36 @@
+From dac63d98bbeb62eb3768fdc1e069ff7ab3f86a40 Mon Sep 17 00:00:00 2001
+From: Kavita Kavita <quic_kkavita@quicinc.com>
+Date: Thu, 23 Jan 2025 14:37:30 +0530
+Subject: [PATCH] Add QCA vendor attribute to enable/disable link
+ reconfiguration support
+
+Add the attribute QCA_WLAN_VENDOR_ATTR_CONFIG_SETUP_LINK_RECONFIG_SUPPORT
+to enable/disable link reconfiguration support in STA mode for testing
+purposes.
+
+Signed-off-by: Kavita Kavita <quic_kkavita@quicinc.com>
+---
+ src/common/qca-vendor.h | 7 +++++++
+ 1 file changed, 7 insertions(+)
+
+diff --git a/src/common/qca-vendor.h b/src/common/qca-vendor.h
+index f53215335..6edc591ec 100644
+--- a/src/common/qca-vendor.h
++++ b/src/common/qca-vendor.h
+@@ -3862,6 +3862,13 @@ enum qca_wlan_vendor_attr_config {
+ 	 */
+ 	QCA_WLAN_VENDOR_ATTR_CONFIG_ANT_DIV_SWITCH_BT_RSSI_DIFF = 129,
+ 
++	/* 8-bit unsigned value to enable/disable setup link Reconfiguration
++	 * feature support in STA mode.
++	 * 1 - Enable
++	 * 0 - Disable.
++	 */
++	QCA_WLAN_VENDOR_ATTR_CONFIG_SETUP_LINK_RECONFIG_SUPPORT = 130,
++
+ 	/* keep last */
+ 	QCA_WLAN_VENDOR_ATTR_CONFIG_AFTER_LAST,
+ 	QCA_WLAN_VENDOR_ATTR_CONFIG_MAX =
+-- 
+2.43.0
+

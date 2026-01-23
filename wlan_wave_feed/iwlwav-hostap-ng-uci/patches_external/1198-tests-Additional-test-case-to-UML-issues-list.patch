@@ -1,0 +1,25 @@
+From 60a7966df1c0f0f757f6f65506f05d148739d47c Mon Sep 17 00:00:00 2001
+From: Jouni Malinen <j@w1.fi>
+Date: Mon, 23 Dec 2024 01:01:08 +0200
+Subject: [PATCH] tests: Additional test case to UML-issues-list
+
+Signed-off-by: Jouni Malinen <j@w1.fi>
+---
+ tests/hwsim/vm/parallel-vm.py | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/tests/hwsim/vm/parallel-vm.py b/tests/hwsim/vm/parallel-vm.py
+index c79385e24..e504c94f7 100755
+--- a/tests/hwsim/vm/parallel-vm.py
++++ b/tests/hwsim/vm/parallel-vm.py
+@@ -102,6 +102,7 @@ uml_issue_tests = ["eht_connect_invalid_link",
+                    "gas_anqp_address3_assoc",
+                    "p2p_channel_random_social_with_op_class_change",
+                    "ap_open_ps_mc_buf",
++                   "wmediumd_path_rann",
+                    "ieee8021x_reauth_wep"]
+ 
+ # Test cases that depend on dumping full process memory
+-- 
+2.43.0
+

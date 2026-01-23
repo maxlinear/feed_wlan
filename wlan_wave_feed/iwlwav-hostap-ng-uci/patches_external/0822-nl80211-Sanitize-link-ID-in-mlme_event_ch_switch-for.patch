@@ -1,0 +1,38 @@
+From e33a55d31d61d0a6970e899d3774ea7835975766 Mon Sep 17 00:00:00 2001
+From: Aditya Kumar Singh <quic_adisi@quicinc.com>
+Date: Wed, 7 Aug 2024 09:48:37 +0530
+Subject: [PATCH] nl80211: Sanitize link ID in mlme_event_ch_switch() for AP
+ interface
+
+During channel switch handling for AP MLD, if link ID is incorrect,
+there is no point in proceeding till end and failing or returning from
+there. Hence sanitize it in the initial time itself and return if it is
+incorrect. Throw a warning print if it is not correct as well.
+
+Signed-off-by: Aditya Kumar Singh <quic_adisi@quicinc.com>
+---
+ src/drivers/driver_nl80211_event.c | 8 ++++++++
+ 1 file changed, 8 insertions(+)
+
+diff --git a/src/drivers/driver_nl80211_event.c b/src/drivers/driver_nl80211_event.c
+index abe90e984..aadefc7b7 100644
+--- a/src/drivers/driver_nl80211_event.c
++++ b/src/drivers/driver_nl80211_event.c
+@@ -1303,6 +1303,14 @@ static void mlme_event_ch_switch(struct wpa_driver_nl80211_data *drv,
+ 			return;
+ 	}
+ 
++	if (link && is_ap_interface(drv->nlmode) &&
++	    !nl80211_link_valid(bss->valid_links, data.ch_switch.link_id)) {
++		wpa_printf(MSG_WARNING,
++			   "nl80211: Unknown link ID (%d) for channel switch (%s), ignoring",
++			   data.ch_switch.link_id, bss->ifname);
++		return;
++	}
++
+ 	drv->assoc_freq = data.ch_switch.freq;
+ 
+ 	wpa_supplicant_event(bss->ctx, finished ?
+-- 
+2.43.0
+

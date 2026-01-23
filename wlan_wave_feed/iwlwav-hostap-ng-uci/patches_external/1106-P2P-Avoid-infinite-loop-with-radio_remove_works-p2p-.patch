@@ -1,0 +1,67 @@
+From 64ac3935471dd2c87813b5e6a374cb594ccd59ca Mon Sep 17 00:00:00 2001
+From: Shivani Baranwal <quic_shivbara@quicinc.com>
+Date: Fri, 27 Sep 2024 13:47:02 +0530
+Subject: [PATCH] P2P: Avoid infinite loop with radio_remove_works(p2p-listen)
+
+Commit 3242793cb8df ("P2P: Remove pending p2p-listen radio work on
+stopping listen") added removal of all pending p2p-listen radio works
+when P2P listen is stopped. It looks like there is a possible code path
+that results in wpas_p2p_listen_work_done() not being able to mark the
+possibly pending and already started p2p-listen radio work completed.
+
+It is not clear what exactly could cause this, but if something manages
+to clear wpa_s->p2p_listen_work, this could happen. Theoretically,
+having two started p2p-listen works might also cause something like
+this, but that should not happen either. In any case, if this happens,
+the call to radio_remove_works() from wpas_stop_listen() would end up
+calling the radio work callback handler (i.e., wpas_start_listen_cb() in
+this case) to deinit the work for the same work multiple times and if
+that radio work item has been started, this would result in a recursive
+call back to wpas_stop_listen() and infinite recursion killing the
+process.
+
+Even though the desired fix would be to get rid of whatever ends up
+messing up wpa_s->p2p_listen_work, it is not clear what that could be.
+Regardless, since this has show up in testing, recover from this cleanly
+without hitting infinite recursion.
+
+Signed-off-by: Shivani Baranwal <quic_shivbara@quicinc.com>
+---
+ wpa_supplicant/p2p_supplicant.c   | 5 ++++-
+ wpa_supplicant/wpa_supplicant_i.h | 1 +
+ 2 files changed, 5 insertions(+), 1 deletion(-)
+
+diff --git a/wpa_supplicant/p2p_supplicant.c b/wpa_supplicant/p2p_supplicant.c
+index dab64971e..2eadf5ef5 100644
+--- a/wpa_supplicant/p2p_supplicant.c
++++ b/wpa_supplicant/p2p_supplicant.c
+@@ -3224,10 +3224,13 @@ static void wpas_stop_listen(void *ctx)
+ 
+ 	wpas_p2p_listen_work_done(wpa_s);
+ 
+-	if (radio_work_pending(wpa_s, "p2p-listen")) {
++	if (!wpa_s->p2p_removing_listen_work &&
++	    radio_work_pending(wpa_s, "p2p-listen")) {
++		wpa_s->p2p_removing_listen_work = true;
+ 		wpa_printf(MSG_DEBUG,
+ 			   "P2P: p2p-listen is still pending - remove it");
+ 		radio_remove_works(wpa_s, "p2p-listen", 0);
++		wpa_s->p2p_removing_listen_work = false;
+ 	}
+ }
+ 
+diff --git a/wpa_supplicant/wpa_supplicant_i.h b/wpa_supplicant/wpa_supplicant_i.h
+index c6ae8c37e..38ad4857c 100644
+--- a/wpa_supplicant/wpa_supplicant_i.h
++++ b/wpa_supplicant/wpa_supplicant_i.h
+@@ -1189,6 +1189,7 @@ struct wpa_supplicant {
+ 	struct wpa_radio_work *p2p_scan_work;
+ 	struct wpa_radio_work *p2p_listen_work;
+ 	struct wpa_radio_work *p2p_send_action_work;
++	bool p2p_removing_listen_work;
+ 
+ 	u16 p2p_oob_dev_pw_id; /* OOB Device Password Id for group formation */
+ 	struct wpabuf *p2p_oob_dev_pw; /* OOB Device Password for group
+-- 
+2.43.0
+

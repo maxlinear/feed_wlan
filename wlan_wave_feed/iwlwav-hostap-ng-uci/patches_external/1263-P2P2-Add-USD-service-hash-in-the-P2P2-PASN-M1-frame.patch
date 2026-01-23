@@ -1,0 +1,220 @@
+From c96fd75b1841d42dc3b9c81a5cd8901973c5b25a Mon Sep 17 00:00:00 2001
+From: Shivani Baranwal <quic_shivbara@quicinc.com>
+Date: Mon, 6 Jan 2025 11:39:35 +0530
+Subject: [PATCH] P2P2: Add USD service hash in the P2P2 PASN M1 frame
+
+Add USD service hash in PASN M1 authentication frame for the P2P GO
+negotiation and P2P verification cases. This can help a P2P Device that
+operates multiple GOs to select which group a peer device should be
+added to.
+
+Signed-off-by: Shivani Baranwal <quic_shivbara@quicinc.com>
+---
+ src/p2p/p2p.c                   | 50 +++++++++++++++++++++++++++++++++
+ src/p2p/p2p.h                   |  1 +
+ src/p2p/p2p_build.c             | 14 +++++++++
+ src/p2p/p2p_i.h                 |  4 +++
+ wpa_supplicant/nan_usd.c        |  4 +--
+ wpa_supplicant/p2p_supplicant.c |  4 ++-
+ wpa_supplicant/p2p_supplicant.h |  3 +-
+ 7 files changed, 76 insertions(+), 4 deletions(-)
+
+diff --git a/src/p2p/p2p.c b/src/p2p/p2p.c
+index 7dbb841cc..8be9eef57 100644
+--- a/src/p2p/p2p.c
++++ b/src/p2p/p2p.c
+@@ -6052,6 +6052,24 @@ static int p2p_validate_dira(struct p2p_data *p2p, struct p2p_device *dev,
+ }
+ 
+ 
++void p2p_usd_service_hash(struct p2p_data *p2p, const char *service_name)
++{
++	u8 buf[P2PS_HASH_LEN];
++
++	p2p->usd_service = false;
++
++	if (!service_name)
++		return;
++
++	if (!p2ps_gen_hash(p2p, service_name, buf))
++		return;
++	p2p_dbg(p2p, "USD service %s hash " MACSTR,
++		service_name, MAC2STR(buf));
++	p2p->usd_service = true;
++	os_memcpy(&p2p->p2p_service_hash, buf, P2PS_HASH_LEN);
++}
++
++
+ struct wpabuf * p2p_usd_elems(struct p2p_data *p2p)
+ {
+ 	struct wpabuf *buf;
+@@ -6235,6 +6253,30 @@ static int p2p_prepare_pasn_extra_ie(struct p2p_data *p2p,
+ }
+ 
+ 
++static struct wpabuf * p2p_pasn_service_hash(struct p2p_data *p2p,
++					     struct wpabuf *extra_ies)
++{
++	struct wpabuf *buf;
++	u8 *ie_len = NULL;
++
++	if (!p2p->usd_service)
++		return extra_ies;
++
++	p2p_dbg(p2p, "Add P2P2 USD service hash in extra IE");
++	buf = wpabuf_alloc(100);
++	if (!buf) {
++		wpabuf_free(extra_ies);
++		return NULL;
++	}
++
++	ie_len = p2p_buf_add_ie_hdr(buf);
++	p2p_buf_add_usd_service_hash(buf, p2p);
++	p2p_buf_update_ie_hdr(buf, ie_len);
++
++	return wpabuf_concat(buf, extra_ies);
++}
++
++
+ static struct wpabuf * p2p_pairing_generate_rsnxe(struct p2p_data *p2p,
+ 						  int akmp)
+ {
+@@ -6482,6 +6524,10 @@ int p2p_initiate_pasn_verify(struct p2p_data *p2p, const u8 *peer_addr,
+ 		goto out;
+ 	}
+ 
++	extra_ies = p2p_pasn_service_hash(p2p, extra_ies);
++	if (!extra_ies)
++		goto out;
++
+ 	pasn_extra_ies = os_memdup(wpabuf_head_u8(extra_ies),
+ 				   wpabuf_len(extra_ies));
+ 	if (!pasn_extra_ies) {
+@@ -6557,6 +6603,10 @@ int p2p_initiate_pasn_auth(struct p2p_data *p2p, const u8 *addr, int freq)
+ 		goto out;
+ 	}
+ 
++	extra_ies = p2p_pasn_service_hash(p2p, extra_ies);
++	if (!extra_ies)
++		goto out;
++
+ 	ies_len = wpabuf_len(extra_ies);
+ 	ies = os_memdup(wpabuf_head_u8(extra_ies), ies_len);
+ 	if (!ies) {
+diff --git a/src/p2p/p2p.h b/src/p2p/p2p.h
+index 8ea6ed603..9f9e28a3c 100644
+--- a/src/p2p/p2p.h
++++ b/src/p2p/p2p.h
+@@ -2754,5 +2754,6 @@ void p2p_pasn_pmksa_set_pmk(struct p2p_data *p2p, const u8 *src, const u8 *dst,
+ void p2p_set_store_pasn_ptk(struct p2p_data *p2p, u8 val);
+ void p2p_pasn_store_ptk(struct p2p_data *p2p, struct wpa_ptk *ptk);
+ int p2p_pasn_get_ptk(struct p2p_data *p2p, const u8 **buf, size_t *buf_len);
++void p2p_usd_service_hash(struct p2p_data *p2p, const char *service_name);
+ 
+ #endif /* P2P_H */
+diff --git a/src/p2p/p2p_build.c b/src/p2p/p2p_build.c
+index 343566d80..bc67ec201 100644
+--- a/src/p2p/p2p_build.c
++++ b/src/p2p/p2p_build.c
+@@ -418,6 +418,20 @@ void p2p_buf_add_service_hash(struct wpabuf *buf, struct p2p_data *p2p)
+ }
+ 
+ 
++void p2p_buf_add_usd_service_hash(struct wpabuf *buf, struct p2p_data *p2p)
++{
++	if (!p2p)
++		return;
++
++	/* USD Service Hash */
++	wpabuf_put_u8(buf, P2P_ATTR_SERVICE_HASH);
++	wpabuf_put_le16(buf, P2PS_HASH_LEN);
++	wpabuf_put_data(buf, p2p->p2p_service_hash, P2PS_HASH_LEN);
++	wpa_hexdump(MSG_DEBUG, "P2P: * Service Hash",
++		    p2p->p2p_service_hash, P2PS_HASH_LEN);
++}
++
++
+ void p2p_buf_add_session_info(struct wpabuf *buf, const char *info)
+ {
+ 	size_t info_len = 0;
+diff --git a/src/p2p/p2p_i.h b/src/p2p/p2p_i.h
+index 6fde4f5b7..a8324337a 100644
+--- a/src/p2p/p2p_i.h
++++ b/src/p2p/p2p_i.h
+@@ -690,6 +690,9 @@ struct p2p_data {
+ 	 */
+ 	size_t pasn_ptk_len;
+ #endif /* CONFIG_TESTING_OPTIONS */
++
++	bool usd_service;
++	u8 p2p_service_hash[P2PS_HASH_LEN];
+ };
+ 
+ /**
+@@ -1083,6 +1086,7 @@ void p2p_sd_query_cb(struct p2p_data *p2p, int success);
+ void p2p_pasn_initialize(struct p2p_data *p2p, struct p2p_device *dev,
+ 			 const u8 *addr, int freq, bool verify,
+ 			 bool derive_kek);
++void p2p_buf_add_usd_service_hash(struct wpabuf *buf, struct p2p_data *p2p);
+ 
+ void p2p_dbg(struct p2p_data *p2p, const char *fmt, ...)
+ PRINTF_FORMAT(2, 3);
+diff --git a/wpa_supplicant/nan_usd.c b/wpa_supplicant/nan_usd.c
+index 577c8ac2f..63d99756a 100644
+--- a/wpa_supplicant/nan_usd.c
++++ b/wpa_supplicant/nan_usd.c
+@@ -369,7 +369,7 @@ int wpas_nan_usd_publish(struct wpa_supplicant *wpa_s, const char *service_name,
+ 		return -1;
+ 
+ 	if (p2p) {
+-		elems = wpas_p2p_usd_elems(wpa_s);
++		elems = wpas_p2p_usd_elems(wpa_s, service_name);
+ 		addr = wpa_s->global->p2p_dev_addr;
+ 	} else {
+ 		addr = wpa_s->own_addr;
+@@ -431,7 +431,7 @@ int wpas_nan_usd_subscribe(struct wpa_supplicant *wpa_s,
+ 		return -1;
+ 
+ 	if (p2p) {
+-		elems = wpas_p2p_usd_elems(wpa_s);
++		elems = wpas_p2p_usd_elems(wpa_s, service_name);
+ 		addr = wpa_s->global->p2p_dev_addr;
+ 	} else {
+ 		addr = wpa_s->own_addr;
+diff --git a/wpa_supplicant/p2p_supplicant.c b/wpa_supplicant/p2p_supplicant.c
+index 12a11000a..11ac2f3e5 100644
+--- a/wpa_supplicant/p2p_supplicant.c
++++ b/wpa_supplicant/p2p_supplicant.c
+@@ -11255,12 +11255,14 @@ int wpas_p2p_lo_stop(struct wpa_supplicant *wpa_s)
+ }
+ 
+ 
+-struct wpabuf * wpas_p2p_usd_elems(struct wpa_supplicant *wpa_s)
++struct wpabuf * wpas_p2p_usd_elems(struct wpa_supplicant *wpa_s,
++				   const char *service_name)
+ {
+ 	struct p2p_data *p2p = wpa_s->global->p2p;
+ 
+ 	if (wpa_s->global->p2p_disabled || !p2p)
+ 		return NULL;
++	p2p_usd_service_hash(p2p, service_name);
+ 	return p2p_usd_elems(p2p);
+ }
+ 
+diff --git a/wpa_supplicant/p2p_supplicant.h b/wpa_supplicant/p2p_supplicant.h
+index 888bce529..89a3bf917 100644
+--- a/wpa_supplicant/p2p_supplicant.h
++++ b/wpa_supplicant/p2p_supplicant.h
+@@ -236,7 +236,8 @@ int wpas_p2p_lo_start(struct wpa_supplicant *wpa_s, unsigned int freq,
+ 		      unsigned int count);
+ int wpas_p2p_lo_stop(struct wpa_supplicant *wpa_s);
+ int wpas_p2p_mac_setup(struct wpa_supplicant *wpa_s);
+-struct wpabuf * wpas_p2p_usd_elems(struct wpa_supplicant *wpa_s);
++struct wpabuf * wpas_p2p_usd_elems(struct wpa_supplicant *wpa_s,
++				   const char *service_name);
+ void wpas_p2p_update_dev_addr(struct wpa_supplicant *wpa_s);
+ int wpas_p2p_pasn_auth_rx(struct wpa_supplicant *wpa_s,
+ 			  const struct ieee80211_mgmt *mgmt, size_t len,
+-- 
+2.43.0
+

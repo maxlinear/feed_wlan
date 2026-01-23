@@ -1,0 +1,41 @@
+From b283de094beca71f43b8429a4cbc3cf1dfa987de Mon Sep 17 00:00:00 2001
+From: Jouni Malinen <quic_jouni@quicinc.com>
+Date: Thu, 14 Dec 2023 19:53:18 +0200
+Subject: [PATCH] tests: Wait hostapd processing to complete in
+ ap_wpa2_eap_in_bridge
+
+This avoids race conditions with REAUTHENTICATE commands and hostapd
+completing previous 4-way handshake.
+
+Signed-off-by: Jouni Malinen <quic_jouni@quicinc.com>
+---
+ tests/hwsim/test_ap_eap.py | 4 ++++
+ 1 file changed, 4 insertions(+)
+
+diff --git a/tests/hwsim/test_ap_eap.py b/tests/hwsim/test_ap_eap.py
+index f9df3591b..bfc1bb417 100644
+--- a/tests/hwsim/test_ap_eap.py
++++ b/tests/hwsim/test_ap_eap.py
+@@ -5960,15 +5960,19 @@ def _test_ap_wpa2_eap_in_bridge(dev, apdev):
+                      password_hex="0123456789abcdef0123456789abcdef")
+     wpas.dump_monitor()
+     eap_reauth(wpas, "PAX")
++    hapd.wait_4way_hs()
+     wpas.dump_monitor()
+     # Try again as a regression test for packet socket workaround
+     eap_reauth(wpas, "PAX")
++    hapd.wait_4way_hs()
+     wpas.dump_monitor()
+     wpas.request("DISCONNECT")
+     wpas.wait_disconnected()
++    hapd.wait_sta_disconnect()
+     wpas.dump_monitor()
+     wpas.request("RECONNECT")
+     wpas.wait_connected()
++    hapd.wait_sta()
+     wpas.dump_monitor()
+ 
+ def test_ap_wpa2_eap_session_ticket(dev, apdev):
+-- 
+2.43.0
+

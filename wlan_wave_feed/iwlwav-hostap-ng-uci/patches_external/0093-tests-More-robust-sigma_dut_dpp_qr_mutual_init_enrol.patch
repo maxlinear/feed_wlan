@@ -1,0 +1,34 @@
+From 7626635ff472b19b09c7b7e1eab9933e64918a5d Mon Sep 17 00:00:00 2001
+From: Jouni Malinen <j@w1.fi>
+Date: Sun, 17 Dec 2023 17:02:34 +0200
+Subject: [PATCH] tests: More robust
+ sigma_dut_dpp_qr_mutual_init_enrollee_pending
+
+Wait some time between the first DPP Authentication Response that
+indicates the response is not yet available and the second DPP
+Authentication Response to make this sequence a bit more realistic and
+less likely to hit race conditions with UML time-travel.
+
+Signed-off-by: Jouni Malinen <j@w1.fi>
+---
+ tests/hwsim/test_sigma_dut.py | 4 ++++
+ 1 file changed, 4 insertions(+)
+
+diff --git a/tests/hwsim/test_sigma_dut.py b/tests/hwsim/test_sigma_dut.py
+index 13a29ce3d..2a5354e94 100644
+--- a/tests/hwsim/test_sigma_dut.py
++++ b/tests/hwsim/test_sigma_dut.py
+@@ -1910,6 +1910,10 @@ def dpp_resp_conf_mutual(dev, conf_id, uri):
+         ev = dev.wait_event(["DPP-SCAN-PEER-QR-CODE"], timeout=10)
+         if ev is None:
+             raise Exception("QR Code scan for mutual authentication not requested")
++        ev = dev.wait_event(["DPP-TX-STATUS"], timeout=10)
++        if ev is None:
++            raise Exception("No TX status for response-pending")
++        time.sleep(0.1)
+         dev.dpp_qr_code(uri)
+     ev = dev.wait_event(["DPP-CONF-SENT"], timeout=10)
+     if ev is None:
+-- 
+2.43.0
+

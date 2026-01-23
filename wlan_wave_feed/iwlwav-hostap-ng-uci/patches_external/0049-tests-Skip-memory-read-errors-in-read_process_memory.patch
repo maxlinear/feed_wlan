@@ -1,0 +1,36 @@
+From 8d8205f737e822121658ac5f2f5a318cd4a3335e Mon Sep 17 00:00:00 2001
+From: Jouni Malinen <j@w1.fi>
+Date: Sun, 10 Dec 2023 21:38:46 +0200
+Subject: [PATCH] tests: Skip memory read errors in read_process_memory()
+
+It looks like the lifetime_in_memory test cases can hit a read failure
+(Errno 5 - Input/output error) every now and then, so skip memory areas
+that report that, but go through all readable process memory.
+
+Signed-off-by: Jouni Malinen <j@w1.fi>
+---
+ tests/hwsim/test_ap_psk.py | 8 ++++++--
+ 1 file changed, 6 insertions(+), 2 deletions(-)
+
+diff --git a/tests/hwsim/test_ap_psk.py b/tests/hwsim/test_ap_psk.py
+index 34086cd55..a8daa2861 100644
+--- a/tests/hwsim/test_ap_psk.py
++++ b/tests/hwsim/test_ap_psk.py
+@@ -2621,8 +2621,12 @@ def read_process_memory(pid, key=None):
+             for name in ["[heap]", "[stack]"]:
+                 if name in l:
+                     logger.info("%s 0x%x-0x%x is at %d-%d" % (name, start, end, len(buf), len(buf) + (end - start)))
+-            mem.seek(start)
+-            data = mem.read(end - start)
++            try:
++                mem.seek(start)
++                data = mem.read(end - start)
++            except OSError as e:
++                logger.info("Could not read mem: start=%d end=%d: %s" % (start, end, str(e)))
++                continue
+             buf += data
+             if key and key in data:
+                 logger.info("Key found in " + l)
+-- 
+2.43.0
+

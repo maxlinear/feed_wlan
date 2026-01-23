@@ -1,0 +1,62 @@
+From 0e4aa28daf13fe48bf021dd31de6edbe67418854 Mon Sep 17 00:00:00 2001
+From: Jouni Malinen <quic_jouni@quicinc.com>
+Date: Wed, 28 Feb 2024 22:35:04 +0200
+Subject: [PATCH] hostapd_cli: Indentation cleanup
+
+Fix indentation level for some function parameters.
+
+Signed-off-by: Jouni Malinen <quic_jouni@quicinc.com>
+---
+ hostapd/hostapd_cli.c | 10 +++++-----
+ 1 file changed, 5 insertions(+), 5 deletions(-)
+
+diff --git a/hostapd/hostapd_cli.c b/hostapd/hostapd_cli.c
+index 118991b91..a9d326de8 100644
+--- a/hostapd/hostapd_cli.c
++++ b/hostapd/hostapd_cli.c
+@@ -1215,14 +1215,14 @@ static int hostapd_cli_cmd_notify_cw_change(struct wpa_ctrl *ctrl,
+ 
+ 
+ static int hostapd_cli_cmd_enable(struct wpa_ctrl *ctrl, int argc,
+-				      char *argv[])
++				  char *argv[])
+ {
+ 	return wpa_ctrl_command(ctrl, "ENABLE");
+ }
+ 
+ 
+ static int hostapd_cli_cmd_reload(struct wpa_ctrl *ctrl, int argc,
+-				      char *argv[])
++				  char *argv[])
+ {
+ 	return wpa_ctrl_command(ctrl, "RELOAD");
+ }
+@@ -1243,7 +1243,7 @@ static int hostapd_cli_cmd_reload_config(struct wpa_ctrl *ctrl, int argc,
+ 
+ 
+ static int hostapd_cli_cmd_disable(struct wpa_ctrl *ctrl, int argc,
+-				      char *argv[])
++				   char *argv[])
+ {
+ 	return wpa_ctrl_command(ctrl, "DISABLE");
+ }
+@@ -1257,14 +1257,14 @@ static int hostapd_cli_cmd_enable_mld(struct wpa_ctrl *ctrl, int argc,
+ 
+ 
+ static int hostapd_cli_cmd_disable_mld(struct wpa_ctrl *ctrl, int argc,
+-				      char *argv[])
++				       char *argv[])
+ {
+ 	return wpa_ctrl_command(ctrl, "DISABLE_MLD");
+ }
+ 
+ 
+ static int hostapd_cli_cmd_update_beacon(struct wpa_ctrl *ctrl, int argc,
+-				      char *argv[])
++					 char *argv[])
+ {
+ 	return wpa_ctrl_command(ctrl, "UPDATE_BEACON");
+ }
+-- 
+2.43.0
+

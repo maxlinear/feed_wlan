@@ -1,0 +1,42 @@
+From 13a4d7b0992553309cc0d92888cd0493cf39e498 Mon Sep 17 00:00:00 2001
+From: Nicolas Escande <nico.escande@gmail.com>
+Date: Mon, 29 Apr 2024 12:13:25 +0200
+Subject: [PATCH] hostapd: Respect obss_interval on 40 MHz intolerant
+ disconnect
+
+When an AP is configured for HT operation on 40 MHz but has overlapping
+BSS on the secondary channel, it will fall back to 20 MHz only. Also a
+40 MHz AP will downgrade to 20 MHz while at least one 40 MHz intolerant
+STA is connected.
+
+However, in the current code, on such an AP, we do not check the
+obss_interval parameter to be set on the last 40 MHz intolerant STA
+disconnect and instead, start a timer that will unconditionnaly and
+immediately bring the AP to 40 MHz operation even if it had overlapping
+BSS.
+
+A similar case was addressed for the 20/40 MHz co-ex report earlier in
+commit d027c7b118fe ("Fix 20/40 MHz co-ex report processing with
+obss_interval=0"), but this other case that gets called whenever a STA
+entry is removed needs to have similar constraint on starting the timer.
+
+Signed-off-by: Nicolas Escande <nico.escande@gmail.com>
+---
+ src/ap/ieee802_11_ht.c | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/src/ap/ieee802_11_ht.c b/src/ap/ieee802_11_ht.c
+index 4c39e4079..9bc046141 100644
+--- a/src/ap/ieee802_11_ht.c
++++ b/src/ap/ieee802_11_ht.c
+@@ -457,6 +457,7 @@ void ht40_intolerant_remove(struct hostapd_iface *iface, struct sta_info *sta)
+ 	iface->num_sta_ht40_intolerant--;
+ 
+ 	if (iface->num_sta_ht40_intolerant == 0 &&
++	    iface->conf->obss_interval &&
+ 	    (iface->conf->ht_capab & HT_CAP_INFO_SUPP_CHANNEL_WIDTH_SET) &&
+ 	    (iface->drv_flags & WPA_DRIVER_FLAGS_HT_2040_COEX)) {
+ 		unsigned int delay_time = OVERLAPPING_BSS_TRANS_DELAY_FACTOR *
+-- 
+2.43.0
+

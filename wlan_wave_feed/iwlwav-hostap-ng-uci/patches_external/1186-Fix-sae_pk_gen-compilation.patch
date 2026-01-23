@@ -1,0 +1,44 @@
+From fbc67eae426dd96403c0e63e57425d8277ef6897 Mon Sep 17 00:00:00 2001
+From: Ameer Antar <ameerantar@comcast.net>
+Date: Fri, 27 Sep 2024 22:27:28 -0400
+Subject: [PATCH] Fix sae_pk_gen compilation
+
+The Makefile is not properly set up to compile the sae_pk_gen target.
+Enabling CONFIG_SAE=y and CONFIG_SAE_PK=y in the configuration is not
+sufficient to compile. The linker complains about undefined references.
+These additions must be made to the Makefile to get it to compile, at
+least with gcc. Once this is done, 'make sae_pk_gen' can be run without
+issue.
+
+Signed-off-by: Ameer Antar <ameerantar@comcast.net>
+---
+ hostapd/Makefile | 6 ++++++
+ 1 file changed, 6 insertions(+)
+
+diff --git a/hostapd/Makefile b/hostapd/Makefile
+index c3419c10e..9d3ab774d 100644
+--- a/hostapd/Makefile
++++ b/hostapd/Makefile
+@@ -1377,6 +1377,8 @@ SOBJS += ../src/common/sae.o
+ SOBJS += ../src/common/sae_pk.o
+ SOBJS += ../src/common/dragonfly.o
+ SOBJS += $(AESOBJS)
++SOBJS += ../src/crypto/sha384.o
++SOBJS += ../src/crypto/sha512.o
+ SOBJS += ../src/crypto/sha256-prf.o
+ SOBJS += ../src/crypto/sha384-prf.o
+ SOBJS += ../src/crypto/sha512-prf.o
+@@ -1384,6 +1386,10 @@ SOBJS += ../src/crypto/dh_groups.o
+ SOBJS += ../src/crypto/sha256-kdf.o
+ SOBJS += ../src/crypto/sha384-kdf.o
+ SOBJS += ../src/crypto/sha512-kdf.o
++SOBJS += ../src/common/wpa_common.o
++SOBJS += ../src/crypto/random.o
++SOBJS += ../src/crypto/sha1-prf.o
++SOBJS += ../src/utils/eloop.o
+ 
+ _OBJS_VAR := NOBJS
+ include ../src/objs.mk
+-- 
+2.43.0
+

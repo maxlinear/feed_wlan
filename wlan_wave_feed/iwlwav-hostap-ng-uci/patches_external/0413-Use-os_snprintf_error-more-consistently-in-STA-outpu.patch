@@ -1,0 +1,58 @@
+From 040ba112aab89381e4f420c10146f85a2f3abb43 Mon Sep 17 00:00:00 2001
+From: Jouni Malinen <j@w1.fi>
+Date: Sun, 3 Mar 2024 20:01:27 +0200
+Subject: [PATCH] Use os_snprintf_error() more consistently in STA output
+ generation
+
+In theory, os_snprintf() could return a negative value and as such,
+os_snprintf_error() should be used in all cases where the buffer might
+not be large enough.
+
+Signed-off-by: Jouni Malinen <j@w1.fi>
+---
+ src/ap/ctrl_iface_ap.c | 16 ++++++++++++----
+ 1 file changed, 12 insertions(+), 4 deletions(-)
+
+diff --git a/src/ap/ctrl_iface_ap.c b/src/ap/ctrl_iface_ap.c
+index 537867180..c39713c37 100644
+--- a/src/ap/ctrl_iface_ap.c
++++ b/src/ap/ctrl_iface_ap.c
+@@ -348,11 +348,15 @@ static int hostapd_ctrl_iface_sta_mib(struct hostapd_data *hapd,
+ 
+ 	if (sta->supp_op_classes &&
+ 	    buflen - len > (unsigned) (17 + 2 * sta->supp_op_classes[0])) {
+-		len += os_snprintf(buf + len, buflen - len, "supp_op_classes=");
++		res = os_snprintf(buf + len, buflen - len, "supp_op_classes=");
++		if (!os_snprintf_error(buflen - len, res))
++			len += res;
+ 		len += wpa_snprintf_hex(buf + len, buflen - len,
+ 					sta->supp_op_classes + 1,
+ 					sta->supp_op_classes[0]);
+-		len += os_snprintf(buf + len, buflen - len, "\n");
++		res = os_snprintf(buf + len, buflen - len, "\n");
++		if (!os_snprintf_error(buflen - len, res))
++			len += res;
+ 	}
+ 
+ 	if (sta->power_capab) {
+@@ -386,11 +390,15 @@ static int hostapd_ctrl_iface_sta_mib(struct hostapd_data *hapd,
+ 
+ 	if (sta->ext_capability &&
+ 	    buflen - len > (unsigned) (11 + 2 * sta->ext_capability[0])) {
+-		len += os_snprintf(buf + len, buflen - len, "ext_capab=");
++		res = os_snprintf(buf + len, buflen - len, "ext_capab=");
++		if (!os_snprintf_error(buflen - len, res))
++			len += res;
+ 		len += wpa_snprintf_hex(buf + len, buflen - len,
+ 					sta->ext_capability + 1,
+ 					sta->ext_capability[0]);
+-		len += os_snprintf(buf + len, buflen - len, "\n");
++		res = os_snprintf(buf + len, buflen - len, "\n");
++		if (!os_snprintf_error(buflen - len, res))
++			len += res;
+ 	}
+ 
+ 	if (sta->flags & WLAN_STA_WDS && sta->ifname_wds) {
+-- 
+2.43.0
+

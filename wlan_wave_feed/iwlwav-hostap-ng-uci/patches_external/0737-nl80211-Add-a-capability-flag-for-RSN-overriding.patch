@@ -1,0 +1,62 @@
+From 341bcb2b5c7d83acd2f8f0237182d54d883603e7 Mon Sep 17 00:00:00 2001
+From: Veerendranath Jakkam <quic_vjakkam@quicinc.com>
+Date: Thu, 13 Jun 2024 12:13:14 +0530
+Subject: [PATCH] nl80211: Add a capability flag for RSN overriding
+
+Add a new capability flag based on the nl80211 feature advertisement for
+RSN overriding support.
+
+Signed-off-by: Veerendranath Jakkam <quic_vjakkam@quicinc.com>
+---
+ src/drivers/driver.h              | 2 ++
+ src/drivers/driver_nl80211.c      | 3 +++
+ src/drivers/driver_nl80211_capa.c | 6 ++++++
+ 3 files changed, 11 insertions(+)
+
+diff --git a/src/drivers/driver.h b/src/drivers/driver.h
+index 3e7747489..4331782d8 100644
+--- a/src/drivers/driver.h
++++ b/src/drivers/driver.h
+@@ -2330,6 +2330,8 @@ struct wpa_driver_capa {
+ #define WPA_DRIVER_FLAGS2_SAE_OFFLOAD_AP	0x0000000000100000ULL
+ /** Driver supports TWT responder in HT and VHT modes */
+ #define WPA_DRIVER_FLAGS2_HT_VHT_TWT_RESPONDER	0x0000000000200000ULL
++/** Driver supports RSN override elements */
++#define WPA_DRIVER_FLAGS2_RSN_OVERRIDE_STA	0x0000000000400000ULL
+ 	u64 flags2;
+ 
+ #define FULL_AP_CLIENT_STATE_SUPP(drv_flags) \
+diff --git a/src/drivers/driver_nl80211.c b/src/drivers/driver_nl80211.c
+index e6fbad96d..39f58ff83 100644
+--- a/src/drivers/driver_nl80211.c
++++ b/src/drivers/driver_nl80211.c
+@@ -9899,6 +9899,9 @@ static int nl80211_set_param(void *priv, const char *param)
+ 			WPA_DRIVER_FLAGS2_SEC_LTF_AP;
+ 	}
+ 
++	if (os_strstr(param, "rsn_override_in_driver=1"))
++		drv->capa.flags2 |= WPA_DRIVER_FLAGS2_RSN_OVERRIDE_STA;
++
+ 	return 0;
+ }
+ 
+diff --git a/src/drivers/driver_nl80211_capa.c b/src/drivers/driver_nl80211_capa.c
+index dc16bd445..240d01d3d 100644
+--- a/src/drivers/driver_nl80211_capa.c
++++ b/src/drivers/driver_nl80211_capa.c
+@@ -1443,6 +1443,12 @@ static void qca_nl80211_get_features(struct wpa_driver_nl80211_data *drv)
+ 		drv->qca_ap_allowed_freqs = 1;
+ 	if (check_feature(QCA_WLAN_VENDOR_FEATURE_HT_VHT_TWT_RESPONDER, &info))
+ 		drv->capa.flags2 |= WPA_DRIVER_FLAGS2_HT_VHT_TWT_RESPONDER;
++	if (check_feature(QCA_WLAN_VENDOR_FEATURE_RSN_OVERRIDE_STA, &info)) {
++		wpa_printf(MSG_DEBUG,
++			   "The driver supports RSN overriding in STA mode");
++		drv->capa.flags2 |= WPA_DRIVER_FLAGS2_RSN_OVERRIDE_STA;
++	}
++
+ 	os_free(info.flags);
+ }
+ 
+-- 
+2.43.0
+

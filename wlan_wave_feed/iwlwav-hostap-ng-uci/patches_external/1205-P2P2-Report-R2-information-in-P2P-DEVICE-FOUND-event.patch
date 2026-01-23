@@ -1,0 +1,42 @@
+From af7d1a01244299f62d6edc9cdf3e3a3f97e71ddd Mon Sep 17 00:00:00 2001
+From: Andrei Otcheretianski <andrei.otcheretianski@intel.com>
+Date: Tue, 26 Nov 2024 11:10:11 +0200
+Subject: [PATCH] P2P2: Report R2 information in P2P-DEVICE-FOUND event
+
+Add PCEA capability information, supported PASN types, and bootstrap
+methods in P2P-DEVICE-FOUND event. This is needed to be able to start
+P2P2 pairing with the discovered peer.
+
+Signed-off-by: Andrei Otcheretianski <andrei.otcheretianski@intel.com>
+---
+ wpa_supplicant/p2p_supplicant.c | 7 ++++---
+ 1 file changed, 4 insertions(+), 3 deletions(-)
+
+diff --git a/wpa_supplicant/p2p_supplicant.c b/wpa_supplicant/p2p_supplicant.c
+index a5336d1a1..06c70c2d5 100644
+--- a/wpa_supplicant/p2p_supplicant.c
++++ b/wpa_supplicant/p2p_supplicant.c
+@@ -3051,8 +3051,7 @@ static void wpas_dev_found(void *ctx, const u8 *addr,
+ 
+ 	wpa_msg_global(wpa_s, MSG_INFO, P2P_EVENT_DEVICE_FOUND MACSTR
+ 		       " p2p_dev_addr=" MACSTR
+-		       " pri_dev_type=%s name='%s' config_methods=0x%x "
+-		       "dev_capab=0x%x group_capab=0x%x%s%s%s new=%d",
++		       " pri_dev_type=%s name='%s' config_methods=0x%x dev_capab=0x%x group_capab=0x%x%s%s%s new=%d pcea_cap_info=0x%x bootstrap_methods=0x%x pasn_type=0x%x",
+ 		       MAC2STR(addr), MAC2STR(info->p2p_device_addr),
+ 		       wps_dev_type_bin2str(info->pri_dev_type, devtype,
+ 					    sizeof(devtype)),
+@@ -3061,7 +3060,9 @@ static void wpas_dev_found(void *ctx, const u8 *addr,
+ 		       wfd_dev_info_hex ? " wfd_dev_info=0x" : "",
+ 		       wfd_dev_info_hex ? wfd_dev_info_hex : "",
+ 		       info->vendor_elems ? " vendor_elems=1" : "",
+-		       new_device);
++		       new_device, info->pcea_cap_info,
++		       info->pairing_config.bootstrap_methods,
++		       info->pairing_config.pasn_type);
+ 
+ done:
+ 	os_free(wfd_dev_info_hex);
+-- 
+2.43.0
+

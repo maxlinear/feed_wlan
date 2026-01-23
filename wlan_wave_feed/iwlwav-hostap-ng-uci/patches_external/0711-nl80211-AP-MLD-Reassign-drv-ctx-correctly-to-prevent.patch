@@ -1,0 +1,33 @@
+From 7c935eef367819034598f6861f687f3eb30ca627 Mon Sep 17 00:00:00 2001
+From: Michael-CY Lee <michael-cy.lee@mediatek.com>
+Date: Tue, 14 May 2024 09:20:35 +0800
+Subject: [PATCH] nl80211: AP MLD: Reassign drv->ctx correctly to prevent
+ hostapd crash
+
+When the first link is deleted and there are still remaining links,
+drv->ctx should be updated to the new default link on the bss.
+Otherwise, drv->ctx points to the address that has already been freed
+and makes hostapd crash.
+
+Fixes: d2b62b3fe500 ("AP MLD: Support link removal before removing interface")
+Signed-off-by: Michael-CY Lee <michael-cy.lee@mediatek.com>
+---
+ src/drivers/driver_nl80211.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/src/drivers/driver_nl80211.c b/src/drivers/driver_nl80211.c
+index 2063d5aca..b84c0a302 100644
+--- a/src/drivers/driver_nl80211.c
++++ b/src/drivers/driver_nl80211.c
+@@ -10745,7 +10745,7 @@ static int driver_nl80211_link_remove(void *priv, enum wpa_driver_if_type type,
+ 
+ 	bss->ctx = bss->flink->ctx;
+ 
+-	if (drv->first_bss == bss && !bss->valid_links)
++	if (drv->first_bss == bss && bss->valid_links)
+ 		drv->ctx = bss->ctx;
+ 
+ 	if (!bss->valid_links) {
+-- 
+2.43.0
+

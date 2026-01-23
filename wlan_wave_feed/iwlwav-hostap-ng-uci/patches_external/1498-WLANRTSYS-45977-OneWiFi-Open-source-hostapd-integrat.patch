@@ -1,0 +1,463 @@
+From e1390b8730b0401a677245d58548c59f25203454 Mon Sep 17 00:00:00 2001
+From: Jurijs Soloveckis <jsoloveckis@maxlinear.com>
+Date: Fri, 2 Sep 2022 17:14:55 +0300
+Subject: [PATCH] WLANRTSYS-45977: OneWiFi - Open source hostapd integration
+
+- recovery support
+---
+ hostapd/Makefile                   |  1 +
+ src/ap/hostapd.c                   | 33 ++++++++++-
+ src/ap/mxl_events.c                | 93 ++++++++++++++++++++++++++++++
+ src/ap/mxl_hostapd.c               |  9 +++
+ src/ap/mxl_hostapd.h               |  7 +++
+ src/ap/sta_info.c                  |  7 ++-
+ src/common/mxl_vendor.h            | 38 ++++++++++++
+ src/common/vendor_cmds_copy.h      |  3 +
+ src/drivers/driver.h               |  9 +++
+ src/drivers/driver_nl80211.c       | 15 ++++-
+ src/drivers/driver_nl80211_event.c | 31 ++++++++++
+ wpa_supplicant/Makefile            |  1 +
+ 12 files changed, 243 insertions(+), 4 deletions(-)
+ create mode 100644 src/ap/mxl_events.c
+ create mode 100644 src/common/mxl_vendor.h
+
+diff --git a/hostapd/Makefile b/hostapd/Makefile
+index da5d19443..35f565559 100644
+--- a/hostapd/Makefile
++++ b/hostapd/Makefile
+@@ -363,6 +363,7 @@ endif
+ ifdef CONFIG_VENDOR_MXL
+ CFLAGS+= -DCONFIG_VENDOR_MXL
+ OBJS += ../src/ap/mxl_hostapd.o
++OBJS += ../src/ap/mxl_events.o
+ endif
+ 
+ include ../src/drivers/drivers.mak
+diff --git a/src/ap/hostapd.c b/src/ap/hostapd.c
+index 65dc14d60..ef32e49e8 100644
+--- a/src/ap/hostapd.c
++++ b/src/ap/hostapd.c
+@@ -57,6 +57,9 @@
+ #include "airtime_policy.h"
+ #include "wpa_auth_kay.h"
+ #include "hw_features.h"
++#ifdef CONFIG_VENDOR_MXL
++#include "mxl_hostapd.h"
++#endif /* CONFIG_VENDOR_MXL */
+ 
+ 
+ static int hostapd_flush_old_stations(struct hostapd_data *hapd, u16 reason);
+@@ -229,7 +232,6 @@ static void hostapd_clear_old(struct hostapd_iface *iface)
+ 		hostapd_clear_old_bss(iface->bss[j]);
+ }
+ 
+-
+ static int hostapd_iface_conf_changed(struct hostapd_config *newconf,
+ 				      struct hostapd_config *oldconf)
+ {
+@@ -801,7 +803,6 @@ static int hostapd_setup_encryption(char *iface, struct hostapd_data *hapd)
+ 
+ #endif /* CONFIG_WEP */
+ 
+-
+ static int hostapd_flush_old_stations(struct hostapd_data *hapd, u16 reason)
+ {
+ 	int ret = 0;
+@@ -5135,3 +5136,31 @@ u16 hostapd_get_punct_bitmap(struct hostapd_data *hapd)
+ 
+ 	return punct_bitmap;
+ }
++
++#ifdef CONFIG_VENDOR_MXL
++void mxl_hostapd_clear_old(struct hostapd_iface *iface, s32 flush)
++{
++	struct hostapd_data *hapd = iface->bss[0];
++	struct mxl_hostapd_iface *mxl_iface = &iface->mxl_iface;
++
++	wpa_printf(MSG_DEBUG, "Clean up STA DB");
++	if (flush == MXL_FLUSH_RADIO) {
++		mxl_iface->stas_free_reason = (s8)MXL_STA_FREE_REASON_RECOVERY;
++		hostapd_clear_old(iface);
++		mxl_iface->stas_free_reason = (s8)0;
++	} else {
++		if (flush >= iface->num_bss) {
++			wpa_printf(MSG_ERROR, "Invalid BSS index %d", flush);
++			return;
++		}
++
++		hapd = iface->bss[flush];
++		hostapd_clear_old_bss(hapd);
++	}
++
++	wpa_printf(MSG_DEBUG, "Send sync_done command");
++	if (hapd->driver && hapd->driver->sync_done) {
++		hapd->driver->sync_done(hapd->drv_priv);
++	}
++}
++#endif /* CONFIG_VENDOR_MXL */
+diff --git a/src/ap/mxl_events.c b/src/ap/mxl_events.c
+new file mode 100644
+index 000000000..28bfb28b0
+--- /dev/null
++++ b/src/ap/mxl_events.c
+@@ -0,0 +1,93 @@
++/******************************************************************************
++
++         Copyright (c) 2023 - 2024, MaxLinear, Inc.
++         Copyright 2016 - 2020 Intel Corporation
++         Copyright 2015 - 2016 Lantiq Beteiligungs-GmbH & Co. KG
++         Copyright 2009 - 2014 Lantiq Deutschland GmbH
++         Copyright 2007 - 2008 Infineon Technologies AG
++
++  This software may be distributed under the terms of the BSD license.
++  See README for more details.
++
++*******************************************************************************/
++
++#include "utils/includes.h"
++#include "utils/common.h"
++#include "hostapd.h"
++#include "mxl_hostapd.h"
++
++enum mxl_event_type {
++	EVENT_MXL_FLUSH_STATIONS_RX,
++};
++
++union mxl_event_data {
++
++	/* struct flush_stations: data for MXL_FLUSH_STATIONS_RX events */
++	struct flush_stations {
++		const u8 *data;
++		size_t data_len;
++	} flush_stations;
++
++};
++
++static const char * mxl_event_to_string(enum mxl_event_type event)
++{
++#define E2S(n) case EVENT_ ## n: return #n
++	switch (event) {
++	E2S(MXL_FLUSH_STATIONS_RX);
++	}
++
++	return "UNKNOWN";
++#undef E2S
++}
++
++static void mxl_event_flush_stations_rx(struct hostapd_data *hapd,
++				const u8 *data, size_t data_len)
++{
++	struct hostapd_iface *iface = hapd->iface;
++	s32 flush;
++
++	/* Discard event if interface didn't finished initialization.
++	 * This may happen when driver sends irrelevant events due to station mode actions
++	 */
++	if (iface->state != HAPD_IFACE_ENABLED) {
++		wpa_printf(MSG_DEBUG, "discard driver event (%s) - interface not initialized yet", __FUNCTION__);
++	return;
++	}
++
++	if (!data || (data_len != sizeof(s32)))
++		flush = MXL_FLUSH_RADIO;
++	else
++		flush = *((s32*)data);
++	mxl_hostapd_clear_old(iface, flush);
++}
++
++static void mxl_process_event(void *ctx, enum mxl_event_type event,
++			  union mxl_event_data *data)
++{
++	struct hostapd_data *hapd = ctx;
++
++	wpa_printf(MSG_DEBUG, "Event %s (%d) received",
++		mxl_event_to_string(event), event);
++
++	switch (event) {
++	case EVENT_MXL_FLUSH_STATIONS_RX:
++		mxl_event_flush_stations_rx(hapd,
++					data->flush_stations.data,
++					data->flush_stations.data_len);
++		break;
++	default:
++		wpa_printf(MSG_ERROR, "Unknown MXL event %d", event);
++		break;
++	}
++}
++
++
++void mxl_drv_event_flush_stations(void *ctx, const u8 *data, size_t data_len)
++{
++	union mxl_event_data event;
++	os_memset(&event, 0, sizeof(event));
++	event.flush_stations.data = data;
++	event.flush_stations.data_len = data_len;
++	mxl_process_event(ctx, EVENT_MXL_FLUSH_STATIONS_RX, &event);
++}
+diff --git a/src/ap/mxl_hostapd.c b/src/ap/mxl_hostapd.c
+index 66d7df46b..68c3f0504 100644
+--- a/src/ap/mxl_hostapd.c
++++ b/src/ap/mxl_hostapd.c
+@@ -51,6 +51,9 @@ int mxl_hostapd_get_aid(struct hostapd_data *hapd, struct sta_info *sta)
+ 	struct mxl_hostapd_iface *mxl_iface = &hapd->iface->mxl_iface;
+ 	int i, j = 32, aid, res;
+ 
++	if (mxl_hostapd_is_recovery(hapd->iface))
++		return 0;
++
+ 	if ((hapd->iface->hw_features != NULL) && (hapd->iface->hw_features->eht_capab[IEEE80211_MODE_AP].eht_supported)) {
+ 		int aid_offset = MXL_AID_OFFSET;
+ 		int aid_words = MXL_AID_WORDS;
+@@ -199,3 +202,9 @@ out:
+ 	wpabuf_free(rsp);
+ 	return ret;
+ }
++
++bool mxl_hostapd_is_recovery(struct hostapd_iface *iface)
++{
++	struct mxl_hostapd_iface *mxl_iface = &iface->mxl_iface;
++	return (mxl_iface->stas_free_reason == MXL_STA_FREE_REASON_RECOVERY);
++}
+diff --git a/src/ap/mxl_hostapd.h b/src/ap/mxl_hostapd.h
+index 26fb39a81..6f71be805 100644
+--- a/src/ap/mxl_hostapd.h
++++ b/src/ap/mxl_hostapd.h
+@@ -22,8 +22,13 @@
+ #define MXL_AID_RANGE			256
+ #define MXL_AID_WORDS	((MXL_AID_RANGE + 31) / 32)
+ 
++/* STAs free reason - Recovery */
++#define MXL_STA_FREE_REASON_RECOVERY (-1)
++#define MXL_FLUSH_RADIO (-1)
++
+ struct mxl_hostapd_iface {
+ 	u32 sta_aid_link[MXL_AID_WORDS];
++  s8 stas_free_reason; /* the reason for all stations remove */
+ };
+ 
+ int mxl_hostapd_drv_get_vendor_data(struct hostapd_data *hapd,
+@@ -42,5 +47,7 @@ struct sta_info;
+ 
+ int mxl_hostapd_get_aid(struct hostapd_data *hapd, struct sta_info *sta);
+ void mxl_hostapd_free_aid(struct hostapd_data *hapd, struct sta_info *sta);
++void mxl_hostapd_clear_old(struct hostapd_iface *iface, s32 flush);
++bool mxl_hostapd_is_recovery(struct hostapd_iface *iface);
+ 
+ #endif /* MXL_HOSTAPD_H */
+diff --git a/src/ap/sta_info.c b/src/ap/sta_info.c
+index 0ca189222..8ea4b56c3 100644
+--- a/src/ap/sta_info.c
++++ b/src/ap/sta_info.c
+@@ -253,6 +253,9 @@ void ap_free_sta(struct hostapd_data *hapd, struct sta_info *sta)
+ #else
+ 	if (!(sta->flags & WLAN_STA_PREAUTH)) {
+ #endif
++#ifdef CONFIG_VENDOR_MXL
++		if (!mxl_hostapd_is_recovery(hapd->iface))
++#endif /* CONFIG_VENDOR_MXL */
+ 		hostapd_drv_sta_remove(hapd, sta->addr);
+ 		sta->added_unassoc = 0;
+ 	}
+@@ -268,7 +271,6 @@ void ap_free_sta(struct hostapd_data *hapd, struct sta_info *sta)
+ 		hapd->sta_aid[(sta->aid - 1) / 32] &=
+ 			~BIT((sta->aid - 1) % 32);
+ 
+-
+ 	hapd->num_sta--;
+ 	if (sta->nonerp_set) {
+ 		sta->nonerp_set = 0;
+@@ -389,6 +391,9 @@ void ap_free_sta(struct hostapd_data *hapd, struct sta_info *sta)
+ 		 */
+ 		if (hapd->iface->driver_ap_teardown &&
+ 		    !(sta->flags & WLAN_STA_PREAUTH)) {
++#ifdef CONFIG_VENDOR_MXL
++			if (!mxl_hostapd_is_recovery(hapd->iface))
++#endif /* CONFIG_VENDOR_MXL */
+ 			hostapd_drv_sta_remove(hapd, sta->addr);
+ 			sta->added_unassoc = 0;
+ 		}
+diff --git a/src/common/mxl_vendor.h b/src/common/mxl_vendor.h
+new file mode 100644
+index 000000000..759de7208
+--- /dev/null
++++ b/src/common/mxl_vendor.h
+@@ -0,0 +1,38 @@
++/******************************************************************************
++
++         Copyright (c) 2023 - 2024, MaxLinear, Inc.
++         Copyright 2016 - 2020 Intel Corporation
++         Copyright 2015 - 2016 Lantiq Beteiligungs-GmbH & Co. KG
++         Copyright 2009 - 2014 Lantiq Deutschland GmbH
++         Copyright 2007 - 2008 Infineon Technologies AG
++
++  This software may be distributed under the terms of the BSD license.
++  See README for more details.
++
++*******************************************************************************/
++
++#ifndef MXL_VENDOR_H
++#define MXL_VENDOR_H
++
++#define MXL_EXPORT_EVENT_API_PROTOTYPE(mxl_api_name__) \
++	void mxl_api_name__(void *ctx, const u8 *data, size_t data_len);
++
++#define MXL_EXPORT_EVENT_API_NOT_SUPPORTED(mxl_api_name__) \
++	static inline void mxl_api_name__(void *ctx, const u8 *data, size_t data_len) { \
++		(void)ctx; (void)data; (void)data_len; \
++	}
++
++#ifdef CONFIG_VENDOR_MXL
++#define MXL_EXPORT_EVENT_API MXL_EXPORT_EVENT_API_PROTOTYPE
++#else
++#define MXL_EXPORT_EVENT_API MXL_EXPORT_EVENT_API_NOT_SUPPORTED
++#endif /* CONFIG_VENDOR_MXL */
++
++#ifdef CONFIG_VENDOR_MXL_BUILD_FOR_SUPPLICANT
++#undef MXL_EXPORT_EVENT_API
++#define MXL_EXPORT_EVENT_API MXL_EXPORT_EVENT_API_NOT_SUPPORTED
++#endif /* CONFIG_VENDOR_MXL_BUILD_FOR_SUPPLICANT */
++
++MXL_EXPORT_EVENT_API(mxl_drv_event_flush_stations)
++
++#endif /* MXL_VENDOR_H */
+diff --git a/src/common/vendor_cmds_copy.h b/src/common/vendor_cmds_copy.h
+index 2e5949488..8b1b0e2ab 100644
+--- a/src/common/vendor_cmds_copy.h
++++ b/src/common/vendor_cmds_copy.h
+@@ -31,6 +31,9 @@
+  * @LTQ_NL80211_VENDOR_SUBCMD_GET_AID: Get AID request.
+  *
+  * @LTQ_NL80211_VENDOR_SUBCMD_FREE_AID: Free AID request.
++ *
++ * @LTQ_NL80211_VENDOR_SUBCMD_SYNC_DONE: Sync the operations between hostapd and
++ * driver
+  */
+ enum ltq_nl80211_vendor_subcmds {
+   LTQ_NL80211_VENDOR_SUBCMD_UNSPEC,
+diff --git a/src/drivers/driver.h b/src/drivers/driver.h
+index 089b4e8f8..c7857188d 100644
+--- a/src/drivers/driver.h
++++ b/src/drivers/driver.h
+@@ -4769,6 +4769,15 @@ struct wpa_driver_ops {
+ 	 */
+ 	int (*free_aid)(void *priv, u16 *aid);
+ 
++	/**
++	 * sync_done - Notify driver that hostapd STA database is synced.
++	 * @priv: Private driver interface data
++	 * Returns: 0 on success, -1 on failure
++	 *
++	 * This function is used to notify driver that hostapd STA database is synced.
++	 */
++	int (*sync_done)(void *priv);
++
+ 	/**
+ 	 * roaming - Set roaming policy for driver-based BSS selection
+ 	 * @priv: Private driver interface data
+diff --git a/src/drivers/driver_nl80211.c b/src/drivers/driver_nl80211.c
+index 75a07d0da..0a8d62aab 100644
+--- a/src/drivers/driver_nl80211.c
++++ b/src/drivers/driver_nl80211.c
+@@ -14784,6 +14784,19 @@ int nl80211_free_aid_vendor_mxl(void *priv, u16 *aid)
+ 
+ 	return res;
+ }
++
++static int nl80211_send_sync_done_vendor_mxl(void *priv)
++{
++	int ret;
++
++	ret = nl80211_vendor_cmd(priv, OUI_LTQ, LTQ_NL80211_VENDOR_SUBCMD_SYNC_DONE,
++							 NULL, 0, NESTED_ATTR_NOT_USED, NULL);
++	if (ret < 0)
++		wpa_printf(MSG_ERROR, "nl80211: SYNC DONE: %s",
++			   strerror(errno));
++
++	return ret;
++}
+ #endif /* CONFIG_DRIVER_NL80211_MXL */
+ 
+ static struct hostapd_multi_hw_info *
+@@ -14868,10 +14881,10 @@ const struct wpa_driver_ops wpa_driver_nl80211_ops = {
+ 	.set_p2p_powersave = nl80211_set_p2p_powersave,
+ 	.start_dfs_cac = nl80211_start_radar_detection,
+ 	.stop_ap = wpa_driver_nl80211_stop_ap,
+-
+ #ifdef CONFIG_DRIVER_NL80211_MXL
+ 	.get_aid = nl80211_get_aid_vendor_mxl,
+ 	.free_aid = nl80211_free_aid_vendor_mxl,
++	.sync_done = nl80211_send_sync_done_vendor_mxl,
+ #endif /* CONFIG_DRIVER_NL80211_MXL */
+ 
+ #ifdef CONFIG_TDLS
+diff --git a/src/drivers/driver_nl80211_event.c b/src/drivers/driver_nl80211_event.c
+index cb37a5004..1a2e38ae8 100644
+--- a/src/drivers/driver_nl80211_event.c
++++ b/src/drivers/driver_nl80211_event.c
+@@ -16,6 +16,7 @@
+ #include "common/qca-vendor.h"
+ #include "common/qca-vendor-attr.h"
+ #include "common/brcm_vendor.h"
++#include "common/mxl_vendor.h"
+ #include "common/ieee802_11_defs.h"
+ #include "common/ieee802_11_common.h"
+ #include "driver_nl80211.h"
+@@ -3338,6 +3339,31 @@ static void nl80211_vendor_event_qca(struct wpa_driver_nl80211_data *drv,
+ 	}
+ }
+ 
++#ifdef CONFIG_DRIVER_NL80211_MXL
++
++static void mxl_nl80211_handle_flush_stations(struct wpa_driver_nl80211_data *drv,
++				const u8 *data, size_t len)
++{
++	wpa_printf(MSG_INFO, "nl80211: Receive MXL vendor event: Flush Stations, ctx=%p",
++		drv->ctx);
++
++	mxl_drv_event_flush_stations(drv->ctx, data, len);
++}
++
++#endif /* CONFIG_DRIVER_NL80211_MXL */
++
++static void nl80211_vendor_event_mxl(struct wpa_driver_nl80211_data *drv,
++				     u32 subcmd, u8 *data, size_t len)
++{
++	switch (subcmd) {
++		case LTQ_NL80211_VENDOR_EVENT_FLUSH_STATIONS:
++			mxl_nl80211_handle_flush_stations(drv, data, len);
++			break;
++		default:
++			wpa_printf(MSG_DEBUG, "nl80211: Ignore unsupported MXL vendor event %u", subcmd);
++			break;
++	}
++}
+ 
+ #ifdef CONFIG_DRIVER_NL80211_BRCM
+ 
+@@ -3467,6 +3493,11 @@ static void nl80211_vendor_event(struct wpa_driver_nl80211_data *drv,
+ #endif /* ANDROID */
+ 
+ 	switch (vendor_id) {
++#ifdef CONFIG_DRIVER_NL80211_MXL
++	case OUI_LTQ:
++		nl80211_vendor_event_mxl(drv, subcmd, data, len);
++		break;
++#endif
+ 	case OUI_QCA:
+ 		nl80211_vendor_event_qca(drv, subcmd, data, len);
+ 		break;
+diff --git a/wpa_supplicant/Makefile b/wpa_supplicant/Makefile
+index d56ce9cbb..ab2fa7f61 100644
+--- a/wpa_supplicant/Makefile
++++ b/wpa_supplicant/Makefile
+@@ -2000,6 +2000,7 @@ endif
+ 
+ ifdef CONFIG_VENDOR_MXL
+ CFLAGS += -DCONFIG_VENDOR_MXL
++CFLAGS += -DCONFIG_VENDOR_MXL_BUILD_FOR_SUPPLICANT
+ endif
+ 
+ dynamic_eap_methods: $(EAPDYN)
+-- 
+2.43.0
+

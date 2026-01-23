@@ -1,0 +1,126 @@
+From 475f50d71001e1f74296753e7102ef5d7de7e13d Mon Sep 17 00:00:00 2001
+From: Shivani Baranwal <quic_shivbara@quicinc.com>
+Date: Fri, 22 Nov 2024 00:31:11 +0530
+Subject: [PATCH] P2P2: Allow op class and channel override for Invitation
+ Response
+
+Add a testing interface for replacing the operating class and channel
+for Invitation Response messages.
+
+Signed-off-by: Shivani Baranwal <quic_shivbara@quicinc.com>
+---
+ src/p2p/p2p.c               | 18 ++++++++++++++++++
+ src/p2p/p2p.h               | 13 +++++++++++++
+ src/p2p/p2p_invitation.c    | 11 +++++++++++
+ wpa_supplicant/ctrl_iface.c |  6 ++++++
+ 4 files changed, 48 insertions(+)
+
+diff --git a/src/p2p/p2p.c b/src/p2p/p2p.c
+index bd5d7b8a6..425975e34 100644
+--- a/src/p2p/p2p.c
++++ b/src/p2p/p2p.c
+@@ -5038,6 +5038,24 @@ void p2p_set_chan_switch_req_enable(struct p2p_data *p2p, bool val)
+ 	p2p->cfg->chan_switch_req_enable = val;
+ }
+ 
++
++void p2p_set_invitation_op_freq(struct p2p_data *p2p, int freq)
++{
++	u8 op_class, channel;
++
++	if (freq == -1) {
++		p2p->cfg->inv_op_class = 0;
++		p2p->cfg->inv_op_channel = 0;
++		return;
++	}
++
++	if (p2p_freq_to_channel(freq, &op_class, &channel) < 0)
++		return;
++
++	p2p->cfg->inv_op_class = op_class;
++	p2p->cfg->inv_op_channel = channel;
++}
++
+ #endif /* CONFIG_TESTING_OPTIONS */
+ 
+ 
+diff --git a/src/p2p/p2p.h b/src/p2p/p2p.h
+index acc99d145..dda088ba5 100644
+--- a/src/p2p/p2p.h
++++ b/src/p2p/p2p.h
+@@ -726,6 +726,18 @@ struct p2p_config {
+ 	 */
+ 	bool chan_switch_req_enable;
+ 
++#ifdef CONFIG_TESTING_OPTIONS
++	/**
++	 * Operating class for own operational channel in Invitation Response
++	 */
++	u8 inv_op_class;
++
++	/**
++	 * inv_op_channel - Own operational channel in Invitation Response
++	 */
++	u8 inv_op_channel;
++#endif /* CONFIG_TESTING_OPTIONS */
++
+ 	/**
+ 	 * cb_ctx - Context to use with callback functions
+ 	 */
+@@ -2716,6 +2728,7 @@ void p2p_set_reg_info(struct p2p_data *p2p, u8 val);
+ void p2p_set_twt_power_mgmt(struct p2p_data *p2p, int val);
+ void p2p_set_dev_addr(struct p2p_data *p2p, const u8 *addr);
+ void p2p_set_chan_switch_req_enable(struct p2p_data *p2p, bool val);
++void p2p_set_invitation_op_freq(struct p2p_data *p2p, int freq);
+ 
+ int p2p_get_listen_freq(struct p2p_data *p2p, const u8 *peer_addr);
+ int p2p_initiate_pasn_auth(struct p2p_data *p2p, const u8 *addr, int freq);
+diff --git a/src/p2p/p2p_invitation.c b/src/p2p/p2p_invitation.c
+index 816d6e2f3..766b63e65 100644
+--- a/src/p2p/p2p_invitation.c
++++ b/src/p2p/p2p_invitation.c
+@@ -315,6 +315,17 @@ struct wpabuf * p2p_process_invitation_req(struct p2p_data *p2p, const u8 *sa,
+ 		p2p_dbg(p2p, "Own default op_class %d channel %d",
+ 			p2p->op_reg_class, p2p->op_channel);
+ 
++#ifdef CONFIG_TESTING_OPTIONS
++		if (p2p->cfg->inv_op_class) {
++			/* Override configuration as a starting point */
++			p2p->op_reg_class = p2p->cfg->inv_op_class;
++			p2p->op_channel = p2p->cfg->inv_op_channel;
++			p2p_dbg(p2p,
++				"Override Invitation op_class %d channel %d",
++				p2p->op_reg_class, p2p->op_channel);
++		}
++#endif /* CONFIG_TESTING_OPTIONS */
++
+ 		/* Use peer preference if specified and compatible */
+ 		if (msg.operating_channel) {
+ 			int req_freq;
+diff --git a/wpa_supplicant/ctrl_iface.c b/wpa_supplicant/ctrl_iface.c
+index 1d578f4df..3d15a7453 100644
+--- a/wpa_supplicant/ctrl_iface.c
++++ b/wpa_supplicant/ctrl_iface.c
+@@ -7756,6 +7756,11 @@ static int p2p_ctrl_set(struct wpa_supplicant *wpa_s, char *cmd)
+ 		p2p_set_chan_switch_req_enable(wpa_s->global->p2p, atoi(param));
+ 		return 0;
+ 	}
++
++	if (os_strcmp(cmd, "inv_oper_freq") == 0) {
++		p2p_set_invitation_op_freq(wpa_s->global->p2p, atoi(param));
++		return 0;
++	}
+ #endif /* CONFIG_TESTING_OPTIONS */
+ 
+ 	wpa_printf(MSG_DEBUG, "CTRL_IFACE: Unknown P2P_SET field value '%s'",
+@@ -7773,6 +7778,7 @@ static void p2p_ctrl_flush(struct wpa_supplicant *wpa_s)
+ #ifdef CONFIG_TESTING_OPTIONS
+ 	os_free(wpa_s->get_pref_freq_list_override);
+ 	wpa_s->get_pref_freq_list_override = NULL;
++	p2p_set_invitation_op_freq(wpa_s->global->p2p, -1);
+ #endif /* CONFIG_TESTING_OPTIONS */
+ 
+ 	wpas_p2p_stop_find(wpa_s);
+-- 
+2.43.0
+

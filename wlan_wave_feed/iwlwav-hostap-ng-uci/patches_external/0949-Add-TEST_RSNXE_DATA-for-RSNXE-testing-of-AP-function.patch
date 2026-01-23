@@ -1,0 +1,229 @@
+From 7cd1f3c0aedba8075096f067877f463446efa08f Mon Sep 17 00:00:00 2001
+From: Veerendranath Jakkam <quic_vjakkam@quicinc.com>
+Date: Tue, 10 Sep 2024 01:31:28 +0530
+Subject: [PATCH] Add TEST_RSNXE_DATA for RSNXE testing of AP functionality
+
+Add support to set test data in the default RSNXE with wpa_supplicant
+control interface command "TEST_RSNXE_DATA <data hexdump> <mask
+hexdump>". This can be used to do protocol testing of AP side processing
+of RSNXE.
+
+Signed-off-by: Veerendranath Jakkam <quic_vjakkam@quicinc.com>
+---
+ src/rsn_supp/wpa.c                | 77 +++++++++++++++++++++++++++++++
+ src/rsn_supp/wpa.h                |  2 +
+ src/rsn_supp/wpa_ft.c             |  2 +-
+ src/rsn_supp/wpa_i.h              |  2 +
+ wpa_supplicant/ctrl_iface.c       | 27 +++++++++++
+ wpa_supplicant/wpa_supplicant_i.h |  2 +-
+ 6 files changed, 110 insertions(+), 2 deletions(-)
+
+diff --git a/src/rsn_supp/wpa.c b/src/rsn_supp/wpa.c
+index b7518f9b6..ae7c4d51d 100644
+--- a/src/rsn_supp/wpa.c
++++ b/src/rsn_supp/wpa.c
+@@ -4375,6 +4375,8 @@ void wpa_sm_deinit(struct wpa_sm *sm)
+ 	wpabuf_free(sm->test_assoc_ie);
+ 	wpabuf_free(sm->test_eapol_m2_elems);
+ 	wpabuf_free(sm->test_eapol_m4_elems);
++	wpabuf_free(sm->test_rsnxe_data);
++	wpabuf_free(sm->test_rsnxe_mask);
+ #endif /* CONFIG_TESTING_OPTIONS */
+ #ifdef CONFIG_FILS_SK_PFS
+ 	crypto_ecdh_deinit(sm->fils_ecdh);
+@@ -5234,6 +5236,76 @@ int wpa_sm_set_assoc_wpa_ie(struct wpa_sm *sm, const u8 *ie, size_t len)
+ }
+ 
+ 
++#ifdef CONFIG_TESTING_OPTIONS
++
++int wpa_sm_set_test_rsnxe_data(struct wpa_sm *sm, struct wpabuf *data,
++			       struct wpabuf *mask)
++{
++	size_t data_len = 0, mask_len = 0;
++
++	wpabuf_free(sm->test_rsnxe_data);
++	sm->test_rsnxe_data = NULL;
++	wpabuf_free(sm->test_rsnxe_mask);
++	sm->test_rsnxe_mask = NULL;
++
++	if (!data && !mask)
++		return 0;
++
++	if (data)
++		data_len = wpabuf_len(data);
++	if (mask)
++		mask_len = wpabuf_len(mask);
++
++	if (data_len != mask_len || data_len > 255)
++		return -1;
++
++	sm->test_rsnxe_data = data;
++	sm->test_rsnxe_mask = mask;
++
++	return 0;
++}
++
++
++static int wpa_set_test_rsnxe_data(struct wpa_sm *sm, u8 *rsnxe,
++				   size_t orig_len, size_t max_len)
++{
++	const u8 *data, *mask;
++	size_t i, data_len;
++
++	if (!sm->test_rsnxe_data || !sm->test_rsnxe_mask)
++		return orig_len;
++
++	mask = wpabuf_head(sm->test_rsnxe_mask);
++	data = wpabuf_head(sm->test_rsnxe_data);
++	data_len = wpabuf_len(sm->test_rsnxe_data);
++	if (max_len < data_len + 2) {
++		wpa_printf(MSG_ERROR, "Couldn't fit RSNXE test data");
++		return -1;
++	}
++
++	/* Set data after original RSNXE to zero */
++	if (orig_len < data_len + 2)
++		os_memset(&rsnxe[orig_len], 0, data_len + 2 - orig_len);
++
++	/* Set EID and length fields */
++	*rsnxe++ = WLAN_EID_RSNX;
++	*rsnxe++ = data_len;
++
++	/* Preserve original RSNXE bit value when mask bit is zero */
++	for (i = 0; i < data_len; i++) {
++		if (!mask[i])
++			continue;
++
++		rsnxe[i] &= ~mask[i];
++		rsnxe[i] |= data[i] & mask[i];
++	}
++
++	return data_len + 2;
++}
++
++#endif /* CONFIG_TESTING_OPTIONS */
++
++
+ /**
+  * wpa_sm_set_assoc_rsnxe_default - Generate own RSNXE from configuration
+  * @sm: Pointer to WPA state machine data from wpa_sm_init()
+@@ -5252,6 +5324,11 @@ int wpa_sm_set_assoc_rsnxe_default(struct wpa_sm *sm, u8 *rsnxe,
+ 	res = wpa_gen_rsnxe(sm, rsnxe, *rsnxe_len);
+ 	if (res < 0)
+ 		return -1;
++#ifdef CONFIG_TESTING_OPTIONS
++	res = wpa_set_test_rsnxe_data(sm, rsnxe, res, *rsnxe_len);
++	if (res < 0)
++		return -1;
++#endif /* CONFIG_TESTING_OPTIONS */
+ 	*rsnxe_len = res;
+ 
+ 	wpa_hexdump(MSG_DEBUG, "RSN: Set own RSNXE default", rsnxe, *rsnxe_len);
+diff --git a/src/rsn_supp/wpa.h b/src/rsn_supp/wpa.h
+index d8112c4c2..57ee0a635 100644
+--- a/src/rsn_supp/wpa.h
++++ b/src/rsn_supp/wpa.h
+@@ -626,6 +626,8 @@ void wpa_sm_set_test_assoc_ie(struct wpa_sm *sm, struct wpabuf *buf);
+ void wpa_sm_set_test_eapol_m2_elems(struct wpa_sm *sm, struct wpabuf *buf);
+ void wpa_sm_set_test_eapol_m4_elems(struct wpa_sm *sm, struct wpabuf *buf);
+ const u8 * wpa_sm_get_anonce(struct wpa_sm *sm);
++int wpa_sm_set_test_rsnxe_data(struct wpa_sm *sm, struct wpabuf *data,
++			       struct wpabuf *mask);
+ unsigned int wpa_sm_get_key_mgmt(struct wpa_sm *sm);
+ 
+ struct wpabuf * fils_build_auth(struct wpa_sm *sm, int dh_group, const u8 *md);
+diff --git a/src/rsn_supp/wpa_ft.c b/src/rsn_supp/wpa_ft.c
+index 9fb5668ef..ecfdb4d70 100644
+--- a/src/rsn_supp/wpa_ft.c
++++ b/src/rsn_supp/wpa_ft.c
+@@ -215,7 +215,7 @@ static u8 * wpa_ft_gen_req_ies(struct wpa_sm *sm, size_t *len,
+ 	struct rsn_mdie *mdie;
+ 	struct rsn_ie_hdr *rsnie;
+ 	int mdie_len;
+-	u8 rsnxe[10];
++	u8 rsnxe[257];
+ 	size_t rsnxe_len;
+ 	int rsnxe_used;
+ 	int res;
+diff --git a/src/rsn_supp/wpa_i.h b/src/rsn_supp/wpa_i.h
+index c2ea95bb7..2fd08b0f2 100644
+--- a/src/rsn_supp/wpa_i.h
++++ b/src/rsn_supp/wpa_i.h
+@@ -188,6 +188,8 @@ struct wpa_sm {
+ 	struct wpabuf *test_assoc_ie;
+ 	struct wpabuf *test_eapol_m2_elems;
+ 	struct wpabuf *test_eapol_m4_elems;
++	struct wpabuf *test_rsnxe_data;
++	struct wpabuf *test_rsnxe_mask;
+ 	int ft_rsnxe_used;
+ 	unsigned int oci_freq_override_eapol;
+ 	unsigned int oci_freq_override_eapol_g2;
+diff --git a/wpa_supplicant/ctrl_iface.c b/wpa_supplicant/ctrl_iface.c
+index b496ca3e6..5b5ab57bf 100644
+--- a/wpa_supplicant/ctrl_iface.c
++++ b/wpa_supplicant/ctrl_iface.c
+@@ -8931,6 +8931,7 @@ static void wpa_supplicant_ctrl_iface_flush(struct wpa_supplicant *wpa_s)
+ 	wpa_sm_set_test_assoc_ie(wpa_s->wpa, NULL);
+ 	wpa_sm_set_test_eapol_m2_elems(wpa_s->wpa, NULL);
+ 	wpa_sm_set_test_eapol_m4_elems(wpa_s->wpa, NULL);
++	wpa_sm_set_test_rsnxe_data(wpa_s->wpa, NULL, NULL);
+ 	wpa_sm_set_param(wpa_s->wpa, WPA_PARAM_ENCRYPT_EAPOL_M2, 0);
+ 	wpa_sm_set_param(wpa_s->wpa, WPA_PARAM_ENCRYPT_EAPOL_M4, 0);
+ 	os_free(wpa_s->get_pref_freq_list_override);
+@@ -10303,6 +10304,29 @@ static int wpas_ctrl_test_eapol_m4_elems(struct wpa_supplicant *wpa_s,
+ }
+ 
+ 
++static int wpas_ctrl_test_rsnxe_data(struct wpa_supplicant *wpa_s,
++				     const char *cmd)
++{
++	struct wpabuf *data = NULL, *mask = NULL;
++	char *pos;
++
++	pos = os_strchr(cmd, ' ');
++	if (!pos)
++		return -1;
++	*pos++ = '\0';
++
++	if (wpas_get_hex_buf(cmd, &data) < 0 ||
++	    wpas_get_hex_buf(pos, &mask) < 0 ||
++	    wpa_sm_set_test_rsnxe_data(wpa_s->wpa, data, mask) < 0) {
++		wpabuf_free(data);
++		wpabuf_free(mask);
++		return -1;
++	}
++
++	return 0;
++}
++
++
+ static int wpas_ctrl_reset_pn(struct wpa_supplicant *wpa_s)
+ {
+ 	u8 zero[WPA_TK_MAX_LEN];
+@@ -13388,6 +13412,9 @@ char * wpa_supplicant_ctrl_iface_process(struct wpa_supplicant *wpa_s,
+ 	} else if (os_strncmp(buf, "ML_PROBE_REQ ", 13) == 0) {
+ 		if (wpas_ctrl_ml_probe(wpa_s, buf + 13))
+ 			reply_len = -1;
++	} else if (os_strncmp(buf, "TEST_RSNXE_DATA ", 16) == 0) {
++		if (wpas_ctrl_test_rsnxe_data(wpa_s, buf + 16) < 0)
++			reply_len = -1;
+ #endif /* CONFIG_TESTING_OPTIONS */
+ 	} else if (os_strncmp(buf, "VENDOR_ELEM_ADD ", 16) == 0) {
+ 		if (wpas_ctrl_vendor_elem_add(wpa_s, buf + 16) < 0)
+diff --git a/wpa_supplicant/wpa_supplicant_i.h b/wpa_supplicant/wpa_supplicant_i.h
+index 36194c974..011cdf2dd 100644
+--- a/wpa_supplicant/wpa_supplicant_i.h
++++ b/wpa_supplicant/wpa_supplicant_i.h
+@@ -827,7 +827,7 @@ struct wpa_supplicant {
+ 	int eapol_received; /* number of EAPOL packets received after the
+ 			     * previous association event */
+ 
+-	u8 rsnxe[20];
++	u8 rsnxe[257];
+ 	size_t rsnxe_len;
+ 
+ 	struct scard_data *scard;
+-- 
+2.43.0
+

@@ -1,0 +1,108 @@
+From 69deac87fbf6bfefae4b1b81f7f476f7a45d4ee1 Mon Sep 17 00:00:00 2001
+From: Sidhanta Sahu <quic_sidhanta@quicinc.com>
+Date: Tue, 30 Apr 2024 09:41:09 -0700
+Subject: [PATCH] AP MLD: Ensure successful addition of link item into list
+
+Currently, hapd->link is added to the MLD links list during driver
+initialization and setup BSS operation. However, a call trace has been
+observed where a BSS link item is not present in the list and an attempt
+is made to delete it from the list. This scenario occurs during the
+deinitialization operation, which calls hostapd_bss_link_deinit() and
+tries to remove the hapd->link which is not present in the list.
+
+Ensures that the link item is added to the list only after the
+successful operation of link addition. Also ensure that mld->num_links
+increments only when the addition is successful. Therefore, return from
+hostapd_bss_link_deinit(), if mld->num_links is zero. Since the mld
+object is shared among all the links, num_links has to be incremented
+only when the addition is successful.
+
+Call trace:
+        dl_list_del.lto_priv.9.lto_priv ()
+        hostapd_bss_link_deinit.lto_priv ()
+        hostapd_bss_deinit ()
+        hostapd_interface_deinit ()
+        hostapd_interface_deinit_free ()
+        hostapd_main ()
+
+Signed-off-by: Sidhanta Sahu <quic_sidhanta@quicinc.com>
+---
+ hostapd/main.c   | 12 ++++++++----
+ src/ap/hostapd.c |  9 ++++++---
+ 2 files changed, 14 insertions(+), 7 deletions(-)
+
+diff --git a/hostapd/main.c b/hostapd/main.c
+index 00e02bb03..be156ee60 100644
+--- a/hostapd/main.c
++++ b/hostapd/main.c
+@@ -191,7 +191,6 @@ static int hostapd_driver_init(struct hostapd_iface *iface)
+ 			os_memcpy(hapd->own_addr, b, ETH_ALEN);
+ 		}
+ 
+-		hostapd_mld_add_link(hapd);
+ 		wpa_printf(MSG_DEBUG,
+ 			   "Setup of non first link (%d) BSS of MLD %s",
+ 			   hapd->mld_link_id, hapd->conf->iface);
+@@ -278,7 +277,6 @@ static int hostapd_driver_init(struct hostapd_iface *iface)
+ 		else
+ 			os_memcpy(hapd->own_addr, b, ETH_ALEN);
+ 
+-		hostapd_mld_add_link(hapd);
+ 		wpa_printf(MSG_DEBUG, "Setup of first link (%d) BSS of MLD %s",
+ 			   hapd->mld_link_id, hapd->conf->iface);
+ 	}
+@@ -338,8 +336,14 @@ setup_mld:
+ 			   hapd->mld_link_id, MAC2STR(hapd->mld->mld_addr),
+ 			   MAC2STR(hapd->own_addr));
+ 
+-		hostapd_drv_link_add(hapd, hapd->mld_link_id,
+-				     hapd->own_addr);
++		if (hostapd_drv_link_add(hapd, hapd->mld_link_id,
++					 hapd->own_addr)) {
++			wpa_printf(MSG_ERROR,
++				   "MLD: Failed to add link %d in MLD %s",
++				   hapd->mld_link_id, hapd->conf->iface);
++			return -1;
++		}
++		hostapd_mld_add_link(hapd);
+ 	}
+ #endif /* CONFIG_IEEE80211BE */
+ 
+diff --git a/src/ap/hostapd.c b/src/ap/hostapd.c
+index a0ac3a857..9af5d9196 100644
+--- a/src/ap/hostapd.c
++++ b/src/ap/hostapd.c
+@@ -1442,7 +1442,6 @@ static int hostapd_setup_bss(struct hostapd_data *hapd, int first,
+ 			if (h_hapd) {
+ 				hapd->drv_priv = h_hapd->drv_priv;
+ 				hapd->interface_added = h_hapd->interface_added;
+-				hostapd_mld_add_link(hapd);
+ 				wpa_printf(MSG_DEBUG,
+ 					   "Setup of non first link (%d) BSS of MLD %s",
+ 					   hapd->mld_link_id, hapd->conf->iface);
+@@ -1473,7 +1472,6 @@ static int hostapd_setup_bss(struct hostapd_data *hapd, int first,
+ 				   hapd->mld_link_id, hapd->conf->iface);
+ 			os_memcpy(hapd->mld->mld_addr, hapd->own_addr,
+ 				  ETH_ALEN);
+-			hostapd_mld_add_link(hapd);
+ 		}
+ #endif /* CONFIG_IEEE80211BE */
+ 	}
+@@ -1488,8 +1486,13 @@ setup_mld:
+ 			   MAC2STR(hapd->own_addr));
+ 
+ 		if (hostapd_drv_link_add(hapd, hapd->mld_link_id,
+-					 hapd->own_addr))
++					 hapd->own_addr)) {
++			wpa_printf(MSG_ERROR,
++				   "MLD: Failed to add link %d in MLD %s",
++				   hapd->mld_link_id, hapd->conf->iface);
+ 			return -1;
++		}
++		hostapd_mld_add_link(hapd);
+ 	}
+ #endif /* CONFIG_IEEE80211BE */
+ 
+-- 
+2.43.0
+

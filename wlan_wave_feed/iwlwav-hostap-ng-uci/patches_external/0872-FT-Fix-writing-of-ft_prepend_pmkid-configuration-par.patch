@@ -1,0 +1,29 @@
+From 58ba550c5336d285db3e76f1cf40883bf9a1bde2 Mon Sep 17 00:00:00 2001
+From: Shivani Baranwal <quic_shivbara@quicinc.com>
+Date: Mon, 5 Aug 2024 15:03:03 +0530
+Subject: [PATCH] FT: Fix writing of ft_prepend_pmkid configuration parameter
+
+This was missing a newline at the end of the line.
+
+Fixes: 8fa52a797496 ("FT: Allow wpa_supplicant to be configured to prepend PMKR1Name")
+Signed-off-by: Shivani Baranwal <quic_shivbara@quicinc.com>
+---
+ wpa_supplicant/config_file.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/wpa_supplicant/config_file.c b/wpa_supplicant/config_file.c
+index fd8eafe2b..782bd7f85 100644
+--- a/wpa_supplicant/config_file.c
++++ b/wpa_supplicant/config_file.c
+@@ -1628,7 +1628,7 @@ static void wpa_config_write_global(FILE *f, struct wpa_config *config)
+ 			MAC2STR(config->mld_connect_bssid_pref));
+ #endif /* CONFIG_TESTING_OPTIONS */
+ 	if (config->ft_prepend_pmkid)
+-		fprintf(f, "ft_prepend_pmkid=%d", config->ft_prepend_pmkid);
++		fprintf(f, "ft_prepend_pmkid=%d\n", config->ft_prepend_pmkid);
+ }
+ 
+ #endif /* CONFIG_NO_CONFIG_WRITE */
+-- 
+2.43.0
+

@@ -1,0 +1,63 @@
+From c3ee46bcbe51cde235f8a412c7b963fbed209d2b Mon Sep 17 00:00:00 2001
+From: Jouni Malinen <quic_jouni@quicinc.com>
+Date: Sun, 1 Sep 2024 13:24:29 +0300
+Subject: [PATCH] AP MLD: Check SAE message length without depending on pointer
+ arithemetic
+
+The way this was checked previously used pointer arithmetic could result
+in undefined behavior due to the pointer ending up pointing more than
+one byte beyond the end of the buffer. Avoid this by checking the buffer
+length before incrementing the pointer.
+
+Fixes: bcbe80a66a9b ("AP: MLO: Handle Multi-Link element during authentication")
+Signed-off-by: Jouni Malinen <quic_jouni@quicinc.com>
+---
+ src/ap/ieee802_11_eht.c | 8 ++++++++
+ 1 file changed, 8 insertions(+)
+
+diff --git a/src/ap/ieee802_11_eht.c b/src/ap/ieee802_11_eht.c
+index bc8e34c91..89f8ffde9 100644
+--- a/src/ap/ieee802_11_eht.c
++++ b/src/ap/ieee802_11_eht.c
+@@ -871,6 +871,8 @@ sae_commit_skip_fixed_fields(const struct ieee80211_mgmt *mgmt, size_t len,
+ 
+ 	wpa_printf(MSG_DEBUG, "EHT: SAE scalar length is %zu", prime_len);
+ 
++	if (len - 2 < prime_len * (ec ? 3 : 2))
++		goto truncated;
+ 	/* scalar */
+ 	pos += prime_len;
+ 
+@@ -882,6 +884,7 @@ sae_commit_skip_fixed_fields(const struct ieee80211_mgmt *mgmt, size_t len,
+ 	}
+ 
+ 	if (pos - mgmt->u.auth.variable > (int) len) {
++	truncated:
+ 		wpa_printf(MSG_DEBUG,
+ 			   "EHT: Too short SAE commit Authentication frame");
+ 		return NULL;
+@@ -905,6 +908,8 @@ sae_confirm_skip_fixed_fields(struct hostapd_data *hapd,
+ 		return pos;
+ 
+ 	/* send confirm integer */
++	if (len < 2)
++		goto truncated;
+ 	pos += 2;
+ 
+ 	/*
+@@ -949,9 +954,12 @@ sae_confirm_skip_fixed_fields(struct hostapd_data *hapd,
+ 	wpa_printf(MSG_DEBUG, "SAE: confirm: kck_len=%zu",
+ 		   sta->sae->tmp->kck_len);
+ 
++	if (len - 2 < sta->sae->tmp->kck_len)
++		goto truncated;
+ 	pos += sta->sae->tmp->kck_len;
+ 
+ 	if (pos - mgmt->u.auth.variable > (int) len) {
++	truncated:
+ 		wpa_printf(MSG_DEBUG,
+ 			   "EHT: Too short SAE confirm Authentication frame");
+ 		return NULL;
+-- 
+2.43.0
+

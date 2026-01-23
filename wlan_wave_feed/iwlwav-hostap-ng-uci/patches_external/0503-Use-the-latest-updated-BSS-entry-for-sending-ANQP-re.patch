@@ -1,0 +1,51 @@
+From 94506e8ed89f1ef828aebdfb46f48f13b28f403d Mon Sep 17 00:00:00 2001
+From: Jouni Malinen <quic_jouni@quicinc.com>
+Date: Wed, 27 Mar 2024 22:37:18 +0200
+Subject: [PATCH] Use the latest updated BSS entry for sending ANQP requests
+
+Try to find the BSS entry that contains the most likely current
+information for the target BSS. This is mainly needed to avoid some
+unusual behavior with APs changing their Beacon frame information in a
+manner that shows up in automated testing, but this might help with some
+more dynamic real world uses as well, so better do the BSS entry search
+for the newest entry.
+
+Signed-off-by: Jouni Malinen <quic_jouni@quicinc.com>
+---
+ wpa_supplicant/interworking.c | 6 +++---
+ 1 file changed, 3 insertions(+), 3 deletions(-)
+
+diff --git a/wpa_supplicant/interworking.c b/wpa_supplicant/interworking.c
+index a085d2260..6773a243c 100644
+--- a/wpa_supplicant/interworking.c
++++ b/wpa_supplicant/interworking.c
+@@ -2812,7 +2812,7 @@ int anqp_send_req(struct wpa_supplicant *wpa_s, const u8 *dst, int freq,
+ 	struct wpa_bss *bss;
+ 	int res;
+ 
+-	bss = wpa_bss_get_bssid(wpa_s, dst);
++	bss = wpa_bss_get_bssid_latest(wpa_s, dst);
+ 	if (!bss && !freq) {
+ 		wpa_printf(MSG_WARNING,
+ 			   "ANQP: Cannot send query without BSS freq info");
+@@ -3167,7 +3167,7 @@ void anqp_resp_cb(void *ctx, const u8 *dst, u8 dialog_token,
+ 		}
+ 	}
+ 	if (bss == NULL)
+-		bss = wpa_bss_get_bssid(wpa_s, dst);
++		bss = wpa_bss_get_bssid_latest(wpa_s, dst);
+ 
+ 	pos = wpabuf_head(resp);
+ 	end = pos + wpabuf_len(resp);
+@@ -3282,7 +3282,7 @@ int gas_send_request(struct wpa_supplicant *wpa_s, const u8 *dst,
+ 	u8 query_resp_len_limit = 0;
+ 
+ 	freq = wpa_s->assoc_freq;
+-	bss = wpa_bss_get_bssid(wpa_s, dst);
++	bss = wpa_bss_get_bssid_latest(wpa_s, dst);
+ 	if (bss)
+ 		freq = bss->freq;
+ 	if (freq <= 0)
+-- 
+2.43.0
+

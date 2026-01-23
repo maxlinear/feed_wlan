@@ -1,0 +1,339 @@
+From b4f9742ee24679a86d830aaa446638757a403a79 Mon Sep 17 00:00:00 2001
+From: Shivani Baranwal <quic_shivbara@quicinc.com>
+Date: Mon, 5 Aug 2024 15:03:05 +0530
+Subject: [PATCH] P2P2: Process Element container attribute from NAN SDFs
+
+Process the Element Container attribute from NAN SDF frames and check if
+P2P attributes are present. Add a P2P peer device entry if the NAN SDF
+frame has matching service and P2P capabilities.
+
+Signed-off-by: Shivani Baranwal <quic_shivbara@quicinc.com>
+---
+ src/common/nan_de.c             | 30 +++++++++++++++
+ src/common/nan_de.h             |  4 ++
+ src/p2p/p2p.c                   | 67 +++++++++++++++++++++++++++++++++
+ src/p2p/p2p.h                   | 17 +++++++++
+ src/p2p/p2p_i.h                 |  2 +
+ src/p2p/p2p_pd.c                | 51 +++++++++++++++++++++++++
+ wpa_supplicant/nan_usd.c        | 15 ++++++++
+ wpa_supplicant/p2p_supplicant.c | 12 ++++++
+ wpa_supplicant/p2p_supplicant.h |  3 ++
+ 9 files changed, 201 insertions(+)
+
+diff --git a/src/common/nan_de.c b/src/common/nan_de.c
+index 5e79b8c16..acde4f3b2 100644
+--- a/src/common/nan_de.c
++++ b/src/common/nan_de.c
+@@ -777,6 +777,34 @@ static void nan_de_get_sdea(const u8 *buf, size_t len, u8 instance_id,
+ }
+ 
+ 
++static void nan_de_process_elem_container(struct nan_de *de, const u8 *buf,
++					  size_t len, const u8 *peer_addr,
++					  unsigned int freq, bool p2p)
++{
++	const u8 *elem;
++	u16 elem_len;
++
++	elem = nan_de_get_attr(buf, len, NAN_ATTR_ELEM_CONTAINER, 0);
++	if (!elem)
++		return;
++
++	elem++;
++	elem_len = WPA_GET_LE16(elem);
++	elem += 2;
++	/* Skip the attribute if there is not enough froom for an element. */
++	if (elem_len < 1 + 2)
++		return;
++
++	/* Skip Map ID */
++	elem++;
++	elem_len--;
++
++	if (p2p && de->cb.process_p2p_usd_elems)
++		de->cb.process_p2p_usd_elems(de->cb.ctx, elem, elem_len,
++					     peer_addr, freq);
++}
++
++
+ static void nan_de_rx_publish(struct nan_de *de, struct nan_de_service *srv,
+ 			      const u8 *peer_addr, u8 instance_id,
+ 			      u8 req_instance_id, u16 sdea_control,
+@@ -1101,6 +1129,8 @@ static void nan_de_rx_sda(struct nan_de *de, const u8 *peer_addr,
+ 				wpa_hexdump(MSG_MSGDUMP, "NAN: ssi",
+ 					    ssi, ssi_len);
+ 			}
++			nan_de_process_elem_container(de, buf, len, peer_addr,
++						      freq, srv->is_p2p);
+ 		}
+ 
+ 		switch (type) {
+diff --git a/src/common/nan_de.h b/src/common/nan_de.h
+index 73f6c9c61..f369a5721 100644
+--- a/src/common/nan_de.h
++++ b/src/common/nan_de.h
+@@ -53,6 +53,10 @@ struct nan_callbacks {
+ 	void (*receive)(void *ctx, int id, int peer_instance_id,
+ 			const u8 *ssi, size_t ssi_len,
+ 			const u8 *peer_addr);
++
++	void (*process_p2p_usd_elems)(void *ctx, const u8 *buf,
++				      u16 buf_len, const u8 *peer_addr,
++				      unsigned int freq);
+ };
+ 
+ struct nan_de * nan_de_init(const u8 *nmi, bool offload, bool ap,
+diff --git a/src/p2p/p2p.c b/src/p2p/p2p.c
+index 8d8f58e6d..676a45ce0 100644
+--- a/src/p2p/p2p.c
++++ b/src/p2p/p2p.c
+@@ -5841,3 +5841,70 @@ struct wpabuf * p2p_usd_elems(struct p2p_data *p2p)
+ 
+ 	return buf;
+ }
++
++
++void p2p_process_usd_elems(struct p2p_data *p2p, const u8 *ies, u16 ies_len,
++			   const u8 *peer_addr, unsigned int freq)
++{
++	struct p2p_device *dev;
++	struct p2p_message msg;
++	const u8 *p2p_dev_addr;
++
++	os_memset(&msg, 0, sizeof(msg));
++	if (p2p_parse_ies(ies, ies_len, &msg)) {
++		p2p_dbg(p2p, "Failed to parse P2P IE for a device entry");
++		p2p_parse_free(&msg);
++		return;
++	}
++	if (msg.p2p_device_addr)
++		p2p_dev_addr = msg.p2p_device_addr;
++	else
++		p2p_dev_addr = peer_addr;
++
++	dev = p2p_create_device(p2p, p2p_dev_addr);
++	if (!dev) {
++		p2p_parse_free(&msg);
++		p2p_dbg(p2p, "Failed to add a peer P2P Device");
++		return;
++	}
++
++	/* Reset info from old IEs */
++	dev->info.reg_info = 0;
++	os_memset(&dev->info.pairing_config, 0,
++		  sizeof(struct p2p_pairing_config));
++
++	os_get_reltime(&dev->last_seen);
++	dev->listen_freq = freq;
++	dev->oper_freq = freq;
++
++	if (msg.capability) {
++		/*
++		 * P2P Client Discoverability bit is reserved in all frames
++		 * that use this function, so do not change its value here.
++		 */
++		dev->info.dev_capab &= P2P_DEV_CAPAB_CLIENT_DISCOVERABILITY;
++		dev->info.dev_capab |= msg.capability[0] &
++			~P2P_DEV_CAPAB_CLIENT_DISCOVERABILITY;
++		dev->info.group_capab = msg.capability[1];
++	}
++
++	if (msg.pcea_info && msg.pcea_info_len >= 2)
++		p2p_process_pcea(p2p, &msg, dev);
++
++	if (msg.pbma_info && msg.pbma_info_len == 2)
++		dev->info.pairing_config.bootstrap_methods =
++			WPA_GET_LE16(msg.pbma_info);
++
++	if (!ether_addr_equal(peer_addr, p2p_dev_addr))
++		os_memcpy(dev->interface_addr, peer_addr, ETH_ALEN);
++
++	p2p_dbg(p2p, "Updated device entry based on USD frame: " MACSTR
++		" dev_capab=0x%x group_capab=0x%x listen_freq=%d",
++		MAC2STR(dev->info.p2p_device_addr), dev->info.dev_capab,
++		dev->info.group_capab, dev->listen_freq);
++
++	p2p->cfg->dev_found(p2p->cfg->cb_ctx, dev->info.p2p_device_addr,
++			    &dev->info, !(dev->flags & P2P_DEV_REPORTED_ONCE));
++
++	p2p_parse_free(&msg);
++}
+diff --git a/src/p2p/p2p.h b/src/p2p/p2p.h
+index 039c027c6..5731bdcbd 100644
+--- a/src/p2p/p2p.h
++++ b/src/p2p/p2p.h
+@@ -465,6 +465,21 @@ struct p2p_peer_info {
+ 	 * p2ps_instance - P2PS Application Service Info
+ 	 */
+ 	struct wpabuf *p2ps_instance;
++
++	/**
++	 * pcea_cap_info - Capability info in PCEA
++	 */
++	u16 pcea_cap_info;
++
++	/**
++	 * The regulatory info encoding for operation in 6 GHz band
++	 */
++	u8 reg_info;
++
++	/**
++	 * p2p_pairing_config - P2P pairing configuration
++	 */
++	struct p2p_pairing_config pairing_config;
+ };
+ 
+ enum p2p_prov_disc_status {
+@@ -2504,5 +2519,7 @@ void set_p2p_allow_6ghz(struct p2p_data *p2p, bool value);
+ int p2p_remove_6ghz_channels(struct weighted_pcl *pref_freq_list, int size);
+ int p2p_channel_to_freq(int op_class, int channel);
+ struct wpabuf * p2p_usd_elems(struct p2p_data *p2p);
++void p2p_process_usd_elems(struct p2p_data *p2p, const u8 *ies, u16 ies_len,
++			   const u8 *peer_addr, unsigned int freq);
+ 
+ #endif /* P2P_H */
+diff --git a/src/p2p/p2p_i.h b/src/p2p/p2p_i.h
+index 7c155a05e..c22630d51 100644
+--- a/src/p2p/p2p_i.h
++++ b/src/p2p/p2p_i.h
+@@ -881,6 +881,8 @@ int p2p_send_prov_disc_req(struct p2p_data *p2p, struct p2p_device *dev,
+ 			   int join, int force_freq);
+ void p2p_reset_pending_pd(struct p2p_data *p2p);
+ void p2ps_prov_free(struct p2p_data *p2p);
++void p2p_process_pcea(struct p2p_data *p2p, struct p2p_message *msg,
++		      struct p2p_device *dev);
+ 
+ /* p2p_invitation.c */
+ void p2p_process_invitation_req(struct p2p_data *p2p, const u8 *sa,
+diff --git a/src/p2p/p2p_pd.c b/src/p2p/p2p_pd.c
+index 542521edb..6c9ac194a 100644
+--- a/src/p2p/p2p_pd.c
++++ b/src/p2p/p2p_pd.c
+@@ -563,6 +563,57 @@ do { \
+ }
+ 
+ 
++void p2p_process_pcea(struct p2p_data *p2p, struct p2p_message *msg,
++		      struct p2p_device *dev)
++{
++	const u8 *pos, *end;
++	u8 cap_info_len;
++
++	if (!p2p || !dev || !msg || !msg->pcea_info)
++		return;
++
++	pos = msg->pcea_info;
++	end = pos + msg->pcea_info_len;
++	dev->info.pcea_cap_info = WPA_GET_LE16(pos);
++	cap_info_len = dev->info.pcea_cap_info & P2P_PCEA_LEN_MASK;
++
++	/* Field length is (n-1), n in octets */
++	if (end - pos < cap_info_len + 1)
++		return;
++	pos += cap_info_len + 1;
++
++	if (dev->info.pcea_cap_info & P2P_PCEA_6GHZ)
++		dev->support_6ghz = true;
++
++	if (dev->info.pcea_cap_info & P2P_PCEA_REG_INFO) {
++		if (end - pos < 1) {
++			p2p_dbg(p2p, "Truncated PCEA");
++			return;
++		}
++		dev->info.reg_info = *pos++;
++	}
++
++	if (dev->info.pcea_cap_info & P2P_PCEA_PASN_TYPE) {
++		if (end - pos < 1) {
++			p2p_dbg(p2p, "Truncated PCEA");
++			return;
++		}
++		dev->info.pairing_config.pasn_type = *pos++;
++	}
++
++	if (dev->info.pcea_cap_info & P2P_PCEA_PAIRING_CAPABLE)
++		dev->info.pairing_config.pairing_capable = true;
++
++	if (dev->info.pcea_cap_info & P2P_PCEA_PAIRING_SETUP_ENABLED)
++		dev->info.pairing_config.enable_pairing_setup = true;
++
++	if (dev->info.pcea_cap_info & P2P_PCEA_PMK_CACHING) {
++		dev->info.pairing_config.enable_pairing_cache = true;
++		dev->info.pairing_config.enable_pairing_verification = true;
++	}
++}
++
++
+ void p2p_process_prov_disc_req(struct p2p_data *p2p, const u8 *sa,
+ 			       const u8 *data, size_t len, int rx_freq)
+ {
+diff --git a/wpa_supplicant/nan_usd.c b/wpa_supplicant/nan_usd.c
+index 9c2c7cab5..28cd981b9 100644
+--- a/wpa_supplicant/nan_usd.c
++++ b/wpa_supplicant/nan_usd.c
+@@ -336,6 +336,18 @@ static void wpas_nan_de_receive(void *ctx, int id, int peer_instance_id,
+ }
+ 
+ 
++#ifdef CONFIG_P2P
++static void wpas_nan_process_p2p_usd_elems(void *ctx, const u8 *buf,
++					   u16 buf_len, const u8 *peer_addr,
++					   unsigned int freq)
++{
++	struct wpa_supplicant *wpa_s = ctx;
++
++	wpas_p2p_process_usd_elems(wpa_s, buf, buf_len, peer_addr, freq);
++}
++#endif /* CONFIG_P2P */
++
++
+ int wpas_nan_usd_init(struct wpa_supplicant *wpa_s)
+ {
+ 	struct nan_callbacks cb;
+@@ -350,6 +362,9 @@ int wpas_nan_usd_init(struct wpa_supplicant *wpa_s)
+ 	cb.publish_terminated = wpas_nan_de_publish_terminated;
+ 	cb.subscribe_terminated = wpas_nan_de_subscribe_terminated;
+ 	cb.receive = wpas_nan_de_receive;
++#ifdef CONFIG_P2P
++	cb.process_p2p_usd_elems = wpas_nan_process_p2p_usd_elems;
++#endif /* CONFIG_P2P */
+ 
+ 	wpa_s->nan_de = nan_de_init(wpa_s->own_addr, offload, false, &cb);
+ 	if (!wpa_s->nan_de)
+diff --git a/wpa_supplicant/p2p_supplicant.c b/wpa_supplicant/p2p_supplicant.c
+index cbb63e5f2..cb23ddc50 100644
+--- a/wpa_supplicant/p2p_supplicant.c
++++ b/wpa_supplicant/p2p_supplicant.c
+@@ -10280,3 +10280,15 @@ struct wpabuf * wpas_p2p_usd_elems(struct wpa_supplicant *wpa_s)
+ 		return NULL;
+ 	return p2p_usd_elems(p2p);
+ }
++
++
++void wpas_p2p_process_usd_elems(struct wpa_supplicant *wpa_s, const u8 *buf,
++				u16 buf_len, const u8 *peer_addr,
++				unsigned int freq)
++{
++	struct p2p_data *p2p = wpa_s->global->p2p;
++
++	if (wpa_s->global->p2p_disabled || !p2p)
++		return;
++	p2p_process_usd_elems(p2p, buf, buf_len, peer_addr, freq);
++}
+diff --git a/wpa_supplicant/p2p_supplicant.h b/wpa_supplicant/p2p_supplicant.h
+index 441e063d9..f864b6d95 100644
+--- a/wpa_supplicant/p2p_supplicant.h
++++ b/wpa_supplicant/p2p_supplicant.h
+@@ -178,6 +178,9 @@ int wpas_p2p_nfc_tag_enabled(struct wpa_supplicant *wpa_s, int enabled);
+ void wpas_p2p_pbc_overlap_cb(void *eloop_ctx, void *timeout_ctx);
+ int wpas_p2p_try_edmg_channel(struct wpa_supplicant *wpa_s,
+ 			      struct p2p_go_neg_results *params);
++void wpas_p2p_process_usd_elems(struct wpa_supplicant *wpa_s, const u8 *buf,
++				u16 buf_len, const u8 *peer_addr,
++				unsigned int freq);
+ 
+ #ifdef CONFIG_P2P
+ 
+-- 
+2.43.0
+

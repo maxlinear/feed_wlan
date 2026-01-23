@@ -1,0 +1,171 @@
+From 6b5e7c003ce7ee99b37b1838fcb3c2dac4009f73 Mon Sep 17 00:00:00 2001
+From: Andrei Otcheretianski <andrei.otcheretianski@intel.com>
+Date: Sun, 13 Oct 2024 15:45:23 +0300
+Subject: [PATCH] P2P2: Remove redundant enable_pairing_verification flag
+
+This is a duplicate of enable_pairing_cache flag. Remove it.
+
+Signed-off-by: Andrei Otcheretianski <andrei.otcheretianski@intel.com>
+---
+ src/p2p/p2p.c                   | 12 ------------
+ src/p2p/p2p.h                   |  7 -------
+ src/p2p/p2p_build.c             |  3 +--
+ src/p2p/p2p_pd.c                |  1 -
+ wpa_supplicant/config.c         |  1 -
+ wpa_supplicant/config.h         |  1 -
+ wpa_supplicant/config_file.c    |  3 ---
+ wpa_supplicant/ctrl_iface.c     |  5 -----
+ wpa_supplicant/p2p_supplicant.c |  2 --
+ 9 files changed, 1 insertion(+), 34 deletions(-)
+
+diff --git a/src/p2p/p2p.c b/src/p2p/p2p.c
+index 425975e34..e2806d627 100644
+--- a/src/p2p/p2p.c
++++ b/src/p2p/p2p.c
+@@ -4982,17 +4982,6 @@ void p2p_set_pairing_cache(struct p2p_data *p2p, int pairing_cache)
+ }
+ 
+ 
+-void p2p_set_pairing_verification(struct p2p_data *p2p, int pairing_verification)
+-{
+-	p2p_dbg(p2p, "Pairing Verification %s",
+-		pairing_verification ? "Enabled" : "Disabled");
+-	if (pairing_verification)
+-		p2p->cfg->pairing_config.enable_pairing_verification = true;
+-	else
+-		p2p->cfg->pairing_config.enable_pairing_verification = false;
+-}
+-
+-
+ void p2p_set_bootstrapmethods(struct p2p_data *p2p, int bootstrap_methods)
+ {
+ 	p2p_dbg(p2p, "Bootstraping methods: 0x%x", bootstrap_methods);
+@@ -6107,7 +6096,6 @@ struct wpabuf * p2p_usd_elems(struct p2p_data *p2p)
+ 	if (p2p->pairing_info &&
+ 	    p2p->cfg->pairing_config.pairing_capable &&
+ 	    p2p->cfg->pairing_config.enable_pairing_cache &&
+-	    p2p->cfg->pairing_config.enable_pairing_verification &&
+ 	    p2p_derive_nonce_tag(p2p) == 0)
+ 		p2p_buf_add_dira(buf, p2p);
+ 
+diff --git a/src/p2p/p2p.h b/src/p2p/p2p.h
+index dda088ba5..7724859ad 100644
+--- a/src/p2p/p2p.h
++++ b/src/p2p/p2p.h
+@@ -385,11 +385,6 @@ struct p2p_pairing_config {
+ 	 */
+ 	bool enable_pairing_cache;
+ 
+-	/**
+-	 * Enable P2P pairing verification with cached NIK/NPK
+-	 */
+-	bool enable_pairing_verification;
+-
+ 	/**
+ 	 * P2P bootstrapping methods supported
+ 	 */
+@@ -2719,8 +2714,6 @@ void p2p_process_usd_elems(struct p2p_data *p2p, const u8 *ies, u16 ies_len,
+ 
+ void p2p_set_pairing_setup(struct p2p_data *p2p, int pairing_setup);
+ void p2p_set_pairing_cache(struct p2p_data *p2p, int pairing_cache);
+-void p2p_set_pairing_verification(struct p2p_data *p2p,
+-				  int pairing_verification);
+ void p2p_set_bootstrapmethods(struct p2p_data *p2p, int bootstrap_methods);
+ void p2p_set_pasn_type(struct p2p_data *p2p, u8 pasn_type);
+ void p2p_set_comeback_after(struct p2p_data *p2p, int comeback_after);
+diff --git a/src/p2p/p2p_build.c b/src/p2p/p2p_build.c
+index 015eed22c..343566d80 100644
+--- a/src/p2p/p2p_build.c
++++ b/src/p2p/p2p_build.c
+@@ -809,8 +809,7 @@ void p2p_buf_add_dira(struct wpabuf *buf, struct p2p_data *p2p)
+ 	struct p2p_id_key *dev_ik;
+ 
+ 	if (!p2p->cfg->pairing_config.pairing_capable ||
+-	    !p2p->cfg->pairing_config.enable_pairing_cache ||
+-	    !p2p->cfg->pairing_config.enable_pairing_verification)
++	    !p2p->cfg->pairing_config.enable_pairing_cache)
+ 		return;
+ 
+ 	dev_ik = &p2p->pairing_info->dev_ik;
+diff --git a/src/p2p/p2p_pd.c b/src/p2p/p2p_pd.c
+index f646bda2c..a55e7e688 100644
+--- a/src/p2p/p2p_pd.c
++++ b/src/p2p/p2p_pd.c
+@@ -703,7 +703,6 @@ void p2p_process_pcea(struct p2p_data *p2p, struct p2p_message *msg,
+ 
+ 	if (dev->info.pcea_cap_info & P2P_PCEA_PMK_CACHING) {
+ 		dev->info.pairing_config.enable_pairing_cache = true;
+-		dev->info.pairing_config.enable_pairing_verification = true;
+ 	}
+ }
+ 
+diff --git a/wpa_supplicant/config.c b/wpa_supplicant/config.c
+index 9c5382f65..228b1b2c9 100644
+--- a/wpa_supplicant/config.c
++++ b/wpa_supplicant/config.c
+@@ -5502,7 +5502,6 @@ static const struct global_parse_data global_fields[] = {
+ 	{ INT(p2p_6ghz_disable), 0 },
+ 	{ INT_RANGE(p2p_pairing_setup, 0, 1), 0 },
+ 	{ INT_RANGE(p2p_pairing_cache, 0, 1), 0 },
+-	{ INT_RANGE(p2p_pairing_verification, 0, 1), 0 },
+ 	{ INT(p2p_bootstrap_methods), 0 },
+ 	{ INT(p2p_pasn_type), 0 },
+ 	{ INT(p2p_comeback_after), 0 },
+diff --git a/wpa_supplicant/config.h b/wpa_supplicant/config.h
+index 8df9eb583..8dac97932 100644
+--- a/wpa_supplicant/config.h
++++ b/wpa_supplicant/config.h
+@@ -901,7 +901,6 @@ struct wpa_config {
+ 	int p2p_6ghz_disable;
+ 	bool p2p_pairing_setup;
+ 	bool p2p_pairing_cache;
+-	bool p2p_pairing_verification;
+ 	int p2p_bootstrap_methods;
+ 	int p2p_pasn_type;
+ 	int p2p_comeback_after;
+diff --git a/wpa_supplicant/config_file.c b/wpa_supplicant/config_file.c
+index 6a4d4c9ee..f0c3727dd 100644
+--- a/wpa_supplicant/config_file.c
++++ b/wpa_supplicant/config_file.c
+@@ -1381,9 +1381,6 @@ static void wpa_config_write_global(FILE *f, struct wpa_config *config)
+ 		fprintf(f, "p2p_pairing_setup=%d\n", config->p2p_pairing_setup);
+ 	if (config->p2p_pairing_cache)
+ 		fprintf(f, "p2p_pairing_cache=%d\n", config->p2p_pairing_cache);
+-	if (config->p2p_pairing_verification)
+-		fprintf(f, "p2p_pairing_verification=%d\n",
+-			config->p2p_pairing_verification);
+ 	if (config->p2p_bootstrap_methods)
+ 		fprintf(f, "p2p_bootstrap_methods=%d\n",
+ 			config->p2p_bootstrap_methods);
+diff --git a/wpa_supplicant/ctrl_iface.c b/wpa_supplicant/ctrl_iface.c
+index 224f5175e..c024c8f87 100644
+--- a/wpa_supplicant/ctrl_iface.c
++++ b/wpa_supplicant/ctrl_iface.c
+@@ -7723,11 +7723,6 @@ static int p2p_ctrl_set(struct wpa_supplicant *wpa_s, char *cmd)
+ 		return 0;
+ 	}
+ 
+-	if (os_strcmp(cmd, "pairing_verification") == 0) {
+-		p2p_set_pairing_verification(wpa_s->global->p2p, atoi(param));
+-		return 0;
+-	}
+-
+ 	if (os_strcmp(cmd, "supported_bootstrapmethods") == 0) {
+ 		p2p_set_bootstrapmethods(wpa_s->global->p2p, atoi(param));
+ 		return 0;
+diff --git a/wpa_supplicant/p2p_supplicant.c b/wpa_supplicant/p2p_supplicant.c
+index 0329a5f49..a5336d1a1 100644
+--- a/wpa_supplicant/p2p_supplicant.c
++++ b/wpa_supplicant/p2p_supplicant.c
+@@ -5769,8 +5769,6 @@ int wpas_p2p_init(struct wpa_global *global, struct wpa_supplicant *wpa_s)
+ 		wpa_s->conf->p2p_pairing_setup;
+ 	p2p.pairing_config.enable_pairing_cache =
+ 		wpa_s->conf->p2p_pairing_cache;
+-	p2p.pairing_config.enable_pairing_verification =
+-		wpa_s->conf->p2p_pairing_verification;
+ 	p2p.pairing_config.bootstrap_methods =
+ 		wpa_s->conf->p2p_bootstrap_methods;
+ 	p2p.pairing_config.pasn_type = wpa_s->conf->p2p_pasn_type;
+-- 
+2.43.0
+

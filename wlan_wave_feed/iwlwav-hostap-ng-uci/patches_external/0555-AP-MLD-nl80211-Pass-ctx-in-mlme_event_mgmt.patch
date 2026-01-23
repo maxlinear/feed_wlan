@@ -1,0 +1,63 @@
+From 80864d01163086fe6a6afba5e9d7b81bd965bdb3 Mon Sep 17 00:00:00 2001
+From: Sriram R <quic_srirrama@quicinc.com>
+Date: Thu, 28 Mar 2024 23:46:40 +0530
+Subject: [PATCH] AP MLD/nl80211: Pass ctx in mlme_event_mgmt()
+
+Pass ctx in mlme_event_mgmt(). This will help in routing the event
+properly to the link BSS.
+
+Signed-off-by: Sriram R <quic_srirrama@quicinc.com>
+Signed-off-by: Aditya Kumar Singh <quic_adisi@quicinc.com>
+---
+ src/ap/drv_callbacks.c             | 2 ++
+ src/drivers/driver.h               | 8 ++++++++
+ src/drivers/driver_nl80211_event.c | 1 +
+ 3 files changed, 11 insertions(+)
+
+diff --git a/src/ap/drv_callbacks.c b/src/ap/drv_callbacks.c
+index b45c43bb3..b55168534 100644
+--- a/src/ap/drv_callbacks.c
++++ b/src/ap/drv_callbacks.c
+@@ -1845,6 +1845,8 @@ static int hostapd_mgmt_rx(struct hostapd_data *hapd, struct rx_mgmt *rx_mgmt)
+ 	struct hostapd_frame_info fi;
+ 	int ret;
+ 
++	if (rx_mgmt->ctx)
++		hapd = rx_mgmt->ctx;
+ 	hapd = switch_link_hapd(hapd, rx_mgmt->link_id);
+ 	iface = hapd->iface;
+ 
+diff --git a/src/drivers/driver.h b/src/drivers/driver.h
+index 09cafeb0e..628b7f181 100644
+--- a/src/drivers/driver.h
++++ b/src/drivers/driver.h
+@@ -6355,6 +6355,14 @@ union wpa_event_data {
+ 		 */
+ 		void *drv_priv;
+ 
++		/**
++		 * ctx - Pointer to store ctx of private BSS information
++		 *
++		 * If not set to NULL, this is used for forwarding the packet
++		 * to right link BSS of ML BSS.
++		 */
++		void *ctx;
++
+ 		/**
+ 		 * freq - Frequency (in MHz) on which the frame was received
+ 		 */
+diff --git a/src/drivers/driver_nl80211_event.c b/src/drivers/driver_nl80211_event.c
+index 143a53288..727565c43 100644
+--- a/src/drivers/driver_nl80211_event.c
++++ b/src/drivers/driver_nl80211_event.c
+@@ -1367,6 +1367,7 @@ static void mlme_event_mgmt(struct i802_bss *bss,
+ 	event.rx_mgmt.frame_len = len;
+ 	event.rx_mgmt.ssi_signal = ssi_signal;
+ 	event.rx_mgmt.drv_priv = bss;
++	event.rx_mgmt.ctx = bss->ctx;
+ 	event.rx_mgmt.link_id = link_id;
+ 
+ 	wpa_supplicant_event(drv->ctx, EVENT_RX_MGMT, &event);
+-- 
+2.43.0
+

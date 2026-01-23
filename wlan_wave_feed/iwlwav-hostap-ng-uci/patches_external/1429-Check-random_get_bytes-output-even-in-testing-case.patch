@@ -1,0 +1,32 @@
+From cb3a47247ee08091040e616d2fc25aeaa755730d Mon Sep 17 00:00:00 2001
+From: Jouni Malinen <j@w1.fi>
+Date: Sun, 23 Feb 2025 16:11:31 +0200
+Subject: [PATCH] Check random_get_bytes() output even in testing case
+
+Make this a bit more consistent even for CONFIG_TESTING_OPTIONS=y builds
+to reduce warnings from static analyzers.
+
+Signed-off-by: Jouni Malinen <j@w1.fi>
+---
+ src/ap/wpa_auth.c | 5 +++--
+ 1 file changed, 3 insertions(+), 2 deletions(-)
+
+diff --git a/src/ap/wpa_auth.c b/src/ap/wpa_auth.c
+index fdeac6278..80f9984cc 100644
+--- a/src/ap/wpa_auth.c
++++ b/src/ap/wpa_auth.c
+@@ -2084,8 +2084,9 @@ void __wpa_send_eapol(struct wpa_authenticator *wpa_auth,
+ 		os_memcpy(key->key_rsc, key_rsc, WPA_KEY_RSC_LEN);
+ 
+ #ifdef CONFIG_TESTING_OPTIONS
+-	if (conf->eapol_key_reserved_random)
+-		random_get_bytes(key->key_id, sizeof(key->key_id));
++	if (conf->eapol_key_reserved_random &&
++	    random_get_bytes(key->key_id, sizeof(key->key_id)) < 0)
++		os_memset(key->key_id, 0x11, sizeof(key->key_id));
+ #endif /* CONFIG_TESTING_OPTIONS */
+ 
+ 	if (kde && !encr) {
+-- 
+2.43.0
+

@@ -1,0 +1,53 @@
+From 9c32d04e4d3ee7b17c72dd9258396e573b6ded17 Mon Sep 17 00:00:00 2001
+From: Jouni Malinen <j@w1.fi>
+Date: Sat, 23 Dec 2023 12:19:07 +0200
+Subject: [PATCH] tests: P2P GO starting a persistent group with 80+80 MHz
+ bandwidth
+
+Signed-off-by: Jouni Malinen <j@w1.fi>
+---
+ tests/hwsim/test_p2p_channel.py | 24 +++++++++++++++++++++++-
+ 1 file changed, 23 insertions(+), 1 deletion(-)
+
+diff --git a/tests/hwsim/test_p2p_channel.py b/tests/hwsim/test_p2p_channel.py
+index ed863198b..abae5572d 100644
+--- a/tests/hwsim/test_p2p_channel.py
++++ b/tests/hwsim/test_p2p_channel.py
+@@ -1243,11 +1243,33 @@ def test_p2p_channel_vht80p80(dev):
+ 
+ def test_p2p_channel_vht80p80_autogo(dev):
+     """P2P autonomous GO and VHT 80+80 MHz channel"""
++    run_p2p_channel_vht80p80_autogo(dev)
++
++def test_p2p_channel_vht80p80_autogo_persistent(dev):
++    """P2P autonomous GO and VHT 80+80 MHz channel (persistent group)"""
++    run_p2p_channel_vht80p80_autogo(dev, persistent=True)
++
++def run_p2p_channel_vht80p80_autogo(dev, persistent=False):
+     addr0 = dev[0].p2p_dev_addr()
+ 
+     try:
+         set_country("US", dev[0])
+-        if "OK" not in dev[0].global_request("P2P_GROUP_ADD vht freq=5180 freq2=5775"):
++
++        if persistent:
++            res = dev[0].p2p_start_go(persistent=True)
++            dev[0].remove_group()
++
++            networks = dev[0].list_networks(p2p=True)
++            if len(networks) != 1:
++                raise Exception("Unexpected number of networks")
++            if "[P2P-PERSISTENT]" not in networks[0]['flags']:
++                raise Exception("Not the persistent group data")
++            id = networks[0]['id']
++
++        cmd = "P2P_GROUP_ADD vht freq=5180 freq2=5775"
++        if persistent:
++            cmd += " persistent=" + id
++        if "OK" not in dev[0].global_request(cmd):
+             raise Exception("Could not start GO")
+         ev = dev[0].wait_global_event(["P2P-GROUP-STARTED"], timeout=5)
+         if ev is None:
+-- 
+2.43.0
+

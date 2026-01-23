@@ -1,0 +1,1279 @@
+From 1fd87537a98070d48b508552fe5e0906c2e9b3c4 Mon Sep 17 00:00:00 2001
+From: spatel <spatel@maxlinear.com>
+Date: Thu, 31 Oct 2024 18:31:57 +0530
+Subject: [PATCH] WLANRTSYS-56560 [MXL] implement Dynamic WMM support
+
+---
+ hostapd/config_file.c              |   3 +
+ hostapd/mxl_config.c               |  15 +
+ hostapd/mxl_config_proprietary.c   |  52 +++
+ hostapd/mxl_ctrl_iface.c           |   2 +
+ src/ap/ap_config.h                 |   1 -
+ src/ap/hostapd.c                   |   2 +
+ src/ap/hostapd.h                   |   3 +
+ src/ap/mxl_common_proprietary.c    |  55 +++
+ src/ap/mxl_config.h                |  13 +-
+ src/ap/mxl_drv_callbacks.c         |  11 +-
+ src/ap/mxl_hostapd.c               |   9 +
+ src/ap/mxl_hostapd.h               |   2 +
+ src/ap/mxl_wmm.c                   |  19 +
+ src/ap/mxl_wmm.h                   |   2 +
+ src/ap/wmm.c                       |   4 +
+ src/common/mxl_ieee802_11_common.h |  15 +
+ src/common/vendor_cmds_copy.h      |  18 +
+ src/drivers/driver.h               |  11 +-
+ src/drivers/driver_nl80211_event.c |  15 +
+ src/drivers/mxl_driver.h           | 659 ++++++++++++++++++++++++++++-
+ src/drivers/mxl_driver_nl80211.h   |  26 ++
+ 21 files changed, 926 insertions(+), 11 deletions(-)
+
+diff --git a/hostapd/config_file.c b/hostapd/config_file.c
+index 00709a8c3..63eaf4f9e 100644
+--- a/hostapd/config_file.c
++++ b/hostapd/config_file.c
+@@ -4316,6 +4316,9 @@ static int hostapd_config_fill(struct hostapd_config *conf,
+ 				   line);
+ 			return 1;
+ 		}
++#ifdef CONFIG_VENDOR_MXL
++	} else if (mxl_config_check_dynamic_wmm_wrap(conf, buf, pos) == 0) {
++#endif /* CONFIG_VENDOR_MXL */
+ 	} else if (os_strcmp(buf, "bss") == 0) {
+ 		if (hostapd_config_bss(conf, pos)) {
+ 			wpa_printf(MSG_ERROR, "Line %d: invalid bss item",
+diff --git a/hostapd/mxl_config.c b/hostapd/mxl_config.c
+index dd42fbe8a..779bb445a 100644
+--- a/hostapd/mxl_config.c
++++ b/hostapd/mxl_config.c
+@@ -2227,3 +2227,18 @@ int mxl_hostapd_config_check_bss(struct hostapd_bss_config *bss, struct hostapd_
+ 
+ 	return 0;
+ }
++
++int mxl_config_check_dynamic_wmm_wrap(struct hostapd_config *conf, const char *buf, char* pos) {
++#ifdef CONFIG_VENDOR_MXL_PROPRIETARY
++	return mxl_config_check_dynamic_wmm(conf, buf, pos);
++#endif /* CONFIG_VENDOR_MXL_PROPRIETARY */
++	return 1;
++}
++
++int mxl_hostapd_ctrl_iface_set_wmm_wrap(struct hostapd_data *hapd, char *cmd, int *ret) {
++#ifdef CONFIG_VENDOR_MXL_PROPRIETARY
++	return mxl_hostapd_ctrl_iface_set_wmm(hapd, cmd, ret);
++#endif /* CONFIG_VENDOR_MXL_PROPRIETARY */
++	return 1;
++}
++
+diff --git a/hostapd/mxl_config_proprietary.c b/hostapd/mxl_config_proprietary.c
+index 8ddc68ded..b16bc84b8 100644
+--- a/hostapd/mxl_config_proprietary.c
++++ b/hostapd/mxl_config_proprietary.c
+@@ -54,6 +54,58 @@ int mxl_config_check_dfs_debug_chan(struct hostapd_config *conf, const char *buf
+ 	return 1;
+ }
+ 
++int mxl_config_check_dynamic_wmm(struct hostapd_config *conf, const char *buf, char* pos)
++{
++	if (os_strcmp(buf, "dynamic_wmm") == 0) {
++		int val = atoi(pos);
++		if (!IS_VALID_BOOL_RANGE(val)) {
++			wpa_printf(MSG_ERROR, "invalid dynamic_wmm value %d", val);
++			return 1;
++		}
++		conf->mxl_conf.dynamic_wmm = val;
++	} else {
++		return 1;
++	}
++	return 0;
++}
++
++int mxl_hostapd_ctrl_iface_set_wmm(struct hostapd_data *hapd, char *cmd, int *ret)
++{
++	if (os_strcasecmp(cmd, "dynamic_wmm") == 0) {
++		if (!hostapd_drv_vendor_cmd(hapd->iface->bss[0], OUI_LTQ, LTQ_NL80211_VENDOR_SUBCMD_SET_DYNAMIC_WMM,
++			(u8*)&hapd->iconf->mxl_conf.dynamic_wmm, sizeof(hapd->iconf->mxl_conf.dynamic_wmm),
++			NESTED_ATTR_NOT_USED, NULL)) {
++			int i;
++			for (i = 0; i < hapd->iface->num_bss; i++) {
++				if (hapd->iface->bss[i]->beacon_set_done && hapd->iface->bss[i]->started) {
++					hapd->iface->bss[i]->parameter_set_count++;
++					ieee802_11_set_beacon(hapd->iface->bss[i]);
++				}
++			}
++		}
++		else {
++			*ret = -1;
++		}
++	} else {
++		return 0;
++	}
++	return 1;
++}
++
++int mxl_hostapd_ctrl_iface_get_wmm(struct hostapd_data *hapd, char *cmd, char *buf, size_t buflen, int *reply_len)
++{
++	int res = 0;
++	if (os_strcmp(cmd, "dynamic_wmm") == 0) {
++		res = sprintf_s(buf, buflen, "%d\n", hapd->iconf->mxl_conf.dynamic_wmm);
++		if (res <= 0)
++			res = -1;
++	} else {
++		return 0;
++	}
++	*reply_len = res;
++	return 1;
++}
++
+ static int hostapd_parse_opt_ch_list(int **int_list, char *val, int *ch_count, int op_class)
+ {
+ #define MAX_OPT_CH_LIST 5
+diff --git a/hostapd/mxl_ctrl_iface.c b/hostapd/mxl_ctrl_iface.c
+index 394d12827..28d2b4136 100644
+--- a/hostapd/mxl_ctrl_iface.c
++++ b/hostapd/mxl_ctrl_iface.c
+@@ -3391,6 +3391,8 @@ int mxl_hostapd_ctrl_iface_get(struct hostapd_data *hapd, char *cmd, char *buf,
+ #ifdef CONFIG_VENDOR_MXL_PROPRIETARY
+ 	if (mxl_hostapd_ctrl_iface_get_dynamic_failsafe(hapd, cmd, buf, buflen, reply_len)) {
+ 		return *reply_len;
++	} else if (mxl_hostapd_ctrl_iface_get_wmm(hapd, cmd, buf, buflen, reply_len)) {
++		return *reply_len;
+ 	}
+ #endif
+ 	return 0;
+diff --git a/src/ap/ap_config.h b/src/ap/ap_config.h
+index b3013c4e6..811c0366b 100644
+--- a/src/ap/ap_config.h
++++ b/src/ap/ap_config.h
+@@ -1318,7 +1318,6 @@ struct hostapd_config {
+ 	 * 3 = VO (voice)
+ 	 */
+ 	struct hostapd_wmm_ac_params wmm_ac_params[4];
+-
+ 	int ht_op_mode_fixed;
+ 	u16 ht_capab;
+ 	int ht_tx_bf_capab_from_hw;
+diff --git a/src/ap/hostapd.c b/src/ap/hostapd.c
+index 85ffbf3f7..4f7bae661 100644
+--- a/src/ap/hostapd.c
++++ b/src/ap/hostapd.c
+@@ -4141,6 +4141,8 @@ hostapd_alloc_bss_data(struct hostapd_iface *hapd_iface,
+ 	hapd->mxl_data.sibling_hapd = NULL;
+ #endif /* CONFIG_IEEE80211BE_MXL_MLO */
+ 
++	mxl_dynamic_wmm_param_init_wrap(hapd);
++
+ 	mxl_hostapd_alloc_bss_data(hapd);
+ #endif /* CONFIG_VENDOR_MXL */
+ 
+diff --git a/src/ap/hostapd.h b/src/ap/hostapd.h
+index d8040ca07..f266217e8 100644
+--- a/src/ap/hostapd.h
++++ b/src/ap/hostapd.h
+@@ -576,6 +576,9 @@ struct hostapd_data {
+ #endif /* CONFIG_VENDOR_MXL */
+ 	u8 csa_deauth_mode;
+ 	u16 csa_deauth_tx_time[INTEL_CSA_DEAUTH_TX_TIME_ARR_SIZE];
++#ifdef CONFIG_VENDOR_MXL
++	struct mxl_dynamic_wmm_params mxl_dynamic_wmm_params;
++#endif /*CONFIG_VENDOR_MXL*/
+ };
+ 
+ 
+diff --git a/src/ap/mxl_common_proprietary.c b/src/ap/mxl_common_proprietary.c
+index e4f7ad46d..8fd34c301 100644
+--- a/src/ap/mxl_common_proprietary.c
++++ b/src/ap/mxl_common_proprietary.c
+@@ -48,6 +48,61 @@
+ #include "mxl_acs.h"
+ #include "mxl_dfs_common.h"
+ 
++#define MIN_WMM_PARAM_VAL 0
++#define MAX_WMM_PARAM_VAL 0xf
++#define MAX_WMM_TXOP_VAL  0xffff
++
++void hostapd_event_ltq_dynamic_wmm(struct hostapd_data *hapd, struct intel_vendor_event_wmm *wmm, size_t data_len)
++{
++	struct mxl_hostapd_config *mxl_conf = &hapd->iconf->mxl_conf;
++	int i;
++
++	if (hapd->iface->state != HAPD_IFACE_ENABLED) {
++		wpa_printf(MSG_INFO, "Dynamic WMM: discard driver event: interface not ready yet");
++		return;
++	}
++
++	if (!hapd->iconf->mxl_conf.dynamic_wmm && !mxl_conf->dynamic_edca) {
++		wpa_printf(MSG_INFO, "Dynamic WMM: Discard driver event: dynamic WMM not enabled");
++		return;
++	}
++
++	for (i = 0; i < WMM_AC_NUM; i++) {
++		if (!IS_VALID_RANGE(wmm->ac_info[i].cwmin, MIN_WMM_PARAM_VAL, MAX_WMM_PARAM_VAL) ||
++		    !IS_VALID_RANGE(wmm->ac_info[i].cwmax, MIN_WMM_PARAM_VAL, MAX_WMM_PARAM_VAL) ||
++		    !IS_VALID_RANGE(wmm->ac_info[i].aifs, MIN_WMM_PARAM_VAL, MAX_WMM_PARAM_VAL)  ||
++		    !IS_VALID_RANGE(wmm->ac_info[i].txop_limit, MIN_WMM_PARAM_VAL, MAX_WMM_TXOP_VAL))
++			goto err_params;
++
++		hapd->mxl_dynamic_wmm_params.dynamic_wmm_params[i].cwmin = wmm->ac_info[i].cwmin;
++		hapd->mxl_dynamic_wmm_params.dynamic_wmm_params[i].cwmax = wmm->ac_info[i].cwmax;
++		hapd->mxl_dynamic_wmm_params.dynamic_wmm_params[i].aifs = wmm->ac_info[i].aifs;
++		hapd->mxl_dynamic_wmm_params.dynamic_wmm_params[i].txop_limit = wmm->ac_info[i].txop_limit;
++	}
++
++	hapd->parameter_set_count++;
++	ieee802_11_update_beacon(hapd);
++	return;
++
++err_params:
++	wpa_printf(MSG_ERROR, "Invalid dynamic WMM parameters received from driver");
++}
++
++void mxl_dynamic_wmm_param_init(struct hostapd_data *hapd)
++{
++	int i;
++	for (i = 0; i < ARRAY_SIZE(hapd->mxl_dynamic_wmm_params.dynamic_wmm_params); i++)
++		hapd->mxl_dynamic_wmm_params.dynamic_wmm_params[i].cwmin = -1;
++}
++
++void mxl_hostapd_setup_interface_pre_wmm(struct hostapd_iface *iface, struct hostapd_data *hapd)
++{
++	if (hostapd_drv_vendor_cmd(hapd, OUI_LTQ, LTQ_NL80211_VENDOR_SUBCMD_SET_DYNAMIC_WMM,
++                                   (u8*)&iface->conf->mxl_conf.dynamic_wmm, sizeof(iface->conf->mxl_conf.dynamic_wmm),
++                                   NESTED_ATTR_NOT_USED, NULL))
++                wpa_printf(MSG_WARNING, "set dynamic_wmm failed");
++}
++
+ struct hostapd_channel_data *
+ mxl_dfs_get_channel_dynamic_failsafe(struct hostapd_iface *iface,
+                                      int *secondary_channel,
+diff --git a/src/ap/mxl_config.h b/src/ap/mxl_config.h
+index 5306be845..b09039200 100644
+--- a/src/ap/mxl_config.h
++++ b/src/ap/mxl_config.h
+@@ -50,6 +50,10 @@ void mxl_hostapd_config_free_acs(struct hostapd_config *conf);
+ int mxl_hostapd_config_check_acs(struct hostapd_config *conf, int full_config);
+ int mxl_config_check_dfs_debug_chan(struct hostapd_config *conf, const char *buf, char* pos);
+ int mxl_config_check_dynamic_failsafe(struct hostapd_config *conf, const char *buf, char* pos);
++int mxl_config_check_dynamic_wmm(struct hostapd_config *conf, const char *buf, char* pos);
++int mxl_hostapd_ctrl_iface_set_wmm(struct hostapd_data *hapd, char *cmd, int *ret);
++int mxl_hostapd_ctrl_iface_get_wmm(struct hostapd_data *hapd, char *cmd, char *buf, size_t buflen, int *reply_len);
++void hostapd_event_ltq_dynamic_wmm(struct hostapd_data *hapd, struct intel_vendor_event_wmm *wmm, size_t data_len);
+ #endif /* CONFIG_VENDOR_MXL_PROPRIETARY */
+ 
+ #define CCA_TH_SIZE 5
+@@ -440,6 +444,9 @@ struct mxl_hostapd_config {
+ 	size_t nlmsg_default_size;
+ 	int zwdfs_debug_chan;
+ 	bool is_client_mode; /* To check if client mode is enabled */
++#ifdef CONFIG_VENDOR_MXL_PROPRIETARY
++	int dynamic_wmm;
++#endif /* CONFIG_VENDOR_MXL_PROPRIETARY */
+ };
+ 
+ enum duplicate_beacon_bw {
+@@ -505,7 +512,6 @@ struct mxl_hostapd_bss_config {
+ #endif /* CONFIG_LEGACY_MULTI_AP_MXL */
+ };
+ 
+-
+ int mxl_hostapd_config_fill (struct hostapd_config *conf,
+ 					struct hostapd_bss_config *bss,
+ 					const char *buf, char *pos, int line);
+@@ -521,6 +527,11 @@ int mxl_hostapd_config_check_bss(struct hostapd_bss_config *bss, struct hostapd_
+ int mxl_hostapd_parse_intlist(int **int_list, char *val);
+ int mxl_parse_wpabuf_hex(int line, const char *name, struct wpabuf **buf, const char *val);
+ 
++int mxl_config_check_dynamic_wmm_wrap(struct hostapd_config *conf, const char *buf, char* pos);
++int mxl_hostapd_ctrl_iface_set_wmm_wrap(struct hostapd_data *hapd, char *cmd, int *ret);
++bool mxl_hostapd_event_ltq_dynamic_wmm(enum wpa_event_type event, struct hostapd_data *hapd, union wpa_event_data *data);
++
++
+ 
+ #define SCAN_PASSIVE_DWELL_DEFAULT 20
+ #define SCAN_PASSIVE_DWELL_MIN 5
+diff --git a/src/ap/mxl_drv_callbacks.c b/src/ap/mxl_drv_callbacks.c
+index 987ae8e4b..17867c1e0 100644
+--- a/src/ap/mxl_drv_callbacks.c
++++ b/src/ap/mxl_drv_callbacks.c
+@@ -23,7 +23,6 @@
+ #include "wpa_auth.h"
+ #include "ap_drv_ops.h"
+ #include "beacon.h"
+-#include "drivers/mxl_driver.h"
+ 
+ #ifdef CONFIG_IEEE80211BE_MXL_MLO
+ void mxl_hostapd_notif_disassoc(struct hostapd_data *hapd, const u8 *addr)
+@@ -124,6 +123,16 @@ int mxl_wpa_supplicant_event(void *ctx, enum wpa_event_type event, union wpa_eve
+ 	if (!data)
+ 		return 1;
+ 	switch (event) {
++		case EVENT_ML_CSA_DONE_ON_REPORTING_LINK:
++			mxl_hostapd_event_ml_csa_done_on_reporting_link(hapd, data->mxl_wpa_event.ml_ch_switch_done.type);
++			break;
++#ifdef CONFIG_VENDOR_MXL_PROPRIETARY
++#ifdef CONFIG_IEEE80211AX
++	    case EVENT_LTQ_WMM:
++			hostapd_event_ltq_dynamic_wmm(hapd, &data->mxl_wpa_event.wmm, sizeof(struct intel_vendor_event_wmm));
++			break;
++#endif /* CONFIG_IEEE80211AX */
++#endif /* CONFIG_VENDOR_MXL_PROPRIETARY */
+ 		default:
+ 			return 0;
+ 	}
+diff --git a/src/ap/mxl_hostapd.c b/src/ap/mxl_hostapd.c
+index 5d8667511..58474c75c 100644
+--- a/src/ap/mxl_hostapd.c
++++ b/src/ap/mxl_hostapd.c
+@@ -2142,6 +2142,9 @@ void mxl_hostapd_setup_interface_pre(struct hostapd_iface *iface)
+ 					NESTED_ATTR_NOT_USED,NULL))
+ 		wpa_printf(MSG_WARNING, "set sInterferDetThresh failed");
+ 
++#ifdef CONFIG_VENDOR_MXL_PROPRIETARY
++	mxl_hostapd_setup_interface_pre_wmm(iface, hapd);
++#endif /* CONFIG_VENDOR_MXL_PROPRIETARY */
+ 	if (MXL_DRV_VENDOR_SET(LTQ_NL80211_VENDOR_SUBCMD_SET_DYNAMIC_EDCA,
+ 			       &mxl_conf->dynamic_edca, sizeof(mxl_conf->dynamic_edca)))
+ 		wpa_printf(MSG_WARNING, "set dynamic_edca failed");
+@@ -3618,3 +3621,9 @@ int mxl_hostapd_ieee80211n_check_40mhz_wrap(struct hostapd_iface *iface) {
+ 	return 1;
+ #endif /* CONFIG_VENDOR_MXL_PROPRIETARY */
+ }
++void mxl_dynamic_wmm_param_init_wrap(struct hostapd_data *hapd) {
++#ifdef CONFIG_VENDOR_MXL_PROPRIETARY
++	mxl_dynamic_wmm_param_init(hapd);
++#endif /* CONFIG_VENDOR_MXL_PROPRIETARY */
++	return;
++}
+diff --git a/src/ap/mxl_hostapd.h b/src/ap/mxl_hostapd.h
+index fcb0e77d1..a6a34b89f 100644
+--- a/src/ap/mxl_hostapd.h
++++ b/src/ap/mxl_hostapd.h
+@@ -271,6 +271,8 @@ void mxl_hostapd_update_channel_data(struct hostapd_iface *iface, const u8 *data
+ void mxl_hostapd_set_state_pre(struct hostapd_iface *iface, enum hostapd_iface_state s);
+ bool mxl_hostapd_ieee80211n_check_40mhz(struct hostapd_iface *iface);
+ int mxl_hostapd_restart_iface(struct hostapd_iface *iface);
++void mxl_dynamic_wmm_param_init(struct hostapd_data *hapd);
++void mxl_hostapd_setup_interface_pre_wmm(struct hostapd_iface *iface, struct hostapd_data *hapd);
+ #endif /* CONFIG_VENDOR_MXL_PROPRIETARY */
+ 
+ int mxl_hostapd_get_num_width(enum oper_chan_width width, int secondary);
+diff --git a/src/ap/mxl_wmm.c b/src/ap/mxl_wmm.c
+index 46d09d3d5..30b6cbe2b 100644
+--- a/src/ap/mxl_wmm.c
++++ b/src/ap/mxl_wmm.c
+@@ -380,3 +380,22 @@ void mxl_hostapd_scs_action(struct hostapd_data *hapd,
+ 	}
+ }
+ #endif /* CONFIG_SCS_MXL */
++
++void mxl_update_dynamic_wmm_params_elem(struct hostapd_data *hapd, struct hostapd_wmm_ac_params *wmmp) {
++#ifdef CONFIG_VENDOR_MXL_PROPRIETARY
++	/* Update WMM parameters from driver */
++	int e;
++	if (hapd->iconf->mxl_conf.dynamic_wmm || hapd->iconf->mxl_conf.dynamic_edca) {
++		for (e = 0; e < WMM_AC_NUM; e++) {
++			if (-1 == hapd->mxl_dynamic_wmm_params.dynamic_wmm_params[e].cwmin) /* not updated by driver */
++				continue;
++
++			wmmp[e].aifs = hapd->mxl_dynamic_wmm_params.dynamic_wmm_params[e].aifs;
++			wmmp[e].cwmin = hapd->mxl_dynamic_wmm_params.dynamic_wmm_params[e].cwmin;
++			wmmp[e].cwmax = hapd->mxl_dynamic_wmm_params.dynamic_wmm_params[e].cwmax;
++			wmmp[e].txop_limit = hapd->mxl_dynamic_wmm_params.dynamic_wmm_params[e].txop_limit;
++		}
++	}
++#endif /* CONFIG_VENDOR_MXL_PROPRIETARY */
++	return;
++}
+diff --git a/src/ap/mxl_wmm.h b/src/ap/mxl_wmm.h
+index 90040931b..1e3d0ed3b 100644
+--- a/src/ap/mxl_wmm.h
++++ b/src/ap/mxl_wmm.h
+@@ -31,3 +31,5 @@ int mxl_scs_add_req(struct hostapd_data *hapd, const struct ieee80211_mgmt *mgmt
+ int mxl_scs_remove_req(struct hostapd_data *hapd, const struct ieee80211_mgmt *mgmt, size_t len);
+ #endif /* CONFIG_SCS_MXL */
+ #endif /* MXL_WME_H */
++
++void mxl_update_dynamic_wmm_params_elem(struct hostapd_data *hapd, struct hostapd_wmm_ac_params *wmmp);
+diff --git a/src/ap/wmm.c b/src/ap/wmm.c
+index 3ca3e1a3a..646911815 100644
+--- a/src/ap/wmm.c
++++ b/src/ap/wmm.c
+@@ -134,6 +134,10 @@ u8 * hostapd_eid_wmm(struct hostapd_data *hapd, u8 *eid)
+ 
+ 	wmm->reserved = 0;
+ 
++#ifdef CONFIG_VENDOR_MXL
++	mxl_update_dynamic_wmm_params_elem(hapd, wmmp);
++#endif /* CONFIG_VENDOR_MXL */
++
+ 	/* fill in a parameter set record for each AC */
+ 	for (e = 0; e < 4; e++) {
+ 		struct wmm_ac_parameter *ac = &wmm->ac[e];
+diff --git a/src/common/mxl_ieee802_11_common.h b/src/common/mxl_ieee802_11_common.h
+index 5edeb7650..624032f1a 100644
+--- a/src/common/mxl_ieee802_11_common.h
++++ b/src/common/mxl_ieee802_11_common.h
+@@ -24,6 +24,21 @@ struct mxl_fils_data {
+ #endif /* CONFIG_VENDOR_MXL_PROPRIETARY */
+ };
+ 
++#ifdef CONFIG_VENDOR_MXL_PROPRIETARY
++struct mxl_hostapd_dynamic_wmm_params {
++	int aifs;
++	int cwmin;
++	int cwmax;
++	int txop_limit;
++};
++#endif /* CONFIG_VENDOR_MXL_PROPRIETARY */
++
++struct mxl_dynamic_wmm_params {
++#ifdef CONFIG_VENDOR_MXL_PROPRIETARY
++  struct mxl_hostapd_dynamic_wmm_params dynamic_wmm_params[WMM_AC_NUM];
++#endif /*CONFIG_VENDOR_MXL_PROPRIETARY*/
++};
++
+ void mxl_scan_res_set_rssi_threshold(struct wpa_scan_results *scan_res, int rssi_threshold);
+ bool mxl_scan_res_bss_below_threshold(struct wpa_scan_results *scan_res, int bss_rssi);
+ #ifdef CONFIG_VENDOR_MXL_PROPRIETARY
+diff --git a/src/common/vendor_cmds_copy.h b/src/common/vendor_cmds_copy.h
+index ee74d4c0c..1f0dd06ca 100644
+--- a/src/common/vendor_cmds_copy.h
++++ b/src/common/vendor_cmds_copy.h
+@@ -450,6 +450,9 @@ enum ltq_nl80211_vendor_events {
+   LTQ_NL80211_VENDOR_EVENT_COC_BEACON_UPDATE   = 14,
+   LTQ_NL80211_VENDOR_EVENT_WHM                 = 15,
+   LTQ_NL80211_VENDOR_EVENT_CSI_STATS           = 16,
++#ifdef CONFIG_VENDOR_MXL_PROPRIETARY
++  LTQ_NL80211_VENDOR_EVENT_DYNAMIC_WMM_UPDATE  = 17,
++#endif /* CONFIG_VENDOR_MXL_PROPRIETARY */
+   LTQ_NL80211_VENDOR_EVENT_REGDB_INFO_UPDATE   = 18,
+   LTQ_NL80211_VENDOR_EVENT_RX_MEASURE          = 19,
+ };
+@@ -917,6 +920,21 @@ struct intel_vendor_whm_event_cfg {
+   u32               num_cards;
+ } __attribute__ ((packed));
+ 
++#ifdef CONFIG_VENDOR_MXL_PROPRIETARY
++/* Data for EVENT_LTQ_WMM events */
++#define MAX_AC_PRIORITIES 4
++struct intel_vendor_wmm_info {
++  u16 txop_limit;
++  u8  cwmin;
++  u8  cwmax;
++  u8  aifs;
++} __attribute__ ((packed));
++
++struct intel_vendor_event_wmm {
++  struct intel_vendor_wmm_info ac_info[MAX_AC_PRIORITIES];
++} __attribute__ ((packed));
++#endif /* CONFIG_VENDOR_MXL_PROPRIETARY */
++
+ enum {
+   AFC_UPDATE_STATUS_DEFAULT = 0,
+   AFC_UPDATE_STATUS_SERVER,
+diff --git a/src/drivers/driver.h b/src/drivers/driver.h
+index 310d7a934..3850a6288 100644
+--- a/src/drivers/driver.h
++++ b/src/drivers/driver.h
+@@ -5713,9 +5713,11 @@ struct wpa_driver_ops {
+ #endif /* CONFIG_VENDOR_MXL */
+ };
+ 
+-/**
++/*
+  * enum wpa_event_type - Event type for wpa_supplicant_event() calls
+- */
++*/
++
++#ifndef CONFIG_VENDOR_MXL
+ enum wpa_event_type {
+ 	/**
+ 	 * EVENT_ASSOC - Association completed
+@@ -6355,7 +6357,7 @@ enum wpa_event_type {
+ 	EVENT_LTQ_CSA_RECEIVED,
+ #endif /* CONFIG_VENDOR_MXL */
+ };
+-
++#endif /* CONFIG_VENDOR_MXL */
+ 
+ /**
+  * struct freq_survey - Channel survey info
+@@ -7360,7 +7362,8 @@ union wpa_event_data {
+ 		u8 cca_count;
+ 	} bss_cca;
+ 
+- #ifdef CONFIG_VENDOR_MXL
++
++#ifdef CONFIG_VENDOR_MXL
+ 	struct mxl_wpa_event_data mxl_wpa_event;
+ #endif /* CONFIG_VENDOR_MXL */
+ };
+diff --git a/src/drivers/driver_nl80211_event.c b/src/drivers/driver_nl80211_event.c
+index 2deae9ab1..a8182e597 100644
+--- a/src/drivers/driver_nl80211_event.c
++++ b/src/drivers/driver_nl80211_event.c
+@@ -3441,6 +3441,14 @@ static void mxl_nl80211_handle_softblock_drop(struct wpa_driver_nl80211_data *dr
+ 
+ #endif /* CONFIG_DRIVER_NL80211_MXL */
+ 
++#ifdef CONFIG_VENDOR_MXL
++static void ltq_nl80211_handle_wmm(struct i802_bss *bss,
++				   const u8 *data, size_t len)
++{
++	drv_event_ltq_wmm_wrap(bss->ctx, data, len);
++}
++#endif /* CONFIG_VENDOR_MXL */
++
+ /******************************************************************************/
+ /*! \brief      Handle Unconnected STA vendor event from driver
+  *
+@@ -3512,6 +3520,13 @@ static void nl80211_vendor_event_mxl(struct wpa_driver_nl80211_data *drv,
+ 			break;
+ 		default:
+ 			nl80211_vendor_event_mxl_proprietary(subcmd, drv, data, len);
++#ifdef CONFIG_VENDOR_MXL
++			if(mxl_vendor_event_dynamic_wmm_update(subcmd)) {
++				ltq_nl80211_handle_wmm(bss, data, len);
++				break;
++			}
++#endif /* CONFIG_VENDOR_MXL */
++			wpa_printf(MSG_DEBUG, "nl80211: Ignore unsupported MXL vendor event %u", subcmd);
+ 			break;
+ 	}
+ }
+diff --git a/src/drivers/mxl_driver.h b/src/drivers/mxl_driver.h
+index 886594042..99b1db96f 100644
+--- a/src/drivers/mxl_driver.h
++++ b/src/drivers/mxl_driver.h
+@@ -10,14 +10,652 @@
+   See README for more details.
+ 
+ *******************************************************************************/
+-
+ #ifndef MXL_DRIVER_H
+ #define MXL_DRIVER_H
++
+ #include "driver.h"
+ 
+ struct mxl_scan_info {
++	#ifdef CONFIG_VENDOR_MXL_PROPRIETARY
++		u32 scan_timeout;
++	#endif /* CONFIG_VENDOR_MXL_PROPRIETARY*/
++};
++
++/**
++ * enum wpa_event_type - Event type for wpa_supplicant_event() calls
++ */
++enum wpa_event_type {
++	/**
++	 * EVENT_ASSOC - Association completed
++	 *
++	 * This event needs to be delivered when the driver completes IEEE
++	 * 802.11 association or reassociation successfully.
++	 * wpa_driver_ops::get_bssid() is expected to provide the current BSSID
++	 * after this event has been generated. In addition, optional
++	 * EVENT_ASSOCINFO may be generated just before EVENT_ASSOC to provide
++	 * more information about the association. If the driver interface gets
++	 * both of these events at the same time, it can also include the
++	 * assoc_info data in EVENT_ASSOC call.
++	 */
++	EVENT_ASSOC,
++
++	/**
++	 * EVENT_DISASSOC - Association lost
++	 *
++	 * This event should be called when association is lost either due to
++	 * receiving deauthenticate or disassociate frame from the AP or when
++	 * sending either of these frames to the current AP. If the driver
++	 * supports separate deauthentication event, EVENT_DISASSOC should only
++	 * be used for disassociation and EVENT_DEAUTH for deauthentication.
++	 * In AP mode, union wpa_event_data::disassoc_info is required.
++	 */
++	EVENT_DISASSOC,
++
++	/**
++	 * EVENT_MICHAEL_MIC_FAILURE - Michael MIC (TKIP) detected
++	 *
++	 * This event must be delivered when a Michael MIC error is detected by
++	 * the local driver. Additional data for event processing is
++	 * provided with union wpa_event_data::michael_mic_failure. This
++	 * information is used to request new encryption key and to initiate
++	 * TKIP countermeasures if needed.
++	 */
++	EVENT_MICHAEL_MIC_FAILURE,
++
++	/**
++	 * EVENT_SCAN_RESULTS - Scan results available
++	 *
++	 * This event must be called whenever scan results are available to be
++	 * fetched with struct wpa_driver_ops::get_scan_results(). This event
++	 * is expected to be used some time after struct wpa_driver_ops::scan()
++	 * is called. If the driver provides an unsolicited event when the scan
++	 * has been completed, this event can be used to trigger
++	 * EVENT_SCAN_RESULTS call. If such event is not available from the
++	 * driver, the driver wrapper code is expected to use a registered
++	 * timeout to generate EVENT_SCAN_RESULTS call after the time that the
++	 * scan is expected to be completed. Optional information about
++	 * completed scan can be provided with union wpa_event_data::scan_info.
++	 */
++	EVENT_SCAN_RESULTS,
++
++	/**
++	 * EVENT_ASSOCINFO - Report optional extra information for association
++	 *
++	 * This event can be used to report extra association information for
++	 * EVENT_ASSOC processing. This extra information includes IEs from
++	 * association frames and Beacon/Probe Response frames in union
++	 * wpa_event_data::assoc_info. EVENT_ASSOCINFO must be send just before
++	 * EVENT_ASSOC. Alternatively, the driver interface can include
++	 * assoc_info data in the EVENT_ASSOC call if it has all the
++	 * information available at the same point.
++	 */
++	EVENT_ASSOCINFO,
++
++	/**
++	 * EVENT_INTERFACE_STATUS - Report interface status changes
++	 *
++	 * This optional event can be used to report changes in interface
++	 * status (interface added/removed) using union
++	 * wpa_event_data::interface_status. This can be used to trigger
++	 * wpa_supplicant to stop and re-start processing for the interface,
++	 * e.g., when a cardbus card is ejected/inserted.
++	 */
++	EVENT_INTERFACE_STATUS,
++
++	/**
++	 * EVENT_PMKID_CANDIDATE - Report a candidate AP for pre-authentication
++	 *
++	 * This event can be used to inform wpa_supplicant about candidates for
++	 * RSN (WPA2) pre-authentication. If wpa_supplicant is not responsible
++	 * for scan request (ap_scan=2 mode), this event is required for
++	 * pre-authentication. If wpa_supplicant is performing scan request
++	 * (ap_scan=1), this event is optional since scan results can be used
++	 * to add pre-authentication candidates. union
++	 * wpa_event_data::pmkid_candidate is used to report the BSSID of the
++	 * candidate and priority of the candidate, e.g., based on the signal
++	 * strength, in order to try to pre-authenticate first with candidates
++	 * that are most likely targets for re-association.
++	 *
++	 * EVENT_PMKID_CANDIDATE can be called whenever the driver has updates
++	 * on the candidate list. In addition, it can be called for the current
++	 * AP and APs that have existing PMKSA cache entries. wpa_supplicant
++	 * will automatically skip pre-authentication in cases where a valid
++	 * PMKSA exists. When more than one candidate exists, this event should
++	 * be generated once for each candidate.
++	 *
++	 * Driver will be notified about successful pre-authentication with
++	 * struct wpa_driver_ops::add_pmkid() calls.
++	 */
++	EVENT_PMKID_CANDIDATE,
++
++	/**
++	 * EVENT_TDLS - Request TDLS operation
++	 *
++	 * This event can be used to request a TDLS operation to be performed.
++	 */
++	EVENT_TDLS,
++
++	/**
++	 * EVENT_FT_RESPONSE - Report FT (IEEE 802.11r) response IEs
++	 *
++	 * The driver is expected to report the received FT IEs from
++	 * FT authentication sequence from the AP. The FT IEs are included in
++	 * the extra information in union wpa_event_data::ft_ies.
++	 */
++	EVENT_FT_RESPONSE,
++
++	/**
++	 * EVENT_IBSS_RSN_START - Request RSN authentication in IBSS
++	 *
++	 * The driver can use this event to inform wpa_supplicant about a STA
++	 * in an IBSS with which protected frames could be exchanged. This
++	 * event starts RSN authentication with the other STA to authenticate
++	 * the STA and set up encryption keys with it.
++	 */
++	EVENT_IBSS_RSN_START,
++
++	/**
++	 * EVENT_AUTH - Authentication result
++	 *
++	 * This event should be called when authentication attempt has been
++	 * completed. This is only used if the driver supports separate
++	 * authentication step (struct wpa_driver_ops::authenticate).
++	 * Information about authentication result is included in
++	 * union wpa_event_data::auth.
++	 */
++	EVENT_AUTH,
++
++	/**
++	 * EVENT_DEAUTH - Authentication lost
++	 *
++	 * This event should be called when authentication is lost either due
++	 * to receiving deauthenticate frame from the AP or when sending that
++	 * frame to the current AP.
++	 * In AP mode, union wpa_event_data::deauth_info is required.
++	 */
++	EVENT_DEAUTH,
++
++	/**
++	 * EVENT_ASSOC_REJECT - Association rejected
++	 *
++	 * This event should be called when (re)association attempt has been
++	 * rejected by the AP. Information about the association response is
++	 * included in union wpa_event_data::assoc_reject.
++	 */
++	EVENT_ASSOC_REJECT,
++
++	/**
++	 * EVENT_AUTH_TIMED_OUT - Authentication timed out
++	 */
++	EVENT_AUTH_TIMED_OUT,
++
++	/**
++	 * EVENT_ASSOC_TIMED_OUT - Association timed out
++	 */
++	EVENT_ASSOC_TIMED_OUT,
++
++	/**
++	 * EVENT_WPS_BUTTON_PUSHED - Report hardware push button press for WPS
++	 */
++	EVENT_WPS_BUTTON_PUSHED,
++
++	/**
++	 * EVENT_TX_STATUS - Report TX status
++	 */
++	EVENT_TX_STATUS,
++
++	/**
++	 * EVENT_RX_FROM_UNKNOWN - Report RX from unknown STA
++	 */
++	EVENT_RX_FROM_UNKNOWN,
++
++	/**
++	 * EVENT_RX_MGMT - Report RX of a management frame
++	 */
++	EVENT_RX_MGMT,
++
++	/**
++	 * EVENT_REMAIN_ON_CHANNEL - Remain-on-channel duration started
++	 *
++	 * This event is used to indicate when the driver has started the
++	 * requested remain-on-channel duration. Information about the
++	 * operation is included in union wpa_event_data::remain_on_channel.
++	 */
++	EVENT_REMAIN_ON_CHANNEL,
++
++	/**
++	 * EVENT_CANCEL_REMAIN_ON_CHANNEL - Remain-on-channel timed out
++	 *
++	 * This event is used to indicate when the driver has completed
++	 * remain-on-channel duration, i.e., may noot be available on the
++	 * requested channel anymore. Information about the
++	 * operation is included in union wpa_event_data::remain_on_channel.
++	 */
++	EVENT_CANCEL_REMAIN_ON_CHANNEL,
++
++	/**
++	 * EVENT_RX_PROBE_REQ - Indicate received Probe Request frame
++	 *
++	 * This event is used to indicate when a Probe Request frame has been
++	 * received. Information about the received frame is included in
++	 * union wpa_event_data::rx_probe_req. The driver is required to report
++	 * these events only after successfully completed probe_req_report()
++	 * commands to request the events (i.e., report parameter is non-zero)
++	 * in station mode. In AP mode, Probe Request frames should always be
++	 * reported.
++	 */
++	EVENT_RX_PROBE_REQ,
++
++	/**
++	 * EVENT_NEW_STA - New wired device noticed
++	 *
++	 * This event is used to indicate that a new device has been detected
++	 * in a network that does not use association-like functionality (i.e.,
++	 * mainly wired Ethernet). This can be used to start EAPOL
++	 * authenticator when receiving a frame from a device. The address of
++	 * the device is included in union wpa_event_data::new_sta.
++	 */
++	EVENT_NEW_STA,
++
++	/**
++	 * EVENT_EAPOL_RX - Report received EAPOL frame
++	 *
++	 * When in AP mode with hostapd, this event is required to be used to
++	 * deliver the receive EAPOL frames from the driver.
++	 */
++	EVENT_EAPOL_RX,
++
++	/**
++	 * EVENT_SIGNAL_CHANGE - Indicate change in signal strength
++	 *
++	 * This event is used to indicate changes in the signal strength
++	 * observed in frames received from the current AP if signal strength
++	 * monitoring has been enabled with signal_monitor().
++	 */
++	EVENT_SIGNAL_CHANGE,
++
++	/**
++	 * EVENT_INTERFACE_ENABLED - Notify that interface was enabled
++	 *
++	 * This event is used to indicate that the interface was enabled after
++	 * having been previously disabled, e.g., due to rfkill.
++	 */
++	EVENT_INTERFACE_ENABLED,
++
++	/**
++	 * EVENT_INTERFACE_DISABLED - Notify that interface was disabled
++	 *
++	 * This event is used to indicate that the interface was disabled,
++	 * e.g., due to rfkill.
++	 */
++	EVENT_INTERFACE_DISABLED,
++
++	/**
++	 * EVENT_CHANNEL_LIST_CHANGED - Channel list changed
++	 *
++	 * This event is used to indicate that the channel list has changed,
++	 * e.g., because of a regulatory domain change triggered by scan
++	 * results including an AP advertising a country code.
++	 */
++	EVENT_CHANNEL_LIST_CHANGED,
++
++	/**
++	 * EVENT_INTERFACE_UNAVAILABLE - Notify that interface is unavailable
++	 *
++	 * This event is used to indicate that the driver cannot maintain this
++	 * interface in its operation mode anymore. The most likely use for
++	 * this is to indicate that AP mode operation is not available due to
++	 * operating channel would need to be changed to a DFS channel when
++	 * the driver does not support radar detection and another virtual
++	 * interfaces caused the operating channel to change. Other similar
++	 * resource conflicts could also trigger this for station mode
++	 * interfaces. This event can be propagated when channel switching
++	 * fails.
++	 */
++	EVENT_INTERFACE_UNAVAILABLE,
++
++	/**
++	 * EVENT_BEST_CHANNEL
++	 *
++	 * Driver generates this event whenever it detects a better channel
++	 * (e.g., based on RSSI or channel use). This information can be used
++	 * to improve channel selection for a new AP/P2P group.
++	 */
++	EVENT_BEST_CHANNEL,
++
++	/**
++	 * EVENT_UNPROT_DEAUTH - Unprotected Deauthentication frame received
++	 *
++	 * This event should be called when a Deauthentication frame is dropped
++	 * due to it not being protected (MFP/IEEE 802.11w).
++	 * union wpa_event_data::unprot_deauth is required to provide more
++	 * details of the frame.
++	 */
++	EVENT_UNPROT_DEAUTH,
++
++	/**
++	 * EVENT_UNPROT_DISASSOC - Unprotected Disassociation frame received
++	 *
++	 * This event should be called when a Disassociation frame is dropped
++	 * due to it not being protected (MFP/IEEE 802.11w).
++	 * union wpa_event_data::unprot_disassoc is required to provide more
++	 * details of the frame.
++	 */
++	EVENT_UNPROT_DISASSOC,
++
++	/**
++	 * EVENT_STATION_LOW_ACK
++	 *
++	 * Driver generates this event whenever it detected that a particular
++	 * station was lost. Detection can be through massive transmission
++	 * failures for example.
++	 */
++	EVENT_STATION_LOW_ACK,
++
++	/**
++	 * EVENT_IBSS_PEER_LOST - IBSS peer not reachable anymore
++	 */
++	EVENT_IBSS_PEER_LOST,
++
++	/**
++	 * EVENT_DRIVER_GTK_REKEY - Device/driver did GTK rekey
++	 *
++	 * This event carries the new replay counter to notify wpa_supplicant
++	 * of the current EAPOL-Key Replay Counter in case the driver/firmware
++	 * completed Group Key Handshake while the host (including
++	 * wpa_supplicant was sleeping).
++	 */
++	EVENT_DRIVER_GTK_REKEY,
++
++	/**
++	 * EVENT_SCHED_SCAN_STOPPED - Scheduled scan was stopped
++	 */
++	EVENT_SCHED_SCAN_STOPPED,
++
++	/**
++	 * EVENT_DRIVER_CLIENT_POLL_OK - Station responded to poll
++	 *
++	 * This event indicates that the station responded to the poll
++	 * initiated with @poll_client.
++	 */
++	EVENT_DRIVER_CLIENT_POLL_OK,
++
++	/**
++	 * EVENT_EAPOL_TX_STATUS - notify of EAPOL TX status
++	 */
++	EVENT_EAPOL_TX_STATUS,
++
++	/**
++	 * EVENT_CH_SWITCH - AP or GO decided to switch channels
++	 *
++	 * Described in wpa_event_data.ch_switch
++	 * */
++	EVENT_CH_SWITCH,
++
++	/**
++	 * EVENT_CH_SWITCH_STARTED - AP or GO started to switch channels
++	 *
++	 * This is a pre-switch event indicating the shortly following switch
++	 * of operating channels.
++	 *
++	 * Described in wpa_event_data.ch_switch
++	 */
++	EVENT_CH_SWITCH_STARTED,
++	/**
++	 * EVENT_WNM - Request WNM operation
++	 *
++	 * This event can be used to request a WNM operation to be performed.
++	 */
++	EVENT_WNM,
++
++	/**
++	 * EVENT_CONNECT_FAILED_REASON - Connection failure reason in AP mode
++	 *
++	 * This event indicates that the driver reported a connection failure
++	 * with the specified client (for example, max client reached, etc.) in
++	 * AP mode.
++	 */
++	EVENT_CONNECT_FAILED_REASON,
++
++	/**
++	 * EVENT_DFS_RADAR_DETECTED - Notify of radar detection
++	 *
++	 * A radar has been detected on the supplied frequency, hostapd should
++	 * react accordingly (e.g., change channel).
++	 */
++	EVENT_DFS_RADAR_DETECTED,
++
++	/**
++	 * EVENT_DFS_CAC_FINISHED - Notify that channel availability check has been completed
++	 *
++	 * After a successful CAC, the channel can be marked clear and used.
++	 */
++	EVENT_DFS_CAC_FINISHED,
++
++	/**
++	 * EVENT_DFS_CAC_ABORTED - Notify that channel availability check has been aborted
++	 *
++	 * The CAC was not successful, and the channel remains in the previous
++	 * state. This may happen due to a radar being detected or other
++	 * external influences.
++	 */
++	EVENT_DFS_CAC_ABORTED,
++
++	/**
++	 * EVENT_DFS_NOP_FINISHED - Notify that non-occupancy period is over
++	 *
++	 * The channel which was previously unavailable is now available again.
++	 */
++	EVENT_DFS_NOP_FINISHED,
++
++	/**
++	 * EVENT_SURVEY - Received survey data
++	 *
++	 * This event gets triggered when a driver query is issued for survey
++	 * data and the requested data becomes available. The returned data is
++	 * stored in struct survey_results. The results provide at most one
++	 * survey entry for each frequency and at minimum will provide one
++	 * survey entry for one frequency. The survey data can be os_malloc()'d
++	 * and then os_free()'d, so the event callback must only copy data.
++	 */
++	EVENT_SURVEY,
++
++	/**
++	 * EVENT_SCAN_STARTED - Scan started
++	 *
++	 * This indicates that driver has started a scan operation either based
++	 * on a request from wpa_supplicant/hostapd or from another application.
++	 * EVENT_SCAN_RESULTS is used to indicate when the scan has been
++	 * completed (either successfully or by getting cancelled).
++	 */
++	EVENT_SCAN_STARTED,
++
++	/**
++	 * EVENT_AVOID_FREQUENCIES - Received avoid frequency range
++	 *
++	 * This event indicates a set of frequency ranges that should be avoided
++	 * to reduce issues due to interference or internal co-existence
++	 * information in the driver.
++	 */
++	EVENT_AVOID_FREQUENCIES,
++
++	/**
++	 * EVENT_NEW_PEER_CANDIDATE - new (unknown) mesh peer notification
++	 */
++	EVENT_NEW_PEER_CANDIDATE,
++
++	/**
++	 * EVENT_ACS_CHANNEL_SELECTED - Received selected channels by ACS
++	 *
++	 * Indicates a pair of primary and secondary channels chosen by ACS
++	 * in device.
++	 */
++	EVENT_ACS_CHANNEL_SELECTED,
++
++	/**
++	 * EVENT_DFS_CAC_STARTED - Notify that channel availability check has
++	 * been started.
++	 *
++	 * This event indicates that channel availability check has been started
++	 * on a DFS frequency by a driver that supports DFS Offload.
++	 */
++	EVENT_DFS_CAC_STARTED,
++
++	/**
++	 * EVENT_P2P_LO_STOP - Notify that P2P listen offload is stopped
++	 */
++	EVENT_P2P_LO_STOP,
++
++	/**
++	 * EVENT_BEACON_LOSS - Beacon loss detected
++	 *
++	 * This event indicates that no Beacon frames has been received from
++	 * the current AP. This may indicate that the AP is not anymore in
++	 * range.
++	 */
++	EVENT_BEACON_LOSS,
++
++	/**
++	 * EVENT_DFS_PRE_CAC_EXPIRED - Notify that channel availability check
++	 * done previously (Pre-CAC) on the channel has expired. This would
++	 * normally be on a non-ETSI DFS regulatory domain. DFS state of the
++	 * channel will be moved from available to usable. A new CAC has to be
++	 * performed before start operating on this channel.
++	 */
++	EVENT_DFS_PRE_CAC_EXPIRED,
++
++	/**
++	 * EVENT_EXTERNAL_AUTH - This event interface is used by host drivers
++	 * that do not define separate commands for authentication and
++	 * association (~WPA_DRIVER_FLAGS_SME) but offload the 802.11
++	 * authentication to wpa_supplicant. This event carries all the
++	 * necessary information from the host driver for the authentication to
++	 * happen.
++	 */
++	EVENT_EXTERNAL_AUTH,
++
++	/**
++	 * EVENT_PORT_AUTHORIZED - Notification that a connection is authorized
++	 *
++	 * This event should be indicated when the driver completes the 4-way
++	 * handshake. This event should be preceded by an EVENT_ASSOC that
++	 * indicates the completion of IEEE 802.11 association.
++	 */
++	EVENT_PORT_AUTHORIZED,
++
++	/**
++	 * EVENT_STATION_OPMODE_CHANGED - Notify STA's HT/VHT operation mode
++	 * change event.
++	 */
++	EVENT_STATION_OPMODE_CHANGED,
++
++	/**
++	 * EVENT_INTERFACE_MAC_CHANGED - Notify that interface MAC changed
++	 *
++	 * This event is emitted when the MAC changes while the interface is
++	 * enabled. When an interface was disabled and becomes enabled, it
++	 * must be always assumed that the MAC possibly changed.
++	 */
++	EVENT_INTERFACE_MAC_CHANGED,
++
++	/**
++	 * EVENT_WDS_STA_INTERFACE_STATUS - Notify WDS STA interface status
++	 *
++	 * This event is emitted when an interface is added/removed for WDS STA.
++	 */
++	EVENT_WDS_STA_INTERFACE_STATUS,
++
++	/**
++	  * EVENT_UPDATE_DH - Notification of updated DH information
++	  */
++	EVENT_UPDATE_DH,
++
++	/**
++	 * EVENT_UNPROT_BEACON - Unprotected Beacon frame received
++	 *
++	 * This event should be called when a Beacon frame is dropped due to it
++	 * not being protected correctly. union wpa_event_data::unprot_beacon
++	 * is required to provide more details of the frame.
++	 */
++	EVENT_UNPROT_BEACON,
++
++	/**
++	 * EVENT_TX_WAIT_EXPIRE - TX wait timed out
++	 *
++	 * This event is used to indicate when the driver has completed
++	 * wait for a response frame based on a TX request that specified a
++	 * non-zero wait time and that has not been explicitly cancelled.
++	 */
++	EVENT_TX_WAIT_EXPIRE,
++
++	/**
++	  * EVENT_BSS_COLOR_COLLISION - Notification of a BSS color collision
++	  */
++	EVENT_BSS_COLOR_COLLISION,
++
++	/**
++	 * EVENT_CCA_STARTED_NOTIFY - Notification that CCA has started
++	 */
++	EVENT_CCA_STARTED_NOTIFY,
++
++	/**
++	 * EVENT_CCA_ABORTED_NOTIFY - Notification that CCA has aborted
++	 */
++	EVENT_CCA_ABORTED_NOTIFY,
++
++	/**
++	 * EVENT_CCA_NOTIFY - Notification that CCA has completed
++	 */
++	EVENT_CCA_NOTIFY,
++
++	/**
++	 * EVENT_PASN_AUTH - This event is used by the driver that requests
++	 * PASN authentication and secure ranging context for multiple peers.
++	 */
++	EVENT_PASN_AUTH,
++
++	/**
++	 * EVENT_LINK_CH_SWITCH - MLD AP link decided to switch channels
++	 *
++	 * Described in wpa_event_data.ch_switch.
++	 *
++	 */
++	EVENT_LINK_CH_SWITCH,
++
++	/**
++	 * EVENT_LINK_CH_SWITCH_STARTED - MLD AP link started to switch channels
++	 *
++	 * This is a pre-switch event indicating the shortly following switch
++	 * of operating channels.
++	 *
++	 * Described in wpa_event_data.ch_switch.
++	 */
++	EVENT_LINK_CH_SWITCH_STARTED,
++
++	/**
++	 * EVENT_TID_LINK_MAP - MLD event to set TID-to-link mapping
++	 *
++	 * This event is used by the driver to indicate the received TID-to-link
++	 * mapping response from the associated AP MLD.
++	 *
++	 * Described in wpa_event_data.t2l_map_info.
++	 */
++	EVENT_TID_LINK_MAP,
++
++	/**
++	 * EVENT_LINK_RECONFIG - Notification that AP links removed
++	 */
++	EVENT_LINK_RECONFIG,
++#ifdef CONFIG_IEEE80211BE_MXL_MLO
++	/**
++	 * EVENT_ML_CSA_DONE_ON_REPORTING_LINK - Notification to update channel switch done in reporting link
++	 */
++	EVENT_ML_CSA_DONE_ON_REPORTING_LINK,
++#endif /* CONFIG_IEEE80211BE_MXL_MLO */
++	EVENT_LTQ_UNCONNECTED_STA_RX,
++	EVENT_LTQ_CSA_RECEIVED,
+ #ifdef CONFIG_VENDOR_MXL_PROPRIETARY
+-	u32 scan_timeout;
++	EVENT_LTQ_WMM,
+ #endif /* CONFIG_VENDOR_MXL_PROPRIETARY */
+ };
+ 
+@@ -60,18 +698,29 @@ struct ml_ch_switch_done {
+ 	u8 type;
+ };
+ #define MXL_MLO_E2S \
+-	E2S(ML_CSA_DONE_ON_REPORTING_LINK)
++	E2S(ML_CSA_DONE_ON_REPORTING_LINK);
+ #else
+ #define MXL_MLO_E2S
+ #endif /* CONFIG_IEEE80211BE_MXL_MLO */
+ 
++#ifdef CONFIG_VENDOR_MXL_PROPRIETARY
++#define MXL_LTQ_WMM_E2S \
++	E2S(LTQ_WMM);
++#else
++#define MXL_LTQ_WMM_E2S
++#endif /* CONFIG_VENDOR_MXL_PROPRIETARY */
++
+ #define MXL_E2S \
+-	MXL_MLO_E2S
++		MXL_MLO_E2S \
++		MXL_LTQ_WMM_E2S
+ 
+ struct mxl_wpa_event_data {
+ #ifdef CONFIG_IEEE80211BE_MXL_MLO
+ 	struct ml_ch_switch_done ml_ch_switch_done;
+ #endif /* CONFIG_IEEE80211BE_MXL_MLO */
++#ifdef CONFIG_VENDOR_MXL_PROPRIETARY
++	struct intel_vendor_event_wmm wmm;
++#endif /* CONFIG_VENDOR_MXL_PROPRIETARY */
+ };
+ 
+ /** Driver supports background CAC */
+@@ -85,3 +734,5 @@ struct mxl_wpa_event_data {
+ #define MXL_WPA_STA_MULTI_AP BIT(7)
+ 
+ #endif /* MXL_DRIVER_H */
++
++
+diff --git a/src/drivers/mxl_driver_nl80211.h b/src/drivers/mxl_driver_nl80211.h
+index e403992d0..100ee8064 100644
+--- a/src/drivers/mxl_driver_nl80211.h
++++ b/src/drivers/mxl_driver_nl80211.h
+@@ -17,6 +17,32 @@
+ #include <netlink/genl/genl.h>
+ #include "drivers/nl80211_copy.h"
+ 
++#ifdef CONFIG_VENDOR_MXL_PROPRIETARY
++static inline void drv_event_ltq_wmm(void *ctx, const u8 *data, size_t data_len)
++{
++	union wpa_event_data event;
++	os_memset(&event, 0, sizeof(event));
++	memcpy_s(&event.mxl_wpa_event.wmm, sizeof(event.mxl_wpa_event.wmm), data, data_len);
++	wpa_supplicant_event(ctx, EVENT_LTQ_WMM, &event);
++}
++#endif /* CONFIG_VENDOR_MXL_PROPRIETARY */
++
++static bool mxl_vendor_event_dynamic_wmm_update(u32 vendor_event)
++{
++#ifdef CONFIG_VENDOR_MXL_PROPRIETARY
++  return vendor_event == LTQ_NL80211_VENDOR_EVENT_DYNAMIC_WMM_UPDATE;
++#endif /* CONFIG_VENDOR_MXL_PROPRIETARY */
++  return false;
++}
++
++static inline void drv_event_ltq_wmm_wrap(void *ctx, const u8 *data, size_t data_len)
++{
++#ifdef CONFIG_VENDOR_MXL_PROPRIETARY
++  drv_event_ltq_wmm(ctx, data, data_len);
++#endif /* CONFIG_VENDOR_MXL_PROPRIETARY */
++  return;
++}
++
+ struct wpa_driver_nl80211_data;
+ struct i802_bss;
+ #define MXL_NL80211_CMD_C2S \
+-- 
+2.43.0
+

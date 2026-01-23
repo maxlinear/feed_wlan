@@ -1,0 +1,28 @@
+From 4efc0bd02e7023df26d3b40bf06d853c3ce77d9a Mon Sep 17 00:00:00 2001
+From: Shivani Baranwal <quic_shivbara@quicinc.com>
+Date: Tue, 2 Jul 2024 00:41:48 +0530
+Subject: [PATCH] P2P2: Do not override peer_addr from BSSID in pairing
+ verification
+
+Signed-off-by: Shivani Baranwal <quic_shivbara@quicinc.com>
+---
+ wpa_supplicant/p2p_supplicant.c | 3 ++-
+ 1 file changed, 2 insertions(+), 1 deletion(-)
+
+diff --git a/wpa_supplicant/p2p_supplicant.c b/wpa_supplicant/p2p_supplicant.c
+index 6280dd12c..7d9f50c9c 100644
+--- a/wpa_supplicant/p2p_supplicant.c
++++ b/wpa_supplicant/p2p_supplicant.c
+@@ -8157,7 +8157,8 @@ int wpas_p2p_invite(struct wpa_supplicant *wpa_s, const u8 *peer_addr,
+ 			bssid = wpa_s->own_addr;
+ 	} else {
+ 		role = P2P_INVITE_ROLE_CLIENT;
+-		peer_addr = ssid->bssid;
++		if (!wpa_s->p2p2)
++			peer_addr = ssid->bssid;
+ 	}
+ 	wpa_s->pending_invite_ssid_id = ssid->id;
+ 
+-- 
+2.43.0
+

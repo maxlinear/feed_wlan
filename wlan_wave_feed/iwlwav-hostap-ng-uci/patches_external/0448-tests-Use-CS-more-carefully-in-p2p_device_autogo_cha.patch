@@ -1,0 +1,43 @@
+From 695277a5b3da08b9a8a4e7117b933deb8b4950a7 Mon Sep 17 00:00:00 2001
+From: Jouni Malinen <j@w1.fi>
+Date: Sat, 9 Mar 2024 18:08:52 +0200
+Subject: [PATCH] tests: Use CS more carefully in p2p_device_autogo_chan_switch
+
+Do not disable HT support on the GO and wait for the channel switch
+event on the P2P Client before proceeding with connectivity test.
+
+Signed-off-by: Jouni Malinen <j@w1.fi>
+---
+ tests/hwsim/test_p2p_device.py | 9 +++++++--
+ 1 file changed, 7 insertions(+), 2 deletions(-)
+
+diff --git a/tests/hwsim/test_p2p_device.py b/tests/hwsim/test_p2p_device.py
+index aeece31b6..47ca25bdd 100644
+--- a/tests/hwsim/test_p2p_device.py
++++ b/tests/hwsim/test_p2p_device.py
+@@ -545,7 +545,7 @@ def test_p2p_device_autogo_chan_switch(dev):
+         wpas.global_request("SET p2p_no_group_iface 1")
+         autogo(wpas, freq=2417)
+         connect_cli(wpas, dev[1])
+-        res = wpas.group_request("CHAN_SWITCH 5 2422")
++        res = wpas.group_request("CHAN_SWITCH 5 2422 ht")
+         if "FAIL" in res:
+             # for now, skip test since mac80211_hwsim support is not yet widely
+             # deployed
+@@ -554,7 +554,12 @@ def test_p2p_device_autogo_chan_switch(dev):
+         if ev is None:
+             raise Exception("CSA finished event timed out")
+         if "freq=2422" not in ev:
+-            raise Exception("Unexpected cahnnel in CSA finished event")
++            raise Exception("Unexpected channel in CSA finished event")
++        ev = dev[1].wait_event(["CTRL-EVENT-CHANNEL-SWITCH"], timeout=2)
++        if ev is None:
++            raise Exception("Channel switch not reported on P2P Client")
++        if "freq=2422" not in ev:
++            raise Exception("Unexpected channel in CS event")
+         wpas.dump_monitor()
+         dev[1].dump_monitor()
+         time.sleep(0.1)
+-- 
+2.43.0
+

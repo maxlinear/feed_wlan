@@ -1,0 +1,30 @@
+From e67e89775ddd19ed14948462aa824b81ccca4b3c Mon Sep 17 00:00:00 2001
+From: Jouni Malinen <j@w1.fi>
+Date: Sun, 22 Dec 2024 12:44:17 +0200
+Subject: [PATCH] tests: Write remaining processes and ports into a file
+
+This can be helpful for debugging test failures due to something not
+getting terminated properly.
+
+Signed-off-by: Jouni Malinen <j@w1.fi>
+---
+ tests/hwsim/run-all.sh | 3 +++
+ 1 file changed, 3 insertions(+)
+
+diff --git a/tests/hwsim/run-all.sh b/tests/hwsim/run-all.sh
+index bee753bb6..507488041 100755
+--- a/tests/hwsim/run-all.sh
++++ b/tests/hwsim/run-all.sh
+@@ -138,6 +138,9 @@ ${SUDO} env VM=$VM ./run-tests.py -D --logdir "$LOGDIR" $TRACE_ARGS -q $DB $RUN_
+ 
+ ./stop.sh
+ 
++ps ax > $LOGDIR/after-stop-ps-ax
++netstat -tnlu > $LOGDIR/after-stop-netstat
++
+ if [ ! -z "$VALGRIND" ] ; then
+     failures=`grep "ERROR SUMMARY" $LOGDIR/valgrind-* | grep -v " 0 errors" | wc -l`
+     if [ $failures -gt 0 ]; then
+-- 
+2.43.0
+

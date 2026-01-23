@@ -1,0 +1,31 @@
+From 6fe367d6c4790d5c96ca4bf5148200b85d6b66ab Mon Sep 17 00:00:00 2001
+From: Jouni Malinen <j@w1.fi>
+Date: Sun, 9 Feb 2025 18:20:31 +0200
+Subject: [PATCH] EAP-pwd: Make code easier for static analyzers
+
+resultbytelen cannot be 0 when resultbitlen != 0 and as such,
+result[resultbytelen - 1] here cannot point to invalid index. However,
+this is apparently too complex for static analyzers, so make this more
+obvious to avoid false positives.
+
+Signed-off-by: Jouni Malinen <j@w1.fi>
+---
+ src/eap_common/eap_pwd_common.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/src/eap_common/eap_pwd_common.c b/src/eap_common/eap_pwd_common.c
+index ff8ad8d72..fa7ecd01e 100644
+--- a/src/eap_common/eap_pwd_common.c
++++ b/src/eap_common/eap_pwd_common.c
+@@ -76,7 +76,7 @@ static int eap_pwd_kdf(const u8 *key, size_t keylen, const u8 *label,
+ 	}
+ 
+ 	/* since we're expanding to a bit length, mask off the excess */
+-	if (resultbitlen % 8) {
++	if (resultbytelen > 0 && (resultbitlen % 8)) {
+ 		u8 mask = 0xff;
+ 		mask <<= (8 - (resultbitlen % 8));
+ 		result[resultbytelen - 1] &= mask;
+-- 
+2.43.0
+

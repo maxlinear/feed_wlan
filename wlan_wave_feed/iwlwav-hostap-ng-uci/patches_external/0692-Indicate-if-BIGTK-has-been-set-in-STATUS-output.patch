@@ -1,0 +1,101 @@
+From 7436b5b01297aa38b6d625f3fae179a2fb89cfec Mon Sep 17 00:00:00 2001
+From: Jouni Malinen <quic_jouni@quicinc.com>
+Date: Thu, 11 Jul 2024 23:14:02 +0300
+Subject: [PATCH] Indicate if BIGTK has been set in STATUS output
+
+The new "bigtk_set=1" entry in the control interface STATUS command
+output indicates that a BIGTK has been successfully configured. This
+shows that beacon protection has been enabled for the current
+association.
+
+Signed-off-by: Jouni Malinen <quic_jouni@quicinc.com>
+---
+ wpa_supplicant/ctrl_iface.c       |  7 +++++++
+ wpa_supplicant/events.c           |  2 ++
+ wpa_supplicant/wpa_supplicant_i.h |  1 +
+ wpa_supplicant/wpas_glue.c        | 12 ++++++++++--
+ 4 files changed, 20 insertions(+), 2 deletions(-)
+
+diff --git a/wpa_supplicant/ctrl_iface.c b/wpa_supplicant/ctrl_iface.c
+index acc6ab524..f939583c4 100644
+--- a/wpa_supplicant/ctrl_iface.c
++++ b/wpa_supplicant/ctrl_iface.c
+@@ -2575,6 +2575,13 @@ static int wpa_supplicant_ctrl_iface_status(struct wpa_supplicant *wpa_s,
+ 		pos += ret;
+ 	}
+ 
++	if (wpa_s->bigtk_set) {
++		ret = os_snprintf(pos, end - pos, "bigtk_set=1\n");
++		if (os_snprintf_error(end - pos, ret))
++			return pos - buf;
++		pos += ret;
++	}
++
+ #ifdef ANDROID
+ 	/*
+ 	 * Allow using the STATUS command with default behavior, say for debug,
+diff --git a/wpa_supplicant/events.c b/wpa_supplicant/events.c
+index e8b7eea11..49917f7aa 100644
+--- a/wpa_supplicant/events.c
++++ b/wpa_supplicant/events.c
+@@ -434,6 +434,7 @@ void wpa_supplicant_mark_disassoc(struct wpa_supplicant *wpa_s)
+ #endif /* CONFIG_SME */
+ 
+ 	wpa_s->ssid_verified = false;
++	wpa_s->bigtk_set = false;
+ }
+ 
+ 
+@@ -3371,6 +3372,7 @@ static int wpa_supplicant_event_associnfo(struct wpa_supplicant *wpa_s,
+ 
+ 	wpa_dbg(wpa_s, MSG_DEBUG, "Association info event");
+ 	wpa_s->ssid_verified = false;
++	wpa_s->bigtk_set = false;
+ #ifdef CONFIG_SAE
+ #ifdef CONFIG_SME
+ 	/* SAE H2E binds the SSID into PT and that verifies the SSID
+diff --git a/wpa_supplicant/wpa_supplicant_i.h b/wpa_supplicant/wpa_supplicant_i.h
+index 13406881d..6ebd18467 100644
+--- a/wpa_supplicant/wpa_supplicant_i.h
++++ b/wpa_supplicant/wpa_supplicant_i.h
+@@ -1611,6 +1611,7 @@ struct wpa_supplicant {
+ #endif /* CONFIG_NAN_USD */
+ 
+ 	bool ssid_verified;
++	bool bigtk_set;
+ };
+ 
+ 
+diff --git a/wpa_supplicant/wpas_glue.c b/wpa_supplicant/wpas_glue.c
+index 9b68d07c6..5199f950b 100644
+--- a/wpa_supplicant/wpas_glue.c
++++ b/wpa_supplicant/wpas_glue.c
+@@ -534,6 +534,8 @@ static int wpa_supplicant_set_key(void *_wpa_s, int link_id, enum wpa_alg alg,
+ 				  enum key_flag key_flag)
+ {
+ 	struct wpa_supplicant *wpa_s = _wpa_s;
++	int ret;
++
+ 	if (alg == WPA_ALG_TKIP && key_idx == 0 && key_len == 32) {
+ 		/* Clear the MIC error counter when setting a new PTK. */
+ 		wpa_s->mic_errors_seen = 0;
+@@ -556,8 +558,14 @@ static int wpa_supplicant_set_key(void *_wpa_s, int link_id, enum wpa_alg alg,
+ 		wpa_s->last_tk_len = key_len;
+ 	}
+ #endif /* CONFIG_TESTING_OPTIONS */
+-	return wpa_drv_set_key(wpa_s, link_id, alg, addr, key_idx, set_tx, seq,
+-			       seq_len, key, key_len, key_flag);
++
++	ret = wpa_drv_set_key(wpa_s, link_id, alg, addr, key_idx, set_tx, seq,
++			      seq_len, key, key_len, key_flag);
++	if (ret == 0 && (key_idx == 6 || key_idx == 7) &&
++	    alg != WPA_ALG_NONE && key_len > 0)
++		wpa_s->bigtk_set = true;
++
++	return ret;
+ }
+ 
+ 
+-- 
+2.43.0
+

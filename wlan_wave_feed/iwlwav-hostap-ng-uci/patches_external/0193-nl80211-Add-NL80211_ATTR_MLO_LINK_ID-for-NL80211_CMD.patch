@@ -1,0 +1,142 @@
+From 0120d052d745c51fae8df29cba597e0d2638f404 Mon Sep 17 00:00:00 2001
+From: Hu Wang <quic_huw@quicinc.com>
+Date: Mon, 8 Jan 2024 10:14:38 +0000
+Subject: [PATCH] nl80211: Add NL80211_ATTR_MLO_LINK_ID for
+ NL80211_CMD_REMAIN_ON_CHANNEL
+
+cfg80211 requires the link ID to be specified for requests to start a
+remain-on-channel operation during an ML association. This feels wrong
+since the ROC operation is in most cases unrelated to the
+association. However, that requirement has been in place since kernel
+commit 7b0a0e3c3a88 ("wifi: cfg80211: do some rework towards MLO link
+APIs") from April 2022, and as such, it looks necessary to have
+wpa_supplicant work around this by specifying the currently used link ID
+that would seem to match the ROC channel most closely.
+
+Signed-off-by: Jouni Malinen <quic_jouni@quicinc.com>
+---
+ src/common/ieee802_11_common.c | 15 ++++++++++++
+ src/common/ieee802_11_common.h |  4 ++++
+ src/drivers/driver_nl80211.c   | 43 +++++++++++++++++++++++++++++++++-
+ wpa_supplicant/scan.h          |  3 ---
+ 4 files changed, 61 insertions(+), 4 deletions(-)
+
+diff --git a/src/common/ieee802_11_common.c b/src/common/ieee802_11_common.c
+index e5464f378..85d4b720e 100644
+--- a/src/common/ieee802_11_common.c
++++ b/src/common/ieee802_11_common.c
+@@ -2835,6 +2835,21 @@ int get_6ghz_sec_channel(int channel)
+ }
+ 
+ 
++bool is_same_band(int freq1, int freq2)
++{
++	if (IS_2P4GHZ(freq1) && IS_2P4GHZ(freq2))
++		return true;
++
++	if (IS_5GHZ(freq1) && IS_5GHZ(freq2))
++		return true;
++
++	if (is_6ghz_freq(freq1) && is_6ghz_freq(freq2))
++		return true;
++
++	return false;
++}
++
++
+ int ieee802_11_parse_candidate_list(const char *pos, u8 *nei_rep,
+ 				    size_t nei_rep_len)
+ {
+diff --git a/src/common/ieee802_11_common.h b/src/common/ieee802_11_common.h
+index 5426b41bb..38cc09174 100644
+--- a/src/common/ieee802_11_common.h
++++ b/src/common/ieee802_11_common.h
+@@ -283,6 +283,10 @@ bool is_6ghz_op_class(u8 op_class);
+ bool is_6ghz_psc_frequency(int freq);
+ int get_6ghz_sec_channel(int channel);
+ 
++bool is_same_band(int freq1, int freq2);
++#define IS_2P4GHZ(n) (n >= 2412 && n <= 2484)
++#define IS_5GHZ(n) (n > 4000 && n < 5895)
++
+ int ieee802_11_parse_candidate_list(const char *pos, u8 *nei_rep,
+ 				    size_t nei_rep_len);
+ 
+diff --git a/src/drivers/driver_nl80211.c b/src/drivers/driver_nl80211.c
+index 415a6adfb..92b041eb8 100644
+--- a/src/drivers/driver_nl80211.c
++++ b/src/drivers/driver_nl80211.c
+@@ -9203,6 +9203,46 @@ static void wpa_driver_nl80211_send_action_cancel_wait(void *priv)
+ }
+ 
+ 
++static int nl80211_put_any_link_id(struct nl_msg *msg,
++			       struct driver_sta_mlo_info *mlo,
++			       int freq)
++{
++	int i;
++	int link_id = -1;
++	int any_valid_link_id = -1;
++
++	if (!mlo->valid_links)
++		return 0;
++
++	/* First try to pick a link that uses the same band */
++	for (i = 0; i < MAX_NUM_MLD_LINKS; i++) {
++		if (!(mlo->valid_links & BIT(i)))
++			continue;
++
++		if (any_valid_link_id == -1)
++			any_valid_link_id = i;
++
++		if (is_same_band(freq, mlo->links[i].freq)) {
++			link_id = i;
++			break;
++		}
++	}
++
++	/* Use any valid link ID if no band match was found */
++	if (link_id == -1)
++		link_id = any_valid_link_id;
++
++	if (link_id == -1) {
++		wpa_printf(MSG_INFO,
++			   "nl80211: No valid Link ID found for freq %u", freq);
++		return 0;
++	}
++
++	wpa_printf(MSG_DEBUG, "nl80211: Add Link ID %d", link_id);
++	return nla_put_u8(msg, NL80211_ATTR_MLO_LINK_ID, link_id);
++}
++
++
+ static int wpa_driver_nl80211_remain_on_channel(void *priv, unsigned int freq,
+ 						unsigned int duration)
+ {
+@@ -9214,7 +9254,8 @@ static int wpa_driver_nl80211_remain_on_channel(void *priv, unsigned int freq,
+ 
+ 	if (!(msg = nl80211_cmd_msg(bss, 0, NL80211_CMD_REMAIN_ON_CHANNEL)) ||
+ 	    nla_put_u32(msg, NL80211_ATTR_WIPHY_FREQ, freq) ||
+-	    nla_put_u32(msg, NL80211_ATTR_DURATION, duration)) {
++	    nla_put_u32(msg, NL80211_ATTR_DURATION, duration) ||
++	    nl80211_put_any_link_id(msg, &drv->sta_mlo_info, freq)) {
+ 		nlmsg_free(msg);
+ 		return -1;
+ 	}
+diff --git a/wpa_supplicant/scan.h b/wpa_supplicant/scan.h
+index f1739fada..8402e749e 100644
+--- a/wpa_supplicant/scan.h
++++ b/wpa_supplicant/scan.h
+@@ -38,9 +38,6 @@
+  */
+ #define TX_POWER_NO_CONSTRAINT 64
+ 
+-#define IS_2P4GHZ(n) (n >= 2412 && n <= 2484)
+-#define IS_5GHZ(n) (n > 4000 && n < 5895)
+-
+ int wpa_supplicant_enabled_networks(struct wpa_supplicant *wpa_s);
+ void wpa_supplicant_req_scan(struct wpa_supplicant *wpa_s, int sec, int usec);
+ int wpa_supplicant_delayed_sched_scan(struct wpa_supplicant *wpa_s,
+-- 
+2.43.0
+

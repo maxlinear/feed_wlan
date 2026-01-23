@@ -1,0 +1,206 @@
+From c439291fcc5efa4fb1a01096ddcc4650b339e147 Mon Sep 17 00:00:00 2001
+From: Chenming Huang <quic_chenhuan@quicinc.com>
+Date: Wed, 26 Feb 2025 20:02:21 +0530
+Subject: [PATCH] AP MLD: Store PMKSA generated from SAE authentication into
+ ml_pmksa
+
+For an ML association with SAE, store the PMKSA into the MLD-level PMKSA
+cache and fetch it from there, too, instead of the per-link PMKSA cache.
+
+Signed-off-by: Chenming Huang <quic_chenhuan@quicinc.com>
+---
+ src/ap/drv_callbacks.c          |  3 ++-
+ src/ap/ieee802_11.c             | 12 ++++++++----
+ src/ap/wpa_auth.c               | 17 ++++++++++++++---
+ src/ap/wpa_auth.h               |  5 +++--
+ src/ap/wpa_auth_ie.c            | 10 ++++++++--
+ wpa_supplicant/ibss_rsn.c       |  2 +-
+ wpa_supplicant/p2p_supplicant.c |  6 ++++--
+ 7 files changed, 40 insertions(+), 15 deletions(-)
+
+diff --git a/src/ap/drv_callbacks.c b/src/ap/drv_callbacks.c
+index bd2157805..9c2dede21 100644
+--- a/src/ap/drv_callbacks.c
++++ b/src/ap/drv_callbacks.c
+@@ -573,7 +573,8 @@ int hostapd_notif_assoc(struct hostapd_data *hapd, const u8 *addr,
+ 					  elems.rsnxe ? elems.rsnxe - 2 : NULL,
+ 					  elems.rsnxe ? elems.rsnxe_len + 2 : 0,
+ 					  elems.mdie, elems.mdie_len,
+-					  elems.owe_dh, elems.owe_dh_len, NULL);
++					  elems.owe_dh, elems.owe_dh_len, NULL,
++					  ap_sta_is_mld(hapd, sta));
+ 		reason = WLAN_REASON_INVALID_IE;
+ 		status = WLAN_STATUS_INVALID_IE;
+ 		switch (res) {
+diff --git a/src/ap/ieee802_11.c b/src/ap/ieee802_11.c
+index 9a4869199..49fb2820e 100644
+--- a/src/ap/ieee802_11.c
++++ b/src/ap/ieee802_11.c
+@@ -1094,7 +1094,8 @@ void sae_accept_sta(struct hostapd_data *hapd, struct sta_info *sta)
+ 	sta->sae->peer_commit_scalar = NULL;
+ 	wpa_auth_pmksa_add_sae(hapd->wpa_auth, sta->addr,
+ 			       sta->sae->pmk, sta->sae->pmk_len,
+-			       sta->sae->pmkid, sta->sae->akmp);
++			       sta->sae->pmkid, sta->sae->akmp,
++			       ap_sta_is_mld(hapd, sta));
+ 	sae_sme_send_external_auth_status(hapd, sta, WLAN_STATUS_SUCCESS);
+ }
+ 
+@@ -2123,7 +2124,8 @@ void handle_auth_fils(struct hostapd_data *hapd, struct sta_info *sta,
+ 				  elems.rsn_ie - 2, elems.rsn_ie_len + 2,
+ 				  elems.rsnxe ? elems.rsnxe - 2 : NULL,
+ 				  elems.rsnxe ? elems.rsnxe_len + 2 : 0,
+-				  elems.mdie, elems.mdie_len, NULL, 0, NULL);
++				  elems.mdie, elems.mdie_len, NULL, 0, NULL,
++				  ap_sta_is_mld(hapd, sta));
+ 	resp = wpa_res_to_status_code(res);
+ 	if (resp != WLAN_STATUS_SUCCESS)
+ 		goto fail;
+@@ -4057,7 +4059,8 @@ u16 owe_process_rsn_ie(struct hostapd_data *hapd,
+ 	rsn_ie_len += 2;
+ 	res = wpa_validate_wpa_ie(hapd->wpa_auth, sta->wpa_sm,
+ 				  hapd->iface->freq, rsn_ie, rsn_ie_len,
+-				  NULL, 0, NULL, 0, owe_dh, owe_dh_len, NULL);
++				  NULL, 0, NULL, 0, owe_dh, owe_dh_len, NULL,
++				  ap_sta_is_mld(hapd, sta));
+ 	status = wpa_res_to_status_code(res);
+ 	if (status != WLAN_STATUS_SUCCESS)
+ 		goto end;
+@@ -4413,7 +4416,8 @@ static int __check_assoc_ies(struct hostapd_data *hapd, struct sta_info *sta,
+ 					  0,
+ 					  elems->mdie, elems->mdie_len,
+ 					  elems->owe_dh, elems->owe_dh_len,
+-					  assoc_sta ? assoc_sta->wpa_sm : NULL);
++					  assoc_sta ? assoc_sta->wpa_sm : NULL,
++					  ap_sta_is_mld(hapd, sta));
+ 		resp = wpa_res_to_status_code(res);
+ 		if (resp != WLAN_STATUS_SUCCESS)
+ 			return resp;
+diff --git a/src/ap/wpa_auth.c b/src/ap/wpa_auth.c
+index 5939d28a5..f8f704d3e 100644
+--- a/src/ap/wpa_auth.c
++++ b/src/ap/wpa_auth.c
+@@ -6535,16 +6535,27 @@ int wpa_auth_pmksa_add_preauth(struct wpa_authenticator *wpa_auth,
+ 
+ int wpa_auth_pmksa_add_sae(struct wpa_authenticator *wpa_auth, const u8 *addr,
+ 			   const u8 *pmk, size_t pmk_len, const u8 *pmkid,
+-			   int akmp)
++			   int akmp, bool is_ml)
+ {
++	struct rsn_pmksa_cache *pmksa = wpa_auth->pmksa;
++	const u8 *aa = wpa_auth->addr;
++
+ 	if (wpa_auth->conf.disable_pmksa_caching)
+ 		return -1;
+ 
+ 	wpa_hexdump_key(MSG_DEBUG, "RSN: Cache PMK from SAE", pmk, pmk_len);
+ 	if (!akmp)
+ 		akmp = WPA_KEY_MGMT_SAE;
+-	if (pmksa_cache_auth_add(wpa_auth->pmksa, pmk, pmk_len, pmkid,
+-				 NULL, 0, wpa_auth->addr, addr, 0, NULL, akmp))
++
++#ifdef CONFIG_IEEE80211BE
++	if (is_ml) {
++		pmksa = wpa_auth->ml_pmksa;
++		aa = wpa_auth->mld_addr;
++	}
++#endif /* CONFIG_IEEE80211BE */
++
++	if (pmksa_cache_auth_add(pmksa, pmk, pmk_len, pmkid, NULL, 0, aa, addr,
++				 0, NULL, akmp))
+ 		return 0;
+ 
+ 	return -1;
+diff --git a/src/ap/wpa_auth.h b/src/ap/wpa_auth.h
+index 2c29baaef..560a2cc55 100644
+--- a/src/ap/wpa_auth.h
++++ b/src/ap/wpa_auth.h
+@@ -457,7 +457,8 @@ wpa_validate_wpa_ie(struct wpa_authenticator *wpa_auth,
+ 		    const u8 *rsnxe, size_t rsnxe_len,
+ 		    const u8 *mdie, size_t mdie_len,
+ 		    const u8 *owe_dh, size_t owe_dh_len,
+-		    struct wpa_state_machine *assoc_sm);
++		    struct wpa_state_machine *assoc_sm,
++		    bool is_ml);
+ int wpa_validate_osen(struct wpa_authenticator *wpa_auth,
+ 		      struct wpa_state_machine *sm,
+ 		      const u8 *osen_ie, size_t osen_ie_len);
+@@ -510,7 +511,7 @@ int wpa_auth_pmksa_add_preauth(struct wpa_authenticator *wpa_auth,
+ 			       struct eapol_state_machine *eapol);
+ int wpa_auth_pmksa_add_sae(struct wpa_authenticator *wpa_auth, const u8 *addr,
+ 			   const u8 *pmk, size_t pmk_len, const u8 *pmkid,
+-			   int akmp);
++			   int akmp, bool is_ml);
+ void wpa_auth_add_sae_pmkid(struct wpa_state_machine *sm, const u8 *pmkid);
+ int wpa_auth_pmksa_add2(struct wpa_authenticator *wpa_auth, const u8 *addr,
+ 			const u8 *pmk, size_t pmk_len, const u8 *pmkid,
+diff --git a/src/ap/wpa_auth_ie.c b/src/ap/wpa_auth_ie.c
+index 4636f7fde..480d5bd8e 100644
+--- a/src/ap/wpa_auth_ie.c
++++ b/src/ap/wpa_auth_ie.c
+@@ -798,7 +798,7 @@ wpa_validate_wpa_ie(struct wpa_authenticator *wpa_auth,
+ 		    const u8 *rsnxe, size_t rsnxe_len,
+ 		    const u8 *mdie, size_t mdie_len,
+ 		    const u8 *owe_dh, size_t owe_dh_len,
+-		    struct wpa_state_machine *assoc_sm)
++		    struct wpa_state_machine *assoc_sm, bool is_ml)
+ {
+ 	struct wpa_auth_config *conf = &wpa_auth->conf;
+ 	struct wpa_ie_data data;
+@@ -1184,9 +1184,15 @@ wpa_validate_wpa_ie(struct wpa_authenticator *wpa_auth,
+ 
+ 	sm->pmksa = NULL;
+ 	for (i = 0; i < data.num_pmkid; i++) {
++		struct rsn_pmksa_cache *pmksa = wpa_auth->pmksa;
++
+ 		wpa_hexdump(MSG_DEBUG, "RSN IE: STA PMKID",
+ 			    &data.pmkid[i * PMKID_LEN], PMKID_LEN);
+-		sm->pmksa = pmksa_cache_auth_get(wpa_auth->pmksa, sm->addr,
++#ifdef CONFIG_IEEE80211BE
++		if (is_ml)
++			pmksa = wpa_auth->ml_pmksa;
++#endif /* CONFIG_IEEE80211BE */
++		sm->pmksa = pmksa_cache_auth_get(pmksa, sm->addr,
+ 						 &data.pmkid[i * PMKID_LEN]);
+ 		if (!sm->pmksa && !is_zero_ether_addr(sm->p2p_dev_addr))
+ 			sm->pmksa = pmksa_cache_auth_get(
+diff --git a/wpa_supplicant/ibss_rsn.c b/wpa_supplicant/ibss_rsn.c
+index 37eb58726..06228d0ef 100644
+--- a/wpa_supplicant/ibss_rsn.c
++++ b/wpa_supplicant/ibss_rsn.c
+@@ -497,7 +497,7 @@ static int ibss_rsn_auth_init(struct ibss_rsn *ibss_rsn,
+ 				"\x01\x00\x00\x0f\xac\x04"
+ 				"\x01\x00\x00\x0f\xac\x02"
+ 				"\x00\x00", 22, NULL, 0, NULL, 0, NULL, 0,
+-				NULL) != WPA_IE_OK) {
++				NULL, false) != WPA_IE_OK) {
+ 		wpa_printf(MSG_DEBUG, "AUTH: wpa_validate_wpa_ie() failed");
+ 		return -1;
+ 	}
+diff --git a/wpa_supplicant/p2p_supplicant.c b/wpa_supplicant/p2p_supplicant.c
+index b8add917a..834c1d534 100644
+--- a/wpa_supplicant/p2p_supplicant.c
++++ b/wpa_supplicant/p2p_supplicant.c
+@@ -2258,7 +2258,8 @@ static void p2p_go_configured(void *ctx, void *data)
+ 		wpa_auth_pmksa_add_sae(hapd->wpa_auth,
+ 				       params->peer_device_addr,
+ 				       params->pmk, params->pmk_len,
+-				       params->pmkid, WPA_KEY_MGMT_SAE);
++				       params->pmkid, WPA_KEY_MGMT_SAE,
++				       false);
+ 		hostapd_add_pmkid(hapd, params->peer_device_addr,
+ 				  params->pmk, params->pmk_len,
+ 				  params->pmkid, WPA_KEY_MGMT_SAE);
+@@ -2913,7 +2914,8 @@ static void wpas_set_go_security_config(void *ctx,
+ 		wpa_auth_pmksa_add_sae(hapd->wpa_auth,
+ 				       params->peer_device_addr,
+ 				       params->pmk, params->pmk_len,
+-				       params->pmkid, WPA_KEY_MGMT_SAE);
++				       params->pmkid, WPA_KEY_MGMT_SAE,
++				       false);
+ 		hostapd_add_pmkid(hapd, params->peer_device_addr,
+ 				  params->pmk, params->pmk_len,
+ 				  params->pmkid, WPA_KEY_MGMT_SAE);
+-- 
+2.43.0
+

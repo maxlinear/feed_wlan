@@ -1,0 +1,25 @@
+From 8a524a5a1939ed695bec9415790e36b5b50c8ad2 Mon Sep 17 00:00:00 2001
+From: Jouni Malinen <j@w1.fi>
+Date: Sun, 22 Dec 2024 10:42:49 +0200
+Subject: [PATCH] tests: Remove duplicated listing of a long test case
+
+Signed-off-by: Jouni Malinen <j@w1.fi>
+---
+ tests/hwsim/vm/parallel-vm.py | 1 -
+ 1 file changed, 1 deletion(-)
+
+diff --git a/tests/hwsim/vm/parallel-vm.py b/tests/hwsim/vm/parallel-vm.py
+index 499910a2f..1f571df20 100755
+--- a/tests/hwsim/vm/parallel-vm.py
++++ b/tests/hwsim/vm/parallel-vm.py
+@@ -65,7 +65,6 @@ long_tests = ["ap_roam_open",
+               "dfs_radar_vht80_downgrade",
+               "ap_acs_dfs",
+               "grpform_cred_ready_timeout",
+-              "hostapd_oom_wpa2_eap_connect",
+               "wpas_ap_dfs",
+               "autogo_many",
+               "hostapd_oom_wpa2_eap",
+-- 
+2.43.0
+

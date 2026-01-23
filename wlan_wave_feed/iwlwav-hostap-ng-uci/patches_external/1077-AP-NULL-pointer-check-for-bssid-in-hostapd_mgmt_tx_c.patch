@@ -1,0 +1,47 @@
+From 422c5dc918f1d8d14db5dac56d4b1a705fa9de2f Mon Sep 17 00:00:00 2001
+From: Hu Wang <quic_huw@quicinc.com>
+Date: Wed, 6 Nov 2024 02:39:05 -0800
+Subject: [PATCH] AP: NULL pointer check for bssid in hostapd_mgmt_tx_cb()
+
+The BSSID pointer returned by get_hdr_bssid() may be NULL and it could
+have been dereferenced by ether_addr_equal() here at least in theory
+(though this is based only on the TX status events, i.e., own frames).
+Add an explicit check to avoid that.
+
+Fixes: d75ebe23d8 ("AP: Handle Management frame TX status for AP MLD address")
+Signed-off-by: Jouni Malinen <quic_jouni@quicinc.com>
+---
+ src/ap/drv_callbacks.c | 9 +++++----
+ 1 file changed, 5 insertions(+), 4 deletions(-)
+
+diff --git a/src/ap/drv_callbacks.c b/src/ap/drv_callbacks.c
+index 28e2e6f46..d660beefc 100644
+--- a/src/ap/drv_callbacks.c
++++ b/src/ap/drv_callbacks.c
+@@ -2005,18 +2005,19 @@ static void hostapd_mgmt_tx_cb(struct hostapd_data *hapd, const u8 *buf,
+ {
+ 	struct ieee80211_hdr *hdr;
+ 	struct hostapd_data *orig_hapd, *tmp_hapd;
++	const u8 *bssid;
+ 
+ 	orig_hapd = hapd;
+ 
+ 	hdr = (struct ieee80211_hdr *) buf;
+ 	hapd = switch_link_hapd(hapd, link_id);
+-	tmp_hapd = get_hapd_bssid(hapd->iface, get_hdr_bssid(hdr, len), link_id);
++	bssid = get_hdr_bssid(hdr, len);
++	tmp_hapd = get_hapd_bssid(hapd->iface, bssid, link_id);
+ 	if (tmp_hapd) {
+ 		hapd = tmp_hapd;
+ #ifdef CONFIG_IEEE80211BE
+-	} else if (hapd->conf->mld_ap &&
+-		   ether_addr_equal(hapd->mld->mld_addr,
+-				    get_hdr_bssid(hdr, len))) {
++	} else if (hapd->conf->mld_ap && bssid &&
++		   ether_addr_equal(hapd->mld->mld_addr, bssid)) {
+ 		/* AP MLD address match - use hapd pointer as-is */
+ #endif /* CONFIG_IEEE80211BE */
+ 	} else {
+-- 
+2.43.0
+

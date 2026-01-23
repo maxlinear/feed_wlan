@@ -1,0 +1,30 @@
+From d15403aefbe54c26d4c03f797c5c156a8b32c2ee Mon Sep 17 00:00:00 2001
+From: Jouni Malinen <quic_jouni@quicinc.com>
+Date: Thu, 29 Aug 2024 16:14:43 +0300
+Subject: [PATCH] tests: Make rsn_override_mld_too_long_elems more robust
+
+Wait longer for the disconnection event since the previous wait was
+exactly the same length as the authentication timeout in wpa_supplicant
+and as such, subject to race conditions.
+
+Signed-off-by: Jouni Malinen <quic_jouni@quicinc.com>
+---
+ tests/hwsim/test_rsn_override.py | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/tests/hwsim/test_rsn_override.py b/tests/hwsim/test_rsn_override.py
+index 721da51e2..051e08567 100644
+--- a/tests/hwsim/test_rsn_override.py
++++ b/tests/hwsim/test_rsn_override.py
+@@ -196,7 +196,7 @@ def run_rsn_override_mld(dev, apdev, mixed, only_sta=False,
+             if ev is None:
+                 raise Exception("EAPOL-Key M1 not reported")
+             ev = wpas.wait_event(['EAPOL-RX', 'CTRL-EVENT-DISCONNECTED'],
+-                                 timeout=10)
++                                 timeout=20)
+             if ev is None:
+                 raise Exception("Disconnection not reported")
+             # The AP is expected to fail to send M3 due to RSNOE/RSNO2E/RSNXOE
+-- 
+2.43.0
+

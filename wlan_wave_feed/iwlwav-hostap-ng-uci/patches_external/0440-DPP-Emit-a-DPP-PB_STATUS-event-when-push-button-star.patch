@@ -1,0 +1,50 @@
+From 35df7ee09ea9ad4805806dff931e49ace15d8dfd Mon Sep 17 00:00:00 2001
+From: Evan Benn <evan.benn@morsemicro.com>
+Date: Mon, 4 Mar 2024 13:24:31 +1100
+Subject: [PATCH] DPP: Emit a DPP PB_STATUS event when push button starts
+
+To implement an action script that listens for DPP push button events
+and for example blinks a LED it is useful to know when push button has
+started. Emit an event when push button starts.
+
+Signed-off-by: Evan Benn <evan.benn@morsemicro.com>
+---
+ src/ap/dpp_hostapd.c            | 1 +
+ wpa_supplicant/dpp_supplicant.c | 2 ++
+ 2 files changed, 3 insertions(+)
+
+diff --git a/src/ap/dpp_hostapd.c b/src/ap/dpp_hostapd.c
+index 3f89bc20c..d1bffa811 100644
+--- a/src/ap/dpp_hostapd.c
++++ b/src/ap/dpp_hostapd.c
+@@ -3941,6 +3941,7 @@ int hostapd_dpp_push_button(struct hostapd_data *hapd, const char *cmd)
+ 	eloop_register_timeout(100, 0, hostapd_dpp_push_button_expire,
+ 			       hapd, NULL);
+ 
++	wpa_msg(hapd->msg_ctx, MSG_INFO, DPP_EVENT_PB_STATUS "started");
+ 	return 0;
+ }
+ 
+diff --git a/wpa_supplicant/dpp_supplicant.c b/wpa_supplicant/dpp_supplicant.c
+index d6801e1de..4044b47dd 100644
+--- a/wpa_supplicant/dpp_supplicant.c
++++ b/wpa_supplicant/dpp_supplicant.c
+@@ -5672,6 +5672,7 @@ static int wpas_dpp_push_button_configurator(struct wpa_supplicant *wpa_s,
+ 	eloop_register_timeout(100, 0, wpas_dpp_push_button_expire,
+ 			       wpa_s, NULL);
+ 
++	wpa_msg(wpa_s, MSG_INFO, DPP_EVENT_PB_STATUS "started");
+ 	return 0;
+ }
+ 
+@@ -5733,6 +5734,7 @@ int wpas_dpp_push_button(struct wpa_supplicant *wpa_s, const char *cmd)
+ 	wpa_s->scan_req = MANUAL_SCAN_REQ;
+ 	wpa_s->scan_res_handler = wpas_dpp_pb_scan_res_handler;
+ 	wpa_supplicant_req_scan(wpa_s, 0, 0);
++	wpa_msg(wpa_s, MSG_INFO, DPP_EVENT_PB_STATUS "started");
+ 	return 0;
+ }
+ 
+-- 
+2.43.0
+

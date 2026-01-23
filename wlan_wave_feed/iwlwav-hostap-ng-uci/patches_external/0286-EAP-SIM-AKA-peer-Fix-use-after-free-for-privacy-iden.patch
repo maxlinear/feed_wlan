@@ -1,0 +1,37 @@
+From e3d6fce848856feb6d835e52a2f50472c19a5950 Mon Sep 17 00:00:00 2001
+From: Jouni Malinen <quic_jouni@quicinc.com>
+Date: Mon, 22 Jan 2024 11:47:00 +0200
+Subject: [PATCH] EAP-SIM/AKA peer: Fix use-after-free for privacy identity
+
+When the privacy protected itentity is used for EAP-SIM/AKA, the buffer
+containing the identity was freed just before its use. Fix that by
+reordering the operations.
+
+Fixes: 881cb4198b55 ("EAP-SIM/AKA peer: Simplify identity selection for MK derivation")
+Signed-off-by: Jouni Malinen <quic_jouni@quicinc.com>
+---
+ src/eap_peer/eap.c | 3 ++-
+ 1 file changed, 2 insertions(+), 1 deletion(-)
+
+diff --git a/src/eap_peer/eap.c b/src/eap_peer/eap.c
+index 199ea0aab..935286242 100644
+--- a/src/eap_peer/eap.c
++++ b/src/eap_peer/eap.c
+@@ -1757,12 +1757,13 @@ struct wpabuf * eap_sm_buildIdentity(struct eap_sm *sm, int id, int encrypted)
+ 		return NULL;
+ 
+ 	wpabuf_put_data(resp, identity, identity_len);
+-	wpabuf_free(privacy_identity);
+ 
+ 	os_free(sm->identity);
+ 	sm->identity = os_memdup(identity, identity_len);
+ 	sm->identity_len = identity_len;
+ 
++	wpabuf_free(privacy_identity);
++
+ 	return resp;
+ }
+ 
+-- 
+2.43.0
+

@@ -1,0 +1,47 @@
+From e41e91a437dfc96c2d2196e14ea9965d71a19168 Mon Sep 17 00:00:00 2001
+From: Juliusz Sosinowicz <juliusz@wolfssl.com>
+Date: Thu, 4 Apr 2024 20:16:29 +0200
+Subject: [PATCH] wolfSSL: Implement openssl_ecdh_curves
+
+Signed-off-by: Juliusz Sosinowicz <juliusz@wolfssl.com>
+---
+ src/crypto/tls_wolfssl.c | 16 +++++++++++++---
+ 1 file changed, 13 insertions(+), 3 deletions(-)
+
+diff --git a/src/crypto/tls_wolfssl.c b/src/crypto/tls_wolfssl.c
+index dc2e14a98..5de3c3398 100644
+--- a/src/crypto/tls_wolfssl.c
++++ b/src/crypto/tls_wolfssl.c
+@@ -1665,6 +1665,14 @@ int tls_connection_set_params(void *tls_ctx, struct tls_connection *conn,
+ 		return -1;
+ 	}
+ 
++	if (params->openssl_ecdh_curves &&
++	    wolfSSL_set1_curves_list(conn->ssl, params->openssl_ecdh_curves) !=
++	    1) {
++		wpa_printf(MSG_INFO, "wolfSSL: Failed to set ECDH curves '%s'",
++			   params->openssl_ecdh_curves);
++		return -1;
++	}
++
+ 	tls_set_conn_flags(conn->ssl, params->flags);
+ 
+ #ifdef HAVE_CERTIFICATE_STATUS_REQUEST
+@@ -1908,9 +1916,11 @@ int tls_global_set_params(void *tls_ctx,
+ 		return -1;
+ 	}
+ 
+-	if (params->openssl_ecdh_curves) {
+-		wpa_printf(MSG_INFO,
+-			   "wolfSSL: openssl_ecdh_curves not supported");
++	if (params->openssl_ecdh_curves &&
++	    wolfSSL_CTX_set1_curves_list((WOLFSSL_CTX *) tls_ctx,
++					 params->openssl_ecdh_curves) != 1) {
++		wpa_printf(MSG_INFO, "wolfSSL: Failed to set ECDH curves '%s'",
++			   params->openssl_ecdh_curves);
+ 		return -1;
+ 	}
+ 
+-- 
+2.43.0
+

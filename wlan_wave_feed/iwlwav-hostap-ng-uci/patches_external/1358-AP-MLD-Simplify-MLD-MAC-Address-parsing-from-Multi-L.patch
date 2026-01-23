@@ -1,0 +1,54 @@
+From 104e47a607674708a48588b9178583cc2f9f02cb Mon Sep 17 00:00:00 2001
+From: Jouni Malinen <quic_jouni@quicinc.com>
+Date: Sat, 8 Feb 2025 11:58:43 +0200
+Subject: [PATCH] AP MLD: Simplify MLD MAC Address parsing from Multi-Link
+ element
+
+There is no need to try to figure out the total expected length of the
+Common Info field when we are interested in only the MLD MAC Address
+field which is in the fixed header of this field in Basic Multi-Link
+elements.
+
+Signed-off-by: Jouni Malinen <quic_jouni@quicinc.com>
+---
+ src/ap/ieee802_11_eht.c | 24 +-----------------------
+ 1 file changed, 1 insertion(+), 23 deletions(-)
+
+diff --git a/src/ap/ieee802_11_eht.c b/src/ap/ieee802_11_eht.c
+index 72b72a722..281215026 100644
+--- a/src/ap/ieee802_11_eht.c
++++ b/src/ap/ieee802_11_eht.c
+@@ -1127,29 +1127,7 @@ int hostapd_process_ml_assoc_req_addr(struct hostapd_data *hapd,
+ 
+ 	/* Common Info Length and MLD MAC Address must always be present */
+ 	common_info_len = 1 + ETH_ALEN;
+-
+-	if (ml_control & BASIC_MULTI_LINK_CTRL_PRES_LINK_ID) {
+-		wpa_printf(MSG_DEBUG, "MLD: Link ID Info not expected");
+-		goto out;
+-	}
+-
+-	if (ml_control & BASIC_MULTI_LINK_CTRL_PRES_BSS_PARAM_CH_COUNT) {
+-		wpa_printf(MSG_DEBUG,
+-			   "MLD: BSS Parameters Change Count not expected");
+-		goto out;
+-	}
+-
+-	if (ml_control & BASIC_MULTI_LINK_CTRL_PRES_MSD_INFO) {
+-		wpa_printf(MSG_DEBUG,
+-			   "MLD: Medium Synchronization Delay Information not expected");
+-		goto out;
+-	}
+-
+-	if (ml_control & BASIC_MULTI_LINK_CTRL_PRES_EML_CAPA)
+-		common_info_len += 2;
+-
+-	if (ml_control & BASIC_MULTI_LINK_CTRL_PRES_MLD_CAPA)
+-		common_info_len += 2;
++	/* Ignore optional fields */
+ 
+ 	if (sizeof(*ml) + common_info_len > ml_len) {
+ 		wpa_printf(MSG_DEBUG, "MLD: Not enough bytes for common info");
+-- 
+2.43.0
+

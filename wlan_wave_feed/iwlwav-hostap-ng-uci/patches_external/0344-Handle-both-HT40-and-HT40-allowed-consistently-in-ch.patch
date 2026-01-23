@@ -1,0 +1,52 @@
+From d3d59967afdf74272a79a1d1b68d536c69fb0a9f Mon Sep 17 00:00:00 2001
+From: Jouni Malinen <quic_jouni@quicinc.com>
+Date: Fri, 2 Feb 2024 17:50:40 +0200
+Subject: [PATCH] Handle both HT40+ and HT40- allowed consistently in channel
+ check
+
+Return the result from the first hostapd_is_usable_chan() call instead
+of the following attempts in case of ht40_plus_minus_allowed to have
+consistent behavior with the case where only one option is specified.
+This allows the fallback to 20 MHz to work in additional cases.
+
+Signed-off-by: Jouni Malinen <quic_jouni@quicinc.com>
+---
+ src/ap/hw_features.c | 10 +++++-----
+ 1 file changed, 5 insertions(+), 5 deletions(-)
+
+diff --git a/src/ap/hw_features.c b/src/ap/hw_features.c
+index 9edbb5ae2..596f2f020 100644
+--- a/src/ap/hw_features.c
++++ b/src/ap/hw_features.c
+@@ -1001,7 +1001,7 @@ static int hostapd_is_usable_chans(struct hostapd_iface *iface)
+ {
+ 	int secondary_freq;
+ 	struct hostapd_channel_data *pri_chan;
+-	int err;
++	int err, err2;
+ 
+ 	if (!iface->current_mode)
+ 		return 0;
+@@ -1044,15 +1044,15 @@ static int hostapd_is_usable_chans(struct hostapd_iface *iface)
+ 
+ 	/* Both HT40+ and HT40- are set, pick a valid secondary channel */
+ 	secondary_freq = iface->freq + 20;
+-	err = hostapd_is_usable_chan(iface, secondary_freq, 0);
+-	if (err > 0 && (pri_chan->allowed_bw & HOSTAPD_CHAN_WIDTH_40P)) {
++	err2 = hostapd_is_usable_chan(iface, secondary_freq, 0);
++	if (err2 > 0 && (pri_chan->allowed_bw & HOSTAPD_CHAN_WIDTH_40P)) {
+ 		iface->conf->secondary_channel = 1;
+ 		return 1;
+ 	}
+ 
+ 	secondary_freq = iface->freq - 20;
+-	err = hostapd_is_usable_chan(iface, secondary_freq, 0);
+-	if (err > 0 && (pri_chan->allowed_bw & HOSTAPD_CHAN_WIDTH_40M)) {
++	err2 = hostapd_is_usable_chan(iface, secondary_freq, 0);
++	if (err2 > 0 && (pri_chan->allowed_bw & HOSTAPD_CHAN_WIDTH_40M)) {
+ 		iface->conf->secondary_channel = -1;
+ 		return 1;
+ 	}
+-- 
+2.43.0
+

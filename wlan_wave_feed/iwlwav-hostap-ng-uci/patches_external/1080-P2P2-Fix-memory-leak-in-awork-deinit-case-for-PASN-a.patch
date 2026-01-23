@@ -1,0 +1,31 @@
+From 95c1950148fece1d3c709250104cb7fce2687ab6 Mon Sep 17 00:00:00 2001
+From: Shivani Baranwal <quic_shivbara@quicinc.com>
+Date: Mon, 18 Nov 2024 11:41:47 +0530
+Subject: [PATCH] P2P2: Fix memory leak in awork deinit case for PASN
+ authentication
+
+os_free(awork) is not sufficient anymore with the separately allocated
+awork->ssid.
+
+Fixes: 96e48a05aa0a ("P2P2: Invitation using pairing verification")
+Signed-off-by: Shivani Baranwal <quic_shivbara@quicinc.com>
+---
+ wpa_supplicant/p2p_supplicant.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/wpa_supplicant/p2p_supplicant.c b/wpa_supplicant/p2p_supplicant.c
+index cbc824f72..8125b0469 100644
+--- a/wpa_supplicant/p2p_supplicant.c
++++ b/wpa_supplicant/p2p_supplicant.c
+@@ -1771,7 +1771,7 @@ static void wpas_p2p_pasn_auth_start_cb(struct wpa_radio_work *work, int deinit)
+ 			eloop_cancel_timeout(wpas_p2p_group_formation_timeout,
+ 					     wpa_s->p2pdev, NULL);
+ 		}
+-		os_free(awork);
++		wpas_p2p_pasn_free_auth_work(awork);
+ 		return;
+ 	}
+ 
+-- 
+2.43.0
+

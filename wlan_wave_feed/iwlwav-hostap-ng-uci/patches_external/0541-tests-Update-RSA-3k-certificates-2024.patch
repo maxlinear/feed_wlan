@@ -1,0 +1,324 @@
+From 25e465d5b7cf73c406998ded346c63ae8effacf2 Mon Sep 17 00:00:00 2001
+From: Jouni Malinen <j@w1.fi>
+Date: Wed, 17 Apr 2024 21:26:36 +0300
+Subject: [PATCH] tests: Update RSA 3k certificates (2024)
+
+These have not yet expired, but it is easier to get in sync with all
+certificate updates.
+
+Signed-off-by: Jouni Malinen <j@w1.fi>
+---
+ tests/hwsim/auth_serv/rsa3072-server.pem      | 74 +++++++++----------
+ .../hwsim/auth_serv/rsa3072-user-rsa2048.pem  | 74 +++++++++----------
+ tests/hwsim/auth_serv/rsa3072-user.pem        | 74 +++++++++----------
+ 3 files changed, 111 insertions(+), 111 deletions(-)
+
+diff --git a/tests/hwsim/auth_serv/rsa3072-server.pem b/tests/hwsim/auth_serv/rsa3072-server.pem
+index 5e0dee569..cf92ba7d2 100644
+--- a/tests/hwsim/auth_serv/rsa3072-server.pem
++++ b/tests/hwsim/auth_serv/rsa3072-server.pem
+@@ -2,12 +2,12 @@ Certificate:
+     Data:
+         Version: 3 (0x2)
+         Serial Number:
+-            ad:8c:09:e8:fb:a2:88:d1
++            ad:8c:09:e8:fb:a2:88:d4
+         Signature Algorithm: sha384WithRSAEncryption
+         Issuer: C=FI, L=Helsinki, O=w1.fi, CN=Suite B RSA 3k Root CA
+         Validity
+-            Not Before: Aug 22 13:56:07 2023 GMT
+-            Not After : Aug 21 13:56:07 2025 GMT
++            Not Before: Apr 17 18:26:29 2024 GMT
++            Not After : Apr 17 18:26:29 2026 GMT
+         Subject: C=FI, O=w1.fi, CN=rsa3072.server.w1.fi
+         Subject Public Key Info:
+             Public Key Algorithm: rsaEncryption
+@@ -55,33 +55,33 @@ Certificate:
+                 Digital Signature, Key Encipherment
+     Signature Algorithm: sha384WithRSAEncryption
+     Signature Value:
+-        d3:1d:ad:cf:43:a2:84:d2:cf:f7:d9:89:75:8e:0b:a0:dd:da:
+-        d9:9c:9b:88:7f:e7:6e:c3:53:4c:9b:dd:1e:09:58:d0:2c:ae:
+-        c6:e2:7c:4d:2f:71:f1:58:72:d3:1c:42:f6:ed:a6:ce:a9:3f:
+-        db:d7:ba:26:db:b5:2c:bd:63:3a:39:18:5d:07:a7:b4:15:2a:
+-        c9:41:37:1f:c4:cd:8c:1b:5b:53:00:ba:c9:8a:21:70:d7:94:
+-        41:97:1e:d1:47:a4:3c:52:2f:91:fe:80:f1:83:20:37:32:d6:
+-        b5:48:1d:91:f8:f7:0c:29:bb:3b:26:89:f2:79:22:50:a7:b2:
+-        23:33:ee:db:31:4d:70:c8:6d:5b:14:d7:a6:31:b0:da:5e:a8:
+-        2a:a3:71:6f:fd:05:40:0f:fc:f1:2f:02:76:c3:92:f1:f6:9d:
+-        a4:45:e2:26:e0:d2:bc:ec:fa:1c:c6:76:6d:f3:3b:6a:05:62:
+-        8d:a4:32:50:6d:69:34:94:fe:bb:44:27:e2:73:a7:36:4a:29:
+-        6f:fc:8b:fe:60:50:cd:33:21:a8:98:15:9c:f1:1b:db:9e:c6:
+-        4c:a8:1b:f2:11:58:4f:49:71:4e:3d:8e:20:f0:99:4e:ed:98:
+-        7a:e0:1a:f3:75:af:3c:ec:37:f7:76:0d:1e:c0:1a:02:6d:d3:
+-        ca:10:bb:41:93:2c:9b:4c:93:8c:77:cb:82:62:84:1f:d7:52:
+-        a0:ca:bd:d9:4a:cd:e2:42:71:a5:76:ca:d0:e1:8f:2d:33:46:
+-        08:f1:59:aa:7f:89:45:56:a8:6f:45:0e:c8:9a:b0:70:57:16:
+-        dd:4f:34:45:e6:32:30:bb:e5:3c:4e:8e:3e:c6:52:3a:ce:6c:
+-        99:da:56:d1:64:30:64:85:4f:67:aa:6a:c0:a9:6d:e0:de:bf:
+-        8c:fe:05:52:6c:ad:9d:5c:6f:94:82:88:03:87:25:c4:8c:dd:
+-        4e:b7:c2:35:dd:b5:e5:77:a5:d8:4d:f4:d0:15:bc:0c:44:a4:
+-        22:5b:38:e0:21:84
++        b6:95:90:04:e3:37:30:97:1a:52:09:07:60:46:5e:87:da:08:
++        5e:7c:34:ad:d0:aa:a5:1b:64:0f:15:b6:21:e7:0d:2d:49:b6:
++        47:de:03:54:90:6a:4f:2f:4c:87:9a:5a:d9:63:a8:56:8d:de:
++        8a:4d:07:4c:c1:52:3f:3c:21:4c:20:33:53:8b:9c:86:aa:02:
++        4e:4f:7d:b8:4b:18:9a:05:08:03:16:d6:58:b0:a5:4b:15:89:
++        06:28:93:11:7e:4d:bc:1c:e8:67:b3:f0:2e:73:65:9b:6a:77:
++        6e:e4:24:80:26:b0:c0:47:a2:20:87:6c:44:88:14:88:88:be:
++        4a:df:ac:1f:a7:2e:49:5e:39:c0:f5:4c:e9:64:25:df:27:18:
++        47:fb:64:03:00:06:f6:20:51:73:2a:78:f0:d7:56:fb:f9:1c:
++        29:fb:b9:2c:ff:49:20:81:18:2d:95:e0:e5:54:aa:ca:7b:60:
++        f3:ed:1f:54:76:15:1a:52:0c:63:af:cd:25:d9:6f:13:4e:47:
++        e6:08:29:b8:78:35:6d:8e:ac:90:36:60:bc:0a:0b:51:20:f0:
++        15:31:1a:7a:38:05:98:b0:69:8e:fe:ed:1f:88:4c:18:44:83:
++        98:81:9b:21:c8:c2:fa:8f:c1:aa:ff:3e:42:18:e8:35:2c:be:
++        b1:c2:95:b6:82:c1:cb:2a:d6:90:4b:77:1e:28:d6:14:f4:fe:
++        e1:41:65:f6:07:59:f8:6c:a9:58:ba:45:00:f9:63:31:45:f6:
++        9a:00:1d:40:2d:ea:31:b4:ba:52:06:1b:61:c0:62:3a:37:c7:
++        fa:a6:85:27:66:bd:1b:a0:23:0c:6d:d6:04:9a:71:4c:72:2c:
++        94:5a:0a:bd:44:24:a2:44:22:c0:31:a5:50:63:dd:66:a5:f8:
++        2d:7b:28:af:36:e9:ee:af:3b:5c:af:8a:f1:81:1a:35:cd:86:
++        db:3e:e8:26:56:62:f7:fc:5a:b8:f2:a7:50:b2:23:69:8d:14:
++        55:e0:e6:b4:05:7a
+ -----BEGIN CERTIFICATE-----
+-MIIEqzCCAxOgAwIBAgIJAK2MCej7oojRMA0GCSqGSIb3DQEBDAUAMFExCzAJBgNV
++MIIEqzCCAxOgAwIBAgIJAK2MCej7oojUMA0GCSqGSIb3DQEBDAUAMFExCzAJBgNV
+ BAYTAkZJMREwDwYDVQQHDAhIZWxzaW5raTEOMAwGA1UECgwFdzEuZmkxHzAdBgNV
+-BAMMFlN1aXRlIEIgUlNBIDNrIFJvb3QgQ0EwHhcNMjMwODIyMTM1NjA3WhcNMjUw
+-ODIxMTM1NjA3WjA8MQswCQYDVQQGEwJGSTEOMAwGA1UECgwFdzEuZmkxHTAbBgNV
++BAMMFlN1aXRlIEIgUlNBIDNrIFJvb3QgQ0EwHhcNMjQwNDE3MTgyNjI5WhcNMjYw
++NDE3MTgyNjI5WjA8MQswCQYDVQQGEwJGSTEOMAwGA1UECgwFdzEuZmkxHTAbBgNV
+ BAMMFHJzYTMwNzIuc2VydmVyLncxLmZpMIIBojANBgkqhkiG9w0BAQEFAAOCAY8A
+ MIIBigKCAYEA/qlcWY+qgMu4Son5Ouh9JFG48gXGQuBotaTxfooxouAMWMWAIMsg
+ 8A7Ba03h1+vMRUjJsA+P74DbG2ACr+/oCinIBN9wkunx3GpHO1pvEOYZTZOS0AqO
+@@ -94,13 +94,13 @@ gTF4oMl9bdlrB/rISmdXLIymzuV+NpXxCb3fv8hTPSFn/ZPLsnq1VmGeL85p+vpW
+ CmucaXj3TlRzAgMBAAGjgZowgZcwDAYDVR0TAQH/BAIwADAdBgNVHQ4EFgQUgtd1
+ lZSeNfcfkW03nyZPPZ3BbpYwHwYDVR0jBBgwFoAUIffv2sM0Ou3N1VDAs7oJ7j+A
+ 13AwIgYDVR0RAQH/BBgwFoIUcnNhMzA3Mi5zZXJ2ZXIudzEuZmkwFgYDVR0lAQH/
+-BAwwCgYIKwYBBQUHAwEwCwYDVR0PBAQDAgWgMA0GCSqGSIb3DQEBDAUAA4IBgQDT
+-Ha3PQ6KE0s/32Yl1jgug3drZnJuIf+duw1NMm90eCVjQLK7G4nxNL3HxWHLTHEL2
+-7abOqT/b17om27UsvWM6ORhdB6e0FSrJQTcfxM2MG1tTALrJiiFw15RBlx7RR6Q8
+-Ui+R/oDxgyA3Mta1SB2R+PcMKbs7JonyeSJQp7IjM+7bMU1wyG1bFNemMbDaXqgq
+-o3Fv/QVAD/zxLwJ2w5Lx9p2kReIm4NK87PocxnZt8ztqBWKNpDJQbWk0lP67RCfi
+-c6c2Silv/Iv+YFDNMyGomBWc8RvbnsZMqBvyEVhPSXFOPY4g8JlO7Zh64Brzda88
+-7Df3dg0ewBoCbdPKELtBkyybTJOMd8uCYoQf11Kgyr3ZSs3iQnGldsrQ4Y8tM0YI
+-8Vmqf4lFVqhvRQ7ImrBwVxbdTzRF5jIwu+U8To4+xlI6zmyZ2lbRZDBkhU9nqmrA
+-qW3g3r+M/gVSbK2dXG+UgogDhyXEjN1Ot8I13bXld6XYTfTQFbwMRKQiWzjgIYQ=
++BAwwCgYIKwYBBQUHAwEwCwYDVR0PBAQDAgWgMA0GCSqGSIb3DQEBDAUAA4IBgQC2
++lZAE4zcwlxpSCQdgRl6H2ghefDSt0KqlG2QPFbYh5w0tSbZH3gNUkGpPL0yHmlrZ
++Y6hWjd6KTQdMwVI/PCFMIDNTi5yGqgJOT324SxiaBQgDFtZYsKVLFYkGKJMRfk28
++HOhns/Auc2Wbandu5CSAJrDAR6Igh2xEiBSIiL5K36wfpy5JXjnA9UzpZCXfJxhH
+++2QDAAb2IFFzKnjw11b7+Rwp+7ks/0kggRgtleDlVKrKe2Dz7R9UdhUaUgxjr80l
++2W8TTkfmCCm4eDVtjqyQNmC8CgtRIPAVMRp6OAWYsGmO/u0fiEwYRIOYgZshyML6
++j8Gq/z5CGOg1LL6xwpW2gsHLKtaQS3ceKNYU9P7hQWX2B1n4bKlYukUA+WMxRfaa
++AB1ALeoxtLpSBhthwGI6N8f6poUnZr0boCMMbdYEmnFMciyUWgq9RCSiRCLAMaVQ
++Y91mpfgteyivNunurztcr4rxgRo1zYbbPugmVmL3/Fq48qdQsiNpjRRV4Oa0BXo=
+ -----END CERTIFICATE-----
+diff --git a/tests/hwsim/auth_serv/rsa3072-user-rsa2048.pem b/tests/hwsim/auth_serv/rsa3072-user-rsa2048.pem
+index c7944f57c..ae42a0961 100644
+--- a/tests/hwsim/auth_serv/rsa3072-user-rsa2048.pem
++++ b/tests/hwsim/auth_serv/rsa3072-user-rsa2048.pem
+@@ -2,12 +2,12 @@ Certificate:
+     Data:
+         Version: 3 (0x2)
+         Serial Number:
+-            ad:8c:09:e8:fb:a2:88:d3
++            ad:8c:09:e8:fb:a2:88:d6
+         Signature Algorithm: sha384WithRSAEncryption
+         Issuer: C=FI, L=Helsinki, O=w1.fi, CN=Suite B RSA 3k Root CA
+         Validity
+-            Not Before: Aug 22 13:56:07 2023 GMT
+-            Not After : Aug 21 13:56:07 2025 GMT
++            Not Before: Apr 17 18:26:29 2024 GMT
++            Not After : Apr 17 18:26:29 2026 GMT
+         Subject: C=FI, O=w1.fi, CN=user-rsa3072-rsa2048
+         Subject Public Key Info:
+             Public Key Algorithm: rsaEncryption
+@@ -47,33 +47,33 @@ Certificate:
+                 Digital Signature, Key Encipherment
+     Signature Algorithm: sha384WithRSAEncryption
+     Signature Value:
+-        5d:1a:48:3b:d4:fa:3a:92:da:7c:11:26:5f:0d:a7:53:92:47:
+-        9d:43:13:bb:d5:d0:ca:f3:71:95:f2:da:9e:f4:f8:8c:b7:5a:
+-        28:26:fe:b3:e0:45:99:60:e7:2f:1a:de:82:eb:e3:d4:b3:56:
+-        07:11:1c:fc:2f:e4:4d:52:0a:67:db:6d:de:5c:18:77:1c:f1:
+-        99:0c:ae:71:ce:67:c1:33:c9:42:ea:b8:84:9a:56:fb:9d:5d:
+-        54:75:7b:ad:90:f6:3e:59:91:1f:be:b1:00:50:38:02:24:50:
+-        20:b5:af:11:80:0a:b1:c4:86:40:fb:13:03:62:7f:cf:93:71:
+-        50:43:6f:1d:58:0b:9f:9e:b8:c7:2c:28:c7:66:36:fd:2b:77:
+-        13:47:b4:2a:e5:f0:3c:9c:28:15:1f:cb:20:1b:cc:63:ab:8e:
+-        1b:51:f4:30:2b:cc:79:3a:90:c8:28:1f:94:23:d7:d7:0a:0d:
+-        b8:3c:2e:4e:ca:3d:45:e0:e5:c8:5d:c1:65:b5:73:06:5b:cb:
+-        60:b0:0f:43:39:48:cb:8a:52:88:5c:b8:4e:d8:51:25:29:d6:
+-        dd:ae:49:1d:e3:b6:ad:6e:54:d6:cd:1a:cc:be:76:cf:44:de:
+-        4f:1d:c8:4a:32:d6:73:b8:34:83:cd:31:d4:da:c5:e2:93:f9:
+-        b7:53:ec:1e:4d:16:0d:d6:e4:23:26:75:64:6f:c2:a9:77:7d:
+-        10:6f:50:84:1c:25:3e:cb:e2:51:ea:25:64:ee:f1:cb:10:25:
+-        84:b3:03:74:64:9a:e4:45:9d:e8:74:78:06:e1:7f:7f:37:51:
+-        52:37:8f:7c:d2:cc:56:47:00:07:a2:04:b0:9e:07:b6:5e:73:
+-        11:7f:10:3b:83:bb:19:1a:5a:d0:92:49:42:bf:bc:f2:5f:5c:
+-        ec:a4:2d:20:4e:b4:b2:89:27:b2:da:2d:f5:9e:58:19:b7:20:
+-        b1:67:84:81:a5:34:b3:c9:24:35:d0:d2:90:54:dc:7e:58:9a:
+-        0d:5a:f1:92:15:04
++        dc:12:5f:2e:fc:cd:4b:6a:64:7d:9f:ed:a4:b7:bf:c4:4f:cf:
++        db:8a:64:48:a2:51:7f:38:f3:e0:49:85:7b:bc:1f:a8:28:cd:
++        d8:7a:13:f5:46:5e:05:8f:dd:a1:9b:45:84:76:70:c5:c6:00:
++        0e:c2:21:4f:f4:f6:99:07:ad:b1:97:c2:4a:28:8a:0f:e4:71:
++        5c:99:89:3b:65:03:b9:51:0b:06:69:31:68:72:d8:58:45:4c:
++        34:84:34:44:65:bd:93:d5:f3:61:e2:06:bb:db:a7:a2:27:8a:
++        dd:7c:a0:2a:68:80:b4:5e:cb:d5:6a:48:11:ac:ca:aa:e8:cd:
++        e6:bf:62:6d:25:e0:28:25:18:5a:c2:a5:3c:a8:45:2f:8b:0d:
++        7b:2c:10:dc:3f:e7:c3:70:d4:6a:8d:ef:13:5f:fd:02:a9:09:
++        8a:c7:7e:3d:3c:9c:b5:96:2d:70:81:a8:62:32:06:69:25:2b:
++        30:3c:0c:b3:c6:2d:09:b1:6c:38:f9:57:98:7b:1f:1e:ee:57:
++        2b:02:c3:46:b4:1c:e3:01:81:4f:e4:3a:66:d8:f9:8c:fa:d4:
++        b3:85:d7:e8:e2:82:32:bb:a8:fd:3e:f3:37:95:18:8b:b8:24:
++        90:e4:7a:84:32:3a:c9:05:dd:7e:93:e9:70:af:47:ed:44:ba:
++        3c:57:63:eb:4a:f7:61:98:6b:dc:46:33:2b:cc:13:fc:4f:e9:
++        f7:90:2a:a1:48:9c:2d:81:2a:83:ee:06:1b:e4:2a:26:11:0c:
++        bb:c0:f1:fb:0c:3c:84:ff:23:59:4a:77:cb:19:9c:f3:20:08:
++        34:0b:6d:50:ee:4b:a5:3b:0f:aa:55:31:58:87:e4:0d:99:9f:
++        8c:c6:f8:76:73:b2:ea:94:c6:c0:fc:23:64:58:48:ac:57:b0:
++        7c:21:56:c7:78:22:09:2b:84:83:1d:d2:1b:50:da:10:52:a4:
++        4f:bd:5e:0b:b7:9c:7d:c7:7f:41:96:90:00:aa:f8:b0:7e:c0:
++        cd:b2:09:d1:9a:3c
+ -----BEGIN CERTIFICATE-----
+-MIIEKDCCApCgAwIBAgIJAK2MCej7oojTMA0GCSqGSIb3DQEBDAUAMFExCzAJBgNV
++MIIEKDCCApCgAwIBAgIJAK2MCej7oojWMA0GCSqGSIb3DQEBDAUAMFExCzAJBgNV
+ BAYTAkZJMREwDwYDVQQHDAhIZWxzaW5raTEOMAwGA1UECgwFdzEuZmkxHzAdBgNV
+-BAMMFlN1aXRlIEIgUlNBIDNrIFJvb3QgQ0EwHhcNMjMwODIyMTM1NjA3WhcNMjUw
+-ODIxMTM1NjA3WjA8MQswCQYDVQQGEwJGSTEOMAwGA1UECgwFdzEuZmkxHTAbBgNV
++BAMMFlN1aXRlIEIgUlNBIDNrIFJvb3QgQ0EwHhcNMjQwNDE3MTgyNjI5WhcNMjYw
++NDE3MTgyNjI5WjA8MQswCQYDVQQGEwJGSTEOMAwGA1UECgwFdzEuZmkxHTAbBgNV
+ BAMMFHVzZXItcnNhMzA3Mi1yc2EyMDQ4MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8A
+ MIIBCgKCAQEA22b/i5Vmli5KdAKAQ/wJ+rZBeAn46b9rQf1bv8xm2AfDDexIl40s
+ T1j1tScH7kh8a5iiduiLlBF3aDZDHyyIn9ZA3+wnFmOuNBzV7CbF2a13qXMUhqOk
+@@ -84,13 +84,13 @@ SaiVAkmoZyp487QOq2kF6dkwrbC9JvCNMwIDAQABo4GXMIGUMAkGA1UdEwQCMAAw
+ HQYDVR0OBBYEFMyFqj3kN1E+cEaWjgBlw4Eg4OSHMB8GA1UdIwQYMBaAFCH379rD
+ NDrtzdVQwLO6Ce4/gNdwMCUGA1UdEQQeMByBGnVzZXItcnNhMzA3Mi1yc2EyMDQ4
+ QHcxLmZpMBMGA1UdJQQMMAoGCCsGAQUFBwMCMAsGA1UdDwQEAwIFoDANBgkqhkiG
+-9w0BAQwFAAOCAYEAXRpIO9T6OpLafBEmXw2nU5JHnUMTu9XQyvNxlfLanvT4jLda
+-KCb+s+BFmWDnLxreguvj1LNWBxEc/C/kTVIKZ9tt3lwYdxzxmQyucc5nwTPJQuq4
+-hJpW+51dVHV7rZD2PlmRH76xAFA4AiRQILWvEYAKscSGQPsTA2J/z5NxUENvHVgL
+-n564xywox2Y2/St3E0e0KuXwPJwoFR/LIBvMY6uOG1H0MCvMeTqQyCgflCPX1woN
+-uDwuTso9ReDlyF3BZbVzBlvLYLAPQzlIy4pSiFy4TthRJSnW3a5JHeO2rW5U1s0a
+-zL52z0TeTx3ISjLWc7g0g80x1NrF4pP5t1PsHk0WDdbkIyZ1ZG/CqXd9EG9QhBwl
+-PsviUeolZO7xyxAlhLMDdGSa5EWd6HR4BuF/fzdRUjePfNLMVkcAB6IEsJ4Htl5z
+-EX8QO4O7GRpa0JJJQr+88l9c7KQtIE60soknstot9Z5YGbcgsWeEgaU0s8kkNdDS
+-kFTcfliaDVrxkhUE
++9w0BAQwFAAOCAYEA3BJfLvzNS2pkfZ/tpLe/xE/P24pkSKJRfzjz4EmFe7wfqCjN
++2HoT9UZeBY/doZtFhHZwxcYADsIhT/T2mQetsZfCSiiKD+RxXJmJO2UDuVELBmkx
++aHLYWEVMNIQ0RGW9k9XzYeIGu9unoieK3XygKmiAtF7L1WpIEazKqujN5r9ibSXg
++KCUYWsKlPKhFL4sNeywQ3D/nw3DUao3vE1/9AqkJisd+PTyctZYtcIGoYjIGaSUr
++MDwMs8YtCbFsOPlXmHsfHu5XKwLDRrQc4wGBT+Q6Ztj5jPrUs4XX6OKCMruo/T7z
++N5UYi7gkkOR6hDI6yQXdfpPpcK9H7US6PFdj60r3YZhr3EYzK8wT/E/p95AqoUic
++LYEqg+4GG+QqJhEMu8Dx+ww8hP8jWUp3yxmc8yAINAttUO5LpTsPqlUxWIfkDZmf
++jMb4dnOy6pTGwPwjZFhIrFewfCFWx3giCSuEgx3SG1DaEFKkT71eC7ecfcd/QZaQ
++AKr4sH7AzbIJ0Zo8
+ -----END CERTIFICATE-----
+diff --git a/tests/hwsim/auth_serv/rsa3072-user.pem b/tests/hwsim/auth_serv/rsa3072-user.pem
+index 10eb715d2..503173d19 100644
+--- a/tests/hwsim/auth_serv/rsa3072-user.pem
++++ b/tests/hwsim/auth_serv/rsa3072-user.pem
+@@ -2,12 +2,12 @@ Certificate:
+     Data:
+         Version: 3 (0x2)
+         Serial Number:
+-            ad:8c:09:e8:fb:a2:88:d2
++            ad:8c:09:e8:fb:a2:88:d5
+         Signature Algorithm: sha384WithRSAEncryption
+         Issuer: C=FI, L=Helsinki, O=w1.fi, CN=Suite B RSA 3k Root CA
+         Validity
+-            Not Before: Aug 22 13:56:07 2023 GMT
+-            Not After : Aug 21 13:56:07 2025 GMT
++            Not Before: Apr 17 18:26:29 2024 GMT
++            Not After : Apr 17 18:26:29 2026 GMT
+         Subject: C=FI, O=w1.fi, CN=user-rsa3072
+         Subject Public Key Info:
+             Public Key Algorithm: rsaEncryption
+@@ -55,33 +55,33 @@ Certificate:
+                 Digital Signature, Key Encipherment
+     Signature Algorithm: sha384WithRSAEncryption
+     Signature Value:
+-        c0:3d:04:c6:31:cc:53:39:e2:91:f1:f3:88:31:3c:41:8c:68:
+-        45:70:e3:75:df:cb:e3:41:5d:59:64:a2:1f:1e:fa:df:6e:2a:
+-        b9:89:92:79:7f:e3:5d:4e:d9:24:b9:9f:e7:50:16:42:6a:16:
+-        9f:7c:2c:78:32:a1:f4:ec:e9:ef:35:9f:c9:e1:ec:5f:0c:a7:
+-        63:da:eb:d4:80:a9:0c:ae:e5:63:e2:1d:93:96:e0:9c:a4:55:
+-        d5:69:c9:72:56:8c:aa:f8:51:1c:8a:2a:f0:65:a7:64:b3:f5:
+-        9a:5b:0b:82:a1:c4:54:6b:38:6d:6c:88:bc:d8:9c:7e:38:37:
+-        e6:26:af:82:ff:4c:92:12:25:60:44:eb:30:83:0b:5c:c6:69:
+-        f9:41:63:4a:73:43:6f:a1:06:91:f2:20:f4:f7:0b:c6:5c:72:
+-        6d:ae:7b:f5:16:8e:69:ad:b2:26:5f:c3:21:8d:35:37:e1:ab:
+-        09:4e:70:5d:e3:cf:23:c9:03:a2:c4:b9:20:e2:6a:5c:d5:b9:
+-        ef:40:4f:b5:3c:94:fc:e8:3c:ea:19:89:52:e1:7b:6f:53:40:
+-        b3:c5:54:a9:e1:dd:51:7b:17:7f:14:dc:7b:6b:28:16:a8:94:
+-        c9:c7:99:ad:ee:14:3b:37:49:92:b3:ef:9d:1d:72:69:f9:6e:
+-        52:de:c0:f3:88:1b:45:b9:2f:b9:48:a0:cc:f9:77:7c:27:07:
+-        e2:09:13:2b:ea:fb:2d:0d:32:69:ff:60:57:82:67:91:10:80:
+-        51:64:94:8b:7b:8a:39:da:46:9a:5d:ca:9b:04:25:3e:39:c8:
+-        9c:30:02:1c:e4:56:25:b9:90:a7:86:55:90:63:69:72:5c:91:
+-        b9:3c:1f:a7:da:20:43:d1:2d:90:38:51:3e:05:a2:d5:d1:ab:
+-        cc:3d:29:d1:c0:aa:a6:40:5b:19:2a:79:58:9e:47:9d:33:b2:
+-        37:88:b8:d1:e1:1a:9d:59:25:45:99:aa:a3:a2:6a:13:e7:62:
+-        a4:79:42:8a:f0:a1
++        28:44:46:06:f5:da:f7:45:cd:b5:e3:28:d3:e1:43:f4:d1:2d:
++        2c:19:44:6e:a0:85:fb:30:ba:6e:1a:f9:51:58:5e:d7:7a:c5:
++        84:af:31:a5:1f:e6:18:c5:71:d0:c6:cf:43:bb:c8:e8:f3:34:
++        aa:bd:e0:a1:70:74:5a:e8:5f:8d:71:11:b7:22:5a:ae:1a:3c:
++        32:a2:98:56:84:89:d7:0e:0e:b6:3b:06:de:9a:73:7e:06:1c:
++        6d:78:70:ad:63:e8:e9:fd:e9:48:d9:47:c7:b7:4d:1f:cb:41:
++        ba:9d:9e:de:1b:7b:10:da:64:04:08:96:47:75:d8:9b:b1:e0:
++        51:74:57:9f:7f:02:62:c7:69:1d:34:91:e4:bc:7b:0b:55:a7:
++        66:31:16:70:8e:24:22:33:c7:3b:21:36:03:27:eb:d6:32:d3:
++        fe:63:39:e4:0e:b4:96:84:b7:e2:67:2f:51:3b:6d:9a:ee:17:
++        e3:a3:99:21:3d:31:22:1d:d3:8d:13:af:de:f0:bf:3a:10:f6:
++        fb:03:fe:d3:30:2b:08:c0:0c:07:9a:1c:36:f3:8c:04:a7:10:
++        90:5f:b2:5e:90:b3:6d:60:16:3a:6d:46:ef:b1:4c:3a:c3:9c:
++        b1:9d:76:bf:2f:0e:9b:a2:16:20:cf:6c:27:9c:d3:98:36:50:
++        2a:1b:9b:e4:31:94:3d:ab:6e:fd:2f:57:ca:6f:c2:65:b6:98:
++        0c:a7:9b:61:d6:28:e8:62:10:5c:22:f7:a9:cd:52:05:11:1a:
++        14:85:42:85:5e:d6:3c:10:7d:d3:52:0b:e6:fb:f9:92:a5:b0:
++        75:59:74:18:68:78:48:f2:69:d6:27:a6:a6:a1:a3:00:b7:66:
++        21:ed:8d:7a:cb:95:9e:04:b5:9e:94:90:7c:6f:5f:55:5c:5a:
++        83:82:55:2c:e7:5c:94:31:74:2c:6a:e2:20:04:f5:ee:f7:bf:
++        07:94:67:3c:c9:9b:17:c6:6b:08:c0:31:e3:49:9e:09:ab:72:
++        49:20:0a:75:58:c1
+ -----BEGIN CERTIFICATE-----
+-MIIEmDCCAwCgAwIBAgIJAK2MCej7oojSMA0GCSqGSIb3DQEBDAUAMFExCzAJBgNV
++MIIEmDCCAwCgAwIBAgIJAK2MCej7oojVMA0GCSqGSIb3DQEBDAUAMFExCzAJBgNV
+ BAYTAkZJMREwDwYDVQQHDAhIZWxzaW5raTEOMAwGA1UECgwFdzEuZmkxHzAdBgNV
+-BAMMFlN1aXRlIEIgUlNBIDNrIFJvb3QgQ0EwHhcNMjMwODIyMTM1NjA3WhcNMjUw
+-ODIxMTM1NjA3WjA0MQswCQYDVQQGEwJGSTEOMAwGA1UECgwFdzEuZmkxFTATBgNV
++BAMMFlN1aXRlIEIgUlNBIDNrIFJvb3QgQ0EwHhcNMjQwNDE3MTgyNjI5WhcNMjYw
++NDE3MTgyNjI5WjA0MQswCQYDVQQGEwJGSTEOMAwGA1UECgwFdzEuZmkxFTATBgNV
+ BAMMDHVzZXItcnNhMzA3MjCCAaIwDQYJKoZIhvcNAQEBBQADggGPADCCAYoCggGB
+ AJJ3Z45ENIOoN/mpxHJccXKdNR09jDQiXCT4h4He3qylk3fFOKSCnIwGmxSLUgky
+ TDHF+OkvZIo5CnCeToqcvKWreBhSRHX+wwBh5x9FwBJy5DieKJ32dmBws3sRypCY
+@@ -94,13 +94,13 @@ E/lTNzqoITjnX3T7hVNrIWuCyaVBLKM5dBSgXAPIExdVphVFUjy5uT/+2agUbyDF
+ IQIDAQABo4GPMIGMMAkGA1UdEwQCMAAwHQYDVR0OBBYEFLFPNhckQK1rBTOHxK1P
+ SlOv9dYjMB8GA1UdIwQYMBaAFCH379rDNDrtzdVQwLO6Ce4/gNdwMB0GA1UdEQQW
+ MBSBEnVzZXItcnNhMzA3MkB3MS5maTATBgNVHSUEDDAKBggrBgEFBQcDAjALBgNV
+-HQ8EBAMCBaAwDQYJKoZIhvcNAQEMBQADggGBAMA9BMYxzFM54pHx84gxPEGMaEVw
+-43Xfy+NBXVlkoh8e+t9uKrmJknl/411O2SS5n+dQFkJqFp98LHgyofTs6e81n8nh
+-7F8Mp2Pa69SAqQyu5WPiHZOW4JykVdVpyXJWjKr4URyKKvBlp2Sz9ZpbC4KhxFRr
+-OG1siLzYnH44N+Ymr4L/TJISJWBE6zCDC1zGaflBY0pzQ2+hBpHyIPT3C8Zccm2u
+-e/UWjmmtsiZfwyGNNTfhqwlOcF3jzyPJA6LEuSDialzVue9AT7U8lPzoPOoZiVLh
+-e29TQLPFVKnh3VF7F38U3HtrKBaolMnHma3uFDs3SZKz750dcmn5blLewPOIG0W5
+-L7lIoMz5d3wnB+IJEyvq+y0NMmn/YFeCZ5EQgFFklIt7ijnaRppdypsEJT45yJww
+-AhzkViW5kKeGVZBjaXJckbk8H6faIEPRLZA4UT4FotXRq8w9KdHAqqZAWxkqeVie
+-R50zsjeIuNHhGp1ZJUWZqqOiahPnYqR5QorwoQ==
++HQ8EBAMCBaAwDQYJKoZIhvcNAQEMBQADggGBAChERgb12vdFzbXjKNPhQ/TRLSwZ
++RG6ghfswum4a+VFYXtd6xYSvMaUf5hjFcdDGz0O7yOjzNKq94KFwdFroX41xEbci
++Wq4aPDKimFaEidcODrY7Bt6ac34GHG14cK1j6On96UjZR8e3TR/LQbqdnt4bexDa
++ZAQIlkd12Jux4FF0V59/AmLHaR00keS8ewtVp2YxFnCOJCIzxzshNgMn69Yy0/5j
++OeQOtJaEt+JnL1E7bZruF+OjmSE9MSId040Tr97wvzoQ9vsD/tMwKwjADAeaHDbz
++jASnEJBfsl6Qs21gFjptRu+xTDrDnLGddr8vDpuiFiDPbCec05g2UCobm+QxlD2r
++bv0vV8pvwmW2mAynm2HWKOhiEFwi96nNUgURGhSFQoVe1jwQfdNSC+b7+ZKlsHVZ
++dBhoeEjyadYnpqahowC3ZiHtjXrLlZ4EtZ6UkHxvX1VcWoOCVSznXJQxdCxq4iAE
++9e73vweUZzzJmxfGawjAMeNJngmrckkgCnVYwQ==
+ -----END CERTIFICATE-----
+-- 
+2.43.0
+

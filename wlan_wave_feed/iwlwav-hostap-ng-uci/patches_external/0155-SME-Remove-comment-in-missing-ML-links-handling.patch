@@ -1,0 +1,29 @@
+From c88c08f0cc95c89f9b941018f89242f900801abf Mon Sep 17 00:00:00 2001
+From: Benjamin Berg <benjamin.berg@intel.com>
+Date: Fri, 22 Dec 2023 12:25:08 +0200
+Subject: [PATCH] SME: Remove comment in missing ML links handling
+
+The location of the comment is incorrect and it is not really needed.
+Remove it.
+
+Signed-off-by: Benjamin Berg <benjamin.berg@intel.com>
+Signed-off-by: Andrei Otcheretianski <andrei.otcheretianski@intel.com>
+---
+ wpa_supplicant/events.c | 1 -
+ 1 file changed, 1 deletion(-)
+
+diff --git a/wpa_supplicant/events.c b/wpa_supplicant/events.c
+index 7bea64986..d56703f6f 100644
+--- a/wpa_supplicant/events.c
++++ b/wpa_supplicant/events.c
+@@ -1890,7 +1890,6 @@ static int wpa_supplicant_connect_ml_missing(struct wpa_supplicant *wpa_s,
+ 	      (wpa_s->drv_flags & WPA_DRIVER_FLAGS_SME)))
+ 		return 0;
+ 
+-	/* Try to resolve any missing link information */
+ 	if (wpa_bss_parse_basic_ml_element(wpa_s, selected, NULL,
+ 					   &missing_links, ssid,
+ 					   &ap_mld_id) ||
+-- 
+2.43.0
+

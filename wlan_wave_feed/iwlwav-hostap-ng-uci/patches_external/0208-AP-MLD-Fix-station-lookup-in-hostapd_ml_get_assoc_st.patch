@@ -1,0 +1,40 @@
+From ea401c168e981102c1e17208591252a40c58a9d7 Mon Sep 17 00:00:00 2001
+From: Ilan Peer <ilan.peer@intel.com>
+Date: Mon, 25 Dec 2023 19:42:59 +0200
+Subject: [PATCH] AP MLD: Fix station lookup in hostapd_ml_get_assoc_sta()
+
+If the station is not an MLO station do not attempt to find the
+association station and return false in the ML specific disconnection
+processing.
+
+Signed-off-by: Ilan Peer <ilan.peer@intel.com>
+---
+ src/ap/ieee802_11.c | 5 +++++
+ 1 file changed, 5 insertions(+)
+
+diff --git a/src/ap/ieee802_11.c b/src/ap/ieee802_11.c
+index 948e46b5d..e114c83c4 100644
+--- a/src/ap/ieee802_11.c
++++ b/src/ap/ieee802_11.c
+@@ -5739,6 +5739,9 @@ hostapd_ml_get_assoc_sta(struct hostapd_data *hapd, struct sta_info *sta,
+ 	struct hostapd_data *other_hapd = NULL;
+ 	struct sta_info *tmp_sta;
+ 
++	if (!sta->mld_info.mld_sta)
++		return NULL;
++
+ 	*assoc_hapd = hapd;
+ 
+ 	/* The station is the one on which the association was performed */
+@@ -5787,6 +5790,8 @@ static bool hostapd_ml_handle_disconnect(struct hostapd_data *hapd,
+ 	 * the information about all the other links.
+ 	 */
+ 	assoc_sta = hostapd_ml_get_assoc_sta(hapd, sta, &assoc_hapd);
++	if (!assoc_sta)
++		return false;
+ 
+ 	for (link_id = 0; link_id < MAX_NUM_MLD_LINKS; link_id++) {
+ 		for (i = 0; i < assoc_hapd->iface->interfaces->count; i++) {
+-- 
+2.43.0
+

@@ -1,0 +1,44 @@
+From c3b6ec84a5df37f73c3ee498d1601295349521eb Mon Sep 17 00:00:00 2001
+From: Jouni Malinen <j@w1.fi>
+Date: Mon, 23 Dec 2024 12:33:42 +0200
+Subject: [PATCH] tests: ML association based on scanning only the second link
+
+This increases testing coverage for MLO by having to use ML probe for
+missing links and using link ID for association.
+
+Signed-off-by: Jouni Malinen <j@w1.fi>
+---
+ tests/hwsim/test_eht.py | 9 +++++++--
+ 1 file changed, 7 insertions(+), 2 deletions(-)
+
+diff --git a/tests/hwsim/test_eht.py b/tests/hwsim/test_eht.py
+index 25febb305..e44b0710c 100644
+--- a/tests/hwsim/test_eht.py
++++ b/tests/hwsim/test_eht.py
+@@ -400,8 +400,12 @@ def test_eht_mld_owe_two_links(dev, apdev):
+     """EHT MLD AP with MLD client OWE connection using two links"""
+     _eht_mld_owe_two_links(dev, apdev)
+ 
++def test_eht_mld_owe_two_links_scan_second(dev, apdev):
++    """EHT MLD AP with MLD client OWE connection using two links; scan only second"""
++    _eht_mld_owe_two_links(dev, apdev, scan_only_second_link=True)
++
+ def _eht_mld_owe_two_links(dev, apdev, second_link_disabled=False,
+-                           only_one_link=False):
++                           only_one_link=False, scan_only_second_link=False):
+     with HWSimRadio(use_mlo=True) as (hapd0_radio, hapd0_iface), \
+         HWSimRadio(use_mlo=True) as (hapd1_radio, hapd1_iface), \
+         HWSimRadio(use_mlo=True) as (wpas_radio, wpas_iface):
+@@ -425,7 +429,8 @@ def _eht_mld_owe_two_links(dev, apdev, second_link_disabled=False,
+         if only_one_link:
+             link0 = hapd0.get_status_field("link_addr")
+             wpas.set("bssid_filter", link0)
+-        wpas.connect(ssid, scan_freq="2412 2437", key_mgmt="OWE",
++        scan_freq = "2437" if scan_only_second_link else "2412 2437"
++        wpas.connect(ssid, scan_freq=scan_freq, key_mgmt="OWE",
+                      ieee80211w="2")
+ 
+         active_links = 3
+-- 
+2.43.0
+

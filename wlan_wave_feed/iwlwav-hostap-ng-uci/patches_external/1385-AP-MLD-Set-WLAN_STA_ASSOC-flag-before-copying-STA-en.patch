@@ -1,0 +1,51 @@
+From 539648699b24ab578334f2a6b36e84e5c9a7dcd5 Mon Sep 17 00:00:00 2001
+From: Chenming Huang <quic_chenhuan@quicinc.com>
+Date: Fri, 14 Feb 2025 11:38:37 +0530
+Subject: [PATCH] AP MLD: Set WLAN_STA_ASSOC flag before copying STA entry
+ (SME-in-driver)
+
+In SME offloaded cases, it was found that WLAN_STA_ASSOC flag is
+not set on all STA entries. This is because STA entries are
+copied before WLAN_STA_ASSOC flag is set in the assocation link.
+
+To fix that, set WLAN_STA_ASSOC flag properly before calling
+hostapd_process_assoc_ml_info() where flags are copied to STA
+entries in other links.
+
+Signed-off-by: Chenming Huang <quic_chenhuan@quicinc.com>
+---
+ src/ap/drv_callbacks.c | 11 ++++++-----
+ 1 file changed, 6 insertions(+), 5 deletions(-)
+
+diff --git a/src/ap/drv_callbacks.c b/src/ap/drv_callbacks.c
+index 7234a3b47..d781cca3d 100644
+--- a/src/ap/drv_callbacks.c
++++ b/src/ap/drv_callbacks.c
+@@ -923,6 +923,12 @@ skip_wpa_check:
+ 	}
+ #endif /* CONFIG_IEEE80211R_AP || CONFIG_FILS */
+ 
++	new_assoc = (sta->flags & WLAN_STA_ASSOC) == 0;
++	sta->flags |= WLAN_STA_AUTH | WLAN_STA_ASSOC;
++	sta->flags &= ~WLAN_STA_WNM_SLEEP_MODE;
++
++	hostapd_set_sta_flags(hapd, sta);
++
+ #ifdef CONFIG_IEEE80211BE
+ 	if (hostapd_process_assoc_ml_info(hapd, sta, req_ies, req_ies_len,
+ 					  !!reassoc, WLAN_STATUS_SUCCESS,
+@@ -933,11 +939,6 @@ skip_wpa_check:
+ 	}
+ #endif /* CONFIG_IEEE80211BE */
+ 
+-	new_assoc = (sta->flags & WLAN_STA_ASSOC) == 0;
+-	sta->flags |= WLAN_STA_AUTH | WLAN_STA_ASSOC;
+-	sta->flags &= ~WLAN_STA_WNM_SLEEP_MODE;
+-
+-	hostapd_set_sta_flags(hapd, sta);
+ 	if (updated)
+ 		ap_sta_set_authorized_event(hapd, sta, 1);
+ 
+-- 
+2.43.0
+

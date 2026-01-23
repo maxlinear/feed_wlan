@@ -1,0 +1,34 @@
+From e7d06b508ff4603f933fec53860c8bab1b510665 Mon Sep 17 00:00:00 2001
+From: Jouni Malinen <j@w1.fi>
+Date: Sun, 10 Dec 2023 16:32:35 +0200
+Subject: [PATCH] tests: Avoid race condition in ap_no_auth_ack
+
+Avoid race condition with TX status reporting for the broadcast
+Deauthentication frame. This could be delivered after the SET command
+for ext_mgmt_frame_handled=1 and as such, could result in an
+MGMT-TX-STATUS event that would confuse the next step in the test.
+
+Signed-off-by: Jouni Malinen <j@w1.fi>
+---
+ tests/hwsim/test_ap_open.py | 5 +++++
+ 1 file changed, 5 insertions(+)
+
+diff --git a/tests/hwsim/test_ap_open.py b/tests/hwsim/test_ap_open.py
+index beb0e1818..fcec87210 100644
+--- a/tests/hwsim/test_ap_open.py
++++ b/tests/hwsim/test_ap_open.py
+@@ -966,6 +966,11 @@ def test_ap_no_auth_ack(dev, apdev):
+     hapd = hostapd.add_ap(apdev[0], {"ssid": "open",
+                                      "ap_max_inactivity": "1"})
+     hapd.set("ext_mgmt_frame_handling", "1")
++
++    # Avoid race condition with TX status reporting for the broadcast
++    # Deauthentication frame.
++    hapd.wait_event(["MGMT-TX-STATUS"], timeout=0.1)
++
+     bssid = hapd.own_addr()
+     addr = "02:01:02:03:04:05"
+     frame = "b0003a01" + bssid.replace(':', '') + addr.replace(':', '') + bssid.replace(':', '') + "1000" + "000001000000"
+-- 
+2.43.0
+

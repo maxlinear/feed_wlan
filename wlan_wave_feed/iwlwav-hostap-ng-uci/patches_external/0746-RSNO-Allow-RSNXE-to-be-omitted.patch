@@ -1,0 +1,155 @@
+From 8b2ddfdbb68889422c98993dc728714c6e817ea0 Mon Sep 17 00:00:00 2001
+From: Jouni Malinen <quic_jouni@quicinc.com>
+Date: Tue, 23 Jul 2024 21:20:45 +0000
+Subject: [PATCH] RSNO: Allow RSNXE to be omitted
+
+Add an explicit rsn_override_omit_rsnxe=1 configuration parameter to
+allow the RSNXE to be omitted when using the RSNXOE and wanting to
+minimize interoperability issues with STAs that might recognize the
+RSNXE, but not handle it correctly, e.g., when multiple octets of
+payload is included.
+
+Signed-off-by: Jouni Malinen <quic_jouni@quicinc.com>
+---
+ hostapd/config_file.c            |  2 ++
+ hostapd/hostapd.conf             |  9 +++++++++
+ src/ap/ap_config.h               |  2 ++
+ src/ap/wpa_auth.h                |  2 ++
+ src/ap/wpa_auth_glue.c           |  2 ++
+ src/ap/wpa_auth_ie.c             |  7 +++++--
+ tests/hwsim/test_rsn_override.py | 32 ++++++++++++++++++++++++++++++++
+ 7 files changed, 54 insertions(+), 2 deletions(-)
+
+diff --git a/hostapd/config_file.c b/hostapd/config_file.c
+index 84cb04af4..a98e417f7 100644
+--- a/hostapd/config_file.c
++++ b/hostapd/config_file.c
+@@ -3244,6 +3244,8 @@ static int hostapd_config_fill(struct hostapd_config *conf,
+ 		os_free(bss->rsn_preauth_interfaces);
+ 		bss->rsn_preauth_interfaces = os_strdup(pos);
+ #endif /* CONFIG_RSN_PREAUTH */
++	} else if (os_strcmp(buf, "rsn_override_omit_rsnxe") == 0) {
++		bss->rsn_override_omit_rsnxe = atoi(pos);
+ 	} else if (os_strcmp(buf, "peerkey") == 0) {
+ 		wpa_printf(MSG_INFO,
+ 			   "Line %d: Obsolete peerkey parameter ignored", line);
+diff --git a/hostapd/hostapd.conf b/hostapd/hostapd.conf
+index 24f398655..93524cf5d 100644
+--- a/hostapd/hostapd.conf
++++ b/hostapd/hostapd.conf
+@@ -2333,6 +2333,15 @@ own_ip_addr=127.0.0.1
+ #rsn_override_pairwise_2
+ #rsn_override_mfp_2
+ #
++# The RSNXE is normally included if any of the extended RSN capabilities is
++# enabled/supported. When using RSN overriding, a separate RSNXOE is included
++# and it may be more interoperable to omit the RSNXE completely. This
++# configuration parameter can be used to do that.
++# 0 = Include the RSNXE if any extended RSN capability is enabled/supported
++#     (default).
++# 1 = Do not include the RSNXE.
++#rsn_override_omit_rsnxe=0
++#
+ # Example configuration for WPA2-Personal/PMF-optional in RSNE and
+ # WPA3-Personal/PMF-required/MLO in override elements
+ #wpa_key_mgmt=WPA-PSK
+diff --git a/src/ap/ap_config.h b/src/ap/ap_config.h
+index 8f1b98622..1027de978 100644
+--- a/src/ap/ap_config.h
++++ b/src/ap/ap_config.h
+@@ -396,6 +396,8 @@ struct hostapd_bss_config {
+ 	int rsn_preauth;
+ 	char *rsn_preauth_interfaces;
+ 
++	int rsn_override_omit_rsnxe;
++
+ #ifdef CONFIG_IEEE80211R_AP
+ 	/* IEEE 802.11r - Fast BSS Transition */
+ 	u8 mobility_domain[MOBILITY_DOMAIN_ID_LEN];
+diff --git a/src/ap/wpa_auth.h b/src/ap/wpa_auth.h
+index ea9a60f98..832d2e70e 100644
+--- a/src/ap/wpa_auth.h
++++ b/src/ap/wpa_auth.h
+@@ -301,6 +301,8 @@ struct wpa_auth_config {
+ #endif /* CONFIG_IEEE80211BE */
+ 
+ 	bool ssid_protection;
++
++	int rsn_override_omit_rsnxe;
+ };
+ 
+ typedef enum {
+diff --git a/src/ap/wpa_auth_glue.c b/src/ap/wpa_auth_glue.c
+index 60996bf54..2e7e6f25a 100644
+--- a/src/ap/wpa_auth_glue.c
++++ b/src/ap/wpa_auth_glue.c
+@@ -234,6 +234,8 @@ static void hostapd_wpa_auth_conf(struct hostapd_bss_config *conf,
+ 	wconf->no_disconnect_on_group_keyerror =
+ 		conf->bss_max_idle && conf->ap_max_inactivity &&
+ 		conf->no_disconnect_on_group_keyerror;
++
++	wconf->rsn_override_omit_rsnxe = conf->rsn_override_omit_rsnxe;
+ }
+ 
+ 
+diff --git a/src/ap/wpa_auth_ie.c b/src/ap/wpa_auth_ie.c
+index f4f9cc8a4..79dbe346c 100644
+--- a/src/ap/wpa_auth_ie.c
++++ b/src/ap/wpa_auth_ie.c
+@@ -658,8 +658,11 @@ int wpa_auth_gen_wpa_ie(struct wpa_authenticator *wpa_auth)
+ 		if (res < 0)
+ 			return res;
+ 		pos += res;
+-		res = wpa_write_rsnxe(&wpa_auth->conf, pos,
+-				      buf + sizeof(buf) - pos);
++		if (wpa_auth->conf.rsn_override_omit_rsnxe)
++			res = 0;
++		else
++			res = wpa_write_rsnxe(&wpa_auth->conf, pos,
++					      buf + sizeof(buf) - pos);
+ 		if (res < 0)
+ 			return res;
+ 		pos += res;
+diff --git a/tests/hwsim/test_rsn_override.py b/tests/hwsim/test_rsn_override.py
+index 4e20b09d3..0e989bebb 100644
+--- a/tests/hwsim/test_rsn_override.py
++++ b/tests/hwsim/test_rsn_override.py
+@@ -214,3 +214,35 @@ def test_rsn_override_connect_cmd(dev, apdev):
+     wpas.set("rsn_overriding", "1")
+     wpas.connect(ssid, psk="12345678", key_mgmt="WPA-PSK-SHA256",
+                  ieee80211w="2", scan_freq="2412")
++
++def test_rsn_override_omit_rsnxe(dev, apdev):
++    """RSN overriding with RSNXE explicitly omitted"""
++    check_sae_capab(dev[0])
++
++    ssid = "test-rsn-override"
++    params = hostapd.wpa2_params(ssid=ssid,
++                                 passphrase="12345678",
++                                 ieee80211w='1')
++    params['rsn_override_key_mgmt'] = 'SAE SAE-EXT-KEY'
++    params['rsn_override_pairwise'] = 'CCMP GCMP-256'
++    params['rsn_override_mfp'] = '2'
++    params['beacon_prot'] = '1'
++    params['sae_groups'] = '19 20'
++    params['sae_require_mfp'] = '1'
++    params['sae_pwe'] = '2'
++    params['ssid_protection'] = '1'
++    params['rsn_override_omit_rsnxe'] = '1'
++    hapd = hostapd.add_ap(apdev[0], params)
++    bssid = hapd.own_addr()
++
++    try:
++        dev[0].set("rsn_overriding", "1")
++        dev[0].scan_for_bss(bssid, freq=2412)
++        dev[0].set("sae_pwe", "2")
++        dev[0].set("sae_groups", "")
++        dev[0].connect(ssid, sae_password="12345678", key_mgmt="SAE",
++                       ieee80211w="2", ssid_protection="1",
++                       scan_freq="2412")
++    finally:
++        dev[0].set("sae_pwe", "0")
++        dev[0].set("rsn_overriding", "0")
+-- 
+2.43.0
+

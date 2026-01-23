@@ -1,0 +1,43 @@
+From 6fe387ad5a333a5d18a3a77a6c3ae1be75f430eb Mon Sep 17 00:00:00 2001
+From: Jouni Malinen <j@w1.fi>
+Date: Sat, 22 Feb 2025 10:56:27 +0200
+Subject: [PATCH] OCV: Fix HT/VHT capability check on big-endian CPUs
+
+These HT/VHT capabilities are little-endian fields and need to be
+converted to host byte order before comparison.
+
+Fixes: 1034f67bf152 ("OCV: Add function to derive Tx parameters to a specific STA")
+Signed-off-by: Jouni Malinen <j@w1.fi>
+---
+ src/ap/ieee802_11_shared.c | 7 ++++---
+ 1 file changed, 4 insertions(+), 3 deletions(-)
+
+diff --git a/src/ap/ieee802_11_shared.c b/src/ap/ieee802_11_shared.c
+index 28c2ccb1c..986b7b81e 100644
+--- a/src/ap/ieee802_11_shared.c
++++ b/src/ap/ieee802_11_shared.c
+@@ -1045,7 +1045,8 @@ int get_tx_parameters(struct sta_info *sta, int ap_max_chanwidth,
+ 	int requested_bw;
+ 
+ 	if (sta->ht_capabilities)
+-		ht_40mhz = !!(sta->ht_capabilities->ht_capabilities_info &
++		ht_40mhz = !!(le_to_host16(sta->ht_capabilities->
++					   ht_capabilities_info) &
+ 			      HT_CAP_INFO_SUPP_CHANNEL_WIDTH_SET);
+ 
+ 	if (sta->vht_operation) {
+@@ -1081,9 +1082,9 @@ int get_tx_parameters(struct sta_info *sta, int ap_max_chanwidth,
+ 		 * normal clients), use it to determine the supported channel
+ 		 * bandwidth.
+ 		 */
+-		vht_chanwidth = capab->vht_capabilities_info &
++		vht_chanwidth = le_to_host32(capab->vht_capabilities_info) &
+ 			VHT_CAP_SUPP_CHAN_WIDTH_MASK;
+-		vht_80p80 = capab->vht_capabilities_info &
++		vht_80p80 = le_to_host32(capab->vht_capabilities_info) &
+ 			VHT_CAP_SUPP_CHAN_WIDTH_160_80PLUS80MHZ;
+ 
+ 		/* TODO: Also take into account Extended NSS BW Support field */
+-- 
+2.43.0
+

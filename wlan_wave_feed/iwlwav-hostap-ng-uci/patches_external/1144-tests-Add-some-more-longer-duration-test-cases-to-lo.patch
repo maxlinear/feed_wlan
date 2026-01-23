@@ -1,0 +1,37 @@
+From c37fd3f28244c9e8842f3447e40785d5256277a5 Mon Sep 17 00:00:00 2001
+From: Jouni Malinen <quic_jouni@quicinc.com>
+Date: Wed, 18 Dec 2024 13:07:43 +0200
+Subject: [PATCH] tests: Add some more longer duration test cases to long_tests
+
+These test cases seemed to take longer time with UML time-travel and it
+is more efficient to run them in the beginning of the test sequence to
+avoid leaving a single VM delaying completion of a parallel test run
+with large number of VMs. In addition, it looks like some of these test
+cases are much more reliable and faster to run at the beginning of a VM
+lifetime than at the end.
+
+Signed-off-by: Jouni Malinen <quic_jouni@quicinc.com>
+---
+ tests/hwsim/vm/parallel-vm.py | 6 ++++++
+ 1 file changed, 6 insertions(+)
+
+diff --git a/tests/hwsim/vm/parallel-vm.py b/tests/hwsim/vm/parallel-vm.py
+index 83859b356..33120f7f9 100755
+--- a/tests/hwsim/vm/parallel-vm.py
++++ b/tests/hwsim/vm/parallel-vm.py
+@@ -23,6 +23,12 @@ logger = logging.getLogger()
+ 
+ # Test cases that take significantly longer time to execute than average.
+ long_tests = ["ap_roam_open",
++              "gas_anqp_address3_ap_forced",
++              "gas_anqp_address3_ap_non_compliant",
++              "hostapd_oom_wpa2_eap_connect",
++              "ap_wpa2_eap_eke_many",
++              "p2p_channel_random_social_with_op_class_change",
++              "ap_open_ps_mc_buf",
+               "wpas_mesh_password_mismatch_retry",
+               "wpas_mesh_password_mismatch",
+               "hostapd_oom_wpa2_psk_connect",
+-- 
+2.43.0
+

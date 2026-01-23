@@ -1,0 +1,51 @@
+From 90192970bfd67dbace16d388c3b91a4619c4b3fa Mon Sep 17 00:00:00 2001
+From: Jouni Malinen <j@w1.fi>
+Date: Sun, 22 Dec 2024 19:44:24 +0200
+Subject: [PATCH] tests: MAke sae_anti_clogging_during_attack more robust
+
+Reset apdev[1] into a known state before using it as montior interface
+since issues have been seen when the previous test case used it as a 5
+GHz AP. In addition, handle sock.recv() timeout more gracefully.
+
+For example, this test case sequences had issues:
+ap_track_sta_force_2ghz sae_anti_clogging_during_attack
+he160b sae_anti_clogging_during_attack
+
+Signed-off-by: Jouni Malinen <j@w1.fi>
+---
+ tests/hwsim/test_sae.py | 12 +++++++++++-
+ 1 file changed, 11 insertions(+), 1 deletion(-)
+
+diff --git a/tests/hwsim/test_sae.py b/tests/hwsim/test_sae.py
+index d5a7a2342..89b5c623f 100644
+--- a/tests/hwsim/test_sae.py
++++ b/tests/hwsim/test_sae.py
+@@ -2006,7 +2006,10 @@ def build_sae_commit(bssid, addr, group=21, token=None):
+     return frame
+ 
+ def sae_rx_commit_token_req(sock, radiotap, send_two=False):
+-    msg = sock.recv(1500)
++    try:
++        msg = sock.recv(1500)
++    except TimeoutError:
++        return False
+     ver, pad, length, present = struct.unpack('<BBHL', msg[0:8])
+     frame = msg[length:]
+     if len(frame) < 4:
+@@ -2035,6 +2038,13 @@ def sae_rx_commit_token_req(sock, radiotap, send_two=False):
+ 
+ def run_sae_anti_clogging_during_attack(dev, apdev):
+     check_sae_capab(dev[0])
++
++    # Reset apdev[1] into known state before using it as monitor interface.
++    # Issues were seen when the previous test case used it as a 5 GHz AP.
++    params = {"ssid": "monitor"}
++    hapd2 = hostapd.add_ap(apdev[1], params)
++    hapd2.disable()
++
+     params = hostapd.wpa2_params(ssid="test-sae", passphrase="12345678")
+     params['wpa_key_mgmt'] = 'SAE'
+     params['sae_groups'] = '21'
+-- 
+2.43.0
+

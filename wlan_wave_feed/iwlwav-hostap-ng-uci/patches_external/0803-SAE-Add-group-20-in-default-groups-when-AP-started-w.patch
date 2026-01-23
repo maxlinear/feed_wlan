@@ -1,0 +1,145 @@
+From ca58be3da47d1a935ffe700d0bcb23ff9702d5e4 Mon Sep 17 00:00:00 2001
+From: Veerendranath Jakkam <quic_vjakkam@quicinc.com>
+Date: Mon, 5 Aug 2024 12:30:54 +0530
+Subject: [PATCH] SAE: Add group 20 in default groups when AP started with
+ SAE-EXT-KEY
+
+hostapd used to always enable only the group 19 when SAE groups were not
+configured explicitly in hostapd.conf. This may cause undesired
+connection delay with STAs which use group 20 as the primary group with
+SAE-EXT-KEY AKM during SAE authentication attempt.
+
+To avoid this, enable group 20 in default groups when AP supports
+SAE-EXT-KEY and SAE groups have not been configured explicitly in
+hostapd.conf.
+
+Signed-off-by: Veerendranath Jakkam <quic_vjakkam@quicinc.com>
+---
+ src/ap/ap_config.c  | 16 ++++++++++++----
+ src/ap/ieee802_11.c | 37 ++++++++++++++++++++++++++++---------
+ 2 files changed, 40 insertions(+), 13 deletions(-)
+
+diff --git a/src/ap/ap_config.c b/src/ap/ap_config.c
+index c6aa49610..160809a27 100644
+--- a/src/ap/ap_config.c
++++ b/src/ap/ap_config.c
+@@ -491,6 +491,8 @@ int hostapd_setup_sae_pt(struct hostapd_bss_config *conf)
+ #ifdef CONFIG_SAE
+ 	struct hostapd_ssid *ssid = &conf->ssid;
+ 	struct sae_password_entry *pw;
++	int *groups = conf->sae_groups;
++	int default_groups[] = { 19, 0, 0 };
+ 
+ 	if ((conf->sae_pwe == SAE_PWE_HUNT_AND_PECK &&
+ 	     !hostapd_sae_pw_id_in_use(conf) &&
+@@ -504,11 +506,18 @@ int hostapd_setup_sae_pt(struct hostapd_bss_config *conf)
+ 			      conf->rsn_override_key_mgmt_2))
+ 		return 0; /* PT not needed */
+ 
++	if (!groups) {
++		groups = default_groups;
++		if (wpa_key_mgmt_sae_ext_key(conf->wpa_key_mgmt |
++					     conf->rsn_override_key_mgmt |
++					     conf->rsn_override_key_mgmt_2))
++			default_groups[1] = 20;
++	}
++
+ 	sae_deinit_pt(ssid->pt);
+ 	ssid->pt = NULL;
+ 	if (ssid->wpa_passphrase) {
+-		ssid->pt = sae_derive_pt(conf->sae_groups, ssid->ssid,
+-					 ssid->ssid_len,
++		ssid->pt = sae_derive_pt(groups, ssid->ssid, ssid->ssid_len,
+ 					 (const u8 *) ssid->wpa_passphrase,
+ 					 os_strlen(ssid->wpa_passphrase),
+ 					 NULL);
+@@ -518,8 +527,7 @@ int hostapd_setup_sae_pt(struct hostapd_bss_config *conf)
+ 
+ 	for (pw = conf->sae_passwords; pw; pw = pw->next) {
+ 		sae_deinit_pt(pw->pt);
+-		pw->pt = sae_derive_pt(conf->sae_groups, ssid->ssid,
+-				       ssid->ssid_len,
++		pw->pt = sae_derive_pt(groups, ssid->ssid, ssid->ssid_len,
+ 				       (const u8 *) pw->password,
+ 				       os_strlen(pw->password),
+ 				       pw->identifier);
+diff --git a/src/ap/ieee802_11.c b/src/ap/ieee802_11.c
+index fd1de5ebc..c1d3532bb 100644
+--- a/src/ap/ieee802_11.c
++++ b/src/ap/ieee802_11.c
+@@ -1173,16 +1173,23 @@ static int sae_sm_step(struct hostapd_data *hapd, struct sta_info *sta,
+ static void sae_pick_next_group(struct hostapd_data *hapd, struct sta_info *sta)
+ {
+ 	struct sae_data *sae = sta->sae;
+-	int i, *groups = hapd->conf->sae_groups;
+-	int default_groups[] = { 19, 0 };
++	struct hostapd_bss_config *conf = hapd->conf;
++	int i, *groups = conf->sae_groups;
++	int default_groups[] = { 19, 0, 0 };
+ 
+ 	if (sae->state != SAE_COMMITTED)
+ 		return;
+ 
+ 	wpa_printf(MSG_DEBUG, "SAE: Previously selected group: %d", sae->group);
+ 
+-	if (!groups)
++	if (!groups) {
+ 		groups = default_groups;
++		if (wpa_key_mgmt_sae_ext_key(conf->wpa_key_mgmt |
++					     conf->rsn_override_key_mgmt |
++					     conf->rsn_override_key_mgmt_2))
++			default_groups[1] = 20;
++	}
++
+ 	for (i = 0; groups[i] > 0; i++) {
+ 		if (sae->group == groups[i])
+ 			break;
+@@ -1247,12 +1254,18 @@ static int sae_status_success(struct hostapd_data *hapd, u16 status_code)
+ 
+ static int sae_is_group_enabled(struct hostapd_data *hapd, int group)
+ {
+-	int *groups = hapd->conf->sae_groups;
+-	int default_groups[] = { 19, 0 };
++	struct hostapd_bss_config *conf = hapd->conf;
++	int *groups = conf->sae_groups;
++	int default_groups[] = { 19, 0, 0 };
+ 	int i;
+ 
+-	if (!groups)
++	if (!groups) {
+ 		groups = default_groups;
++		if (wpa_key_mgmt_sae_ext_key(conf->wpa_key_mgmt |
++					     conf->rsn_override_key_mgmt |
++					     conf->rsn_override_key_mgmt_2))
++			default_groups[1] = 20;
++	}
+ 
+ 	for (i = 0; groups[i] > 0; i++) {
+ 		if (groups[i] == group)
+@@ -1309,14 +1322,20 @@ static void handle_auth_sae(struct hostapd_data *hapd, struct sta_info *sta,
+ {
+ 	int resp = WLAN_STATUS_SUCCESS;
+ 	struct wpabuf *data = NULL;
+-	int *groups = hapd->conf->sae_groups;
+-	int default_groups[] = { 19, 0 };
++	struct hostapd_bss_config *conf = hapd->conf;
++	int *groups = conf->sae_groups;
++	int default_groups[] = { 19, 0, 0 };
+ 	const u8 *pos, *end;
+ 	int sta_removed = 0;
+ 	bool success_status;
+ 
+-	if (!groups)
++	if (!groups) {
+ 		groups = default_groups;
++		if (wpa_key_mgmt_sae_ext_key(conf->wpa_key_mgmt |
++					     conf->rsn_override_key_mgmt |
++					     conf->rsn_override_key_mgmt_2))
++			default_groups[1] = 20;
++	}
+ 
+ #ifdef CONFIG_TESTING_OPTIONS
+ 	if (hapd->conf->sae_reflection_attack && auth_transaction == 1) {
+-- 
+2.43.0
+

@@ -1,0 +1,44 @@
+From a1d7a9e3b7649d8ea8b4e95d9e1f4486ea3baef5 Mon Sep 17 00:00:00 2001
+From: Benjamin Berg <benjamin.berg@intel.com>
+Date: Mon, 25 Dec 2023 12:21:05 +0200
+Subject: [PATCH] build: Properly grab the libpcsclite cflags
+
+We should be grabbing the include directory using pkg-config and not
+just the libs. Without this, the header file might not be found on all
+systems because it may not be in /usr/include but elsewhere in the
+system.
+
+Signed-off-by: Benjamin Berg <benjamin.berg@intel.com>
+---
+ wpa_supplicant/Makefile | 5 ++++-
+ 1 file changed, 4 insertions(+), 1 deletion(-)
+
+diff --git a/wpa_supplicant/Makefile b/wpa_supplicant/Makefile
+index 9b0c3c7c8..eccfd68c5 100644
+--- a/wpa_supplicant/Makefile
++++ b/wpa_supplicant/Makefile
+@@ -1090,17 +1090,20 @@ endif
+ 
+ ifdef CONFIG_PCSC
+ # PC/SC interface for smartcards (USIM, GSM SIM)
+-CFLAGS += -DPCSC_FUNCS -I/usr/include/PCSC
++CFLAGS += -DPCSC_FUNCS
+ OBJS += ../src/utils/pcsc_funcs.o
+ ifdef CONFIG_NATIVE_WINDOWS
+ #Once MinGW gets support for WinScard, -lwinscard could be used instead of the
+ #dynamic symbol loading that is now used in pcsc_funcs.c
+ #LIBS += -lwinscard
++CFLAGS += -I/usr/include/PCSC
+ else
+ ifdef CONFIG_OSX
+ LIBS += -framework PCSC
++CFLAGS += -I/usr/include/PCSC
+ else
+ LIBS += $(shell $(PKG_CONFIG) --libs libpcsclite)
++CFLAGS += $(shell $(PKG_CONFIG) --cflags libpcsclite)
+ endif
+ endif
+ endif
+-- 
+2.43.0
+

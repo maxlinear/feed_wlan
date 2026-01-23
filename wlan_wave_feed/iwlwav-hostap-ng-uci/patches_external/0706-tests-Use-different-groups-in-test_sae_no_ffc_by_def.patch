@@ -1,0 +1,31 @@
+From c3b3c506b684f469b99c636c922c23eed86c18a9 Mon Sep 17 00:00:00 2001
+From: Andrei Otcheretianski <andrei.otcheretianski@intel.com>
+Date: Wed, 8 May 2024 16:42:13 +0300
+Subject: [PATCH] tests: Use different groups in test_sae_no_ffc_by_default
+
+The test assumes that STA will try to reconnect with the same SAE group
+after the first authentication attempt is rejected due to unsupported
+group. Since this behaviour is fixed in the previous patch, configure
+two different groups to trigger the second authentication attempt.
+
+Signed-off-by: Andrei Otcheretianski <andrei.otcheretianski@intel.com>
+---
+ tests/hwsim/test_sae.py | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/tests/hwsim/test_sae.py b/tests/hwsim/test_sae.py
+index dcb23e531..6f5751ffe 100644
+--- a/tests/hwsim/test_sae.py
++++ b/tests/hwsim/test_sae.py
+@@ -1298,7 +1298,7 @@ def test_sae_no_ffc_by_default(dev, apdev):
+     params['wpa_key_mgmt'] = 'SAE'
+     hapd = hostapd.add_ap(apdev[0], params)
+ 
+-    dev[0].request("SET sae_groups 15")
++    dev[0].request("SET sae_groups 15 16")
+     dev[0].connect("test-sae", psk="12345678", key_mgmt="SAE", scan_freq="2412",
+                    wait_connect=False)
+     ev = dev[0].wait_event(["SME: Trying to authenticate"], timeout=3)
+-- 
+2.43.0
+

@@ -1,0 +1,30 @@
+From 9a442364521dfea3a2ee0ab58007e49c94c835b5 Mon Sep 17 00:00:00 2001
+From: Felix Fietkau <nbd@nbd.name>
+Date: Thu, 4 Apr 2024 12:52:17 +0200
+Subject: [PATCH] hostapd: Only attempt to set QoS map if supported by the
+ driver
+
+This fixes issues with full-MAC drivers like brcmfmac.
+
+Signed-off-by: Felix Fietkau <nbd@nbd.name>
+---
+ src/ap/ap_drv_ops.c | 3 ++-
+ 1 file changed, 2 insertions(+), 1 deletion(-)
+
+diff --git a/src/ap/ap_drv_ops.c b/src/ap/ap_drv_ops.c
+index 0d493b837..11fe39c25 100644
+--- a/src/ap/ap_drv_ops.c
++++ b/src/ap/ap_drv_ops.c
+@@ -1023,7 +1023,8 @@ int hostapd_start_dfs_cac(struct hostapd_iface *iface,
+ int hostapd_drv_set_qos_map(struct hostapd_data *hapd,
+ 			    const u8 *qos_map_set, u8 qos_map_set_len)
+ {
+-	if (!hapd->driver || !hapd->driver->set_qos_map || !hapd->drv_priv)
++	if (!hapd->driver || !hapd->driver->set_qos_map || !hapd->drv_priv ||
++	    !(hapd->iface->drv_flags & WPA_DRIVER_FLAGS_QOS_MAPPING))
+ 		return 0;
+ 	return hapd->driver->set_qos_map(hapd->drv_priv, qos_map_set,
+ 					 qos_map_set_len);
+-- 
+2.43.0
+

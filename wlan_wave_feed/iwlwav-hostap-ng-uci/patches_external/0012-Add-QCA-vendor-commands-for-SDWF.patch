@@ -1,0 +1,28 @@
+From 7b67055794a5a01260e7ea3fe473e6c3dd79454e Mon Sep 17 00:00:00 2001
+From: Nagarajan Maran <quic_nmaran@quicinc.com>
+Date: Fri, 24 Nov 2023 15:53:08 +0530
+Subject: [PATCH] Add QCA vendor commands for SDWF
+
+Define subcmd IDs 235 and 236 for Service Defined Wi-Fi (SDWF).
+
+Signed-off-by: Nagarajan Maran <quic_nmaran@quicinc.com>
+---
+ src/common/qca-vendor.h | 2 ++
+ 1 file changed, 2 insertions(+)
+
+diff --git a/src/common/qca-vendor.h b/src/common/qca-vendor.h
+index 73f7d53c8..ee9ecadbd 100644
+--- a/src/common/qca-vendor.h
++++ b/src/common/qca-vendor.h
+@@ -1242,6 +1242,8 @@ enum qca_nl80211_vendor_subcmds {
+ 	/* 232 - reserved for QCA */
+ 	QCA_NL80211_VENDOR_SUBCMD_TX_LATENCY = 233,
+ 	/* 234 - reserved for QCA */
++	QCA_NL80211_VENDOR_SUBCMD_SDWF_PHY_OPS = 235,
++	QCA_NL80211_VENDOR_SUBCMD_SDWF_DEV_OPS = 236,
+ };
+ 
+ /* Compatibility defines for previously used subcmd names.
+-- 
+2.43.0
+

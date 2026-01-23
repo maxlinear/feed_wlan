@@ -1,0 +1,45 @@
+From ae5ef60ed2168f4a4ac1fca05106c2333a7cb4ae Mon Sep 17 00:00:00 2001
+From: Pavithra Ganesan <quic_pavigane@quicinc.com>
+Date: Mon, 11 Nov 2024 09:12:21 +0530
+Subject: [PATCH] AP MLD: Remove common elements from per STA profile
+
+Even when an element and its contents in the reported link match those
+in the reporting link, the element was still added to the per-STA
+profile of the reported link. This occurs because the parsed bitmap is
+not updated when a match is found, resulting in the element being added
+later. This results in per STA profile carrying extra information which
+it should not.
+
+Fix this issue by updating the parsed element ID bitmap accordingly.
+
+Fixes: b5359d01ed55 ("AP MLD: Intersect per STA profile with the reporting BSS")
+Signed-off-by: Pavithra Ganesan <quic_pavigane@quicinc.com>
+Signed-off-by: Aditya Kumar Singh <quic_adisi@quicinc.com>
+---
+ src/ap/beacon.c | 10 +++++++++-
+ 1 file changed, 9 insertions(+), 1 deletion(-)
+
+diff --git a/src/ap/beacon.c b/src/ap/beacon.c
+index 2e3d90466..c91d27219 100644
+--- a/src/ap/beacon.c
++++ b/src/ap/beacon.c
+@@ -2909,7 +2909,15 @@ static size_t hostapd_add_sta_profile(struct ieee80211_mgmt *link_fdata,
+ 					is_identical_vendor_ies = true;
+ 					num_own_elem_vendor_ies++;
+ 				}
+-				continue;
++
++				/* Update the parsed EIDs bitmap */
++				if (is_ext)
++					parsed_ext_eid_bmap[own_eid / 8] |=
++						BIT(own_eid % 8);
++				else
++					parsed_eid_bmap[own_eid / 8] |=
++						BIT(own_eid % 8);
++				break;
+ 			}
+ 
+ 			/* No need to include this non-matching Vendor Specific
+-- 
+2.43.0
+

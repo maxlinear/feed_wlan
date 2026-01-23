@@ -1,0 +1,44 @@
+From ae20eb1d27344e940f3a96d541e0afc1de1d6b89 Mon Sep 17 00:00:00 2001
+From: Jouni Malinen <j@w1.fi>
+Date: Sat, 16 Dec 2023 22:59:50 +0200
+Subject: [PATCH] tests: Make p2p_msg_go_neg_both_start more robust
+
+Use same listen channel on both devices to make this test somewhat more
+likely to succeed.
+
+Signed-off-by: Jouni Malinen <j@w1.fi>
+---
+ tests/hwsim/test_p2p_messages.py | 10 ++++++++++
+ 1 file changed, 10 insertions(+)
+
+diff --git a/tests/hwsim/test_p2p_messages.py b/tests/hwsim/test_p2p_messages.py
+index a4cac698b..999891f53 100644
+--- a/tests/hwsim/test_p2p_messages.py
++++ b/tests/hwsim/test_p2p_messages.py
+@@ -14,6 +14,7 @@ logger = logging.getLogger()
+ import hostapd
+ from p2p_utils import *
+ from test_gas import anqp_adv_proto
++from test_p2ps import set_random_listen_chan
+ 
+ def ie_ssid(ssid):
+     return struct.pack("<BB", WLAN_EID_SSID, len(ssid)) + ssid.encode()
+@@ -1278,6 +1279,15 @@ def check_p2p_response(hapd, dialog_token, status):
+ 
+ def test_p2p_msg_go_neg_both_start(dev, apdev):
+     """P2P protocol test for simultaneous GO Neg initiation"""
++    try:
++        dev[0].global_request("P2P_SET listen_channel 6")
++        dev[1].global_request("P2P_SET listen_channel 6")
++        run_p2p_msg_go_neg_both_start(dev)
++    finally:
++        set_random_listen_chan(dev[0])
++        set_random_listen_chan(dev[1])
++
++def run_p2p_msg_go_neg_both_start(dev):
+     addr0 = dev[0].p2p_dev_addr()
+     addr1 = dev[1].p2p_dev_addr()
+     dev[0].p2p_listen()
+-- 
+2.43.0
+

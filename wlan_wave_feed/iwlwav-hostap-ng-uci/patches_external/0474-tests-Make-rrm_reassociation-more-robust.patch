@@ -1,0 +1,31 @@
+From 64c3c5808028dcbdf2e69e4525fc4700327a6684 Mon Sep 17 00:00:00 2001
+From: Jouni Malinen <j@w1.fi>
+Date: Sat, 23 Mar 2024 22:22:07 +0200
+Subject: [PATCH] tests: Make rrm_reassociation more robust
+
+It was possible for this test case to fail if a previously executed test
+case left another BSS entry for the BSSID used by the second AP here.
+That could have skipped the needed scan with scan_for_bss(bssid2). Force
+this command to run a new scan to discover the second AP correctly.
+
+Signed-off-by: Jouni Malinen <j@w1.fi>
+---
+ tests/hwsim/test_rrm.py | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/tests/hwsim/test_rrm.py b/tests/hwsim/test_rrm.py
+index 2ab8fd134..edf9ac1bf 100644
+--- a/tests/hwsim/test_rrm.py
++++ b/tests/hwsim/test_rrm.py
+@@ -2397,7 +2397,7 @@ def test_rrm_reassociation(dev, apdev):
+ 
+     hapd2 = hostapd.add_ap(apdev[1]['ifname'], params)
+     bssid2 = hapd2.own_addr()
+-    dev[0].scan_for_bss(bssid2, freq=2412)
++    dev[0].scan_for_bss(bssid2, freq=2412, force_scan=True)
+     dev[0].roam(bssid2)
+     hapd2.wait_sta()
+     check_beacon_req(hapd2, addr, 2)
+-- 
+2.43.0
+

@@ -1,0 +1,32 @@
+From ca0bb5cc9a49a229d775a9328c950b738b0fcfdb Mon Sep 17 00:00:00 2001
+From: Maharaja Kennadyrajan <quic_mkenna@quicinc.com>
+Date: Tue, 17 Dec 2024 12:27:20 +0530
+Subject: [PATCH] mesh: Use the correct 6 GHz operating class 137 for 320 MHz
+ bandwidth
+
+The 320 MHz case was not yet handled for setting the global operating
+class for mesh in the 6 GHz band. That needs to use the operating class
+137 instead of the default 131.
+
+Signed-off-by: Maharaja Kennadyrajan <quic_mkenna@quicinc.com>
+---
+ wpa_supplicant/mesh.c | 3 +++
+ 1 file changed, 3 insertions(+)
+
+diff --git a/wpa_supplicant/mesh.c b/wpa_supplicant/mesh.c
+index 85c1ea8ba..79ca29ba4 100644
+--- a/wpa_supplicant/mesh.c
++++ b/wpa_supplicant/mesh.c
+@@ -464,6 +464,9 @@ static int wpa_supplicant_mesh_init(struct wpa_supplicant *wpa_s,
+ 		case 160:
+ 			conf->op_class = 134;
+ 			break;
++		case 320:
++			conf->op_class = 137;
++			break;
+ 		default:
+ 			conf->op_class = 131;
+ 			break;
+-- 
+2.43.0
+

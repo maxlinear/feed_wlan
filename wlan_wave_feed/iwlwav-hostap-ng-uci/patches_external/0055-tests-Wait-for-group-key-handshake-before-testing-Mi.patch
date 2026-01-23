@@ -1,0 +1,41 @@
+From c26081bf92e1f6ec2c9e89eb7ce040efdf495662 Mon Sep 17 00:00:00 2001
+From: Jouni Malinen <quic_jouni@quicinc.com>
+Date: Thu, 14 Dec 2023 11:02:12 +0200
+Subject: [PATCH] tests: Wait for group key handshake before testing Michael
+ MIC failure
+
+Avoid potential race condition in ap_cipher_tkip_countermeasures_ap by
+sending the first test frame only after the AP has completed processing
+the 4-way handshake and also wait a bit to allow the group key handshake
+to be completed.
+
+Signed-off-by: Jouni Malinen <quic_jouni@quicinc.com>
+---
+ tests/hwsim/test_ap_ciphers.py | 4 ++++
+ 1 file changed, 4 insertions(+)
+
+diff --git a/tests/hwsim/test_ap_ciphers.py b/tests/hwsim/test_ap_ciphers.py
+index 72dcfa542..5ad3e0289 100644
+--- a/tests/hwsim/test_ap_ciphers.py
++++ b/tests/hwsim/test_ap_ciphers.py
+@@ -102,13 +102,17 @@ def test_ap_cipher_tkip_countermeasures_ap(dev, apdev):
+     dev[0].connect("tkip-countermeasures", psk="12345678",
+                    pairwise="TKIP", group="TKIP", scan_freq="2412")
+ 
++    hapd.wait_sta()
++    time.sleep(1)
+     dev[0].dump_monitor()
++    hapd.note("Michael MIC failure to BSSID")
+     dev[0].cmd_execute(["echo", "-n", apdev[0]['bssid'], ">", testfile],
+                        shell=True)
+     ev = dev[0].wait_event(["CTRL-EVENT-DISCONNECTED"], timeout=1)
+     if ev is not None:
+         raise Exception("Unexpected disconnection on first Michael MIC failure")
+ 
++    hapd.note("Michael MIC failure to broadcast")
+     dev[0].cmd_execute(["echo", "-n", "ff:ff:ff:ff:ff:ff", ">", testfile],
+                        shell=True)
+     ev = dev[0].wait_disconnected(timeout=10,
+-- 
+2.43.0
+

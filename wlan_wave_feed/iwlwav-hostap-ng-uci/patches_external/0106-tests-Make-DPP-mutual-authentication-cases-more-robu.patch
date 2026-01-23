@@ -1,0 +1,65 @@
+From 4ec67d514fdc01cb0d8b6f4879e95689be888518 Mon Sep 17 00:00:00 2001
+From: Jouni Malinen <quic_jouni@quicinc.com>
+Date: Mon, 18 Dec 2023 20:35:21 +0200
+Subject: [PATCH] tests: Make DPP mutual authentication cases more robust
+
+Wait a bit between the DPP-SCAN-PEER-QR-CODE event and reporting of the
+QR Code to avoid a race condition.
+
+Signed-off-by: Jouni Malinen <quic_jouni@quicinc.com>
+---
+ tests/hwsim/test_dpp.py | 17 +++++++++++++++++
+ 1 file changed, 17 insertions(+)
+
+diff --git a/tests/hwsim/test_dpp.py b/tests/hwsim/test_dpp.py
+index e595beea7..62c018190 100644
+--- a/tests/hwsim/test_dpp.py
++++ b/tests/hwsim/test_dpp.py
+@@ -514,6 +514,11 @@ def test_dpp_qr_code_auth_mutual2(dev, apdev):
+     if ev is None:
+         raise Exception("QR Code scan for mutual authentication not requested")
+ 
++    ev = dev[0].wait_event(["DPP-TX-STATUS"], timeout=1)
++    if ev is None:
++        raise Exception("No TX status reported for response")
++    time.sleep(0.1)
++
+     logger.info("dev0 scans QR Code")
+     id0b = dev[0].dpp_qr_code(uri1b)
+ 
+@@ -568,6 +573,11 @@ def run_dpp_qr_code_auth_mutual(dev, apdev, curve):
+     if ev is None:
+         raise Exception("QR Code scan for mutual authentication not requested")
+ 
++    ev = dev[0].wait_event(["DPP-TX-STATUS"], timeout=1)
++    if ev is None:
++        raise Exception("No TX status reported for response")
++    time.sleep(0.1)
++
+     logger.info("dev0 scans QR Code")
+     dev[0].dpp_qr_code(uri)
+ 
+@@ -691,6 +701,11 @@ def test_dpp_qr_code_auth_hostapd_mutual2(dev, apdev):
+     if ev is None:
+         raise Exception("QR Code scan for mutual authentication not requested")
+ 
++    ev = hapd.wait_event(["DPP-TX-STATUS"], timeout=1)
++    if ev is None:
++        raise Exception("No TX status reported for response")
++    time.sleep(0.1)
++
+     logger.info("AP scans QR Code")
+     hapd.dpp_qr_code(uri0)
+ 
+@@ -6138,6 +6153,8 @@ def run_dpp_tcp(dev0, dev1, cap_lo, port=None, mutual=False):
+         if ev is None:
+             raise Exception("QR Code scan for mutual authentication not requested")
+ 
++        time.sleep(0.1)
++
+         id1 = dev1.dpp_qr_code(uri0)
+ 
+         ev = dev0.wait_event(["DPP-AUTH-DIRECTION"], timeout=5)
+-- 
+2.43.0
+

@@ -1,0 +1,35 @@
+From 808eea4856c14bdc5f44ad0a1b3ba678f2f25dc9 Mon Sep 17 00:00:00 2001
+From: Jouni Malinen <quic_jouni@quicinc.com>
+Date: Mon, 18 Dec 2023 20:30:11 +0200
+Subject: [PATCH] tests: Avoid race condition in owe_transition_mode_ifname_acs
+
+AP1 might take longer time than AP2, so add some more wait here.
+
+Signed-off-by: Jouni Malinen <quic_jouni@quicinc.com>
+---
+ tests/hwsim/test_owe.py | 6 ++++++
+ 1 file changed, 6 insertions(+)
+
+diff --git a/tests/hwsim/test_owe.py b/tests/hwsim/test_owe.py
+index 00b422d74..d4b5b95be 100644
+--- a/tests/hwsim/test_owe.py
++++ b/tests/hwsim/test_owe.py
+@@ -311,9 +311,15 @@ def run_owe_transition_mode_ifname_acs(dev, apdev, wait_first):
+     wait_acs(hapd2)
+     if not wait_first:
+         state = hapd.get_status_field("state")
++        logger.info("AP1 state: " + state)
+         if state == "ACS-STARTED":
+             time.sleep(5)
+             state = hapd.get_status_field("state")
++            logger.info("AP1 state after 5 sec: " + state)
++        if state != "ENABLED":
++            time.sleep(1)
++            state = hapd.get_status_field("state")
++            logger.info("AP1 state after 1 sec: " + state)
+         if state != "ENABLED":
+             raise Exception("AP1 startup did not succeed")
+ 
+-- 
+2.43.0
+

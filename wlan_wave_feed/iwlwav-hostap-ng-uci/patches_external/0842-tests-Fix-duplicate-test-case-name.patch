@@ -1,0 +1,30 @@
+From 189972d129ecbf450de4523bdeced54a88b01c28 Mon Sep 17 00:00:00 2001
+From: Jouni Malinen <quic_jouni@quicinc.com>
+Date: Tue, 13 Aug 2024 11:44:09 +0300
+Subject: [PATCH] tests: Fix duplicate test case name
+
+The new test case for an AP MLD in a bridge was supposed to use a unique
+test name to avoid hiding an existing test case.
+
+Fixes: c4f927926765 ("tests: AP MLD with two links in a bridge")
+Signed-off-by: Jouni Malinen <quic_jouni@quicinc.com>
+---
+ tests/hwsim/test_eht.py | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/tests/hwsim/test_eht.py b/tests/hwsim/test_eht.py
+index bde2b0e08..97922152d 100644
+--- a/tests/hwsim/test_eht.py
++++ b/tests/hwsim/test_eht.py
+@@ -557,7 +557,7 @@ def test_eht_mld_sae_two_links_disable_enable(dev, apdev):
+     """AP MLD with two links and disabling/enabling full AP MLD"""
+     run_eht_mld_sae_two_links(dev, apdev, disable_enable=True)
+ 
+-def test_eht_mld_sae_two_links(dev, apdev):
++def test_eht_mld_sae_two_links_bridge(dev, apdev):
+     """AP MLD with two links in a bridge"""
+     run_eht_mld_sae_two_links(dev, apdev, bridge=True)
+ 
+-- 
+2.43.0
+

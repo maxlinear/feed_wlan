@@ -1,0 +1,51 @@
+From 094e188f844cce1bde73928689b0c1f41248cfb1 Mon Sep 17 00:00:00 2001
+From: Andrei Otcheretianski <andrei.otcheretianski@intel.com>
+Date: Wed, 8 May 2024 16:42:12 +0300
+Subject: [PATCH] wpa_supplicant: Always clear SAE rejected groups on roaming
+ to another BSS
+
+SAE rejected groups were not cleared in case of re-association to the
+same ESS. Since new BSS can support different groups, keeping rejected
+groups doesn't make sense and may result in AP rejecting the
+authentication. Fix it.
+
+Signed-off-by: Andrei Otcheretianski <andrei.otcheretianski@intel.com>
+---
+ wpa_supplicant/wpa_supplicant.c | 10 ++++++----
+ 1 file changed, 6 insertions(+), 4 deletions(-)
+
+diff --git a/wpa_supplicant/wpa_supplicant.c b/wpa_supplicant/wpa_supplicant.c
+index 17e531500..64394029d 100644
+--- a/wpa_supplicant/wpa_supplicant.c
++++ b/wpa_supplicant/wpa_supplicant.c
+@@ -2586,6 +2586,7 @@ static void wpas_start_assoc_cb(struct wpa_radio_work *work, int deinit);
+ void wpa_supplicant_associate(struct wpa_supplicant *wpa_s,
+ 			      struct wpa_bss *bss, struct wpa_ssid *ssid)
+ {
++	bool clear_rejected = true;
+ 	struct wpa_connect_work *cwork;
+ 	enum wpas_mac_addr_style rand_style;
+ 
+@@ -2627,14 +2628,15 @@ void wpa_supplicant_associate(struct wpa_supplicant *wpa_s,
+ 			wmm_ac_save_tspecs(wpa_s);
+ #endif /* CONFIG_NO_WMM_AC */
+ 			wpa_s->reassoc_same_bss = 1;
++			clear_rejected = false;
+ 		} else if (wpa_s->current_bss && wpa_s->current_bss != bss) {
+ 			os_get_reltime(&wpa_s->roam_start);
+ 		}
+-	} else {
+-#ifdef CONFIG_SAE
+-		wpa_s_clear_sae_rejected(wpa_s);
+-#endif /* CONFIG_SAE */
+ 	}
++
++	if (clear_rejected)
++		wpa_s_clear_sae_rejected(wpa_s);
++
+ #ifdef CONFIG_SAE
+ 	wpa_s_setup_sae_pt(wpa_s->conf, ssid, false);
+ #endif /* CONFIG_SAE */
+-- 
+2.43.0
+

@@ -1,0 +1,33 @@
+From 77f39ed23b2f564a41aedb004736458a8dfcbf37 Mon Sep 17 00:00:00 2001
+From: Shailendra Singh <quic_shasing@quicinc.com>
+Date: Fri, 23 Feb 2024 18:17:48 +0530
+Subject: [PATCH] Document vendor command ratemask bitmap for EHT case
+
+In addition, update the comment on the number of bits used with HE to
+match the defined bits.
+
+Signed-off-by: Jouni Malinen <quic_jouni@quicinc.com>
+---
+ src/common/qca-vendor.h | 6 +++++-
+ 1 file changed, 5 insertions(+), 1 deletion(-)
+
+diff --git a/src/common/qca-vendor.h b/src/common/qca-vendor.h
+index 09c8b2434..449fe8584 100644
+--- a/src/common/qca-vendor.h
++++ b/src/common/qca-vendor.h
+@@ -14296,7 +14296,11 @@ enum qca_wlan_ratemask_params_type {
+  * @QCA_WLAN_VENDOR_ATTR_RATEMASK_PARAMS_BITMAP: binary, rate mask bitmap.
+  * A bit value of 1 represents rate is enabled and a value of 0
+  * represents rate is disabled.
+- * For HE targets, 12 bits correspond to one NSS setting.
++ * For EHT targets,
++ * b0-1  => NSS1, MCS 14-15
++ * b2-15 => NSS1, MCS 0-13
++ * b16-29 => NSS2, MCS 0-13
++ * For HE targets, 14 bits correspond to one NSS setting.
+  * b0-13  => NSS1, MCS 0-13
+  * b14-27 => NSS2, MCS 0-13 and so on for other NSS.
+  * For VHT targets, 10 bits correspond to one NSS setting.
+-- 
+2.43.0
+

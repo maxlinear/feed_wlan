@@ -1,0 +1,30 @@
+From 6a8d0e91967c0c91634dd0c472aa34c54117f3e3 Mon Sep 17 00:00:00 2001
+From: Jouni Malinen <j@w1.fi>
+Date: Sat, 20 Jan 2024 19:45:20 +0200
+Subject: [PATCH] wlantest: Do not decrease debug level for test vectors
+
+The CCMP PV1 test vector dropped debugging verbosity at the end. This
+was not really supposed to be done since these test vectors are expected
+to print at EXCESSIVE verbosity.
+
+Signed-off-by: Jouni Malinen <j@w1.fi>
+---
+ wlantest/test_vectors.c | 2 --
+ 1 file changed, 2 deletions(-)
+
+diff --git a/wlantest/test_vectors.c b/wlantest/test_vectors.c
+index 350c9d319..69af0a3a5 100644
+--- a/wlantest/test_vectors.c
++++ b/wlantest/test_vectors.c
+@@ -341,8 +341,6 @@ static void test_vector_ccmp_pv1(void)
+ 		    enc + 16, enc_len - 16);
+ 	WPA_PUT_LE32(fcs, ieee80211_crc32(enc, enc_len));
+ 	wpa_hexdump(MSG_INFO, "Encrypted Frame FCS", fcs, sizeof(fcs));
+-
+-	wpa_debug_level = MSG_INFO;
+ }
+ 
+ 
+-- 
+2.43.0
+

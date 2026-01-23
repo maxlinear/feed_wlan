@@ -1,0 +1,32 @@
+From 6ab172ca63331b0fe38eb2e2b0f73c9ee63e3b96 Mon Sep 17 00:00:00 2001
+From: Vinay Gannevaram <quic_vganneva@quicinc.com>
+Date: Fri, 24 Jan 2025 18:31:56 +0530
+Subject: [PATCH] tests: Update P2P2 pairing verification test to validate DIRA
+
+Signed-off-by: Vinay Gannevaram <quic_vganneva@quicinc.com>
+---
+ tests/hwsim/test_p2p2.py | 8 ++++++++
+ 1 file changed, 8 insertions(+)
+
+diff --git a/tests/hwsim/test_p2p2.py b/tests/hwsim/test_p2p2.py
+index 68bd1406d..1d6c68f87 100644
+--- a/tests/hwsim/test_p2p2.py
++++ b/tests/hwsim/test_p2p2.py
+@@ -561,6 +561,14 @@ def test_p2p_pairing_verification(dev, apdev):
+         raise Exception("Failed to complete group start on reinvocation")
+     wpas.dump_monitor()
+ 
++    res = dev[1].group_request("P2P_GET_DIRA")
++    addr, nonce, tag = res.split()
++
++    cmd = "P2P_VALIDATE_DIRA " + addr + " nonce=" + nonce + " tag=" + tag
++    res = wpas.group_request(cmd)
++    if "OK" not in res:
++        raise Exception("DIRA validation failed")
++
+     dev[1].remove_group()
+     wpas.wait_go_ending_session()
+     wpas.dump_monitor()
+-- 
+2.43.0
+

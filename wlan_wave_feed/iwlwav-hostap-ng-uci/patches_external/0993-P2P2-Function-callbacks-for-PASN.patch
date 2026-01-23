@@ -1,0 +1,140 @@
+From 048c30cb438f191084e27a326eaf1d7ed6f28c7b Mon Sep 17 00:00:00 2001
+From: Shivani Baranwal <quic_shivbara@quicinc.com>
+Date: Mon, 5 Aug 2024 02:43:59 +0530
+Subject: [PATCH] P2P2: Function callbacks for PASN
+
+Add function callbacks for PASN through P2P to handle cases where direct
+calls from PASN to P2P are not viable.
+
+Signed-off-by: Shivani Baranwal <quic_shivbara@quicinc.com>
+---
+ src/p2p/p2p.c                   |  7 +++++++
+ src/p2p/p2p.h                   | 31 +++++++++++++++++++++++++++
+ wpa_supplicant/p2p_supplicant.c | 37 +++++++++++++++++++++++++++++++++
+ 3 files changed, 75 insertions(+)
+
+diff --git a/src/p2p/p2p.c b/src/p2p/p2p.c
+index 4a03c0603..907cc08a8 100644
+--- a/src/p2p/p2p.c
++++ b/src/p2p/p2p.c
+@@ -6148,6 +6148,11 @@ void p2p_pasn_initialize(struct p2p_data *p2p, struct p2p_device *dev,
+ 	else
+ 		pasn->pmksa = p2p->responder_pmksa;
+ 
++	pasn->cb_ctx = p2p->cfg->cb_ctx;
++	pasn->send_mgmt = p2p->cfg->pasn_send_mgmt;
++	pasn->prepare_data_element = p2p->cfg->prepare_data_element;
++	pasn->parse_data_element = p2p->cfg->parse_data_element;
++
+ 	pasn->freq = freq;
+ }
+ 
+@@ -6691,6 +6696,8 @@ int p2p_pasn_auth_rx(struct p2p_data *p2p, const struct ieee80211_mgmt *mgmt,
+ 	wpabuf_free(pasn->frame);
+ 	pasn->frame = NULL;
+ 
++	pasn_register_callbacks(pasn, p2p->cfg->cb_ctx,
++				p2p->cfg->pasn_send_mgmt, NULL);
+ 	auth_transaction = le_to_host16(mgmt->u.auth.auth_transaction);
+ 
+ 	if (dev->role == P2P_ROLE_PAIRING_INITIATOR && auth_transaction == 2) {
+diff --git a/src/p2p/p2p.h b/src/p2p/p2p.h
+index ab93900e4..ece779893 100644
+--- a/src/p2p/p2p.h
++++ b/src/p2p/p2p.h
+@@ -1271,6 +1271,37 @@ struct p2p_config {
+ 	 */
+ 	void (*bootstrap_completed)(void *ctx, const u8 *addr,
+ 				    enum p2p_status_code status, int freq);
++
++	/**
++	 * pasn_send_mgmt - Function handler to transmit a Management frame
++	 * @ctx: Callback context from cb_ctx
++	 * @data: Frame to transmit
++	 * @data_len: Length of frame to transmit
++	 * @noack: No ack flag
++	 * @freq: Frequency in MHz for the channel on which to transmit
++	 * @wait: How many milliseconds to wait for a response frame
++	 * Returns: 0 on success, -1 on failure
++	 */
++	int (*pasn_send_mgmt)(void *ctx, const u8 *data, size_t data_len,
++			      int noack, unsigned int freq, unsigned int wait);
++
++	/**
++	 * prepare_data_element - Function handler to update protocol specific
++	 *	elements in PASN authentication frames
++	 * @ctx: Callback context from cb_ctx
++	 * @peer_addr: Peer MAC address
++	 * Returns: 0 on success, -1 on failure
++	 */
++	int (*prepare_data_element)(void *ctx, const u8 *peer_addr);
++
++	/**
++	 * parse_data_element - Function handler to parse P2P data element
++	 * @ctx: Callback context from cb_ctx
++	 * @data: Data to be parsed
++	 * @len: Length of data
++	 * Returns: 0 on success, -1 on failure
++	 */
++	int (*parse_data_element)(void *ctx, const u8 *data, size_t len);
+ };
+ 
+ 
+diff --git a/wpa_supplicant/p2p_supplicant.c b/wpa_supplicant/p2p_supplicant.c
+index 1e9d480d5..e42caa687 100644
+--- a/wpa_supplicant/p2p_supplicant.c
++++ b/wpa_supplicant/p2p_supplicant.c
+@@ -4997,6 +4997,38 @@ static void wpas_bootstrap_completed(void *ctx, const u8 *addr,
+ }
+ 
+ 
++#ifdef CONFIG_PASN
++
++static int wpas_p2p_pasn_send_mgmt(void *ctx, const u8 *data, size_t data_len,
++				   int noack, unsigned int freq,
++				   unsigned int wait)
++{
++	struct wpa_supplicant *wpa_s = ctx;
++
++	return wpa_drv_send_mlme(wpa_s, data, data_len, noack, freq, wait);
++}
++
++
++static int wpas_p2p_prepare_data_element(void *ctx, const u8 *peer_addr)
++{
++	struct wpa_supplicant *wpa_s = ctx;
++	struct p2p_data *p2p = wpa_s->global->p2p;
++
++	return p2p_prepare_data_element(p2p, peer_addr);
++}
++
++
++static int wpas_p2p_parse_data_element(void *ctx, const u8 *data, size_t len)
++{
++	struct wpa_supplicant *wpa_s = ctx;
++	struct p2p_data *p2p = wpa_s->global->p2p;
++
++	return p2p_parse_data_element(p2p, data, len);
++}
++
++#endif /* CONFIG_PASN */
++
++
+ int wpas_p2p_mac_setup(struct wpa_supplicant *wpa_s)
+ {
+ 	u8 addr[ETH_ALEN] = {0};
+@@ -5119,6 +5151,11 @@ int wpas_p2p_init(struct wpa_global *global, struct wpa_supplicant *wpa_s)
+ 	p2p.register_bootstrap_comeback = wpas_p2p_register_bootstrap_comeback;
+ 	p2p.bootstrap_req_rx = wpas_bootstrap_req_rx;
+ 	p2p.bootstrap_completed = wpas_bootstrap_completed;
++#ifdef CONFIG_PASN
++	p2p.pasn_send_mgmt = wpas_p2p_pasn_send_mgmt;
++	p2p.prepare_data_element = wpas_p2p_prepare_data_element;
++	p2p.parse_data_element = wpas_p2p_parse_data_element;
++#endif /* CONFIG_PASN */
+ 
+ 	os_memcpy(wpa_s->global->p2p_dev_addr, wpa_s->own_addr, ETH_ALEN);
+ 	os_memcpy(p2p.dev_addr, wpa_s->global->p2p_dev_addr, ETH_ALEN);
+-- 
+2.43.0
+

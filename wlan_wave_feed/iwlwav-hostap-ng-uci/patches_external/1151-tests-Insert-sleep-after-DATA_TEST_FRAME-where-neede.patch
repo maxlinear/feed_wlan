@@ -1,0 +1,76 @@
+From 1e26ad8e5ef8cea3ed74e21195a83725fc409c71 Mon Sep 17 00:00:00 2001
+From: Benjamin Berg <benjamin.berg@intel.com>
+Date: Fri, 27 Sep 2024 11:36:21 +0200
+Subject: [PATCH] tests: Insert sleep after DATA_TEST_FRAME where needed
+
+If the frame is not fully processed the neighbor entries of the bridge
+will not yet be updated. Add a sleep to ensure that the tests are not
+racy.
+
+Signed-off-by: Benjamin Berg <benjamin.berg@intel.com>
+---
+ tests/hwsim/test_ap_hs20.py     | 9 +++++++++
+ tests/hwsim/test_hs20_filter.py | 6 ++++++
+ 2 files changed, 15 insertions(+)
+
+diff --git a/tests/hwsim/test_ap_hs20.py b/tests/hwsim/test_ap_hs20.py
+index 35cb0b8fe..b53a8373d 100644
+--- a/tests/hwsim/test_ap_hs20.py
++++ b/tests/hwsim/test_ap_hs20.py
+@@ -4357,6 +4357,9 @@ def _test_ap_hs20_proxyarp(dev, apdev):
+     if "OK" not in dev[1].request("DATA_TEST_FRAME " + binascii.hexlify(pkt).decode()):
+         raise Exception("DATA_TEST_FRAME failed")
+ 
++    # Wait for frames to be processed
++    time.sleep(0.1)
++
+     matches = get_permanent_neighbors("ap-br0")
+     logger.info("After connect: " + str(matches))
+     if len(matches) != 3:
+@@ -4489,6 +4492,9 @@ def _test_ap_hs20_proxyarp_dgaf(dev, apdev, disabled):
+     if "OK" not in hapd.request("DATA_TEST_FRAME ifname=ap-br0 " + binascii.hexlify(pkt).decode()):
+         raise Exception("DATA_TEST_FRAME failed")
+ 
++    # Wait for frames to be processed
++    time.sleep(0.1)
++
+     matches = get_permanent_neighbors("ap-br0")
+     logger.info("After connect: " + str(matches))
+     if len(matches) != 2:
+@@ -4949,6 +4955,9 @@ def _test_proxyarp_open(dev, apdev, params, ebtables=False):
+     if "OK" not in hapd.request("DATA_TEST_FRAME ifname=ap-br0 " + binascii.hexlify(pkt).decode()):
+         raise Exception("DATA_TEST_FRAME failed")
+ 
++    # Wait for frames to be processed
++    time.sleep(0.1)
++
+     macs = get_bridge_macs("ap-br0")
+     logger.info("After connect (showmacs): " + str(macs))
+ 
+diff --git a/tests/hwsim/test_hs20_filter.py b/tests/hwsim/test_hs20_filter.py
+index 11cf34756..b916da567 100644
+--- a/tests/hwsim/test_hs20_filter.py
++++ b/tests/hwsim/test_hs20_filter.py
+@@ -172,6 +172,9 @@ def test_ip4_drop_gratuitous_arp(devs, apdevs, params):
+             if "OK" not in hapd.request('DATA_TEST_FRAME ' + pkt):
+                 raise Exception("DATA_TEST_FRAME failed")
+ 
++            # Wait for frames to be processed
++            time.sleep(0.1)
++
+             if hapd.own_addr() in subprocess.check_output(['ip', 'neigh', 'show']).decode():
+                 raise Exception("gratuitous ARP frame updated erroneously")
+         finally:
+@@ -199,6 +202,9 @@ def test_ip6_drop_unsolicited_na(devs, apdevs, params):
+             if "OK" not in hapd.request('DATA_TEST_FRAME ' + pkt):
+                 raise Exception("DATA_TEST_FRAME failed")
+ 
++            # Wait for frames to be processed
++            time.sleep(0.1)
++
+             if hapd.own_addr() in subprocess.check_output(['ip', 'neigh', 'show']).decode():
+                 raise Exception("unsolicited NA frame updated erroneously")
+         finally:
+-- 
+2.43.0
+

@@ -1,0 +1,37 @@
+From 5913d1a187a68be11e7227838c80de60ded46076 Mon Sep 17 00:00:00 2001
+From: Aditya Kumar Singh <quic_adisi@quicinc.com>
+Date: Mon, 22 Apr 2024 18:10:01 +0530
+Subject: [PATCH] Remove double "on" from debug prints in CCA event callbacks
+
+Signed-off-by: Aditya Kumar Singh <quic_adisi@quicinc.com>
+---
+ src/ap/drv_callbacks.c | 6 +++---
+ 1 file changed, 3 insertions(+), 3 deletions(-)
+
+diff --git a/src/ap/drv_callbacks.c b/src/ap/drv_callbacks.c
+index 25e008ad2..5ae12dc01 100644
+--- a/src/ap/drv_callbacks.c
++++ b/src/ap/drv_callbacks.c
+@@ -2714,16 +2714,16 @@ void wpa_supplicant_event(void *ctx, enum wpa_event_type event,
+ 				     data->bss_color_collision.bitmap);
+ 		break;
+ 	case EVENT_CCA_STARTED_NOTIFY:
+-		wpa_printf(MSG_DEBUG, "CCA started on on %s",
++		wpa_printf(MSG_DEBUG, "CCA started on %s",
+ 			   hapd->conf->iface);
+ 		break;
+ 	case EVENT_CCA_ABORTED_NOTIFY:
+-		wpa_printf(MSG_DEBUG, "CCA aborted on on %s",
++		wpa_printf(MSG_DEBUG, "CCA aborted on %s",
+ 			   hapd->conf->iface);
+ 		hostapd_cleanup_cca_params(hapd);
+ 		break;
+ 	case EVENT_CCA_NOTIFY:
+-		wpa_printf(MSG_DEBUG, "CCA finished on on %s",
++		wpa_printf(MSG_DEBUG, "CCA finished on %s",
+ 			   hapd->conf->iface);
+ 		if (hapd->cca_color)
+ 			hapd->iface->conf->he_op.he_bss_color = hapd->cca_color;
+-- 
+2.43.0
+

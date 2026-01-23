@@ -1,0 +1,117 @@
+From 619ff3d2e8322fe417279ba26e0b51015be63139 Mon Sep 17 00:00:00 2001
+From: Benjamin Berg <benjamin.berg@intel.com>
+Date: Wed, 8 May 2024 12:56:10 +0200
+Subject: [PATCH] build: Add simple compile_commands.json generation
+
+This can be used with a clangd server to get code completion and cross
+references in editor. To simplify the generation, create .cmd files for
+most object files while building that contains the base directory and
+command that was used when compiling it.
+
+A very simple gen_compile_commands.py is provided which will read one or
+more build directories and generate the compile_commands.json file for
+it.
+
+Signed-off-by: Benjamin Berg <benjamin.berg@intel.com>
+---
+ .gitignore              |  3 +++
+ gen_compile_commands.py | 54 +++++++++++++++++++++++++++++++++++++++++
+ src/build.rules         |  3 +++
+ 3 files changed, 60 insertions(+)
+ create mode 100755 gen_compile_commands.py
+
+diff --git a/.gitignore b/.gitignore
+index b064303ce..00e23862a 100644
+--- a/.gitignore
++++ b/.gitignore
+@@ -6,3 +6,6 @@ wpaspy/build
+ **/parallel-vm.log
+ tags
+ build/
++# clangd commands and cache
++compile_commands.json
++.cache
+diff --git a/gen_compile_commands.py b/gen_compile_commands.py
+new file mode 100755
+index 000000000..6c3437daa
+--- /dev/null
++++ b/gen_compile_commands.py
+@@ -0,0 +1,54 @@
++#!/usr/bin/env python3
++# compile_commands.json generator
++# Copyright (C) 2024 Intel Corporation
++#
++# This software may be distributed under the terms of the BSD license.
++# See README for more details.
++
++import os
++import sys
++import glob
++import json
++import argparse
++
++parser = argparse.ArgumentParser(description='Read each of the build directories that are given and generate '
++                                 'a compile_commands.json file. If a source file is found multiple times, '
++                                 'then the compile flags from the last build directory will be used.')
++parser.add_argument('-o', '--output', default='compile_commands.json', type=str,
++                    help="Output file to generate")
++parser.add_argument('builddirs', nargs='+', type=str, metavar="builddir",
++                    help='Build directories to search')
++
++args = parser.parse_args()
++
++files = {}
++
++for builddir in args.builddirs:
++    for cmd_file in glob.glob('**/*.o.cmd', root_dir=builddir, recursive=True):
++        with open(os.path.join(builddir, cmd_file), encoding='ascii') as f:
++            base_dir, cmd = f.readline().split(':', 1)
++            src_file = cmd.rsplit(maxsplit=1)[1]
++
++        src_file = os.path.abspath(os.path.join(base_dir, src_file))
++        files[src_file] = {
++            'command': cmd.strip(),
++            'directory': base_dir,
++            'file': src_file,
++        }
++
++flist = json.dumps(sorted(list(files.values()), key=lambda k: k['file']), indent=2, sort_keys=True)
++
++try:
++   # Avoid writing the file if it did not change, first read original
++   with open(args.output, 'rt', encoding='UTF-8') as f:
++       orig = []
++       while data := f.read():
++           orig.append(data)
++       orig = ''.join(orig)
++except OSError:
++    orig = ''
++
++# And only write if something changed
++if orig != flist:
++    with open(args.output, 'wt', encoding='UTF-8') as f:
++        f.write(flist)
+diff --git a/src/build.rules b/src/build.rules
+index c756ccb84..eb6759ac2 100644
+--- a/src/build.rules
++++ b/src/build.rules
+@@ -83,13 +83,16 @@ _make_dirs:
+ 	@mkdir -p $(sort $(_DIRS))
+ 
+ $(BUILDDIR)/$(PROJ)/src/%.o: $(ROOTDIR)src/%.c $(CONFIG_FILE) | _make_dirs
++	@echo $(CURDIR): '$(CC) -c -o $@ $(CFLAGS) $<' >$@.cmd
+ 	$(Q)$(CC) -c -o $@ $(CFLAGS) $<
+ 	@$(E) "  CC " $<
+ $(BUILDDIR)/$(PROJ)/%.o: %.c $(CONFIG_FILE) | _make_dirs
++	@echo $(CURDIR): '$(CC) -c -o $@ $(CFLAGS) $<' >$@.cmd
+ 	$(Q)$(CC) -c -o $@ $(CFLAGS) $<
+ 	@$(E) "  CC " $<
+ # for the fuzzing tests
+ $(BUILDDIR)/$(PROJ)/wpa_supplicant/%.o: $(ROOTDIR)wpa_supplicant/%.c $(CONFIG_FILE) | _make_dirs
++	@echo $(CURDIR): '$(CC) -c -o $@ $(CFLAGS) $<' >$@.cmd
+ 	$(Q)$(CC) -c -o $@ $(CFLAGS) $<
+ 	@$(E) "  CC " $<
+ 
+-- 
+2.43.0
+

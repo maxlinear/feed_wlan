@@ -1,0 +1,36 @@
+From 2c46ebfd2219e5444bd84f25347275a7089e4770 Mon Sep 17 00:00:00 2001
+From: Shivani Baranwal <quic_shivbara@quicinc.com>
+Date: Sun, 18 Aug 2024 16:24:23 +0530
+Subject: [PATCH] Control interface command to generate new random MAC address
+
+Add NEW_RANDOM_MAC_ADDRESS command to allow wpa_supplicant to be
+requested to change the currently used MAC address to a random one. This
+is applicable only when not connected (or trying to connect).
+
+Signed-off-by: Shivani Baranwal <quic_shivbara@quicinc.com>
+---
+ wpa_supplicant/ctrl_iface.c | 8 ++++++++
+ 1 file changed, 8 insertions(+)
+
+diff --git a/wpa_supplicant/ctrl_iface.c b/wpa_supplicant/ctrl_iface.c
+index 90fa6ed2b..625326411 100644
+--- a/wpa_supplicant/ctrl_iface.c
++++ b/wpa_supplicant/ctrl_iface.c
+@@ -13714,6 +13714,14 @@ char * wpa_supplicant_ctrl_iface_process(struct wpa_supplicant *wpa_s,
+ 	} else if (os_strcmp(buf, "MLO_SIGNAL_POLL") == 0) {
+ 		reply_len = wpas_ctrl_iface_mlo_signal_poll(wpa_s, reply,
+ 							    reply_size);
++	} else if (os_strcmp(buf, "NEW_RANDOM_MAC_ADDRESS") == 0) {
++		enum wpas_mac_addr_style mac_addr_style =
++			wpa_s->conf->preassoc_mac_addr;
++
++		wpa_s->conf->preassoc_mac_addr = WPAS_MAC_ADDR_STYLE_RANDOM;
++		if (wpas_update_random_addr_disassoc(wpa_s) != 1)
++			reply_len = -1;
++		wpa_s->conf->preassoc_mac_addr = mac_addr_style;
+ 	} else {
+ 		os_memcpy(reply, "UNKNOWN COMMAND\n", 16);
+ 		reply_len = 16;
+-- 
+2.43.0
+

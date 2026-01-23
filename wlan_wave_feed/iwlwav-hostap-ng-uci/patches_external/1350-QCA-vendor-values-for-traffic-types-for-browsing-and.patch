@@ -1,0 +1,40 @@
+From b25769e4811ef88ec04372f45ad94fbdf041ca8d Mon Sep 17 00:00:00 2001
+From: Ananya Gupta <quic_anangupt@quicinc.com>
+Date: Thu, 23 Jan 2025 20:29:42 +0530
+Subject: [PATCH] QCA vendor values for traffic types for browsing and
+ aperiodic bursts
+
+As part of flow classification enhancement, web browsing and aperiodic
+bursty traffic will be detected. To enable this, add browsing and
+aperiodic bursts types for traffic classification.
+
+Signed-off-by: Ananya Gupta <quic_anangupt@quicinc.com>
+---
+ src/common/qca-vendor.h | 4 ++++
+ 1 file changed, 4 insertions(+)
+
+diff --git a/src/common/qca-vendor.h b/src/common/qca-vendor.h
+index 4554625ba..13d41f101 100644
+--- a/src/common/qca-vendor.h
++++ b/src/common/qca-vendor.h
+@@ -17911,6 +17911,8 @@ enum qca_wlan_vendor_attr_ap_suspend {
+  * @QCA_TRAFFIC_TYPE_SCREEN_SHARE: Traffic type is screen share
+  * @QCA_TRAFFIC_TYPE_UNKNOWN: Traffic type is unknown
+  * @QCA_TRAFFIC_TYPE_INVALID: Invalid traffic type
++ * @QCA_TRAFFIC_TYPE_BROWSING: Traffic type is browsing website
++ * @QCA_TRAFFIC_TYPE_APERIODIC_BURSTS: Traffic type is aperiodic bursts
+  */
+ enum qca_traffic_type {
+ 	QCA_TRAFFIC_TYPE_STREAMING = 0,
+@@ -17920,6 +17922,8 @@ enum qca_traffic_type {
+ 	QCA_TRAFFIC_TYPE_SCREEN_SHARE = 4,
+ 	QCA_TRAFFIC_TYPE_UNKNOWN = 5,
+ 	QCA_TRAFFIC_TYPE_INVALID = 6,
++	QCA_TRAFFIC_TYPE_BROWSING = 7,
++	QCA_TRAFFIC_TYPE_APERIODIC_BURSTS = 8,
+ };
+ 
+ /**
+-- 
+2.43.0
+

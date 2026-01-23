@@ -1,0 +1,91 @@
+From 205dbb0fefd58d499482f013cc4c6e13b96e2c79 Mon Sep 17 00:00:00 2001
+From: Janusz Dziedzic <janusz.dziedzic@gmail.com>
+Date: Thu, 30 May 2024 21:19:03 +0200
+Subject: [PATCH] tests: Allow user name to be skipped in ssh connection with
+ remotehost
+
+Allow to skip user name when we run ssh user@hostname.
+
+We can specify user name in .ssh/config and simplify using network name
+spaces mapped per user.
+
+An example .ssh/config:
+
+ Host localhost
+    HostName localhost
+    User root
+
+ Host test1
+    HostName testpc
+    User wlan1
+
+Signed-off-by: Janusz Dziedzic <janusz.dziedzic@gmail.com>
+---
+ tests/hwsim/remotehost.py | 27 +++++++++++++++++++++------
+ 1 file changed, 21 insertions(+), 6 deletions(-)
+
+diff --git a/tests/hwsim/remotehost.py b/tests/hwsim/remotehost.py
+index d0efa210b..7bbf12d63 100644
+--- a/tests/hwsim/remotehost.py
++++ b/tests/hwsim/remotehost.py
+@@ -83,7 +83,10 @@ class Host():
+         if self.host is None:
+             return self.local_execute(command)
+ 
+-        cmd = ["ssh", self.user + "@" + self.host, ' '.join(command)]
++        if self.user:
++            cmd = ["ssh", self.user + "@" + self.host, ' '.join(command)]
++        else:
++            cmd = ["ssh", self.host, ' '.join(command)]
+         _cmd = self.name + " execute: " + ' '.join(cmd)
+         logger.debug(_cmd)
+         err = tempfile.TemporaryFile()
+@@ -114,7 +117,10 @@ class Host():
+         if self.host is None:
+             cmd = _command
+         else:
+-            cmd = ["ssh", self.user + "@" + self.host, ' '.join(_command)]
++            if self.user:
++                cmd = ["ssh", self.user + "@" + self.host, ' '.join(_command)]
++            else:
++                cmd = ["ssh", self.host, ' '.join(_command)]
+         _cmd = self.name + " thread_run: " + ' '.join(cmd)
+         logger.debug(_cmd)
+         t = threading.Thread(target=execute_thread, name=filename, args=(cmd, res))
+@@ -174,7 +180,10 @@ class Host():
+         _command = [filename] + command
+ 
+         if self.host:
+-            cmd = ["ssh", self.user + "@" + self.host, ' '.join(_command)]
++            if self.user:
++                cmd = ["ssh", self.user + "@" + self.host, ' '.join(_command)]
++            else:
++                cmd = ["ssh", self.host, ' '.join(_command)]
+         else:
+             cmd = _command
+ 
+@@ -261,12 +270,18 @@ class Host():
+     def get_logs(self, local_log_dir=None):
+         for log in self.logs:
+             if local_log_dir:
+-                self.local_execute(["scp", self.user + "@[" + self.host + "]:" + log, local_log_dir])
++                if self.user:
++                    self.local_execute(["scp", self.user + "@[" + self.host + "]:" + log, local_log_dir])
++                else:
++                    self.local_execute(["scp", "[" + self.host + "]:" + log, local_log_dir])
+             self.execute(["rm", log])
+         del self.logs[:]
+ 
+     def send_file(self, src, dst):
+         if self.host is None:
+             return
+-        self.local_execute(["scp", src,
+-                            self.user + "@[" + self.host + "]:" + dst])
++        if self.user:
++            self.local_execute(["scp", src,
++                                self.user + "@[" + self.host + "]:" + dst])
++        else:
++            self.local_execute(["scp", src, "[" + self.host + "]:" + dst])
+-- 
+2.43.0
+

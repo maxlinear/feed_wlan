@@ -1,0 +1,140 @@
+From abc239a0b0862155ba56dcec0b0766dd6c3832f7 Mon Sep 17 00:00:00 2001
+From: Andrei Otcheretianski <andrei.otcheretianski@intel.com>
+Date: Wed, 10 Jan 2024 16:50:27 +0200
+Subject: [PATCH] Get rid of multiple MIN macros
+
+There are multiple redundant MIN macro declarations, some of which are
+not protecting against side effects. Move it to common.h instead.
+
+Signed-off-by: Andrei Otcheretianski <andrei.otcheretianski@intel.com>
+---
+ src/ap/wmm.c                 | 7 -------
+ src/crypto/sha256-internal.c | 3 ---
+ src/crypto/sha512-internal.c | 3 ---
+ src/tls/libtommath.c         | 8 --------
+ src/utils/common.h           | 7 +++++++
+ wpa_supplicant/scan.c        | 4 ----
+ 6 files changed, 7 insertions(+), 25 deletions(-)
+
+diff --git a/src/ap/wmm.c b/src/ap/wmm.c
+index 9ebb01e3d..dad768e7b 100644
+--- a/src/ap/wmm.c
++++ b/src/ap/wmm.c
+@@ -20,13 +20,6 @@
+ #include "ap_drv_ops.h"
+ #include "wmm.h"
+ 
+-#ifndef MIN
+-#define MIN(a, b) (((a) < (b)) ? (a) : (b))
+-#endif
+-#ifndef MAX
+-#define MAX(a, b) (((a) > (b)) ? (a) : (b))
+-#endif
+-
+ 
+ static inline u8 wmm_aci_aifsn(int aifsn, int acm, int aci)
+ {
+diff --git a/src/crypto/sha256-internal.c b/src/crypto/sha256-internal.c
+index ff1e2ba16..81e6e5e9c 100644
+--- a/src/crypto/sha256-internal.c
++++ b/src/crypto/sha256-internal.c
+@@ -76,9 +76,6 @@ static const unsigned long K[64] = {
+ #define Sigma1(x)       (S(x, 6) ^ S(x, 11) ^ S(x, 25))
+ #define Gamma0(x)       (S(x, 7) ^ S(x, 18) ^ R(x, 3))
+ #define Gamma1(x)       (S(x, 17) ^ S(x, 19) ^ R(x, 10))
+-#ifndef MIN
+-#define MIN(x, y) (((x) < (y)) ? (x) : (y))
+-#endif
+ 
+ /* compress 512-bits */
+ static int sha256_compress(struct sha256_state *md, unsigned char *buf)
+diff --git a/src/crypto/sha512-internal.c b/src/crypto/sha512-internal.c
+index c0263941c..8e98a9cf0 100644
+--- a/src/crypto/sha512-internal.c
++++ b/src/crypto/sha512-internal.c
+@@ -97,9 +97,6 @@ static const u64 K[80] = {
+ #define Sigma1(x)       (S(x, 14) ^ S(x, 18) ^ S(x, 41))
+ #define Gamma0(x)       (S(x, 1) ^ S(x, 8) ^ R(x, 7))
+ #define Gamma1(x)       (S(x, 19) ^ S(x, 61) ^ R(x, 6))
+-#ifndef MIN
+-#define MIN(x, y) (((x) < (y)) ? (x) : (y))
+-#endif
+ 
+ #define ROR64c(x, y) \
+     ( ((((x) & CONST64(0xFFFFFFFFFFFFFFFF)) >> ((u64) (y) & CONST64(63))) | \
+diff --git a/src/tls/libtommath.c b/src/tls/libtommath.c
+index 715674424..ed595bd62 100644
+--- a/src/tls/libtommath.c
++++ b/src/tls/libtommath.c
+@@ -59,14 +59,6 @@
+ 
+ /* from tommath.h */
+ 
+-#ifndef MIN
+-   #define MIN(x,y) ((x)<(y)?(x):(y))
+-#endif
+-
+-#ifndef MAX
+-   #define MAX(x,y) ((x)>(y)?(x):(y))
+-#endif
+-
+ #define  OPT_CAST(x)
+ 
+ #ifdef __x86_64__
+diff --git a/src/utils/common.h b/src/utils/common.h
+index ce17c8011..d4ffb998b 100644
+--- a/src/utils/common.h
++++ b/src/utils/common.h
+@@ -441,6 +441,13 @@ void perror(const char *s);
+ #define BIT(x) (1U << (x))
+ #endif
+ 
++#ifndef MIN
++#define MIN(a, b) ((a) < (b) ? (a) : (b))
++#endif
++#ifndef MAX
++#define MAX(a, b) (((a) > (b)) ? (a) : (b))
++#endif
++
+ /*
+  * Definitions for sparse validation
+  * (http://kernel.org/pub/linux/kernel/people/josh/sparse/)
+diff --git a/wpa_supplicant/scan.c b/wpa_supplicant/scan.c
+index aef85461c..6e6f05d42 100644
+--- a/wpa_supplicant/scan.c
++++ b/wpa_supplicant/scan.c
+@@ -2255,7 +2255,6 @@ static int wpas_channel_width_offset(enum chan_width cw)
+ static int wpas_channel_width_tx_pwr(const u8 *ies, size_t ies_len,
+ 				     enum chan_width cw)
+ {
+-#define MIN(a, b) (a < b ? a : b)
+ 	int offset = wpas_channel_width_offset(cw);
+ 	const struct element *elem;
+ 	int max_tx_power = TX_POWER_NO_CONSTRAINT, tx_pwr = 0;
+@@ -2331,7 +2330,6 @@ static int wpas_channel_width_tx_pwr(const u8 *ies, size_t ies_len,
+ 	}
+ 
+ 	return max_tx_power;
+-#undef MIN
+ }
+ 
+ 
+@@ -2373,7 +2371,6 @@ int wpas_adjust_snr_by_chanwidth(const u8 *ies, size_t ies_len,
+  * better. */
+ static int wpa_scan_result_compar(const void *a, const void *b)
+ {
+-#define MIN(a,b) a < b ? a : b
+ 	struct wpa_scan_res **_wa = (void *) a;
+ 	struct wpa_scan_res **_wb = (void *) b;
+ 	struct wpa_scan_res *wa = *_wa;
+@@ -2477,7 +2474,6 @@ static int wpa_scan_result_compar(const void *a, const void *b)
+ 	if (snr_b_full == snr_a_full)
+ 		return wb->qual - wa->qual;
+ 	return snr_b_full - snr_a_full;
+-#undef MIN
+ }
+ 
+ 
+-- 
+2.43.0
+

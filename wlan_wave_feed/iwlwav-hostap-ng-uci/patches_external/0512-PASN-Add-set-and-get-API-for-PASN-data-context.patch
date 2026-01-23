@@ -1,0 +1,834 @@
+From 147f83692475e1d550fc784618bc3e4be2fa8c04 Mon Sep 17 00:00:00 2001
+From: Vinay Gannevaram <quic_vganneva@quicinc.com>
+Date: Fri, 29 Mar 2024 15:17:42 +0530
+Subject: [PATCH] PASN: Add set and get API for PASN data context
+
+Modules that use libpasn for PASN authentication need the context of
+PASN data. PASN data is a common context for the library and the modules
+using it. Hence, initialize the context through init and deinit
+functions. Also use set and get functions to update the parameters.
+
+Signed-off-by: Jouni Malinen <quic_jouni@quicinc.com>
+---
+ hostapd/Android.mk               |   1 +
+ hostapd/Makefile                 |   1 +
+ src/ap/ieee802_11.c              |  65 +++++----
+ src/ap/sta_info.c                |   2 +-
+ src/pasn/pasn_common.c           | 232 +++++++++++++++++++++++++++++++
+ src/pasn/pasn_common.h           |  97 +++++++++----
+ src/pasn/pasn_initiator.c        |  13 ++
+ src/pasn/pasn_responder.c        |   9 ++
+ wpa_supplicant/Android.mk        |   2 +
+ wpa_supplicant/Makefile          |   2 +
+ wpa_supplicant/pasn_supplicant.c |  37 ++---
+ 11 files changed, 388 insertions(+), 73 deletions(-)
+ create mode 100644 src/pasn/pasn_common.c
+
+diff --git a/hostapd/Android.mk b/hostapd/Android.mk
+index 5b6d29afa..573564d5b 100644
+--- a/hostapd/Android.mk
++++ b/hostapd/Android.mk
+@@ -1051,6 +1051,7 @@ OBJS += src/ap/wmm.c
+ OBJS += src/ap/ap_list.c
+ OBJS += src/ap/comeback_token.c
+ OBJS += src/pasn/pasn_responder.c
++OBJS += src/pasn/pasn_common.c
+ OBJS += src/ap/ieee802_11.c
+ OBJS += src/ap/hw_features.c
+ OBJS += src/ap/dfs.c
+diff --git a/hostapd/Makefile b/hostapd/Makefile
+index a349dbac2..ca4439234 100644
+--- a/hostapd/Makefile
++++ b/hostapd/Makefile
+@@ -1197,6 +1197,7 @@ OBJS += ../src/ap/wmm.o
+ OBJS += ../src/ap/ap_list.o
+ OBJS += ../src/ap/comeback_token.o
+ OBJS += ../src/pasn/pasn_responder.o
++OBJS += ../src/pasn/pasn_common.o
+ OBJS += ../src/ap/ieee802_11.o
+ OBJS += ../src/ap/hw_features.o
+ OBJS += ../src/ap/dfs.o
+diff --git a/src/ap/ieee802_11.c b/src/ap/ieee802_11.c
+index 7ace3e968..fcb2d14cf 100644
+--- a/src/ap/ieee802_11.c
++++ b/src/ap/ieee802_11.c
+@@ -2403,7 +2403,7 @@ static void pasn_fils_auth_resp(struct hostapd_data *hapd,
+ 	wpa_hexdump(MSG_DEBUG, "RSN: Generated FILS ANonce",
+ 		    fils->anonce, FILS_NONCE_LEN);
+ 
+-	ret = fils_rmsk_to_pmk(pasn->akmp, msk, msk_len, fils->nonce,
++	ret = fils_rmsk_to_pmk(pasn_get_akmp(pasn), msk, msk_len, fils->nonce,
+ 			       fils->anonce, NULL, 0, pmk, &pmk_len);
+ 	if (ret) {
+ 		wpa_printf(MSG_DEBUG, "FILS: Failed to derive PMK");
+@@ -2413,15 +2413,16 @@ static void pasn_fils_auth_resp(struct hostapd_data *hapd,
+ 	ret = pasn_pmk_to_ptk(pmk, pmk_len, sta->addr, hapd->own_addr,
+ 			      wpabuf_head(pasn->secret),
+ 			      wpabuf_len(pasn->secret),
+-			      &sta->pasn->ptk, sta->pasn->akmp,
+-			      sta->pasn->cipher, sta->pasn->kdk_len);
++			      pasn_get_ptk(sta->pasn), pasn_get_akmp(sta->pasn),
++			      pasn_get_cipher(sta->pasn), sta->pasn->kdk_len);
+ 	if (ret) {
+ 		wpa_printf(MSG_DEBUG, "PASN: FILS: Failed to derive PTK");
+ 		goto fail;
+ 	}
+ 
+ 	if (pasn->secure_ltf) {
+-		ret = wpa_ltf_keyseed(&pasn->ptk, pasn->akmp, pasn->cipher);
++		ret = wpa_ltf_keyseed(pasn_get_ptk(pasn), pasn_get_akmp(pasn),
++				      pasn_get_cipher(pasn));
+ 		if (ret) {
+ 			wpa_printf(MSG_DEBUG,
+ 				   "PASN: FILS: Failed to derive LTF keyseed");
+@@ -2567,7 +2568,8 @@ static int pasn_wd_handle_fils(struct hostapd_data *hapd, struct sta_info *sta,
+ 	 * Calculate pending PMKID here so that we do not need to maintain a
+ 	 * copy of the EAP-Initiate/Reautt message.
+ 	 */
+-	fils_pmkid_erp(pasn->akmp, wpabuf_head(fils_wd), wpabuf_len(fils_wd),
++	fils_pmkid_erp(pasn_get_akmp(pasn),
++		       wpabuf_head(fils_wd), wpabuf_len(fils_wd),
+ 		       fils->erp_pmkid);
+ 
+ 	wpabuf_free(fils_wd);
+@@ -2592,32 +2594,35 @@ static void hapd_initialize_pasn(struct hostapd_data *hapd,
+ {
+ 	struct pasn_data *pasn = sta->pasn;
+ 
+-	pasn->cb_ctx = hapd;
+-	pasn->send_mgmt = hapd_pasn_send_mlme;
++	pasn_register_callbacks(pasn, hapd, hapd_pasn_send_mlme, NULL);
++	pasn_set_bssid(pasn, hapd->own_addr);
++	pasn_set_own_addr(pasn, hapd->own_addr);
++	pasn_set_peer_addr(pasn, sta->addr);
++	pasn_set_wpa_key_mgmt(pasn, hapd->conf->wpa_key_mgmt);
++	pasn_set_rsn_pairwise(pasn, hapd->conf->rsn_pairwise);
+ 	pasn->pasn_groups = hapd->conf->pasn_groups;
+ 	pasn->noauth = hapd->conf->pasn_noauth;
+-	pasn->wpa_key_mgmt = hapd->conf->wpa_key_mgmt;
+-	pasn->rsn_pairwise = hapd->conf->rsn_pairwise;
+-	pasn->derive_kdk = hapd->iface->drv_flags2 &
+-		WPA_DRIVER_FLAGS2_SEC_LTF_AP;
++	if (hapd->iface->drv_flags2 & WPA_DRIVER_FLAGS2_SEC_LTF_AP)
++		pasn_enable_kdk_derivation(pasn);
++
+ #ifdef CONFIG_TESTING_OPTIONS
+ 	pasn->corrupt_mic = hapd->conf->pasn_corrupt_mic;
+ 	if (hapd->conf->force_kdk_derivation)
+-		pasn->derive_kdk = true;
++		pasn_enable_kdk_derivation(pasn);
+ #endif /* CONFIG_TESTING_OPTIONS */
+ 	pasn->use_anti_clogging = use_anti_clogging(hapd);
+-	pasn->password = sae_get_password(hapd, sta, NULL, NULL, &pasn->pt,
+-					  NULL);
++	pasn_set_password(pasn, sae_get_password(hapd, sta, NULL, NULL,
++						 &pasn->pt, NULL));
+ 	pasn->rsn_ie = wpa_auth_get_wpa_ie(hapd->wpa_auth, &pasn->rsn_ie_len);
+-	pasn->rsnxe_ie = hostapd_wpa_ie(hapd, WLAN_EID_RSNX);
++	pasn_set_rsnxe_ie(pasn, hostapd_wpa_ie(hapd, WLAN_EID_RSNX));
+ 	pasn->disable_pmksa_caching = hapd->conf->disable_pmksa_caching;
+-	pasn->pmksa = wpa_auth_get_pmksa_cache(hapd->wpa_auth);
++	pasn_set_responder_pmksa(pasn,
++				 wpa_auth_get_pmksa_cache(hapd->wpa_auth));
+ 
+ 	pasn->comeback_after = hapd->conf->pasn_comeback_after;
+ 	pasn->comeback_idx = hapd->comeback_idx;
+ 	pasn->comeback_key =  hapd->comeback_key;
+ 	pasn->comeback_pending_idx = hapd->comeback_pending_idx;
+-	os_memcpy(pasn->bssid, hapd->own_addr, ETH_ALEN);
+ }
+ 
+ 
+@@ -2665,6 +2670,7 @@ static void hapd_pasn_update_params(struct hostapd_data *hapd,
+ 	struct wpa_pasn_params_data pasn_params;
+ 	struct wpabuf *wrapped_data = NULL;
+ #endif /* CONFIG_FILS */
++	int akmp;
+ 
+ 	if (ieee802_11_parse_elems(mgmt->u.auth.variable,
+ 				   len - offsetof(struct ieee80211_mgmt,
+@@ -2688,10 +2694,12 @@ static void hapd_pasn_update_params(struct hostapd_data *hapd,
+ 		return;
+ 	}
+ 
+-	pasn->akmp = rsn_data.key_mgmt;
+-	pasn->cipher = rsn_data.pairwise_cipher;
++	pasn_set_akmp(pasn, rsn_data.key_mgmt);
++	pasn_set_cipher(pasn, rsn_data.pairwise_cipher);
++
++	akmp = pasn_get_akmp(pasn);
+ 
+-	if (wpa_key_mgmt_ft(pasn->akmp) && rsn_data.num_pmkid) {
++	if (wpa_key_mgmt_ft(akmp) && rsn_data.num_pmkid) {
+ #ifdef CONFIG_IEEE80211R_AP
+ 		pasn->pmk_r1_len = 0;
+ 		wpa_ft_fetch_pmk_r1(hapd->wpa_auth, sta->addr,
+@@ -2702,8 +2710,8 @@ static void hapd_pasn_update_params(struct hostapd_data *hapd,
+ #endif /* CONFIG_IEEE80211R_AP */
+ 	}
+ #ifdef CONFIG_FILS
+-	if (pasn->akmp != WPA_KEY_MGMT_FILS_SHA256 &&
+-	    pasn->akmp != WPA_KEY_MGMT_FILS_SHA384)
++	if (akmp != WPA_KEY_MGMT_FILS_SHA256 &&
++	    akmp != WPA_KEY_MGMT_FILS_SHA384)
+ 		return;
+ 	if (!elems.pasn_params ||
+ 	    wpa_pasn_parse_parameter_ie(elems.pasn_params - 3,
+@@ -2756,7 +2764,7 @@ static void handle_auth_pasn(struct hostapd_data *hapd, struct sta_info *sta,
+ 			return;
+ 		}
+ 
+-		sta->pasn = os_zalloc(sizeof(*sta->pasn));
++		sta->pasn = pasn_data_init();
+ 		if (!sta->pasn) {
+ 			wpa_printf(MSG_DEBUG,
+ 				   "PASN: Failed to allocate PASN context");
+@@ -2786,13 +2794,14 @@ static void handle_auth_pasn(struct hostapd_data *hapd, struct sta_info *sta,
+ 		if (handle_auth_pasn_3(sta->pasn, hapd->own_addr,
+ 				       sta->addr, mgmt, len) == 0) {
+ 			ptksa_cache_add(hapd->ptksa, hapd->own_addr, sta->addr,
+-					sta->pasn->cipher, 43200,
+-					&sta->pasn->ptk, NULL, NULL,
+-					sta->pasn->akmp);
++					pasn_get_cipher(sta->pasn), 43200,
++					pasn_get_ptk(sta->pasn), NULL, NULL,
++					pasn_get_akmp(sta->pasn));
+ 
+ 			pasn_set_keys_from_cache(hapd, hapd->own_addr,
+-						 sta->addr, sta->pasn->cipher,
+-						 sta->pasn->akmp);
++						 sta->addr,
++						 pasn_get_cipher(sta->pasn),
++						 pasn_get_akmp(sta->pasn));
+ 		}
+ 		ap_free_sta(hapd, sta);
+ 	} else {
+diff --git a/src/ap/sta_info.c b/src/ap/sta_info.c
+index 122880a3d..32944edff 100644
+--- a/src/ap/sta_info.c
++++ b/src/ap/sta_info.c
+@@ -180,7 +180,7 @@ void ap_free_sta_pasn(struct hostapd_data *hapd, struct sta_info *sta)
+ 		sta->pasn->fils.erp_resp = NULL;
+ #endif /* CONFIG_FILS */
+ 
+-		bin_clear_free(sta->pasn, sizeof(*sta->pasn));
++		pasn_data_deinit(sta->pasn);
+ 		sta->pasn = NULL;
+ 	}
+ }
+diff --git a/src/pasn/pasn_common.c b/src/pasn/pasn_common.c
+new file mode 100644
+index 000000000..e2c668136
+--- /dev/null
++++ b/src/pasn/pasn_common.c
+@@ -0,0 +1,232 @@
++/*
++ * PASN common processing
++ *
++ * Copyright (C) 2024, Qualcomm Innovation Center, Inc.
++ *
++ * This software may be distributed under the terms of the BSD license.
++ * See README for more details.
++ */
++
++#include "utils/includes.h"
++
++#include "utils/common.h"
++#include "common/wpa_common.h"
++#include "common/sae.h"
++#include "crypto/sha384.h"
++#include "crypto/crypto.h"
++#include "common/ieee802_11_defs.h"
++#include "pasn_common.h"
++
++
++struct pasn_data * pasn_data_init(void)
++{
++	struct pasn_data *pasn = os_zalloc(sizeof(struct pasn_data));
++
++	return pasn;
++}
++
++
++void pasn_data_deinit(struct pasn_data *pasn)
++{
++	bin_clear_free(pasn, sizeof(struct pasn_data));
++}
++
++
++void pasn_register_callbacks(struct pasn_data *pasn, void *cb_ctx,
++			     int (*send_mgmt)(void *ctx, const u8 *data,
++					      size_t data_len, int noack,
++					      unsigned int freq,
++					      unsigned int wait),
++			     int (*validate_custom_pmkid)(void *ctx,
++							  const u8 *addr,
++							  const u8 *pmkid))
++{
++	if (!pasn)
++		return;
++
++	pasn->cb_ctx = cb_ctx;
++	pasn->send_mgmt = send_mgmt;
++	pasn->validate_custom_pmkid = validate_custom_pmkid;
++}
++
++
++void pasn_enable_kdk_derivation(struct pasn_data *pasn)
++{
++	if (!pasn)
++		return;
++	pasn->derive_kdk = true;
++	pasn->kdk_len = WPA_KDK_MAX_LEN;
++}
++
++
++void pasn_disable_kdk_derivation(struct pasn_data *pasn)
++{
++	if (!pasn)
++		return;
++	pasn->derive_kdk = false;
++	pasn->kdk_len = 0;
++}
++
++
++void pasn_set_akmp(struct pasn_data *pasn, int akmp)
++{
++	if (!pasn)
++		return;
++	pasn->akmp = akmp;
++}
++
++
++void pasn_set_cipher(struct pasn_data *pasn, int cipher)
++{
++	if (!pasn)
++		return;
++	pasn->cipher = cipher;
++}
++
++
++void pasn_set_own_addr(struct pasn_data *pasn, const u8 *addr)
++{
++	if (!pasn || !addr)
++		return;
++	os_memcpy(pasn->own_addr, addr, ETH_ALEN);
++}
++
++
++void pasn_set_peer_addr(struct pasn_data *pasn, const u8 *addr)
++{
++	if (!pasn || !addr)
++		return;
++	os_memcpy(pasn->peer_addr, addr, ETH_ALEN);
++}
++
++
++void pasn_set_bssid(struct pasn_data *pasn, const u8 *addr)
++{
++	if (!pasn || !addr)
++		return;
++	os_memcpy(pasn->bssid, addr, ETH_ALEN);
++}
++
++
++int pasn_set_pt(struct pasn_data *pasn, struct sae_pt *pt)
++{
++	if (!pasn)
++		return -1;
++#ifdef CONFIG_SAE
++	pasn->pt = pt;
++	return 0;
++#else /* CONFIG_SAE */
++	return -1;
++#endif /* CONFIG_SAE */
++}
++
++
++void pasn_set_password(struct pasn_data *pasn, const char *password)
++{
++	if (!pasn)
++		return;
++	pasn->password = password;
++}
++
++
++void pasn_set_wpa_key_mgmt(struct pasn_data *pasn, int key_mgmt)
++{
++	if (!pasn)
++		return;
++	pasn->wpa_key_mgmt = key_mgmt;
++}
++
++
++void pasn_set_rsn_pairwise(struct pasn_data *pasn, int rsn_pairwise)
++{
++	if (!pasn)
++		return;
++	pasn->rsn_pairwise = rsn_pairwise;
++}
++
++
++void pasn_set_rsnxe_caps(struct pasn_data *pasn, u16 rsnxe_capab)
++{
++	if (!pasn)
++		return;
++	pasn->rsnxe_capab = rsnxe_capab;
++}
++
++
++void pasn_set_rsnxe_ie(struct pasn_data *pasn, const u8 *rsnxe_ie)
++{
++	if (!pasn || !rsnxe_ie)
++		return;
++	pasn->rsnxe_ie = rsnxe_ie;
++}
++
++
++void pasn_set_custom_pmkid(struct pasn_data *pasn, const u8 *pmkid)
++{
++	if (!pasn || !pmkid)
++		return;
++	os_memcpy(pasn->custom_pmkid, pmkid, PMKID_LEN);
++	pasn->custom_pmkid_valid = true;
++}
++
++
++int pasn_set_extra_ies(struct pasn_data *pasn, const u8 *extra_ies,
++		       size_t extra_ies_len)
++{
++	if (!pasn || !extra_ies_len || !extra_ies)
++		return -1;
++
++	if (pasn->extra_ies) {
++		os_free((u8 *) pasn->extra_ies);
++		pasn->extra_ies_len = extra_ies_len;
++	}
++
++	pasn->extra_ies = os_memdup(extra_ies, extra_ies_len);
++	if (!pasn->extra_ies) {
++		wpa_printf(MSG_ERROR,
++			   "PASN: Extra IEs memory allocation failed");
++		return -1;
++	}
++	pasn->extra_ies_len = extra_ies_len;
++	return 0;
++}
++
++
++int pasn_get_akmp(struct pasn_data *pasn)
++{
++	if (!pasn)
++		return 0;
++	return pasn->akmp;
++}
++
++
++int pasn_get_cipher(struct pasn_data *pasn)
++{
++	if (!pasn)
++		return 0;
++	return pasn->cipher;
++}
++
++
++size_t pasn_get_pmk_len(struct pasn_data *pasn)
++{
++	if (!pasn)
++		return 0;
++	return pasn->pmk_len;
++}
++
++
++u8 * pasn_get_pmk(struct pasn_data *pasn)
++{
++	if (!pasn)
++		return NULL;
++	return pasn->pmk;
++}
++
++
++struct wpa_ptk * pasn_get_ptk(struct pasn_data *pasn)
++{
++	if (!pasn)
++		return NULL;
++	return &pasn->ptk;
++}
+diff --git a/src/pasn/pasn_common.h b/src/pasn/pasn_common.h
+index a4850a284..36710c2b7 100644
+--- a/src/pasn/pasn_common.h
++++ b/src/pasn/pasn_common.h
+@@ -16,8 +16,6 @@
+ extern "C" {
+ #endif
+ 
+-#ifdef CONFIG_PASN
+-
+ enum pasn_fils_state {
+ 	PASN_FILS_STATE_NONE = 0,
+ 	PASN_FILS_STATE_PENDING_AS,
+@@ -35,19 +33,46 @@ struct pasn_fils {
+ };
+ 
+ struct pasn_data {
++	/* External modules access below variables using setter and getter
++	 * functions */
+ 	int akmp;
+ 	int cipher;
++	u8 own_addr[ETH_ALEN];
++	u8 peer_addr[ETH_ALEN];
++	u8 bssid[ETH_ALEN];
++	struct rsn_pmksa_cache *pmksa;
++	bool derive_kdk;
++	size_t kdk_len;
++	void *cb_ctx;
++
++#ifdef CONFIG_SAE
++	struct sae_pt *pt;
++#endif /* CONFIG_SAE */
++
++	/* Responder */
++	const char *password;
++	int wpa_key_mgmt;
++	int rsn_pairwise;
++	u16 rsnxe_capab;
++	const u8 *rsnxe_ie;
++	bool custom_pmkid_valid;
++	u8 custom_pmkid[PMKID_LEN];
++
++	/*
++	 * Extra elements to add into Authentication frames. These can be used,
++	 * e.g., for Wi-Fi Aware use cases.
++	 */
++	const u8 *extra_ies;
++	size_t extra_ies_len;
++
++	/* External modules do not access below variables */
+ 	u16 group;
+ 	bool secure_ltf;
+ 	int freq;
+-	size_t kdk_len;
+ 
+ 	u8 trans_seq;
+ 	u8 status;
+ 
+-	u8 own_addr[ETH_ALEN];
+-	u8 peer_addr[ETH_ALEN];
+-	u8 bssid[ETH_ALEN];
+ 	size_t pmk_len;
+ 	u8 pmk[PMK_LEN_MAX];
+ 	bool using_pmksa;
+@@ -63,7 +88,6 @@ struct pasn_data {
+ 
+ #ifdef CONFIG_SAE
+ 	struct sae_data sae;
+-	struct sae_pt *pt;
+ #endif /* CONFIG_SAE */
+ 
+ #ifdef CONFIG_FILS
+@@ -81,15 +105,12 @@ struct pasn_data {
+ 	 * differently for the PASN initiator (using RSN Supplicant
+ 	 * implementation) and PASN responser (using RSN Authenticator
+ 	 * implementation). Functions cannot be mixed between those cases. */
+-	struct rsn_pmksa_cache *pmksa;
+ 	struct rsn_pmksa_cache_entry *pmksa_entry;
+ 	struct eapol_sm *eapol;
+ 	int fast_reauth;
+ #ifdef CONFIG_TESTING_OPTIONS
+ 	int corrupt_mic;
+ #endif /* CONFIG_TESTING_OPTIONS */
+-	void *cb_ctx;
+-	u16 rsnxe_capab;
+ 	int network_id;
+ 
+ 	u8 wrapped_data_format;
+@@ -97,16 +118,11 @@ struct pasn_data {
+ 
+ 	/* Responder */
+ 	bool noauth; /* Whether PASN without mutual authentication is enabled */
+-	int wpa_key_mgmt;
+-	int rsn_pairwise;
+-	bool derive_kdk;
+-	const char *password;
+ 	int disable_pmksa_caching;
+ 	int *pasn_groups;
+ 	struct wpabuf *wrapped_data;
+ 	int use_anti_clogging;
+ 	const u8 *rsn_ie;
+-	const u8 *rsnxe_ie;
+ 	size_t rsn_ie_len;
+ 
+ 	u8 *comeback_key;
+@@ -114,16 +130,6 @@ struct pasn_data {
+ 	u16 comeback_idx;
+ 	u16 *comeback_pending_idx;
+ 
+-	bool custom_pmkid_valid;
+-	u8 custom_pmkid[PMKID_LEN];
+-
+-	/**
+-	 * Extra elements to add into Authentication frames. These can be used,
+-	 * e.g., for Wi-Fi Aware use cases.
+-	 */
+-	const u8 *extra_ies;
+-	size_t extra_ies_len;
+-
+ 	/**
+ 	 * send_mgmt - Function handler to transmit a Management frame
+ 	 * @ctx: Callback context from cb_ctx
+@@ -147,7 +153,6 @@ struct pasn_data {
+ };
+ 
+ /* Initiator */
+-
+ void wpa_pasn_reset(struct pasn_data *pasn);
+ int wpas_pasn_start(struct pasn_data *pasn, const u8 *own_addr,
+ 		    const u8 *peer_addr, const u8 *bssid,
+@@ -177,7 +182,45 @@ int handle_auth_pasn_resp(struct pasn_data *pasn, const u8 *own_addr,
+ 			  const u8 *peer_addr,
+ 			  struct rsn_pmksa_cache_entry *pmksa, u16 status);
+ 
+-#endif /* CONFIG_PASN */
++struct pasn_data * pasn_data_init(void);
++void pasn_data_deinit(struct pasn_data *pasn);
++void pasn_register_callbacks(struct pasn_data *pasn, void *cb_ctx,
++			     int (*send_mgmt)(void *ctx, const u8 *data,
++					      size_t data_len, int noack,
++					      unsigned int freq,
++					      unsigned int wait),
++			     int (*validate_custom_pmkid)(void *ctx,
++							  const u8 *addr,
++							  const u8 *pmkid));
++void pasn_enable_kdk_derivation(struct pasn_data *pasn);
++void pasn_disable_kdk_derivation(struct pasn_data *pasn);
++
++void pasn_set_akmp(struct pasn_data *pasn, int akmp);
++void pasn_set_cipher(struct pasn_data *pasn, int cipher);
++void pasn_set_own_addr(struct pasn_data *pasn, const u8 *addr);
++void pasn_set_peer_addr(struct pasn_data *pasn, const u8 *addr);
++void pasn_set_bssid(struct pasn_data *pasn, const u8 *addr);
++void pasn_set_initiator_pmksa(struct pasn_data *pasn,
++			      struct rsn_pmksa_cache *pmksa);
++void pasn_set_responder_pmksa(struct pasn_data *pasn,
++			      struct rsn_pmksa_cache *pmksa);
++int pasn_set_pt(struct pasn_data *pasn, struct sae_pt *pt);
++
++/* Responder */
++void pasn_set_password(struct pasn_data *pasn, const char *password);
++void pasn_set_wpa_key_mgmt(struct pasn_data *pasn, int key_mgmt);
++void pasn_set_rsn_pairwise(struct pasn_data *pasn, int rsn_pairwise);
++void pasn_set_rsnxe_caps(struct pasn_data *pasn, u16 rsnxe_capab);
++void pasn_set_rsnxe_ie(struct pasn_data *pasn, const u8 *rsnxe_ie);
++void pasn_set_custom_pmkid(struct pasn_data *pasn, const u8 *pmkid);
++int pasn_set_extra_ies(struct pasn_data *pasn, const u8 *extra_ies,
++		       size_t extra_ies_len);
++
++int pasn_get_akmp(struct pasn_data *pasn);
++int pasn_get_cipher(struct pasn_data *pasn);
++size_t pasn_get_pmk_len(struct pasn_data *pasn);
++u8 * pasn_get_pmk(struct pasn_data *pasn);
++struct wpa_ptk * pasn_get_ptk(struct pasn_data *pasn);
+ 
+ #ifdef __cplusplus
+ }
+diff --git a/src/pasn/pasn_initiator.c b/src/pasn/pasn_initiator.c
+index 35c620605..d273067b7 100644
+--- a/src/pasn/pasn_initiator.c
++++ b/src/pasn/pasn_initiator.c
+@@ -26,6 +26,14 @@
+ #include "pasn_common.h"
+ 
+ 
++void pasn_set_initiator_pmksa(struct pasn_data *pasn,
++			      struct rsn_pmksa_cache *pmksa)
++{
++	if (pasn)
++		pasn->pmksa = pmksa;
++}
++
++
+ #ifdef CONFIG_SAE
+ 
+ static struct wpabuf * wpas_pasn_wd_sae_commit(struct pasn_data *pasn)
+@@ -741,6 +749,11 @@ void wpa_pasn_reset(struct pasn_data *pasn)
+ 	pasn->rsn_ie_len = 0;
+ 	pasn->rsnxe_ie = NULL;
+ 	pasn->custom_pmkid_valid = false;
++
++	if (pasn->extra_ies) {
++		os_free((u8 *) pasn->extra_ies);
++		pasn->extra_ies = NULL;
++	}
+ }
+ 
+ 
+diff --git a/src/pasn/pasn_responder.c b/src/pasn/pasn_responder.c
+index 7501e7a56..b99136492 100644
+--- a/src/pasn/pasn_responder.c
++++ b/src/pasn/pasn_responder.c
+@@ -25,6 +25,15 @@
+ #include "ap/pmksa_cache_auth.h"
+ #include "pasn_common.h"
+ 
++
++void pasn_set_responder_pmksa(struct pasn_data *pasn,
++			      struct rsn_pmksa_cache *pmksa)
++{
++	if (pasn)
++		pasn->pmksa = pmksa;
++}
++
++
+ #ifdef CONFIG_PASN
+ #ifdef CONFIG_SAE
+ 
+diff --git a/wpa_supplicant/Android.mk b/wpa_supplicant/Android.mk
+index 15bea394f..3aadcb2bb 100644
+--- a/wpa_supplicant/Android.mk
++++ b/wpa_supplicant/Android.mk
+@@ -391,6 +391,7 @@ NEED_HMAC_SHA384_KDF=y
+ NEED_SHA256=y
+ NEED_SHA384=y
+ OBJS += src/pasn/pasn_initiator.c
++OBJS += src/pasn/pasn_common.c
+ OBJS += pasn_supplicant.c
+ endif
+ 
+@@ -1890,6 +1891,7 @@ endif
+ 
+ PASNOBJS += src/pasn/pasn_initiator.c
+ PASNOBJS += src/pasn/pasn_responder.c
++PASNOBJS += src/pasn/pasn_common.c
+ 
+ ########################
+ 
+diff --git a/wpa_supplicant/Makefile b/wpa_supplicant/Makefile
+index 0ec08e8cf..743c8acd6 100644
+--- a/wpa_supplicant/Makefile
++++ b/wpa_supplicant/Makefile
+@@ -433,6 +433,7 @@ NEED_HMAC_SHA384_KDF=y
+ NEED_SHA256=y
+ NEED_SHA384=y
+ OBJS += ../src/pasn/pasn_initiator.o
++OBJS += ../src/pasn/pasn_common.o
+ OBJS += pasn_supplicant.o
+ endif
+ 
+@@ -2319,6 +2320,7 @@ endif
+ 
+ LIBPASNSO += ../src/pasn/pasn_initiator.c
+ LIBPASNSO += ../src/pasn/pasn_responder.c
++LIBPASNSO += ../src/pasn/pasn_common.c
+ 
+ libpasn.so: $(LIBPASNSO)
+ 	@$(E) "  CC  $@ ($^)"
+diff --git a/wpa_supplicant/pasn_supplicant.c b/wpa_supplicant/pasn_supplicant.c
+index 3da9c7462..1bb38f73d 100644
+--- a/wpa_supplicant/pasn_supplicant.c
++++ b/wpa_supplicant/pasn_supplicant.c
+@@ -560,9 +560,10 @@ static void wpas_pasn_auth_start_cb(struct wpa_radio_work *work, int deinit)
+ 		derive_kdk = wpa_s->conf->force_kdk_derivation;
+ #endif /* CONFIG_TESTING_OPTIONS */
+ 	if (derive_kdk)
+-		pasn->kdk_len = WPA_KDK_MAX_LEN;
++		pasn_enable_kdk_derivation(pasn);
+ 	else
+-		pasn->kdk_len = 0;
++		pasn_disable_kdk_derivation(pasn);
++
+ 	wpa_printf(MSG_DEBUG, "PASN: kdk_len=%zu", pasn->kdk_len);
+ 
+ 	if ((wpa_s->drv_flags2 & WPA_DRIVER_FLAGS2_SEC_LTF_STA) &&
+@@ -582,9 +583,8 @@ static void wpas_pasn_auth_start_cb(struct wpa_radio_work *work, int deinit)
+ 		capab |= BIT(WLAN_RSNX_CAPAB_SECURE_RTT);
+ 	if (wpa_s->drv_flags2 & WPA_DRIVER_FLAGS2_PROT_RANGE_NEG_STA)
+ 		capab |= BIT(WLAN_RSNX_CAPAB_URNM_MFPR);
+-	pasn->rsnxe_capab = capab;
+-	pasn->send_mgmt = wpas_pasn_send_mlme;
+-
++	pasn_set_rsnxe_caps(pasn, capab);
++	pasn_register_callbacks(pasn, wpa_s, wpas_pasn_send_mlme, NULL);
+ 	ssid = wpa_config_get_network(wpa_s->conf, awork->network_id);
+ 
+ #ifdef CONFIG_SAE
+@@ -594,7 +594,7 @@ static void wpas_pasn_auth_start_cb(struct wpa_radio_work *work, int deinit)
+ 				   "PASN: No network profile found for SAE");
+ 			goto fail;
+ 		}
+-		pasn->pt = wpas_pasn_sae_derive_pt(ssid, awork->group);
++		pasn_set_pt(pasn, wpas_pasn_sae_derive_pt(ssid, awork->group));
+ 		if (!pasn->pt) {
+ 			wpa_printf(MSG_DEBUG, "PASN: Failed to derive PT");
+ 			goto fail;
+@@ -629,8 +629,7 @@ static void wpas_pasn_auth_start_cb(struct wpa_radio_work *work, int deinit)
+ 	}
+ #endif /* CONFIG_FILS */
+ 
+-	pasn->cb_ctx = wpa_s;
+-	pasn->pmksa = wpa_sm_get_pmksa_cache(wpa_s->wpa);
++	pasn_set_initiator_pmksa(pasn, wpa_sm_get_pmksa_cache(wpa_s->wpa));
+ 
+ 	if (wpa_key_mgmt_ft(awork->akmp)) {
+ #ifdef CONFIG_IEEE80211R
+@@ -753,7 +752,8 @@ void wpas_pasn_auth_stop(struct wpa_supplicant *wpa_s)
+ 
+ 	wpa_printf(MSG_DEBUG, "PASN: Stopping authentication");
+ 
+-	wpas_pasn_auth_status(wpa_s, pasn->peer_addr, pasn->akmp, pasn->cipher,
++	wpas_pasn_auth_status(wpa_s, pasn->peer_addr, pasn_get_akmp(pasn),
++			      pasn_get_cipher(pasn),
+ 			      pasn->status, pasn->comeback,
+ 			      pasn->comeback_after);
+ 
+@@ -765,8 +765,8 @@ static int wpas_pasn_immediate_retry(struct wpa_supplicant *wpa_s,
+ 				     struct pasn_data *pasn,
+ 				     struct wpa_pasn_params_data *params)
+ {
+-	int akmp = pasn->akmp;
+-	int cipher = pasn->cipher;
++	int akmp = pasn_get_akmp(pasn);
++	int cipher = pasn_get_cipher(pasn);
+ 	u16 group = pasn->group;
+ 	u8 own_addr[ETH_ALEN];
+ 	u8 peer_addr[ETH_ALEN];
+@@ -806,20 +806,22 @@ int wpas_pasn_auth_rx(struct wpa_supplicant *wpa_s,
+ 	if (!wpa_s->pasn_auth_work)
+ 		return -2;
+ 
+-	pasn->cb_ctx = wpa_s;
++	pasn_register_callbacks(pasn, wpa_s, wpas_pasn_send_mlme, NULL);
+ 	ret = wpa_pasn_auth_rx(pasn, (const u8 *) mgmt, len, &pasn_data);
+ 	if (ret == 0) {
+ 		ptksa_cache_add(wpa_s->ptksa, pasn->own_addr, pasn->peer_addr,
+-				pasn->cipher, dot11RSNAConfigPMKLifetime,
+-				&pasn->ptk,
++				pasn_get_cipher(pasn),
++				dot11RSNAConfigPMKLifetime,
++				pasn_get_ptk(pasn),
+ 				wpa_s->pasn_params ? wpas_pasn_deauth_cb : NULL,
+-				wpa_s->pasn_params ? wpa_s : NULL, pasn->akmp);
++				wpa_s->pasn_params ? wpa_s : NULL,
++				pasn_get_akmp(pasn));
+ 
+ 		if (pasn->pmksa_entry)
+ 			wpa_sm_set_cur_pmksa(wpa_s->wpa, pasn->pmksa_entry);
+ 	}
+ 
+-	forced_memzero(&pasn->ptk, sizeof(pasn->ptk));
++	forced_memzero(pasn_get_ptk(pasn), sizeof(pasn->ptk));
+ 
+ 	if (ret == -1) {
+ 		wpas_pasn_auth_stop(wpa_s);
+@@ -909,7 +911,8 @@ int wpas_pasn_auth_tx_status(struct wpa_supplicant *wpa_s,
+ 	}
+ 
+ 	wpas_pasn_set_keys_from_cache(wpa_s, pasn->own_addr, pasn->peer_addr,
+-				      pasn->cipher, pasn->akmp);
++				      pasn_get_cipher(pasn),
++				      pasn_get_akmp(pasn));
+ 	wpas_pasn_auth_stop(wpa_s);
+ 	wpas_pasn_auth_work_done(wpa_s, PASN_STATUS_SUCCESS);
+ 
+-- 
+2.43.0
+

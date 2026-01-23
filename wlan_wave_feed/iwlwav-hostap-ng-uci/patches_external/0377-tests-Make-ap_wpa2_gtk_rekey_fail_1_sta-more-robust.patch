@@ -1,0 +1,33 @@
+From 88a0ab87a2f25fc762cf92f68a040a506b4fc4d2 Mon Sep 17 00:00:00 2001
+From: Jouni Malinen <quic_jouni@quicinc.com>
+Date: Thu, 29 Feb 2024 11:55:31 +0200
+Subject: [PATCH] tests: Make ap_wpa2_gtk_rekey_fail_1_sta more robust
+
+Slight differences in timing might make the final data connectivity
+check fail, so disable the incorrect behavior first and wait for a
+successfully completed GTK rekeying at the end before the final test.
+
+Signed-off-by: Jouni Malinen <quic_jouni@quicinc.com>
+---
+ tests/hwsim/test_ap_psk.py | 4 ++++
+ 1 file changed, 4 insertions(+)
+
+diff --git a/tests/hwsim/test_ap_psk.py b/tests/hwsim/test_ap_psk.py
+index 52fab8f02..157b863d7 100644
+--- a/tests/hwsim/test_ap_psk.py
++++ b/tests/hwsim/test_ap_psk.py
+@@ -579,7 +579,11 @@ def test_ap_wpa2_gtk_rekey_fail_1_sta(dev, apdev):
+             raise Exception("Unexpected disconnection [%d]" % i)
+         hwsim_utils.test_connectivity(dev[i], hapd)
+ 
++    dev[1].set("disable_eapol_g2_tx", "0")
+     dev[1].wait_connected()
++    ev = dev[1].wait_event(["RSN: Group rekeying completed"], timeout=10)
++    if ev is None:
++        raise Exception("GTK rekey timed out [1b]")
+     hwsim_utils.test_connectivity(dev[1], hapd)
+ 
+ @remote_compatible
+-- 
+2.43.0
+

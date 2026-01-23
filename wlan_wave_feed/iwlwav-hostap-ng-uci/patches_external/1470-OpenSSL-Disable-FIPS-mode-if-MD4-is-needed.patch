@@ -1,0 +1,60 @@
+From 573e9c1bbc92f7fac413e74a6ba8f9c5ebd0f327 Mon Sep 17 00:00:00 2001
+From: Jouni Malinen <j@w1.fi>
+Date: Sat, 1 Mar 2025 20:19:38 +0200
+Subject: [PATCH] OpenSSL: Disable FIPS mode if MD4 is needed
+
+It is possible for a systemwide configuration to enforce use of FIPS
+mode in OpenSSL and that would break various commonly used crypto
+operations in Wi-Fi related protocols. Disable OpenSSL FIPS mode
+automatically in builds that do not define CONFIG_FIPS=y to avoid this.
+
+Signed-off-by: Jouni Malinen <j@w1.fi>
+---
+ src/crypto/crypto_openssl.c | 24 ++++++++++++++++++++++++
+ 1 file changed, 24 insertions(+)
+
+diff --git a/src/crypto/crypto_openssl.c b/src/crypto/crypto_openssl.c
+index 600c1a82e..e79fd6e83 100644
+--- a/src/crypto/crypto_openssl.c
++++ b/src/crypto/crypto_openssl.c
+@@ -186,6 +186,29 @@ static int EC_GROUP_get_curve(const EC_GROUP *group, BIGNUM *p, BIGNUM *a,
+ #endif /* OpenSSL version < 1.1.1 */
+ 
+ 
++static void openssl_disable_fips(void)
++{
++#ifndef CONFIG_FIPS
++#if OPENSSL_VERSION_NUMBER >= 0x30000000L
++	static bool done = false;
++
++	if (done)
++		return;
++	done = true;
++
++	if (!EVP_default_properties_is_fips_enabled(NULL))
++		return; /* FIPS mode is not enabled */
++
++	if (!EVP_default_properties_enable_fips(NULL, 0))
++		wpa_printf(MSG_INFO,
++			   "OpenSSL: Failed to disable FIPS mode");
++	else
++		wpa_printf(MSG_DEBUG,
++			   "OpenSSL: Disabled FIPS mode to enable non-FIPS-compliant algorithms and parameters");
++#endif /* OpenSSL version >= 3.0 */
++#endif /* !CONFIG_FIPS */
++}
++
+ #if OPENSSL_VERSION_NUMBER >= 0x30000000L
+ static OSSL_PROVIDER *openssl_legacy_provider = NULL;
+ #endif /* OpenSSL version >= 3.0 */
+@@ -321,6 +344,7 @@ static int openssl_digest_vector(const EVP_MD *type, size_t num_elem,
+ 
+ int md4_vector(size_t num_elem, const u8 *addr[], const size_t *len, u8 *mac)
+ {
++	openssl_disable_fips();
+ 	openssl_load_legacy_provider();
+ 	return openssl_digest_vector(EVP_md4(), num_elem, addr, len, mac);
+ }
+-- 
+2.43.0
+

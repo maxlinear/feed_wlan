@@ -1,0 +1,65 @@
+From 7a47756373dd9c70817204d4e996bd6b3b454a22 Mon Sep 17 00:00:00 2001
+From: Benjamin Berg <benjamin.berg@intel.com>
+Date: Mon, 25 Dec 2023 12:20:59 +0200
+Subject: [PATCH] tests: Explicitly set address to bind to
+
+pyrad internally uses socket.getaddrinfo. While it is documented that
+one can pass an empty string to bind to all interfaces. The underlying
+function expects None instead though, breaking the call.
+
+Either way, it does not hurt to set the bind address to 127.0.0.1
+explicitly, so do so to avoid issues.
+
+Signed-off-by: Benjamin Berg <benjamin.berg@intel.com>
+---
+ tests/hwsim/test_eap_proto.py | 2 +-
+ tests/hwsim/test_radius.py    | 6 +++---
+ 2 files changed, 4 insertions(+), 4 deletions(-)
+
+diff --git a/tests/hwsim/test_eap_proto.py b/tests/hwsim/test_eap_proto.py
+index a1270ac3c..e12548171 100644
+--- a/tests/hwsim/test_eap_proto.py
++++ b/tests/hwsim/test_eap_proto.py
+@@ -160,7 +160,7 @@ def start_radius_server(eap_handler):
+     srv.hosts["127.0.0.1"] = pyrad.server.RemoteHost("127.0.0.1",
+                                                      b"radius",
+                                                      "localhost")
+-    srv.BindToAddress("")
++    srv.BindToAddress("127.0.0.1")
+     t_stop = threading.Event()
+     t = threading.Thread(target=run_pyrad_server, args=(srv, t_stop, eap_handler))
+     t.start()
+diff --git a/tests/hwsim/test_radius.py b/tests/hwsim/test_radius.py
+index 5f1f4f175..224bff177 100644
+--- a/tests/hwsim/test_radius.py
++++ b/tests/hwsim/test_radius.py
+@@ -1132,7 +1132,7 @@ def test_radius_protocol(dev, apdev):
+     srv.hosts["127.0.0.1"] = pyrad.server.RemoteHost("127.0.0.1",
+                                                      b"radius",
+                                                      "localhost")
+-    srv.BindToAddress("")
++    srv.BindToAddress("127.0.0.1")
+     t_events = {}
+     t_events['stop'] = threading.Event()
+     t_events['msg_auth'] = threading.Event()
+@@ -1249,7 +1249,7 @@ def start_radius_psk_server(psk, invalid_code=False, acct_interim_interval=0,
+     srv.hosts["127.0.0.1"] = pyrad.server.RemoteHost("127.0.0.1",
+                                                      b"radius",
+                                                      "localhost")
+-    srv.BindToAddress("")
++    srv.BindToAddress("127.0.0.1")
+     t_events = {}
+     t_events['stop'] = threading.Event()
+     t_events['psk'] = psk
+@@ -1595,7 +1595,7 @@ def test_ap_vlan_wpa2_psk_radius_required(dev, apdev):
+     srv.hosts["127.0.0.1"] = pyrad.server.RemoteHost("127.0.0.1",
+                                                      b"radius",
+                                                      "localhost")
+-    srv.BindToAddress("")
++    srv.BindToAddress("127.0.0.1")
+     t_events = {}
+     t_events['stop'] = threading.Event()
+     t_events['long'] = threading.Event()
+-- 
+2.43.0
+

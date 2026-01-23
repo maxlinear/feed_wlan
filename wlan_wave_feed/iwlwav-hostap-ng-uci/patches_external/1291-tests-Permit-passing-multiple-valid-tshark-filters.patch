@@ -1,0 +1,78 @@
+From cc35ed3e257ad57daa8353293e4803d708c870ea Mon Sep 17 00:00:00 2001
+From: Benjamin Berg <benjamin.berg@intel.com>
+Date: Mon, 6 Jan 2025 17:31:28 +0200
+Subject: [PATCH] tests: Permit passing multiple valid tshark filters
+
+It is useful to support different versions of tshark which may have
+updated disectors. In that case, there may be no filter that works with
+all version of tshark.
+
+Permit passing multiple filters which will be tried in-order. This
+allows first trying the filter for the newer version and then falling
+back to an older filter in order to support different tshark versions.
+
+Signed-off-by: Benjamin Berg <benjamin.berg@intel.com>
+---
+ tests/hwsim/tshark.py | 43 +++++++++++++++++++++++++++++--------------
+ 1 file changed, 29 insertions(+), 14 deletions(-)
+
+diff --git a/tests/hwsim/tshark.py b/tests/hwsim/tshark.py
+index 32cdf4701..73e54b6df 100644
+--- a/tests/hwsim/tshark.py
++++ b/tests/hwsim/tshark.py
+@@ -87,23 +87,38 @@ def _run_tshark(filename, filter, display=None, wait=True):
+                     continue
+             raise UnknownFieldsException(fields)
+ 
++    if res != 0:
++        raise AssertionError('tshark reported an error: ' + out1)
++
+     return out
+ 
+-def run_tshark(filename, filter, display=None, wait=True):
++def run_tshark(filename, filters, display=None, wait=True):
+     if display is None: display = []
+-    try:
+-        return _run_tshark(filename, filter.replace('wlan_mgt', 'wlan'),
+-                           [x.replace('wlan_mgt', 'wlan') for x in display],
+-                           wait)
+-    except UnknownFieldsException as e:
+-        all_wlan_mgt = True
+-        for f in e.fields:
+-            if not f.startswith('wlan_mgt.'):
+-                all_wlan_mgt = False
+-                break
+-        if not all_wlan_mgt:
+-            raise
+-        return _run_tshark(filename, filter, display, wait)
++
++    if not isinstance(filters, list) and not isinstance(filters, tuple):
++        filters = [filters]
++
++    last_exception = None
++    for filter in filters:
++        try:
++            return _run_tshark(filename, filter.replace('wlan_mgt', 'wlan'),
++                               [x.replace('wlan_mgt', 'wlan') for x in display],
++                               wait)
++        except UnknownFieldsException as e:
++            all_wlan_mgt = True
++            for f in e.fields:
++                if not f.startswith('wlan_mgt.'):
++                    all_wlan_mgt = False
++                    break
++            if not all_wlan_mgt:
++                raise
++            return _run_tshark(filename, filter, display, wait)
++
++        except AssertionError as e:
++            # Catch the error (and try the next provided filter)
++            last_exception = e
++
++    raise last_exception
+ 
+ def run_tshark_json(filename, filter):
+     arg = ["tshark", "-r", filename,
+-- 
+2.43.0
+

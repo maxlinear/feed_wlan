@@ -1,0 +1,92 @@
+From 25876e936c62ccc911403e4347fb47652c54f1c8 Mon Sep 17 00:00:00 2001
+From: Shailendra Singh <quic_shasing@quicinc.com>
+Date: Thu, 6 Feb 2025 17:09:25 +0530
+Subject: [PATCH] Define a QCA vendor subcmd to set periodic probe response
+ config
+
+Define a QCA vendor subcmd to send periodic or on-demand
+directed Probe Response frames to a connected peer.
+This config command will include attributes as per enum
+qca_wlan_vendor_attr_periodic_probe_rsp_cfg.
+Attribute list includes:
+QCA_WLAN_VENDOR_ATTR_PROBE_RESP_CFG_PEER_MAC_ADDR
+QCA_WLAN_VENDOR_ATTR_PROBE_RESP_CFG_PERIOD
+QCA_WLAN_VENDOR_ATTR_PROBE_RESP_CFG_COUNT
+
+Signed-off-by: Shailendra Singh <quic_shasing@quicinc.com>
+---
+ src/common/qca-vendor.h | 46 +++++++++++++++++++++++++++++++++++++++++
+ 1 file changed, 46 insertions(+)
+
+diff --git a/src/common/qca-vendor.h b/src/common/qca-vendor.h
+index 13d41f101..29d746838 100644
+--- a/src/common/qca-vendor.h
++++ b/src/common/qca-vendor.h
+@@ -1337,6 +1337,15 @@ enum qca_radiotap_vendor_ids {
+  *	@QCA_WLAN_VENDOR_ATTR_PRI_LINK_MIGR_CURRENT_PRI_LINK_ID are mutually
+  *	exclusive attributes. Migration should be requested for either one ML
+  *	client or a bunch of ML clients.
++ *
++ * @QCA_NL80211_VENDOR_SUBCMD_PERIODIC_PROBE_RSP_CFG: Vendor subcommand that
++ *	can be used to send periodic or on-demand directed Probe Response frames
++ *	to a connected peer.
++ *
++ *	This command is only applicable for AP/P2P GO mode.
++ *
++ *	The attributes used with this command are defined in
++ * 	enum qca_wlan_vendor_attr_periodic_probe_rsp_cfg.
+  */
+ enum qca_nl80211_vendor_subcmds {
+ 	QCA_NL80211_VENDOR_SUBCMD_UNSPEC = 0,
+@@ -1577,6 +1586,7 @@ enum qca_nl80211_vendor_subcmds {
+ 	QCA_NL80211_VENDOR_SUBCMD_IDLE_SHUTDOWN = 254,
+ 	/* 255 - reserved for QCA */
+ 	QCA_NL80211_VENDOR_SUBCMD_PRI_LINK_MIGRATE = 256,
++	QCA_NL80211_VENDOR_SUBCMD_PERIODIC_PROBE_RSP_CFG = 257,
+ };
+ 
+ /* Compatibility defines for previously used subcmd names.
+@@ -19004,4 +19014,40 @@ enum qca_wlan_vendor_attr_btm_req_resp {
+ 	QCA_WLAN_VENDOR_ATTR_BTM_REQ_RESP_AFTER_LAST - 1
+ };
+ 
++/**
++ * enum qca_wlan_vendor_attr_periodic_probe_rsp_cfg: Attributes used
++ * by vendor subcmd QCA_NL80211_VENDOR_SUBCMD_PERIODIC_PROBE_RSP_CFG
++ *
++ * @QCA_WLAN_VENDOR_ATTR_PROBE_RESP_CFG_PEER_MAC_ADDR: Connected peer
++ * MAC address to which Probe Response frames are to be sent.
++ * Multicast/Broadcast addresses are not supported.
++ *
++ * @QCA_WLAN_VENDOR_ATTR_PROBE_RESP_CFG_PERIOD: 32-bit unsigned value.
++ * This attribute specifies the interval (in microseconds) in which directed
++ * Probe Response frames are sent periodically to the peer as specified in
++ * attribute QCA_WLAN_VENDOR_ATTR_PROBE_RESP_CFG_PEER_MAC_ADDR. When the peer
++ *is in power save, sending of the frames might be delayed until the device
++ * comes out of power save. Attribute value can be in the range of minimum value
++ * of 50000 and maximum value of 1500000.
++ *
++ * @QCA_WLAN_VENDOR_ATTR_PROBE_RESP_CFG_COUNT: 8-bit unsigned value.
++ * Specifies number of directed Probe Responses frames that can be sent as per
++ * interval defined in QCA_WLAN_VENDOR_ATTR_PROBE_RESP_CFG_PERIOD. When
++ * attribute value is 255, directed Probe Response frames are sent continuously
++ * until this attribute is sent as 0 in the command to disable period
++ * transmission. When the attribute value is 1, one directed Probe Response
++ * frame will be sent and the attribute
++ * QCA_WLAN_VENDOR_ATTR_PROBE_RESP_CFG_PERIOD will not be considered.
++ */
++enum qca_wlan_vendor_attr_periodic_probe_rsp_cfg {
++	QCA_WLAN_VENDOR_ATTR_PROBE_RSP_CFG_INVALID = 0,
++	QCA_WLAN_VENDOR_ATTR_PROBE_RSP_CFG_PEER_MAC_ADDR = 1,
++	QCA_WLAN_VENDOR_ATTR_PROBE_RSP_CFG_PERIOD = 2,
++	QCA_WLAN_VENDOR_ATTR_PROBE_RSP_CFG_COUNT = 3,
++
++	QCA_WLAN_VENDOR_ATTR_PROBE_RESP_CFG_AFTER_LAST,
++	QCA_WLAN_VENDOR_ATTR_PROBE_RESP_CFG_MAX =
++	QCA_WLAN_VENDOR_ATTR_PROBE_RESP_CFG_AFTER_LAST - 1,
++};
++
+ #endif /* QCA_VENDOR_H */
+-- 
+2.43.0
+

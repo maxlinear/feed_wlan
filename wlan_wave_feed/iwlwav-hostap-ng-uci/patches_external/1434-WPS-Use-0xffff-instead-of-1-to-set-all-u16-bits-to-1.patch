@@ -1,0 +1,28 @@
+From dc05cbc46eda46fbc72cfe50f97ef5d93e1e56de Mon Sep 17 00:00:00 2001
+From: Jouni Malinen <j@w1.fi>
+Date: Sun, 23 Feb 2025 16:34:53 +0200
+Subject: [PATCH] WPS: Use 0xffff instead of -1 to set all u16 bits to 1
+
+This avoids static analyzer warnings about overflowed constants.
+
+Signed-off-by: Jouni Malinen <j@w1.fi>
+---
+ src/wps/wps_upnp_ap.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/src/wps/wps_upnp_ap.c b/src/wps/wps_upnp_ap.c
+index b6c9478ff..573eb592f 100644
+--- a/src/wps/wps_upnp_ap.c
++++ b/src/wps/wps_upnp_ap.c
+@@ -51,7 +51,7 @@ int upnp_er_set_selected_registrar(struct wps_registrar *reg,
+ 		s->dev_password_id = attr.dev_password_id ?
+ 			WPA_GET_BE16(attr.dev_password_id) : DEV_PW_DEFAULT;
+ 		s->config_methods = attr.sel_reg_config_methods ?
+-			WPA_GET_BE16(attr.sel_reg_config_methods) : -1;
++			WPA_GET_BE16(attr.sel_reg_config_methods) : 0xffff;
+ 		if (attr.authorized_macs) {
+ 			int count = attr.authorized_macs_len / ETH_ALEN;
+ 			if (count > WPS_MAX_AUTHORIZED_MACS)
+-- 
+2.43.0
+

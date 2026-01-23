@@ -1,0 +1,36 @@
+From c54f4aab6fa2905261e141e7253b0dd764526d94 Mon Sep 17 00:00:00 2001
+From: Gururaj Pandurangi <quic_panduran@quicinc.com>
+Date: Mon, 6 Jan 2025 17:14:04 -0800
+Subject: [PATCH] Add QCA vendor attribute for triggered SU BF support
+
+Add vendor attribute for EHT testbed STA to configure the triggered
+single user beamforming feedback in the EHT capabilities of an
+Association Request frame.
+
+Signed-off-by: Jouni Malinen <quic_jouni@quicinc.com>
+---
+ src/common/qca-vendor.h | 8 ++++++++
+ 1 file changed, 8 insertions(+)
+
+diff --git a/src/common/qca-vendor.h b/src/common/qca-vendor.h
+index 6c80589c0..352203b87 100644
+--- a/src/common/qca-vendor.h
++++ b/src/common/qca-vendor.h
+@@ -10585,6 +10585,14 @@ enum qca_wlan_vendor_attr_wifi_test_config {
+ 	 */
+ 	QCA_WLAN_VENDOR_ATTR_WIFI_TEST_CONFIG_RSNE_ADD_RANDOM_PMKIDS = 75,
+ 
++	/* 8-bit unsigned value to configure Triggered SU Beamforming Feedback
++	 * support in the EHT capabilities of an Association Request frame.
++	 * 1-enable, 0-disable
++	 *
++	 * This attribute is used for testing purposes.
++	 */
++	QCA_WLAN_VENDOR_ATTR_WIFI_TEST_CONFIG_EHT_TRIG_SU_BFORMING_FEEDBACK = 76,
++
+ 	/* keep last */
+ 	QCA_WLAN_VENDOR_ATTR_WIFI_TEST_CONFIG_AFTER_LAST,
+ 	QCA_WLAN_VENDOR_ATTR_WIFI_TEST_CONFIG_MAX =
+-- 
+2.43.0
+

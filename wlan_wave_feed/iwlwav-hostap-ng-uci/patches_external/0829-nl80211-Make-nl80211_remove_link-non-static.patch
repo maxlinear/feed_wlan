@@ -1,0 +1,44 @@
+From f519f472e694d54c5a4eeff7cd53298ee4dbf7a1 Mon Sep 17 00:00:00 2001
+From: Aditya Kumar Singh <quic_adisi@quicinc.com>
+Date: Thu, 25 Apr 2024 15:45:21 +0530
+Subject: [PATCH] nl80211: Make nl80211_remove_link() non-static
+
+No functionality changes.
+
+This is needed to support STOP_AP events for MLD interface in a
+subsequent change.
+
+Signed-off-by: Aditya Kumar Singh <quic_adisi@quicinc.com>
+---
+ src/drivers/driver_nl80211.c | 2 +-
+ src/drivers/driver_nl80211.h | 1 +
+ 2 files changed, 2 insertions(+), 1 deletion(-)
+
+diff --git a/src/drivers/driver_nl80211.c b/src/drivers/driver_nl80211.c
+index d994dcb85..5b40737cc 100644
+--- a/src/drivers/driver_nl80211.c
++++ b/src/drivers/driver_nl80211.c
+@@ -9458,7 +9458,7 @@ fail:
+ }
+ 
+ 
+-static int nl80211_remove_link(struct i802_bss *bss, int link_id)
++int nl80211_remove_link(struct i802_bss *bss, int link_id)
+ {
+ 	struct wpa_driver_nl80211_data *drv = bss->drv;
+ 	struct i802_link *link;
+diff --git a/src/drivers/driver_nl80211.h b/src/drivers/driver_nl80211.h
+index 8e1426465..d1e0f195e 100644
+--- a/src/drivers/driver_nl80211.h
++++ b/src/drivers/driver_nl80211.h
+@@ -353,6 +353,7 @@ const char * nl80211_iftype_str(enum nl80211_iftype mode);
+ void nl80211_restore_ap_mode(struct i802_bss *bss);
+ struct i802_link * nl80211_get_link(struct i802_bss *bss, s8 link_id);
+ u8 nl80211_get_link_id_from_link(struct i802_bss *bss, struct i802_link *link);
++int nl80211_remove_link(struct i802_bss *bss, int link_id);
+ 
+ static inline bool nl80211_link_valid(u16 links, s8 link_id)
+ {
+-- 
+2.43.0
+

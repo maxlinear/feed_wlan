@@ -1,0 +1,59 @@
+From 50330cb919dc5a94dc0b0bb018b59bf5655f5a5e Mon Sep 17 00:00:00 2001
+From: Jouni Malinen <j@w1.fi>
+Date: Sun, 9 Feb 2025 18:12:40 +0200
+Subject: [PATCH] SHA-PRF: Make code easier for static analyzers
+
+pos cannot be 0 when buf_len_bits != 0 and as such, buf[pos - 1] here
+cannot point to invalid index. However, this is apparently too complex
+for static analyzers, so make this more obvious to avoid false
+positives.
+
+Signed-off-by: Jouni Malinen <j@w1.fi>
+---
+ src/crypto/sha256-prf.c | 2 +-
+ src/crypto/sha384-prf.c | 2 +-
+ src/crypto/sha512-prf.c | 2 +-
+ 3 files changed, 3 insertions(+), 3 deletions(-)
+
+diff --git a/src/crypto/sha256-prf.c b/src/crypto/sha256-prf.c
+index d665a9983..de7394a32 100644
+--- a/src/crypto/sha256-prf.c
++++ b/src/crypto/sha256-prf.c
+@@ -97,7 +97,7 @@ int sha256_prf_bits(const u8 *key, size_t key_len, const char *label,
+ 	 * Mask out unused bits in the last octet if it does not use all the
+ 	 * bits.
+ 	 */
+-	if (buf_len_bits % 8) {
++	if (pos > 0 && (buf_len_bits % 8)) {
+ 		u8 mask = 0xff << (8 - buf_len_bits % 8);
+ 		buf[pos - 1] &= mask;
+ 	}
+diff --git a/src/crypto/sha384-prf.c b/src/crypto/sha384-prf.c
+index 420e78c38..fdf331655 100644
+--- a/src/crypto/sha384-prf.c
++++ b/src/crypto/sha384-prf.c
+@@ -97,7 +97,7 @@ int sha384_prf_bits(const u8 *key, size_t key_len, const char *label,
+ 	 * Mask out unused bits in the last octet if it does not use all the
+ 	 * bits.
+ 	 */
+-	if (buf_len_bits % 8) {
++	if (pos > 0 && (buf_len_bits % 8)) {
+ 		u8 mask = 0xff << (8 - buf_len_bits % 8);
+ 		buf[pos - 1] &= mask;
+ 	}
+diff --git a/src/crypto/sha512-prf.c b/src/crypto/sha512-prf.c
+index e48cf5f05..be458141d 100644
+--- a/src/crypto/sha512-prf.c
++++ b/src/crypto/sha512-prf.c
+@@ -97,7 +97,7 @@ int sha512_prf_bits(const u8 *key, size_t key_len, const char *label,
+ 	 * Mask out unused bits in the last octet if it does not use all the
+ 	 * bits.
+ 	 */
+-	if (buf_len_bits % 8) {
++	if (pos > 0 && (buf_len_bits % 8)) {
+ 		u8 mask = 0xff << (8 - buf_len_bits % 8);
+ 		buf[pos - 1] &= mask;
+ 	}
+-- 
+2.43.0
+

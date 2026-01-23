@@ -1,0 +1,30 @@
+From ff798fbb83c69cf258198d6ce8993beb5820a701 Mon Sep 17 00:00:00 2001
+From: Benjamin Berg <benjamin.berg@intel.com>
+Date: Mon, 8 Apr 2024 16:07:00 +0300
+Subject: [PATCH] ctrl_iface: Allow sending ML probe without AP MLD ID
+
+If one sends a Probe Request frame to a non-TX BSSID, no AP MLD ID
+should be included in the request. Permit mld_id to be -1 so that it is
+not a required argument and can be left out.
+
+Signed-off-by: Benjamin Berg <benjamin.berg@intel.com>
+---
+ wpa_supplicant/ctrl_iface.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/wpa_supplicant/ctrl_iface.c b/wpa_supplicant/ctrl_iface.c
+index d0fda4cd9..bc013ad99 100644
+--- a/wpa_supplicant/ctrl_iface.c
++++ b/wpa_supplicant/ctrl_iface.c
+@@ -12118,7 +12118,7 @@ static int wpas_ctrl_ml_probe(struct wpa_supplicant *wpa_s, char *cmd)
+ 		}
+ 	}
+ 
+-	if (mld_id < 0 || is_zero_ether_addr(bssid)) {
++	if (is_zero_ether_addr(bssid)) {
+ 		wpa_printf(MSG_DEBUG,
+ 			   "MLD: Failed parsing ML probe request arguments");
+ 		return -1;
+-- 
+2.43.0
+

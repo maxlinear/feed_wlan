@@ -1,0 +1,296 @@
+From 392114a17960c9f040eecbf3c7eb19f061d51b8b Mon Sep 17 00:00:00 2001
+From: Dariusz Kopka <dariusz@plume.com>
+Date: Mon, 15 Jan 2024 14:16:00 +0100
+Subject: [PATCH] FT: Add dynamic reload of RxKH definitions from file
+
+hostapd reads the list of Rx Key Holders from hostapd.conf file.
+However, for systems where topology changes dynamically, the update
+of RxKHs list is required without reloading the whole configuration.
+
+Introduce a new source of RxKH definition with original syntax:
+- rxkh_file - Path to a file containing a list of RxKHs.
+
+In addition, add a control interface command RELOAD_RXKHS to
+reload RxKHs definition from the file specified in `rxkh_file`.
+
+This allows hostapd to properly distribute Rx keys even after topology
+change (assuming rxkh_file is updated and reload_rxkhs command issued).
+
+Syntax of rxkh_file is the same as extraction of r0kh and r1kh options
+from original hostapd.conf file.
+
+```
+r0kh=ff:ff:ff:ff:ff:ff * 00112233445566778899aabbccddeeff
+r0kh=ff:ff:ff:ff:ff:ff * 00112233445566778899aabbccddeeff
+r1kh=00:00:00:00:00:00 00:00:00:00:00:00 00112233445566778899aabbccddeef
+r1kh=00:00:00:00:00:00 00:00:00:00:00:00 00112233445566778899aabbccddeef
+r1kh=00:00:00:00:00:00 00:00:00:00:00:00 00112233445566778899aabbccddeef
+```
+
+Signed-off-by: Dariusz Kopka <dariusz@plume.com>
+---
+ hostapd/config_file.c | 87 +++++++++++++++++++++++++++++++++++++++++++
+ hostapd/ctrl_iface.c  | 25 +++++++++++++
+ hostapd/hostapd.conf  |  6 +++
+ hostapd/hostapd_cli.c | 13 +++++++
+ src/ap/ap_config.c    | 10 +++++
+ src/ap/ap_config.h    |  4 ++
+ 6 files changed, 145 insertions(+)
+
+diff --git a/hostapd/config_file.c b/hostapd/config_file.c
+index 0c0137b4f..c96aa37c2 100644
+--- a/hostapd/config_file.c
++++ b/hostapd/config_file.c
+@@ -1020,6 +1020,78 @@ static int add_r1kh(struct hostapd_bss_config *bss, char *value)
+ 
+ 	return 0;
+ }
++
++
++int hostapd_config_read_rxkh_file(struct hostapd_bss_config *conf,
++				  const char *fname)
++{
++	FILE *f;
++	char buf[256], *pos;
++	int line = 0, errors = 0;
++
++	if (!fname)
++		return 0;
++
++	f = fopen(fname, "r");
++	if (!f) {
++		wpa_printf(MSG_ERROR, "rxkh file '%s' not found.", fname);
++		return -1;
++	}
++
++	while (fgets(buf, sizeof(buf), f)) {
++		line++;
++
++		if (buf[0] == '#')
++			continue;
++		pos = buf;
++		while (*pos != '\0') {
++			if (*pos == '\n') {
++				*pos = '\0';
++				break;
++			}
++			pos++;
++		}
++		if (buf[0] == '\0')
++			continue;
++
++		pos = os_strchr(buf, '=');
++		if (!pos) {
++			wpa_printf(MSG_ERROR, "Line %d: Invalid line '%s'",
++				   line, buf);
++			errors++;
++			continue;
++		}
++		*pos = '\0';
++		pos++;
++
++		if (os_strcmp(buf, "r0kh") == 0) {
++			if (add_r0kh(conf, pos) < 0) {
++				wpa_printf(MSG_ERROR,
++					   "Line %d: Invalid r0kh '%s'",
++					   line, pos);
++				errors++;
++			}
++		} else if (os_strcmp(buf, "r1kh") == 0) {
++			if (add_r1kh(conf, pos) < 0) {
++				wpa_printf(MSG_ERROR,
++					   "Line %d: Invalid r1kh '%s'",
++					   line, pos);
++				errors++;
++			}
++		}
++	}
++
++	fclose(f);
++
++	if (errors) {
++		wpa_printf(MSG_ERROR,
++			   "%d errors in configuring RxKHs from '%s'",
++			   errors, fname);
++		return -1;
++	}
++	return 0;
++}
++
+ #endif /* CONFIG_IEEE80211R_AP */
+ 
+ 
+@@ -3098,6 +3170,21 @@ static int hostapd_config_fill(struct hostapd_config *conf,
+ 				   line, pos);
+ 			return 1;
+ 		}
++	} else if (os_strcmp(buf, "rxkh_file") == 0) {
++		os_free(bss->rxkh_file);
++		bss->rxkh_file = os_strdup(pos);
++		if (!bss->rxkh_file) {
++			wpa_printf(MSG_ERROR, "Line %d: allocation failed",
++				   line);
++			return 1;
++		}
++		if (hostapd_config_read_rxkh_file(bss, pos)) {
++			wpa_printf(MSG_DEBUG,
++				   "Line %d: failed to read rxkh_file '%s'",
++				   line, pos);
++			/* Allow the file to be created later and read into
++			 * already operating AP context. */
++		}
+ 	} else if (os_strcmp(buf, "pmk_r1_push") == 0) {
+ 		bss->pmk_r1_push = atoi(pos);
+ 	} else if (os_strcmp(buf, "ft_over_ds") == 0) {
+diff --git a/hostapd/ctrl_iface.c b/hostapd/ctrl_iface.c
+index 273e7bd7e..aa193bf71 100644
+--- a/hostapd/ctrl_iface.c
++++ b/hostapd/ctrl_iface.c
+@@ -1470,6 +1470,26 @@ static int hostapd_ctrl_iface_reload_wpa_psk(struct hostapd_data *hapd)
+ }
+ 
+ 
++#ifdef CONFIG_IEEE80211R_AP
++static int hostapd_ctrl_iface_reload_rxkhs(struct hostapd_data *hapd)
++{
++	struct hostapd_bss_config *conf = hapd->conf;
++	int err;
++
++	hostapd_config_clear_rxkhs(conf);
++
++	err = hostapd_config_setup_rxkhs(conf);
++	if (err < 0) {
++		wpa_printf(MSG_ERROR, "Reloading RxKHs failed: %d",
++			   err);
++		return -1;
++	}
++
++	return 0;
++}
++#endif /* CONFIG_IEEE80211R_AP */
++
++
+ #ifdef CONFIG_TESTING_OPTIONS
+ 
+ static int hostapd_ctrl_iface_radar(struct hostapd_data *hapd, char *cmd)
+@@ -3599,6 +3619,11 @@ static int hostapd_ctrl_iface_receive_process(struct hostapd_data *hapd,
+ 	} else if (os_strcmp(buf, "RELOAD_WPA_PSK") == 0) {
+ 		if (hostapd_ctrl_iface_reload_wpa_psk(hapd))
+ 			reply_len = -1;
++#ifdef CONFIG_IEEE80211R_AP
++	} else if (os_strcmp(buf, "RELOAD_RXKHS") == 0) {
++		if (hostapd_ctrl_iface_reload_rxkhs(hapd))
++			reply_len = -1;
++#endif /* CONFIG_IEEE80211R_AP */
+ 	} else if (os_strcmp(buf, "RELOAD_BSS") == 0) {
+ 		if (hostapd_ctrl_iface_reload_bss(hapd))
+ 			reply_len = -1;
+diff --git a/hostapd/hostapd.conf b/hostapd/hostapd.conf
+index 1aeeb7353..13576499a 100644
+--- a/hostapd/hostapd.conf
++++ b/hostapd/hostapd.conf
+@@ -2295,6 +2295,12 @@ own_ip_addr=127.0.0.1
+ # list and thus will receive push notifications.
+ #r1kh=00:00:00:00:00:00 00:00:00:00:00:00 00112233445566778899aabbccddeeff
+ 
++# Optionally, the list of RxKHs can be read from a text file. Format is the same
++# as specified above. File shall contain both r0kh and r1kh. Once this variable
++# is set, RxKHs can be reloaded at runtime without bringing down an interface
++# using the RELOAD_RXKHS command.
++#rxkh_file=<path>
++
+ # Timeout (seconds) for newly discovered R0KH/R1KH (see wildcard entries above)
+ # Special values: 0 -> do not expire
+ # Warning: do not cache implies no sequence number validation with wildcards
+diff --git a/hostapd/hostapd_cli.c b/hostapd/hostapd_cli.c
+index be3c23ca9..58bd55485 100644
+--- a/hostapd/hostapd_cli.c
++++ b/hostapd/hostapd_cli.c
+@@ -1591,6 +1591,15 @@ static int hostapd_cli_cmd_reload_wpa_psk(struct wpa_ctrl *ctrl, int argc,
+ }
+ 
+ 
++#ifdef CONFIG_IEEE80211R_AP
++static int hostapd_cli_cmd_reload_rxkhs(struct wpa_ctrl *ctrl, int argc,
++					char *argv[])
++{
++	return wpa_ctrl_command(ctrl, "RELOAD_RXKHS");
++}
++#endif /* CONFIG_IEEE80211R_AP */
++
++
+ #ifdef ANDROID
+ static int hostapd_cli_cmd_driver(struct wpa_ctrl *ctrl, int argc, char *argv[])
+ {
+@@ -1804,6 +1813,10 @@ static const struct hostapd_cli_cmd hostapd_cli_commands[] = {
+ 	  "<addr> [req_mode=] <measurement request hexdump>  = send a Beacon report request to a station" },
+ 	{ "reload_wpa_psk", hostapd_cli_cmd_reload_wpa_psk, NULL,
+ 	  "= reload wpa_psk_file only" },
++#ifdef CONFIG_IEEE80211R_AP
++	{ "reload_rxkhs", hostapd_cli_cmd_reload_rxkhs, NULL,
++	  "= reload R0KHs and R1KHs" },
++#endif /* CONFIG_IEEE80211R_AP */
+ #ifdef ANDROID
+ 	{ "driver", hostapd_cli_cmd_driver, NULL,
+ 	  "<driver sub command> [<hex formatted data>] = send driver command data" },
+diff --git a/src/ap/ap_config.c b/src/ap/ap_config.c
+index 26f644527..1ff677371 100644
+--- a/src/ap/ap_config.c
++++ b/src/ap/ap_config.c
+@@ -700,6 +700,13 @@ void hostapd_config_clear_wpa_psk(struct hostapd_wpa_psk **l)
+ 
+ 
+ #ifdef CONFIG_IEEE80211R_AP
++
++int hostapd_config_setup_rxkhs(struct hostapd_bss_config *conf)
++{
++	return hostapd_config_read_rxkh_file(conf, conf->rxkh_file);
++}
++
++
+ void hostapd_config_clear_rxkhs(struct hostapd_bss_config *conf)
+ {
+ 	struct ft_remote_r0kh *r0kh, *r0kh_prev;
+@@ -721,6 +728,7 @@ void hostapd_config_clear_rxkhs(struct hostapd_bss_config *conf)
+ 		os_free(r1kh_prev);
+ 	}
+ }
++
+ #endif /* CONFIG_IEEE80211R_AP */
+ 
+ 
+@@ -857,6 +865,8 @@ void hostapd_config_free_bss(struct hostapd_bss_config *conf)
+ 
+ #ifdef CONFIG_IEEE80211R_AP
+ 	hostapd_config_clear_rxkhs(conf);
++	os_free(conf->rxkh_file);
++	conf->rxkh_file = NULL;
+ #endif /* CONFIG_IEEE80211R_AP */
+ 
+ #ifdef CONFIG_WPS
+diff --git a/src/ap/ap_config.h b/src/ap/ap_config.h
+index 4c5401b2c..46a88394a 100644
+--- a/src/ap/ap_config.h
++++ b/src/ap/ap_config.h
+@@ -405,6 +405,7 @@ struct hostapd_bss_config {
+ 	int ft_over_ds;
+ 	int ft_psk_generate_local;
+ 	int r1_max_key_lifetime;
++	char *rxkh_file;
+ #endif /* CONFIG_IEEE80211R_AP */
+ 
+ 	char *ctrl_interface; /* directory for UNIX domain sockets */
+@@ -1348,7 +1349,10 @@ void hostapd_config_free_radius_attr(struct hostapd_radius_attr *attr);
+ void hostapd_config_free_eap_user(struct hostapd_eap_user *user);
+ void hostapd_config_free_eap_users(struct hostapd_eap_user *user);
+ void hostapd_config_clear_wpa_psk(struct hostapd_wpa_psk **p);
++int hostapd_config_read_rxkh_file(struct hostapd_bss_config *conf,
++				  const char *fname);
+ void hostapd_config_clear_rxkhs(struct hostapd_bss_config *conf);
++int hostapd_config_setup_rxkhs(struct hostapd_bss_config *conf);
+ void hostapd_config_free_bss(struct hostapd_bss_config *conf);
+ void hostapd_config_free(struct hostapd_config *conf);
+ int hostapd_maclist_found(struct mac_acl_entry *list, int num_entries,
+-- 
+2.43.0
+

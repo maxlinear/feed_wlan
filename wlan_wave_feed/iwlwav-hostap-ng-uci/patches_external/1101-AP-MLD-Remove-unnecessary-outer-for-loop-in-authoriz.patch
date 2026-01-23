@@ -1,0 +1,82 @@
+From 6637b44a96ecbb5ca6cff2f967e503175302ff89 Mon Sep 17 00:00:00 2001
+From: Adil Saeed Musthafa <quic_adilm@quicinc.com>
+Date: Wed, 20 Nov 2024 22:53:25 -0800
+Subject: [PATCH] AP MLD: Remove unnecessary outer for loop in authorizing ML
+ STA
+
+Remove unnecessary outer for loop in ieee802_1x_ml_set_sta_authorized().
+The inner for loop in this function is what actually iterates over the
+partner links. The outer for loop did not have any relevance. Fix this.
+
+Signed-off-by: Adil Saeed Musthafa <quic_adilm@quicinc.com>
+---
+ src/ap/ieee802_1x.c | 40 +++++++++++++++++++---------------------
+ 1 file changed, 19 insertions(+), 21 deletions(-)
+
+diff --git a/src/ap/ieee802_1x.c b/src/ap/ieee802_1x.c
+index 34de54a5e..e8d21ff7a 100644
+--- a/src/ap/ieee802_1x.c
++++ b/src/ap/ieee802_1x.c
+@@ -149,7 +149,7 @@ static void ieee802_1x_ml_set_sta_authorized(struct hostapd_data *hapd,
+ 					     bool authorized)
+ {
+ #ifdef CONFIG_IEEE80211BE
+-	unsigned int i, link_id;
++	unsigned int i;
+ 
+ 	if (!hostapd_is_mld_ap(hapd))
+ 		return;
+@@ -161,32 +161,30 @@ static void ieee802_1x_ml_set_sta_authorized(struct hostapd_data *hapd,
+ 	if (authorized && hapd->mld_link_id != sta->mld_assoc_link_id)
+ 		return;
+ 
+-	for (link_id = 0; link_id < MAX_NUM_MLD_LINKS; link_id++) {
+-		struct mld_link_info *link = &sta->mld_info.links[link_id];
++	for (i = 0; i < hapd->iface->interfaces->count; i++) {
++		struct sta_info *tmp_sta;
++		struct mld_link_info *link;
++		struct hostapd_data *tmp_hapd =
++			hapd->iface->interfaces->iface[i]->bss[0];
+ 
+-		if (!link->valid)
++		if (!hostapd_is_ml_partner(hapd, tmp_hapd))
+ 			continue;
+ 
+-		for (i = 0; i < hapd->iface->interfaces->count; i++) {
+-			struct sta_info *tmp_sta;
+-			struct hostapd_data *tmp_hapd =
+-				hapd->iface->interfaces->iface[i]->bss[0];
++		link = &sta->mld_info.links[tmp_hapd->mld_link_id];
++		if (!link->valid)
++			continue;
+ 
+-			if (!hostapd_is_ml_partner(hapd, tmp_hapd))
++		for (tmp_sta = tmp_hapd->sta_list; tmp_sta;
++		     tmp_sta = tmp_sta->next) {
++			if (tmp_sta == sta ||
++			    tmp_sta->mld_assoc_link_id !=
++			    sta->mld_assoc_link_id ||
++			    tmp_sta->aid != sta->aid)
+ 				continue;
+ 
+-			for (tmp_sta = tmp_hapd->sta_list; tmp_sta;
+-			     tmp_sta = tmp_sta->next) {
+-				if (tmp_sta == sta ||
+-				    tmp_sta->mld_assoc_link_id !=
+-				    sta->mld_assoc_link_id ||
+-				    tmp_sta->aid != sta->aid)
+-					continue;
+-
+-				ieee802_1x_set_authorized(tmp_hapd, tmp_sta,
+-							  authorized, true);
+-				break;
+-			}
++			ieee802_1x_set_authorized(tmp_hapd, tmp_sta,
++						  authorized, true);
++			break;
+ 		}
+ 	}
+ #endif /* CONFIG_IEEE80211BE */
+-- 
+2.43.0
+

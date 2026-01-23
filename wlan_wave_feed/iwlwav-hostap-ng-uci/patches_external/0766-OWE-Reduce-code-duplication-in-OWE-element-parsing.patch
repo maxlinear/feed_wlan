@@ -1,0 +1,193 @@
+From ddfed3f08473845ebf0e0183fe56a65e437fc1ae Mon Sep 17 00:00:00 2001
+From: David Bauer <mail@david-bauer.net>
+Date: Sun, 28 Apr 2024 15:13:40 +0200
+Subject: [PATCH] OWE: Reduce code duplication in OWE element parsing
+
+Reduce the code-duplication for methods handling the OWE transition
+mode.
+
+Signed-off-by: David Bauer <mail@david-bauer.net>
+---
+ wpa_supplicant/events.c           | 22 ++++----------
+ wpa_supplicant/scan.c             | 21 +++----------
+ wpa_supplicant/wpa_supplicant.c   | 49 +++++++++++++++++++++++--------
+ wpa_supplicant/wpa_supplicant_i.h |  2 ++
+ 4 files changed, 49 insertions(+), 45 deletions(-)
+
+diff --git a/wpa_supplicant/events.c b/wpa_supplicant/events.c
+index bb0e95ba4..ea1c60902 100644
+--- a/wpa_supplicant/events.c
++++ b/wpa_supplicant/events.c
+@@ -1139,30 +1139,20 @@ static void owe_trans_ssid(struct wpa_supplicant *wpa_s, struct wpa_bss *bss,
+ 			   const u8 **ret_ssid, size_t *ret_ssid_len)
+ {
+ #ifdef CONFIG_OWE
+-	const u8 *owe, *pos, *end, *bssid;
+-	u8 ssid_len;
++	const u8 *owe, *bssid;
+ 
+ 	owe = wpa_bss_get_vendor_ie(bss, OWE_IE_VENDOR_TYPE);
+ 	if (!owe || !wpa_bss_get_rsne(wpa_s, bss, NULL, false))
+ 		return;
+ 
+-	pos = owe + 6;
+-	end = owe + 2 + owe[1];
+-
+-	if (end - pos < ETH_ALEN + 1)
+-		return;
+-	bssid = pos;
+-	pos += ETH_ALEN;
+-	ssid_len = *pos++;
+-	if (end - pos < ssid_len || ssid_len > SSID_MAX_LEN)
++	if (wpas_get_owe_trans_network(owe, &bssid, ret_ssid, ret_ssid_len))
+ 		return;
+ 
+ 	/* Match the profile SSID against the OWE transition mode SSID on the
+ 	 * open network. */
+ 	wpa_dbg(wpa_s, MSG_DEBUG, "OWE: transition mode BSSID: " MACSTR
+-		" SSID: %s", MAC2STR(bssid), wpa_ssid_txt(pos, ssid_len));
+-	*ret_ssid = pos;
+-	*ret_ssid_len = ssid_len;
++		" SSID: %s", MAC2STR(bssid),
++		wpa_ssid_txt(*ret_ssid, *ret_ssid_len));
+ 
+ 	if (!(bss->flags & WPA_BSS_OWE_TRANSITION)) {
+ 		struct wpa_ssid *ssid;
+@@ -1170,8 +1160,8 @@ static void owe_trans_ssid(struct wpa_supplicant *wpa_s, struct wpa_bss *bss,
+ 		for (ssid = wpa_s->conf->ssid; ssid; ssid = ssid->next) {
+ 			if (wpas_network_disabled(wpa_s, ssid))
+ 				continue;
+-			if (ssid->ssid_len == ssid_len &&
+-			    os_memcmp(ssid->ssid, pos, ssid_len) == 0) {
++			if (ssid->ssid_len == *ret_ssid_len &&
++			    os_memcmp(ssid->ssid, ret_ssid, *ret_ssid_len) == 0) {
+ 				/* OWE BSS in transition mode for a currently
+ 				 * enabled OWE network. */
+ 				wpa_dbg(wpa_s, MSG_DEBUG,
+diff --git a/wpa_supplicant/scan.c b/wpa_supplicant/scan.c
+index 8b59e409b..ba7c15b1a 100644
+--- a/wpa_supplicant/scan.c
++++ b/wpa_supplicant/scan.c
+@@ -954,8 +954,7 @@ static void wpa_add_owe_scan_ssid(struct wpa_supplicant *wpa_s,
+ 		   wpa_ssid_txt(ssid->ssid, ssid->ssid_len));
+ 
+ 	dl_list_for_each(bss, &wpa_s->bss, struct wpa_bss, list) {
+-		const u8 *owe, *pos, *end;
+-		const u8 *owe_ssid;
++		const u8 *owe, *owe_bssid, *owe_ssid;
+ 		size_t owe_ssid_len;
+ 
+ 		if (bss->ssid_len != ssid->ssid_len ||
+@@ -966,21 +965,9 @@ static void wpa_add_owe_scan_ssid(struct wpa_supplicant *wpa_s,
+ 		if (!owe || owe[1] < 4)
+ 			continue;
+ 
+-		pos = owe + 6;
+-		end = owe + 2 + owe[1];
+-
+-		/* Must include BSSID and ssid_len */
+-		if (end - pos < ETH_ALEN + 1)
+-			return;
+-
+-		/* Skip BSSID */
+-		pos += ETH_ALEN;
+-		owe_ssid_len = *pos++;
+-		owe_ssid = pos;
+-
+-		if ((size_t) (end - pos) < owe_ssid_len ||
+-		    owe_ssid_len > SSID_MAX_LEN)
+-			return;
++		if (wpas_get_owe_trans_network(owe, &owe_bssid, &owe_ssid,
++					       &owe_ssid_len))
++			continue;
+ 
+ 		wpa_printf(MSG_DEBUG,
+ 			   "OWE: scan_ssids: transition mode OWE ssid=%s",
+diff --git a/wpa_supplicant/wpa_supplicant.c b/wpa_supplicant/wpa_supplicant.c
+index 1e77493ef..7f7665dc4 100644
+--- a/wpa_supplicant/wpa_supplicant.c
++++ b/wpa_supplicant/wpa_supplicant.c
+@@ -5504,8 +5504,8 @@ int wpa_supplicant_set_debug_params(struct wpa_global *global, int debug_level,
+ static int owe_trans_ssid_match(struct wpa_supplicant *wpa_s, const u8 *bssid,
+ 				const u8 *entry_ssid, size_t entry_ssid_len)
+ {
+-	const u8 *owe, *pos, *end;
+-	u8 ssid_len;
++	const u8 *owe, *owe_bssid, *owe_ssid;
++	size_t owe_ssid_len;
+ 	struct wpa_bss *bss;
+ 
+ 	/* Check network profile SSID aganst the SSID in the
+@@ -5519,18 +5519,12 @@ static int owe_trans_ssid_match(struct wpa_supplicant *wpa_s, const u8 *bssid,
+ 	if (!owe)
+ 		return 0;
+ 
+-	pos = owe + 6;
+-	end = owe + 2 + owe[1];
+-
+-	if (end - pos < ETH_ALEN + 1)
+-		return 0;
+-	pos += ETH_ALEN;
+-	ssid_len = *pos++;
+-	if (end - pos < ssid_len || ssid_len > SSID_MAX_LEN)
++	if (wpas_get_owe_trans_network(owe, &owe_bssid, &owe_ssid,
++				       &owe_ssid_len))
+ 		return 0;
+ 
+-	return entry_ssid_len == ssid_len &&
+-		os_memcmp(pos, entry_ssid, ssid_len) == 0;
++	return entry_ssid_len == owe_ssid_len &&
++		os_memcmp(owe_ssid, entry_ssid, owe_ssid_len) == 0;
+ }
+ #endif /* CONFIG_OWE */
+ 
+@@ -9714,3 +9708,34 @@ bool wpas_ap_supports_rsn_overriding_2(struct wpa_supplicant *wpa_s,
+ 
+ 	return false;
+ }
++
++
++int wpas_get_owe_trans_network(const u8 *owe_ie, const u8 **bssid,
++			       const u8 **ssid, size_t *ssid_len)
++{
++#ifdef CONFIG_OWE
++	const u8 *pos, *end;
++	u8 ssid_len_tmp;
++
++	if (!owe_ie)
++		return -1;
++
++	pos = owe_ie + 6;
++	end = owe_ie + 2 + owe_ie[1];
++
++	if (end - pos < ETH_ALEN + 1)
++		return -1;
++	*bssid = pos;
++	pos += ETH_ALEN;
++	ssid_len_tmp = *pos++;
++	if (end - pos < ssid_len_tmp || ssid_len_tmp > SSID_MAX_LEN)
++		return -1;
++
++	*ssid = pos;
++	*ssid_len = ssid_len_tmp;
++
++	return 0;
++#else /* CONFIG_OWE */
++	return -1;
++#endif /* CONFIG_OWE */
++}
+diff --git a/wpa_supplicant/wpa_supplicant_i.h b/wpa_supplicant/wpa_supplicant_i.h
+index 48ec95fa5..275bbf221 100644
+--- a/wpa_supplicant/wpa_supplicant_i.h
++++ b/wpa_supplicant/wpa_supplicant_i.h
+@@ -2017,5 +2017,7 @@ bool wpas_ap_supports_rsn_overriding(struct wpa_supplicant *wpa_s,
+ 				     struct wpa_bss *bss);
+ bool wpas_ap_supports_rsn_overriding_2(struct wpa_supplicant *wpa_s,
+ 				       struct wpa_bss *bss);
++int wpas_get_owe_trans_network(const u8 *owe_ie, const u8 **bssid,
++			       const u8 **ssid, size_t *ssid_len);
+ 
+ #endif /* WPA_SUPPLICANT_I_H */
+-- 
+2.43.0
+

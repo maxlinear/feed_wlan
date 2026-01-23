@@ -1,0 +1,137 @@
+From 0143cf42cdc0fb689824617f36a8fffff2027f64 Mon Sep 17 00:00:00 2001
+From: Jintao Lin <jintaolin@chromium.org>
+Date: Mon, 18 Dec 2023 18:11:46 +0000
+Subject: [PATCH] Move parse_freq() to be a common helper function
+
+This allows the function to be used outside the context of the
+wpa_supplicant control interface implementation.
+
+Signed-off-by: Jintao Lin <jintaolin@chromium.org>
+---
+ src/common/ieee802_11_common.c | 32 ++++++++++++++++++++++++++++++++
+ src/common/ieee802_11_common.h |  1 +
+ wpa_supplicant/ctrl_iface.c    | 32 +++-----------------------------
+ 3 files changed, 36 insertions(+), 29 deletions(-)
+
+diff --git a/src/common/ieee802_11_common.c b/src/common/ieee802_11_common.c
+index 1f71a1df0..e5464f378 100644
+--- a/src/common/ieee802_11_common.c
++++ b/src/common/ieee802_11_common.c
+@@ -3173,6 +3173,38 @@ enum oper_chan_width op_class_to_ch_width(u8 op_class)
+ }
+ 
+ 
++/**
++ * chwidth_freq2_to_ch_width - Determine channel width as enum oper_chan_width
++ * @chwidth: Channel width integer
++ * @freq2: Value for frequency 2. 0 is not used
++ * Returns: enum oper_chan_width, -1 on failure
++ */
++int chwidth_freq2_to_ch_width(int chwidth, int freq2)
++{
++	if (freq2 < 0)
++		return -1;
++	if (freq2)
++		return CONF_OPER_CHWIDTH_80P80MHZ;
++
++	switch (chwidth) {
++	case 0:
++	case 20:
++	case 40:
++		return CONF_OPER_CHWIDTH_USE_HT;
++	case 80:
++		return CONF_OPER_CHWIDTH_80MHZ;
++	case 160:
++		return CONF_OPER_CHWIDTH_160MHZ;
++	case 320:
++		return CONF_OPER_CHWIDTH_320MHZ;
++	default:
++		wpa_printf(MSG_DEBUG, "Unknown max oper bandwidth: %d",
++			   chwidth);
++		return -1;
++	}
++}
++
++
+ struct wpabuf * ieee802_11_defrag(const u8 *data, size_t len, bool ext_elem)
+ {
+ 	struct wpabuf *buf;
+diff --git a/src/common/ieee802_11_common.h b/src/common/ieee802_11_common.h
+index a7d407b65..5426b41bb 100644
+--- a/src/common/ieee802_11_common.h
++++ b/src/common/ieee802_11_common.h
+@@ -292,6 +292,7 @@ bool ieee802_11_rsnx_capab_len(const u8 *rsnxe, size_t rsnxe_len,
+ bool ieee802_11_rsnx_capab(const u8 *rsnxe, unsigned int capab);
+ int op_class_to_bandwidth(u8 op_class);
+ enum oper_chan_width op_class_to_ch_width(u8 op_class);
++int chwidth_freq2_to_ch_width(int chwidth, int freq2);
+ 
+ /* element iteration helpers */
+ #define for_each_element(_elem, _data, _datalen)			\
+diff --git a/wpa_supplicant/ctrl_iface.c b/wpa_supplicant/ctrl_iface.c
+index 9c6050134..84828a7ae 100644
+--- a/wpa_supplicant/ctrl_iface.c
++++ b/wpa_supplicant/ctrl_iface.c
+@@ -6300,32 +6300,6 @@ static int p2p_ctrl_asp_provision(struct wpa_supplicant *wpa_s, char *cmd)
+ }
+ 
+ 
+-static int parse_freq(int chwidth, int freq2)
+-{
+-	if (freq2 < 0)
+-		return -1;
+-	if (freq2)
+-		return CONF_OPER_CHWIDTH_80P80MHZ;
+-
+-	switch (chwidth) {
+-	case 0:
+-	case 20:
+-	case 40:
+-		return CONF_OPER_CHWIDTH_USE_HT;
+-	case 80:
+-		return CONF_OPER_CHWIDTH_80MHZ;
+-	case 160:
+-		return CONF_OPER_CHWIDTH_160MHZ;
+-	case 320:
+-		return CONF_OPER_CHWIDTH_320MHZ;
+-	default:
+-		wpa_printf(MSG_DEBUG, "Unknown max oper bandwidth: %d",
+-			   chwidth);
+-		return -1;
+-	}
+-}
+-
+-
+ static int p2p_ctrl_connect(struct wpa_supplicant *wpa_s, char *cmd,
+ 			    char *buf, size_t buflen)
+ {
+@@ -6419,7 +6393,7 @@ static int p2p_ctrl_connect(struct wpa_supplicant *wpa_s, char *cmd,
+ 	if (pos2)
+ 		chwidth = atoi(pos2 + 18);
+ 
+-	max_oper_chwidth = parse_freq(chwidth, freq2);
++	max_oper_chwidth = chwidth_freq2_to_ch_width(chwidth, freq2);
+ 	if (max_oper_chwidth < 0)
+ 		return -1;
+ 
+@@ -7073,7 +7047,7 @@ static int p2p_ctrl_invite_persistent(struct wpa_supplicant *wpa_s, char *cmd)
+ 	if (pos)
+ 		chwidth = atoi(pos + 18);
+ 
+-	max_oper_chwidth = parse_freq(chwidth, freq2);
++	max_oper_chwidth = chwidth_freq2_to_ch_width(chwidth, freq2);
+ 	if (max_oper_chwidth < 0)
+ 		return -1;
+ 
+@@ -7228,7 +7202,7 @@ static int p2p_ctrl_group_add(struct wpa_supplicant *wpa_s, char *cmd)
+ 	}
+ #endif /* CONFIG_ACS */
+ 
+-	max_oper_chwidth = parse_freq(chwidth, freq2);
++	max_oper_chwidth = chwidth_freq2_to_ch_width(chwidth, freq2);
+ 	if (max_oper_chwidth < 0)
+ 		return -1;
+ 
+-- 
+2.43.0
+

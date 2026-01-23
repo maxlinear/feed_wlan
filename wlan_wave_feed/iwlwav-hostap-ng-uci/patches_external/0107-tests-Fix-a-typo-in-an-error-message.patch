@@ -1,0 +1,26 @@
+From 79db4092c459eb08b83a008c4b00bb69785600df Mon Sep 17 00:00:00 2001
+From: Jouni Malinen <quic_jouni@quicinc.com>
+Date: Mon, 18 Dec 2023 20:36:19 +0200
+Subject: [PATCH] tests: Fix a typo in an error message
+
+Signed-off-by: Jouni Malinen <quic_jouni@quicinc.com>
+---
+ tests/hwsim/test_dpp.py | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/tests/hwsim/test_dpp.py b/tests/hwsim/test_dpp.py
+index 62c018190..7d3581759 100644
+--- a/tests/hwsim/test_dpp.py
++++ b/tests/hwsim/test_dpp.py
+@@ -3906,7 +3906,7 @@ def test_dpp_proto_auth_req_invalid_i_bootstrap_key(dev, apdev):
+         raise Exception("DPP scan request not seen")
+     ev = dev[1].wait_event(["DPP-RESPONSE-PENDING"], timeout=5)
+     if ev is None:
+-        raise Exception("DPP response pending indivation not seen")
++        raise Exception("DPP response pending indication not seen")
+ 
+ def test_dpp_proto_auth_req_no_i_proto_key(dev, apdev):
+     """DPP protocol testing - no I-proto key in Auth Req"""
+-- 
+2.43.0
+

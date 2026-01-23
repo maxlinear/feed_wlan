@@ -1,0 +1,42 @@
+From 30975951de41c426dc84d155c69b4f4b335d4ca5 Mon Sep 17 00:00:00 2001
+From: Jouni Malinen <j@w1.fi>
+Date: Sat, 13 Jan 2024 23:48:38 +0200
+Subject: [PATCH] tests: Skip test cases that need FILS if CONFIG_FILS=y was
+ not used
+
+fils_offload_to_driver2 and wpas_config_file_key_mgmt require
+CONFIG_FILS=y, but they did not use check_fils_capa().
+
+Signed-off-by: Jouni Malinen <j@w1.fi>
+---
+ tests/hwsim/test_fils.py        | 1 +
+ tests/hwsim/test_wpas_config.py | 1 +
+ 2 files changed, 2 insertions(+)
+
+diff --git a/tests/hwsim/test_fils.py b/tests/hwsim/test_fils.py
+index cb687578e..2e4e0986e 100644
+--- a/tests/hwsim/test_fils.py
++++ b/tests/hwsim/test_fils.py
+@@ -2472,6 +2472,7 @@ def test_fils_offload_to_driver(dev, apdev, params):
+ 
+ def test_fils_offload_to_driver2(dev, apdev, params):
+     """FILS offload to driver"""
++    check_fils_capa(dev[0])
+     wpas = WpaSupplicant(global_iface='/tmp/wpas-wlan5')
+     wpas.interface_add("wlan5", drv_params="force_connect_cmd=1")
+     run_fils_offload_to_driver(wpas, apdev, params)
+diff --git a/tests/hwsim/test_wpas_config.py b/tests/hwsim/test_wpas_config.py
+index a6b12e5fc..601517c7b 100644
+--- a/tests/hwsim/test_wpas_config.py
++++ b/tests/hwsim/test_wpas_config.py
+@@ -551,6 +551,7 @@ def test_wpas_config_file_set_global(dev):
+ 
+ def test_wpas_config_file_key_mgmt(dev, apdev, params):
+     """wpa_supplicant config file writing and key_mgmt values"""
++    check_fils_capa(dev[0])
+     config = os.path.join(params['logdir'],
+                           'wpas_config_file_key_mgmt.conf')
+     if os.path.exists(config):
+-- 
+2.43.0
+

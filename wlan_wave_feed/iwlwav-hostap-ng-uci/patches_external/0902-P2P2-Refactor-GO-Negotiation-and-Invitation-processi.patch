@@ -1,0 +1,423 @@
+From e633b471bc507c7ee9e5afaa4f70f926e8204dab Mon Sep 17 00:00:00 2001
+From: Shivani Baranwal <quic_shivbara@quicinc.com>
+Date: Mon, 5 Aug 2024 02:12:10 +0530
+Subject: [PATCH] P2P2: Refactor GO Negotiation and Invitation processing
+
+Add wrapper functions to process and prepare a response for GO
+Negotiation and Invitation frames. Send the response Action frames in
+handle_ functions. This is in preparation for encapsulating these
+messages within PASN Authentication frames for P2P2.
+
+Signed-off-by: Shivani Baranwal <quic_shivbara@quicinc.com>
+---
+ src/p2p/p2p.c            |   9 ++-
+ src/p2p/p2p_go_neg.c     | 120 +++++++++++++++++++++++++++------------
+ src/p2p/p2p_i.h          |  26 ++++++---
+ src/p2p/p2p_invitation.c |  45 ++++++++-------
+ 4 files changed, 133 insertions(+), 67 deletions(-)
+
+diff --git a/src/p2p/p2p.c b/src/p2p/p2p.c
+index cc7b48050..6376296f2 100644
+--- a/src/p2p/p2p.c
++++ b/src/p2p/p2p.c
+@@ -1919,17 +1919,16 @@ static void p2p_rx_p2p_action(struct p2p_data *p2p, const u8 *sa,
+ 
+ 	switch (data[0]) {
+ 	case P2P_GO_NEG_REQ:
+-		p2p_process_go_neg_req(p2p, sa, data + 1, len - 1, rx_freq);
++		p2p_handle_go_neg_req(p2p, sa, data + 1, len - 1, rx_freq);
+ 		break;
+ 	case P2P_GO_NEG_RESP:
+-		p2p_process_go_neg_resp(p2p, sa, data + 1, len - 1, rx_freq);
++		p2p_handle_go_neg_resp(p2p, sa, data + 1, len - 1, rx_freq);
+ 		break;
+ 	case P2P_GO_NEG_CONF:
+-		p2p_process_go_neg_conf(p2p, sa, data + 1, len - 1);
++		p2p_handle_go_neg_conf(p2p, sa, data + 1, len - 1);
+ 		break;
+ 	case P2P_INVITATION_REQ:
+-		p2p_process_invitation_req(p2p, sa, data + 1, len - 1,
+-					   rx_freq);
++		p2p_handle_invitation_req(p2p, sa, data + 1, len - 1, rx_freq);
+ 		break;
+ 	case P2P_INVITATION_RESP:
+ 		p2p_process_invitation_resp(p2p, sa, data + 1, len - 1);
+diff --git a/src/p2p/p2p_go_neg.c b/src/p2p/p2p_go_neg.c
+index 04e5139d6..8b31d8d3c 100644
+--- a/src/p2p/p2p_go_neg.c
++++ b/src/p2p/p2p_go_neg.c
+@@ -801,21 +801,20 @@ void p2p_check_pref_chan(struct p2p_data *p2p, int go,
+ }
+ 
+ 
+-void p2p_process_go_neg_req(struct p2p_data *p2p, const u8 *sa,
+-			    const u8 *data, size_t len, int rx_freq)
++struct wpabuf * p2p_process_go_neg_req(struct p2p_data *p2p, const u8 *sa,
++				       const u8 *data, size_t len, int rx_freq)
+ {
+ 	struct p2p_device *dev = NULL;
+ 	struct wpabuf *resp;
+ 	struct p2p_message msg;
+ 	u8 status = P2P_SC_FAIL_INVALID_PARAMS;
+ 	int tie_breaker = 0;
+-	int freq;
+ 
+ 	p2p_dbg(p2p, "Received GO Negotiation Request from " MACSTR "(freq=%d)",
+ 		MAC2STR(sa), rx_freq);
+ 
+ 	if (p2p_parse(data, len, &msg))
+-		return;
++		return NULL;
+ 
+ 	if (!msg.capability) {
+ 		p2p_dbg(p2p, "Mandatory Capability attribute missing from GO Negotiation Request");
+@@ -890,7 +889,7 @@ void p2p_process_go_neg_req(struct p2p_data *p2p, const u8 *sa,
+ 			p2p->cfg->send_action_done(p2p->cfg->cb_ctx);
+ 			p2p_go_neg_failed(p2p, *msg.status);
+ 			p2p_parse_free(&msg);
+-			return;
++			return NULL;
+ 		}
+ 		goto fail;
+ 	}
+@@ -968,7 +967,7 @@ void p2p_process_go_neg_req(struct p2p_data *p2p, const u8 *sa,
+ 		    os_memcmp(sa, p2p->cfg->dev_addr, ETH_ALEN) > 0) {
+ 			p2p_dbg(p2p, "Do not reply since peer has higher address and GO Neg Request already sent");
+ 			p2p_parse_free(&msg);
+-			return;
++			return NULL;
+ 		}
+ 
+ 		if (dev->go_neg_req_sent &&
+@@ -976,7 +975,7 @@ void p2p_process_go_neg_req(struct p2p_data *p2p, const u8 *sa,
+ 			p2p_dbg(p2p,
+ 				"Do not reply since peer is waiting for us to start a new GO Negotiation and GO Neg Request already sent");
+ 			p2p_parse_free(&msg);
+-			return;
++			return NULL;
+ 		}
+ 
+ 		go = p2p_go_det(p2p->go_intent, *msg.go_intent);
+@@ -1099,18 +1098,8 @@ fail:
+ 				     !tie_breaker);
+ 	p2p_parse_free(&msg);
+ 	if (resp == NULL)
+-		return;
+-	p2p_dbg(p2p, "Sending GO Negotiation Response");
+-	if (rx_freq > 0)
+-		freq = rx_freq;
+-	else
+-		freq = p2p_channel_to_freq(p2p->cfg->reg_class,
+-					   p2p->cfg->channel);
+-	if (freq < 0) {
+-		p2p_dbg(p2p, "Unknown regulatory class/channel");
+-		wpabuf_free(resp);
+-		return;
+-	}
++		return NULL;
++
+ 	if (status == P2P_SC_SUCCESS) {
+ 		p2p->pending_action_state = P2P_PENDING_GO_NEG_RESPONSE;
+ 		dev->flags |= P2P_DEV_WAIT_GO_NEG_CONFIRM;
+@@ -1128,6 +1117,33 @@ fail:
+ 	} else
+ 		p2p->pending_action_state =
+ 			P2P_PENDING_GO_NEG_RESPONSE_FAILURE;
++	return resp;
++}
++
++
++void p2p_handle_go_neg_req(struct p2p_data *p2p, const u8 *sa, const u8 *data,
++			   size_t len, int rx_freq)
++{
++	int freq;
++	struct wpabuf *resp;
++
++	resp = p2p_process_go_neg_req(p2p, sa, data, len, rx_freq);
++	if (!resp)
++		return;
++
++	p2p_dbg(p2p, "Sending GO Negotiation Response");
++
++	if (rx_freq > 0)
++		freq = rx_freq;
++	else
++		freq = p2p_channel_to_freq(p2p->cfg->reg_class,
++					   p2p->cfg->channel);
++	if (freq < 0) {
++		p2p_dbg(p2p, "Unknown regulatory class/channel");
++		wpabuf_free(resp);
++		return;
++	}
++
+ 	if (p2p_send_action(p2p, freq, sa, p2p->cfg->dev_addr,
+ 			    p2p->cfg->dev_addr,
+ 			    wpabuf_head(resp), wpabuf_len(resp), 100) < 0) {
+@@ -1213,14 +1229,15 @@ static struct wpabuf * p2p_build_go_neg_conf(struct p2p_data *p2p,
+ }
+ 
+ 
+-void p2p_process_go_neg_resp(struct p2p_data *p2p, const u8 *sa,
+-			     const u8 *data, size_t len, int rx_freq)
++struct wpabuf * p2p_process_go_neg_resp(struct p2p_data *p2p, const u8 *sa,
++					const u8 *data, size_t len, int rx_freq)
+ {
+ 	struct p2p_device *dev;
+ 	int go = -1;
+ 	struct p2p_message msg;
+ 	u8 status = P2P_SC_SUCCESS;
+ 	int freq;
++	struct wpabuf *conf = NULL;
+ 
+ 	p2p_dbg(p2p, "Received GO Negotiation Response from " MACSTR
+ 		" (freq=%d)", MAC2STR(sa), rx_freq);
+@@ -1229,16 +1246,16 @@ void p2p_process_go_neg_resp(struct p2p_data *p2p, const u8 *sa,
+ 	    dev != p2p->go_neg_peer) {
+ 		p2p_dbg(p2p, "Not ready for GO negotiation with " MACSTR,
+ 			MAC2STR(sa));
+-		return;
++		return NULL;
+ 	}
+ 
+ 	if (p2p_parse(data, len, &msg))
+-		return;
++		return NULL;
+ 
+ 	if (!(dev->flags & P2P_DEV_WAIT_GO_NEG_RESPONSE)) {
+ 		p2p_dbg(p2p, "Was not expecting GO Negotiation Response - ignore");
+ 		p2p_parse_free(&msg);
+-		return;
++		return NULL;
+ 	}
+ 	dev->flags &= ~P2P_DEV_WAIT_GO_NEG_RESPONSE;
+ 	p2p_update_peer_6ghz_capab(dev, &msg);
+@@ -1247,7 +1264,7 @@ void p2p_process_go_neg_resp(struct p2p_data *p2p, const u8 *sa,
+ 		p2p_dbg(p2p, "Unexpected Dialog Token %u (expected %u)",
+ 			msg.dialog_token, dev->dialog_token);
+ 		p2p_parse_free(&msg);
+-		return;
++		return NULL;
+ 	}
+ 
+ 	if (!msg.status) {
+@@ -1276,7 +1293,7 @@ void p2p_process_go_neg_resp(struct p2p_data *p2p, const u8 *sa,
+ 		}
+ 		p2p->cfg->send_action_done(p2p->cfg->cb_ctx);
+ 		p2p_parse_free(&msg);
+-		return;
++		return NULL;
+ 	}
+ 
+ 	if (!msg.capability) {
+@@ -1456,8 +1473,10 @@ fail:
+ 						 go);
+ 	p2p_parse_free(&msg);
+ 	if (dev->go_neg_conf == NULL)
+-		return;
+-	p2p_dbg(p2p, "Sending GO Negotiation Confirm");
++		return NULL;
++
++	conf = wpabuf_dup(dev->go_neg_conf);
++
+ 	if (status == P2P_SC_SUCCESS) {
+ 		p2p->pending_action_state = P2P_PENDING_GO_NEG_CONFIRM;
+ 		dev->go_state = go ? LOCAL_GO : REMOTE_GO;
+@@ -1471,7 +1490,39 @@ fail:
+ 	dev->go_neg_conf_freq = freq;
+ 	dev->go_neg_conf_sent = 0;
+ 
+-	if (p2p_send_action(p2p, freq, sa, p2p->cfg->dev_addr, sa,
++	if (status != P2P_SC_SUCCESS) {
++		p2p_dbg(p2p, "GO Negotiation failed");
++		dev->status = status;
++	}
++
++	return conf;
++}
++
++
++void p2p_handle_go_neg_resp(struct p2p_data *p2p, const u8 *sa, const u8 *data,
++			    size_t len, int rx_freq)
++{
++	int freq;
++	struct p2p_device *dev;
++	struct wpabuf *conf;
++
++	conf = p2p_process_go_neg_resp(p2p, sa, data, len, rx_freq);
++	if (!conf)
++		return;
++	wpabuf_free(conf);
++
++	dev = p2p_get_device(p2p, sa);
++	if (!dev)
++		return;
++
++	p2p_dbg(p2p, "Sending GO Negotiation Confirm");
++	if (rx_freq > 0)
++		freq = rx_freq;
++	else
++		freq = dev->listen_freq;
++
++	if (dev->go_neg_conf &&
++	    p2p_send_action(p2p, freq, sa, p2p->cfg->dev_addr, sa,
+ 			    wpabuf_head(dev->go_neg_conf),
+ 			    wpabuf_len(dev->go_neg_conf), 50) < 0) {
+ 		p2p_dbg(p2p, "Failed to send Action frame");
+@@ -1479,15 +1530,14 @@ fail:
+ 		p2p->cfg->send_action_done(p2p->cfg->cb_ctx);
+ 	} else
+ 		dev->go_neg_conf_sent++;
+-	if (status != P2P_SC_SUCCESS) {
+-		p2p_dbg(p2p, "GO Negotiation failed");
+-		p2p_go_neg_failed(p2p, status);
+-	}
++
++	if (dev->status != P2P_SC_SUCCESS)
++		p2p_go_neg_failed(p2p, dev->status);
+ }
+ 
+ 
+-void p2p_process_go_neg_conf(struct p2p_data *p2p, const u8 *sa,
+-			     const u8 *data, size_t len)
++void p2p_handle_go_neg_conf(struct p2p_data *p2p, const u8 *sa,
++			    const u8 *data, size_t len)
+ {
+ 	struct p2p_device *dev;
+ 	struct p2p_message msg;
+diff --git a/src/p2p/p2p_i.h b/src/p2p/p2p_i.h
+index 1c5617526..7e7fc3077 100644
+--- a/src/p2p/p2p_i.h
++++ b/src/p2p/p2p_i.h
+@@ -891,12 +891,17 @@ int p2p_start_sd(struct p2p_data *p2p, struct p2p_device *dev);
+ int p2p_peer_channels_check(struct p2p_data *p2p, struct p2p_channels *own,
+ 			    struct p2p_device *dev,
+ 			    const u8 *channel_list, size_t channel_list_len);
+-void p2p_process_go_neg_req(struct p2p_data *p2p, const u8 *sa,
+-			    const u8 *data, size_t len, int rx_freq);
+-void p2p_process_go_neg_resp(struct p2p_data *p2p, const u8 *sa,
+-			     const u8 *data, size_t len, int rx_freq);
+-void p2p_process_go_neg_conf(struct p2p_data *p2p, const u8 *sa,
+-			     const u8 *data, size_t len);
++void p2p_handle_go_neg_req(struct p2p_data *p2p, const u8 *sa, const u8 *data,
++			   size_t len, int rx_freq);
++void p2p_handle_go_neg_resp(struct p2p_data *p2p, const u8 *sa, const u8 *data,
++			    size_t len, int rx_freq);
++void p2p_handle_go_neg_conf(struct p2p_data *p2p, const u8 *sa, const u8 *data,
++			    size_t len);
++struct wpabuf * p2p_process_go_neg_req(struct p2p_data *p2p, const u8 *sa,
++				       const u8 *data, size_t len, int rx_freq);
++struct wpabuf * p2p_process_go_neg_resp(struct p2p_data *p2p, const u8 *sa,
++					const u8 *data, size_t len,
++					int rx_freq);
+ int p2p_connect_send(struct p2p_data *p2p, struct p2p_device *dev);
+ u16 p2p_wps_method_pw_id(enum p2p_wps_method wps_method);
+ void p2p_reselect_channel(struct p2p_data *p2p,
+@@ -917,8 +922,13 @@ void p2p_process_pcea(struct p2p_data *p2p, struct p2p_message *msg,
+ 		      struct p2p_device *dev);
+ 
+ /* p2p_invitation.c */
+-void p2p_process_invitation_req(struct p2p_data *p2p, const u8 *sa,
+-				const u8 *data, size_t len, int rx_freq);
++void p2p_handle_invitation_req(struct p2p_data *p2p, const u8 *sa,
++			       const u8 *data, size_t len, int rx_freq);
++void p2p_handle_invitation_resp(struct p2p_data *p2p, const u8 *sa,
++				const u8 *data, size_t len);
++struct wpabuf * p2p_process_invitation_req(struct p2p_data *p2p, const u8 *sa,
++					   const u8 *data, size_t len,
++					   int rx_freq);
+ void p2p_process_invitation_resp(struct p2p_data *p2p, const u8 *sa,
+ 				 const u8 *data, size_t len);
+ int p2p_invite_send(struct p2p_data *p2p, struct p2p_device *dev,
+diff --git a/src/p2p/p2p_invitation.c b/src/p2p/p2p_invitation.c
+index 70a7f6fa6..3fd66c230 100644
+--- a/src/p2p/p2p_invitation.c
++++ b/src/p2p/p2p_invitation.c
+@@ -181,14 +181,14 @@ static struct wpabuf * p2p_build_invitation_resp(struct p2p_data *p2p,
+ }
+ 
+ 
+-void p2p_process_invitation_req(struct p2p_data *p2p, const u8 *sa,
+-				const u8 *data, size_t len, int rx_freq)
++struct wpabuf * p2p_process_invitation_req(struct p2p_data *p2p, const u8 *sa,
++					   const u8 *data, size_t len,
++					   int rx_freq)
+ {
+ 	struct p2p_device *dev;
+ 	struct p2p_message msg;
+ 	struct wpabuf *resp = NULL;
+ 	u8 status = P2P_SC_FAIL_INFO_CURRENTLY_UNAVAILABLE;
+-	int freq;
+ 	int go = 0;
+ 	u8 group_bssid[ETH_ALEN], *bssid;
+ 	int op_freq = 0;
+@@ -202,7 +202,7 @@ void p2p_process_invitation_req(struct p2p_data *p2p, const u8 *sa,
+ 		MAC2STR(sa), rx_freq);
+ 
+ 	if (p2p_parse(data, len, &msg))
+-		return;
++		return NULL;
+ 
+ 	dev = p2p_get_device(p2p, sa);
+ 	if (dev == NULL || (dev->flags & P2P_DEV_PROBE_REQ_ONLY)) {
+@@ -388,19 +388,6 @@ fail:
+ 	resp = p2p_build_invitation_resp(p2p, dev, msg.dialog_token, status,
+ 					 bssid, reg_class, channel, channels);
+ 
+-	if (resp == NULL)
+-		goto out;
+-
+-	if (rx_freq > 0)
+-		freq = rx_freq;
+-	else
+-		freq = p2p_channel_to_freq(p2p->cfg->reg_class,
+-					   p2p->cfg->channel);
+-	if (freq < 0) {
+-		p2p_dbg(p2p, "Unknown regulatory class/channel");
+-		goto out;
+-	}
+-
+ 	/*
+ 	 * Store copy of invitation data to be used when processing TX status
+ 	 * callback for the Acton frame.
+@@ -424,6 +411,28 @@ fail:
+ 	}
+ 	p2p->inv_status = status;
+ 	p2p->inv_op_freq = op_freq;
++	p2p_parse_free(&msg);
++	return resp;
++}
++
++
++void p2p_handle_invitation_req(struct p2p_data *p2p, const u8 *sa,
++			       const u8 *data, size_t len, int rx_freq)
++{
++	int freq;
++	struct wpabuf *resp;
++
++	resp = p2p_process_invitation_req(p2p, sa, data, len, rx_freq);
++	if (!resp)
++		return;
++
++	if (rx_freq > 0)
++		freq = rx_freq;
++	else
++		freq = p2p_channel_to_freq(p2p->cfg->reg_class,
++					   p2p->cfg->channel);
++	if (freq < 0)
++		p2p_dbg(p2p, "Unknown regulatory class/channel");
+ 
+ 	p2p->pending_action_state = P2P_PENDING_INVITATION_RESPONSE;
+ 	if (p2p_send_action(p2p, freq, sa, p2p->cfg->dev_addr,
+@@ -432,9 +441,7 @@ fail:
+ 		p2p_dbg(p2p, "Failed to send Action frame");
+ 	}
+ 
+-out:
+ 	wpabuf_free(resp);
+-	p2p_parse_free(&msg);
+ }
+ 
+ 
+-- 
+2.43.0
+

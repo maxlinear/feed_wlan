@@ -1,0 +1,47 @@
+From 4c4ba77e65bc39062283395e60310fb21fa08b28 Mon Sep 17 00:00:00 2001
+From: Jouni Malinen <j@w1.fi>
+Date: Sun, 10 Dec 2023 16:26:21 +0200
+Subject: [PATCH] tests: Avoid race condition in scan_external_trigger
+
+Wait for the externally triggered scan to actually start before issuing
+the own scan command to avoid a race condition with UML time-travel.
+
+Signed-off-by: Jouni Malinen <j@w1.fi>
+---
+ tests/hwsim/test_scan.py | 13 +++++++------
+ 1 file changed, 7 insertions(+), 6 deletions(-)
+
+diff --git a/tests/hwsim/test_scan.py b/tests/hwsim/test_scan.py
+index 80c6d4cc7..5cb054d4d 100644
+--- a/tests/hwsim/test_scan.py
++++ b/tests/hwsim/test_scan.py
+@@ -20,6 +20,13 @@ from tshark import run_tshark
+ from test_ap_csa import switch_channel, wait_channel_switch
+ 
+ def check_scan(dev, params, other_started=False, test_busy=False):
++    if other_started:
++        ev = dev.wait_event(["CTRL-EVENT-SCAN-STARTED"])
++        if ev is None:
++            raise Exception("Other scan did not start")
++        if "id=" in ev:
++            raise Exception("Scan id unexpectedly included in start event")
++
+     if not other_started:
+         dev.dump_monitor()
+     id = dev.request("SCAN " + params)
+@@ -32,12 +39,6 @@ def check_scan(dev, params, other_started=False, test_busy=False):
+             raise Exception("SCAN command while already scanning not rejected")
+ 
+     if other_started:
+-        ev = dev.wait_event(["CTRL-EVENT-SCAN-STARTED"])
+-        if ev is None:
+-            raise Exception("Other scan did not start")
+-        if "id=" + str(id) in ev:
+-            raise Exception("Own scan id unexpectedly included in start event")
+-
+         ev = dev.wait_event(["CTRL-EVENT-SCAN-RESULTS"])
+         if ev is None:
+             raise Exception("Other scan did not complete")
+-- 
+2.43.0
+

@@ -1,0 +1,37 @@
+From 631fbbcfc72ad07564a4e57bac1976840f1036fb Mon Sep 17 00:00:00 2001
+From: Jouni Malinen <j@w1.fi>
+Date: Sun, 22 Dec 2024 18:17:19 +0200
+Subject: [PATCH] Use consistent ifdef CONFIG_NO_WPA blocks
+
+This is needed to avoid compiler warnings about unused static functions.
+
+Signed-off-by: Jouni Malinen <j@w1.fi>
+---
+ wpa_supplicant/wpas_glue.c | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/wpa_supplicant/wpas_glue.c b/wpa_supplicant/wpas_glue.c
+index e776d5f92..ec363c9bb 100644
+--- a/wpa_supplicant/wpas_glue.c
++++ b/wpa_supplicant/wpas_glue.c
+@@ -1412,8 +1412,6 @@ static void wpa_supplicant_store_ptk(void *ctx, const u8 *addr, int cipher,
+ 			ptk, NULL, NULL, 0);
+ }
+ 
+-#endif /* CONFIG_NO_WPA */
+-
+ 
+ #ifdef CONFIG_PASN
+ static int wpa_supplicant_set_ltf_keyseed(void *_wpa_s, const u8 *own_addr,
+@@ -1448,6 +1446,8 @@ static void wpa_supplicant_ssid_verified(void *_wpa_s)
+ 	wpa_msg(wpa_s, MSG_INFO, "RSN: SSID matched expected value");
+ }
+ 
++#endif /* CONFIG_NO_WPA */
++
+ 
+ int wpa_supplicant_init_wpa(struct wpa_supplicant *wpa_s)
+ {
+-- 
+2.43.0
+

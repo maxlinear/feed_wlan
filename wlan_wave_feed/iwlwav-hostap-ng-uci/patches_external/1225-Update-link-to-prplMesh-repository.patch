@@ -1,0 +1,27 @@
+From 470e32c20eaa168664c4396ab8376644ebd63128 Mon Sep 17 00:00:00 2001
+From: Jouni Malinen <j@w1.fi>
+Date: Fri, 27 Dec 2024 00:34:00 +0200
+Subject: [PATCH] Update link to prplMesh repository
+
+The older github.com repository has been archived.
+
+Signed-off-by: Jouni Malinen <j@w1.fi>
+---
+ hostapd/README-MULTI-AP | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/hostapd/README-MULTI-AP b/hostapd/README-MULTI-AP
+index ccee69e13..6190cace4 100644
+--- a/hostapd/README-MULTI-AP
++++ b/hostapd/README-MULTI-AP
+@@ -155,6 +155,6 @@ References
+ ----------
+ 
+ [1] https://www.wi-fi.org/discover-wi-fi/wi-fi-easymesh
+-[2] https://github.com/prplfoundation/prplMesh
++[2] https://gitlab.com/prpl-foundation/prplmesh/prplMesh
+ [3] https://www.wi-fi.org/file/multi-ap-specification-v10
+     (requires registration)
+-- 
+2.43.0
+

@@ -1,0 +1,28 @@
+From 3fad445496ec76e988ece75158f2cb008cea3369 Mon Sep 17 00:00:00 2001
+From: Henry Ptasinski <henry@e78com.com>
+Date: Wed, 10 Jan 2024 17:20:55 -0800
+Subject: [PATCH] wlantest: Fix the cipher name in a BIP-GMAC-256 test vector
+
+Signed-off-by: Henry Ptasinski <henry@e78com.com>
+Signed-off-by: Andrew Pope <andrew.pope@morsemicro.com>
+Signed-off-by: David Goodall <dave@morsemicro.com>
+---
+ wlantest/test_vectors.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/wlantest/test_vectors.c b/wlantest/test_vectors.c
+index f2517cb8c..3ee53ae24 100644
+--- a/wlantest/test_vectors.c
++++ b/wlantest/test_vectors.c
+@@ -906,7 +906,7 @@ static int test_vector_bip_gmac_256(void)
+ 
+ 	wpa_hexdump(MSG_INFO, "Protected MPDU (without FCS)", prot, prot_len);
+ 	if (prot_len != sizeof(res) || os_memcmp(res, prot, prot_len) != 0) {
+-		wpa_printf(MSG_ERROR, "BIP-GMAC-128 test vector mismatch");
++		wpa_printf(MSG_ERROR, "BIP-GMAC-256 test vector mismatch");
+ 		err++;
+ 	}
+ 	os_free(prot);
+-- 
+2.43.0
+

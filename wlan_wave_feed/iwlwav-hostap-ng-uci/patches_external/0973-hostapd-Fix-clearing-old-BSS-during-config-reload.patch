@@ -1,0 +1,47 @@
+From 00daadff95d3b3253f58a29e8a9e0251d0d7f093 Mon Sep 17 00:00:00 2001
+From: Ajith C <quic_ajithc@quicinc.com>
+Date: Wed, 21 Aug 2024 09:39:01 +0530
+Subject: [PATCH] hostapd: Fix clearing old BSS during config reload
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+After a configuration reload, stations that were previously associated
+with the AP could have failed to reconnect under the new configuration.
+
+This issue arises because the new configuration is assigned to the
+interface’s configuration pointer too early. The old configuration needs
+to remain in the pointer until all existing stations are cleared.
+
+Resolve this issue by assigning the new configuration only after all
+existing stations have been cleared.
+
+Fixes: b37c3fbad4a4 ("hostapd: Add config_id parameter")
+Signed-off-by: Ajith C <quic_ajithc@quicinc.com>
+---
+ src/ap/hostapd.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/src/ap/hostapd.c b/src/ap/hostapd.c
+index 7d924893f..5ba2cab2c 100644
+--- a/src/ap/hostapd.c
++++ b/src/ap/hostapd.c
+@@ -302,7 +302,6 @@ int hostapd_reload_config(struct hostapd_iface *iface)
+ 				   "Failed to enable interface on config reload");
+ 		return res;
+ 	}
+-	iface->conf = newconf;
+ 
+ 	for (j = 0; j < iface->num_bss; j++) {
+ 		hapd = iface->bss[j];
+@@ -330,6 +329,7 @@ int hostapd_reload_config(struct hostapd_iface *iface)
+ 		hostapd_reload_bss(hapd);
+ 	}
+ 
++	iface->conf = newconf;
+ 	hostapd_config_free(oldconf);
+ 
+ 
+-- 
+2.43.0
+

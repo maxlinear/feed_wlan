@@ -1,0 +1,64 @@
+From cf36ffd43cec658406dce0966bb9337782d9c9b0 Mon Sep 17 00:00:00 2001
+From: Ilan Peer <ilan.peer@intel.com>
+Date: Mon, 8 Apr 2024 16:07:01 +0300
+Subject: [PATCH] wpa_supplicant: Do not allow fast associate before scanning 6
+ GHz
+
+In case the channel map was updated to include the 6 GHz but these channels
+were not scanned yet, do not allow fast associate.
+
+Signed-off-by: Ilan Peer <ilan.peer@intel.com>
+---
+ wpa_supplicant/events.c | 10 ++++++----
+ wpa_supplicant/scan.c   |  6 ++++++
+ 2 files changed, 12 insertions(+), 4 deletions(-)
+
+diff --git a/wpa_supplicant/events.c b/wpa_supplicant/events.c
+index 823556e3a..8dc618e5c 100644
+--- a/wpa_supplicant/events.c
++++ b/wpa_supplicant/events.c
+@@ -2843,6 +2843,9 @@ int wpa_supplicant_fast_associate(struct wpa_supplicant *wpa_s)
+ 			       wpa_s->conf->scan_res_valid_for_connect)) {
+ 		wpa_printf(MSG_DEBUG, "Fast associate: Old scan results");
+ 		return -1;
++	} else if (wpa_s->crossed_6ghz_dom) {
++		wpa_printf(MSG_DEBUG, "Fast associate: Crossed 6 GHz domain");
++		return -1;
+ 	}
+ 
+ 	return wpas_select_network_from_last_scan(wpa_s, 0, 1, false, NULL);
+@@ -5219,11 +5222,10 @@ void wpa_supplicant_update_channel_list(struct wpa_supplicant *wpa_s,
+ 			wpa_dbg(ifs, MSG_DEBUG,
+ 				"Channel list changed - restart sched_scan");
+ 			wpas_scan_restart_sched_scan(ifs);
+-		} else if (ifs->scanning && !was_6ghz_enabled &&
+-			   ifs->is_6ghz_enabled) {
+-			/* Look for APs in the 6 GHz band */
++		} else if (!was_6ghz_enabled && ifs->is_6ghz_enabled) {
+ 			wpa_dbg(ifs, MSG_INFO,
+-				"Channel list changed - trigger 6 GHz-only scan");
++				"Channel list changed: 6 GHz was enabled");
++
+ 			ifs->crossed_6ghz_dom = true;
+ 		}
+ 	}
+diff --git a/wpa_supplicant/scan.c b/wpa_supplicant/scan.c
+index ccd694bd0..8b59e409b 100644
+--- a/wpa_supplicant/scan.c
++++ b/wpa_supplicant/scan.c
+@@ -322,6 +322,12 @@ int wpa_supplicant_trigger_scan(struct wpa_supplicant *wpa_s,
+ 	}
+ 	wpa_s->last_scan_all_chan = !params->freqs;
+ 	wpa_s->last_scan_non_coloc_6ghz = params->non_coloc_6ghz;
++
++	if (wpa_s->crossed_6ghz_dom) {
++		wpa_printf(MSG_DEBUG, "First scan after crossing 6 GHz domain");
++		wpa_s->crossed_6ghz_dom = false;
++	}
++
+ 	if (!ctx ||
+ 	    radio_add_work(wpa_s, 0, "scan", next, wpas_trigger_scan_cb,
+ 			   ctx) < 0) {
+-- 
+2.43.0
+

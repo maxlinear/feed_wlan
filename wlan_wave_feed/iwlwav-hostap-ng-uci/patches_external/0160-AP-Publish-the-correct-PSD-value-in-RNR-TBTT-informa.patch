@@ -1,0 +1,61 @@
+From bcad7fec653734d6a297929cd350898046a3c42f Mon Sep 17 00:00:00 2001
+From: Andrei Otcheretianski <andrei.otcheretianski@intel.com>
+Date: Fri, 22 Dec 2023 11:04:20 +0200
+Subject: [PATCH] AP: Publish the correct PSD value in RNR TBTT information
+ field
+
+According to IEEE P802.11-REVme/D4.0, 9.4.2.169.2 (Neighbor AP
+Information field), the 20 MHz PSD subfield in the TBTT Information
+field is a signed value with valid range of -127 to +126, while +127
+indicates "no maximum transmit power is specified". Fix the default
+value advertised.
+
+Fixes: 3db24e4eefc7 ("RNR: Define element format")
+Fixes: a7c152d6b806 ("RNR: Add data from neighbor database")
+Signed-off-by: Andrei Otcheretianski <andrei.otcheretianski@intel.com>
+Signed-off-by: Andrei Otcheretianski <andrei.otcheretianski@intel.com>
+---
+ src/ap/ieee802_11.c          | 4 ++--
+ src/common/ieee802_11_defs.h | 4 +++-
+ 2 files changed, 5 insertions(+), 3 deletions(-)
+
+diff --git a/src/ap/ieee802_11.c b/src/ap/ieee802_11.c
+index 867229ea1..1067787f2 100644
+--- a/src/ap/ieee802_11.c
++++ b/src/ap/ieee802_11.c
+@@ -7504,7 +7504,7 @@ static u8 * hostapd_eid_nr_db(struct hostapd_data *hapd, u8 *eid,
+ 		/* BSS parameters */
+ 		*eid++ = nr->bss_parameters;
+ 		/* 20 MHz PSD */
+-		*eid++ = RNR_20_MHZ_PSD_MAX_TXPOWER - 1;
++		*eid++ = RNR_20_MHZ_PSD_MAX_TXPOWER;
+ 		len += RNR_TBTT_INFO_LEN;
+ 		*size_offset = (eid - size_offset) - 1;
+ 	}
+@@ -7563,7 +7563,7 @@ static bool hostapd_eid_rnr_bss(struct hostapd_data *hapd,
+ 	bss_param |= RNR_BSS_PARAM_CO_LOCATED;
+ 
+ 	*eid++ = bss_param;
+-	*eid++ = RNR_20_MHZ_PSD_MAX_TXPOWER - 1;
++	*eid++ = RNR_20_MHZ_PSD_MAX_TXPOWER;
+ 
+ 	if (!ap_mld) {
+ 		*len += RNR_TBTT_INFO_LEN;
+diff --git a/src/common/ieee802_11_defs.h b/src/common/ieee802_11_defs.h
+index 09f7d0054..8ffc199ae 100644
+--- a/src/common/ieee802_11_defs.h
++++ b/src/common/ieee802_11_defs.h
+@@ -2524,7 +2524,9 @@ struct ieee80211_he_mu_edca_parameter_set {
+ #define RNR_BSS_PARAM_MEMBER_CO_LOCATED_ESS         BIT(4)
+ #define RNR_BSS_PARAM_UNSOLIC_PROBE_RESP_ACTIVE     BIT(5)
+ #define RNR_BSS_PARAM_CO_LOCATED                    BIT(6)
+-#define RNR_20_MHZ_PSD_MAX_TXPOWER                  255 /* dBm */
++/* Maximum transmit power in Y/2 dBm (-127..126); 127 indicates no maximum
++ * transmit power is specified for the corresponding 20 MHz channel. */
++#define RNR_20_MHZ_PSD_MAX_TXPOWER                  127
+ 
+ /* IEEE P802.11be/D5.0, Figure 9-704c - MLD Parameters subfield format */
+ /* B0..B7: AP MLD ID */
+-- 
+2.43.0
+

@@ -1,0 +1,84 @@
+From f2f0dd354ffb68c2f854d0d3650f4a7c9fd3dbc1 Mon Sep 17 00:00:00 2001
+From: Aditya Kumar Singh <quic_adisi@quicinc.com>
+Date: Wed, 6 Mar 2024 12:08:22 +0530
+Subject: [PATCH] nl80211: Cache hostapd_data context in per link BSS struct
+ for AP MLD
+
+Cache the corresponding hostapd_data struct context into the link entry
+within the driver wrapper. This will be useful for driver events
+callback processing.
+
+Signed-off-by: Aditya Kumar Singh <quic_adisi@quicinc.com>
+---
+ src/ap/ap_drv_ops.h          | 2 +-
+ src/drivers/driver.h         | 3 ++-
+ src/drivers/driver_nl80211.c | 4 +++-
+ src/drivers/driver_nl80211.h | 1 +
+ 4 files changed, 7 insertions(+), 3 deletions(-)
+
+diff --git a/src/ap/ap_drv_ops.h b/src/ap/ap_drv_ops.h
+index f38b1850a..b3a964479 100644
+--- a/src/ap/ap_drv_ops.h
++++ b/src/ap/ap_drv_ops.h
+@@ -455,7 +455,7 @@ static inline int hostapd_drv_link_add(struct hostapd_data *hapd,
+ 	if (!hapd->driver || !hapd->drv_priv || !hapd->driver->link_add)
+ 		return -1;
+ 
+-	return hapd->driver->link_add(hapd->drv_priv, link_id, addr);
++	return hapd->driver->link_add(hapd->drv_priv, link_id, addr, hapd);
+ 
+ }
+ #endif /* CONFIG_IEEE80211BE */
+diff --git a/src/drivers/driver.h b/src/drivers/driver.h
+index 72446fac1..f61bbeea1 100644
+--- a/src/drivers/driver.h
++++ b/src/drivers/driver.h
+@@ -5148,9 +5148,10 @@ struct wpa_driver_ops {
+ 	 * @priv: Private driver interface data
+ 	 * @link_id: The link ID
+ 	 * @addr: The MAC address to use for the link
++	 * @bss_ctx: BSS context for %WPA_IF_AP_BSS interfaces
+ 	 * Returns: 0 on success, negative value on failure
+ 	 */
+-	int (*link_add)(void *priv, u8 link_id, const u8 *addr);
++	int (*link_add)(void *priv, u8 link_id, const u8 *addr, void *bss_ctx);
+ 
+ #ifdef CONFIG_TESTING_OPTIONS
+ 	int (*register_frame)(void *priv, u16 type,
+diff --git a/src/drivers/driver_nl80211.c b/src/drivers/driver_nl80211.c
+index be077db91..46f155e45 100644
+--- a/src/drivers/driver_nl80211.c
++++ b/src/drivers/driver_nl80211.c
+@@ -13761,7 +13761,8 @@ static int nl80211_dpp_listen(void *priv, bool enable)
+ #endif /* CONFIG_DPP */
+ 
+ 
+-static int nl80211_link_add(void *priv, u8 link_id, const u8 *addr)
++static int nl80211_link_add(void *priv, u8 link_id, const u8 *addr,
++			    void *bss_ctx)
+ {
+ 	struct i802_bss *bss = priv;
+ 	struct wpa_driver_nl80211_data *drv = bss->drv;
+@@ -13820,6 +13821,7 @@ static int nl80211_link_add(void *priv, u8 link_id, const u8 *addr)
+ 		bss->flink = &bss->links[link_id];
+ 
+ 	bss->valid_links |= BIT(link_id);
++	bss->links[link_id].ctx = bss_ctx;
+ 
+ 	wpa_printf(MSG_DEBUG, "nl80211: MLD: valid_links=0x%04x",
+ 		   bss->valid_links);
+diff --git a/src/drivers/driver_nl80211.h b/src/drivers/driver_nl80211.h
+index 32a1c8b1f..618746e67 100644
+--- a/src/drivers/driver_nl80211.h
++++ b/src/drivers/driver_nl80211.h
+@@ -58,6 +58,7 @@ struct i802_link {
+ 	int freq;
+ 	int bandwidth;
+ 	u8 addr[ETH_ALEN];
++	void *ctx;
+ };
+ 
+ struct i802_bss {
+-- 
+2.43.0
+

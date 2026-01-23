@@ -1,0 +1,176 @@
+From 4ba989fd3916991a2ae52fa6ca20a3002e528d66 Mon Sep 17 00:00:00 2001
+From: Jouni Malinen <j@w1.fi>
+Date: Sun, 26 Jan 2025 11:01:12 +0200
+Subject: [PATCH] NAN USD: Add NAN_UNPAUSE_PUBLISH to cancel pauseState
+
+This allows a publisher to be unpaused when service follow-up has been
+completed with a peer. This functionality is not defined in the Wi-Fi
+Aware specification for USD, but this is needed to avoid having to wait
+for the 60 second pause state expiration since it is not clear when "USD
+terminates" without upper layer service specific knowledge.
+
+Signed-off-by: Jouni Malinen <j@w1.fi>
+---
+ src/common/nan_de.c         | 26 +++++++++++++++++++
+ src/common/nan_de.h         |  3 +++
+ wpa_supplicant/ctrl_iface.c | 50 +++++++++++++++++++++++++++++++++++++
+ wpa_supplicant/nan_usd.c    | 10 ++++++++
+ wpa_supplicant/nan_usd.h    |  2 ++
+ 5 files changed, 91 insertions(+)
+
+diff --git a/src/common/nan_de.c b/src/common/nan_de.c
+index 2c1d0c4dc..4f63adc85 100644
+--- a/src/common/nan_de.c
++++ b/src/common/nan_de.c
+@@ -1426,6 +1426,32 @@ int nan_de_update_publish(struct nan_de *de, int publish_id,
+ }
+ 
+ 
++int nan_de_unpause_publish(struct nan_de *de, int publish_id,
++			   u8 peer_instance_id, const u8 *peer_addr)
++{
++	struct nan_de_service *srv;
++
++	wpa_printf(MSG_DEBUG,
++		   "NAN: UnpausePublish(publish_id=%d, peer_instance_id=%d peer_addr="
++		   MACSTR ")",
++		   publish_id, peer_instance_id, MAC2STR(peer_addr));
++
++	if (publish_id < 1 || publish_id > NAN_DE_MAX_SERVICE)
++		return -1;
++	srv = de->service[publish_id - 1];
++	if (!srv || srv->type != NAN_DE_PUBLISH)
++		return -1;
++
++	if (srv->sel_peer_id != peer_instance_id ||
++	    !ether_addr_equal(peer_addr, srv->sel_peer_addr) ||
++	    !os_reltime_initialized(&srv->pause_state_end))
++		return -1;
++
++	nan_de_unpause_state(srv);
++	return 0;
++}
++
++
+ int nan_de_subscribe(struct nan_de *de, const char *service_name,
+ 		     enum nan_service_protocol_type srv_proto_type,
+ 		     const struct wpabuf *ssi, const struct wpabuf *elems,
+diff --git a/src/common/nan_de.h b/src/common/nan_de.h
+index 9c1df317c..41e294e71 100644
+--- a/src/common/nan_de.h
++++ b/src/common/nan_de.h
+@@ -120,6 +120,9 @@ void nan_de_cancel_publish(struct nan_de *de, int publish_id);
+ int nan_de_update_publish(struct nan_de *de, int publish_id,
+ 			  const struct wpabuf *ssi);
+ 
++int nan_de_unpause_publish(struct nan_de *de, int publish_id,
++			   u8 peer_instance_id, const u8 *peer_addr);
++
+ struct nan_subscribe_params {
+ 	/* configuration_parameters */
+ 
+diff --git a/wpa_supplicant/ctrl_iface.c b/wpa_supplicant/ctrl_iface.c
+index 0a8faa518..ce821cd03 100644
+--- a/wpa_supplicant/ctrl_iface.c
++++ b/wpa_supplicant/ctrl_iface.c
+@@ -12770,6 +12770,53 @@ fail:
+ 	return ret;
+ }
+ 
++
++static int wpas_ctrl_nan_unpause_publish(struct wpa_supplicant *wpa_s,
++					 char *cmd)
++{
++	char *token, *context = NULL;
++	int publish_id = 0;
++	int peer_instance_id = 0;
++	u8 peer_addr[ETH_ALEN];
++
++	os_memset(peer_addr, 0, ETH_ALEN);
++
++	while ((token = str_token(cmd, " ", &context))) {
++		if (sscanf(token, "publish_id=%i", &publish_id) == 1)
++			continue;
++
++		if (sscanf(token, "peer_instance_id=%i",
++			   &peer_instance_id) == 1)
++			continue;
++
++		if (os_strncmp(token, "peer=", 5) == 0) {
++			if (hwaddr_aton(token + 5, peer_addr) < 0)
++				return -1;
++			continue;
++		}
++
++		wpa_printf(MSG_INFO,
++			   "CTRL: Invalid NAN_UNPAUSE_PUBLISH parameter: %s",
++			   token);
++		return -1;
++	}
++
++	if (publish_id <= 0) {
++		wpa_printf(MSG_INFO,
++			   "CTRL: Invalid or missing NAN_UNPAUSE_PUBLIH publish_id");
++		return -1;
++	}
++
++	if (is_zero_ether_addr(peer_addr)) {
++		wpa_printf(MSG_INFO,
++			   "CTRL: Invalid or missing NAN_UNPAUSE_PUBLISH address");
++		return -1;
++	}
++
++	return wpas_nan_usd_unpause_publish(wpa_s, publish_id, peer_instance_id,
++					    peer_addr);
++}
++
+ #endif /* CONFIG_NAN_USD */
+ 
+ 
+@@ -13816,6 +13863,9 @@ char * wpa_supplicant_ctrl_iface_process(struct wpa_supplicant *wpa_s,
+ 	} else if (os_strncmp(buf, "NAN_TRANSMIT ", 13) == 0) {
+ 		if (wpas_ctrl_nan_transmit(wpa_s, buf + 13) < 0)
+ 			reply_len = -1;
++	} else if (os_strncmp(buf, "NAN_UNPAUSE_PUBLISH ", 20) == 0) {
++		if (wpas_ctrl_nan_unpause_publish(wpa_s, buf + 20) < 0)
++			reply_len = -1;
+ 	} else if (os_strcmp(buf, "NAN_FLUSH") == 0) {
+ 		wpas_nan_usd_flush(wpa_s);
+ #endif /* CONFIG_NAN_USD */
+diff --git a/wpa_supplicant/nan_usd.c b/wpa_supplicant/nan_usd.c
+index 63d99756a..946d62fb3 100644
+--- a/wpa_supplicant/nan_usd.c
++++ b/wpa_supplicant/nan_usd.c
+@@ -417,6 +417,16 @@ int wpas_nan_usd_update_publish(struct wpa_supplicant *wpa_s, int publish_id,
+ }
+ 
+ 
++int wpas_nan_usd_unpause_publish(struct wpa_supplicant *wpa_s, int publish_id,
++				 u8 peer_instance_id, const u8 *peer_addr)
++{
++	if (!wpa_s->nan_de)
++		return -1;
++	return nan_de_unpause_publish(wpa_s->nan_de, publish_id,
++				      peer_instance_id, peer_addr);
++}
++
++
+ int wpas_nan_usd_subscribe(struct wpa_supplicant *wpa_s,
+ 			   const char *service_name,
+ 			   enum nan_service_protocol_type srv_proto_type,
+diff --git a/wpa_supplicant/nan_usd.h b/wpa_supplicant/nan_usd.h
+index 59c09896a..6a43fb241 100644
+--- a/wpa_supplicant/nan_usd.h
++++ b/wpa_supplicant/nan_usd.h
+@@ -26,6 +26,8 @@ int wpas_nan_usd_publish(struct wpa_supplicant *wpa_s, const char *service_name,
+ void wpas_nan_usd_cancel_publish(struct wpa_supplicant *wpa_s, int publish_id);
+ int wpas_nan_usd_update_publish(struct wpa_supplicant *wpa_s, int publish_id,
+ 				const struct wpabuf *ssi);
++int wpas_nan_usd_unpause_publish(struct wpa_supplicant *wpa_s, int publish_id,
++				 u8 peer_instance_id, const u8 *peer_addr);
+ int wpas_nan_usd_subscribe(struct wpa_supplicant *wpa_s,
+ 			   const char *service_name,
+ 			   enum nan_service_protocol_type srv_proto_type,
+-- 
+2.43.0
+

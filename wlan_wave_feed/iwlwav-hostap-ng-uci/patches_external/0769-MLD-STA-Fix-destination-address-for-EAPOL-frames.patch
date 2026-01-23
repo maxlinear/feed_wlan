@@ -1,0 +1,63 @@
+From bc43e75b2b9ca3f66587f53bd0a7d4e3dcd5df5c Mon Sep 17 00:00:00 2001
+From: Veerendranath Jakkam <quic_vjakkam@quicinc.com>
+Date: Tue, 25 Jun 2024 18:42:06 +0530
+Subject: [PATCH] MLD STA: Fix destination address for EAPOL frames
+
+For MLO association, specify the destination address as the AP MLD MAC
+address for sending EAPOL frames. Previously, this was set to the BSSID
+in all cases (and hoped for the driver to map it to MLD MAC address when
+needed).
+
+Signed-off-by: Veerendranath Jakkam <quic_vjakkam@quicinc.com>
+---
+ wpa_supplicant/wpas_glue.c | 17 ++++++++++++-----
+ 1 file changed, 12 insertions(+), 5 deletions(-)
+
+diff --git a/wpa_supplicant/wpas_glue.c b/wpa_supplicant/wpas_glue.c
+index 30e4876ee..e776d5f92 100644
+--- a/wpa_supplicant/wpas_glue.c
++++ b/wpa_supplicant/wpas_glue.c
+@@ -148,6 +148,7 @@ static int wpa_supplicant_eapol_send(void *ctx, int type, const u8 *buf,
+ {
+ 	struct wpa_supplicant *wpa_s = ctx;
+ 	u8 *msg, *dst, bssid[ETH_ALEN];
++	struct driver_sta_mlo_info drv_mlo;
+ 	size_t msglen;
+ 	int res;
+ 
+@@ -197,11 +198,16 @@ static int wpa_supplicant_eapol_send(void *ctx, int type, const u8 *buf,
+ 	if (is_zero_ether_addr(wpa_s->bssid)) {
+ 		wpa_printf(MSG_DEBUG, "BSSID not set when trying to send an "
+ 			   "EAPOL frame");
++		os_memset(&drv_mlo, 0, sizeof(drv_mlo));
+ 		if (wpa_drv_get_bssid(wpa_s, bssid) == 0 &&
++		    (!wpa_s->valid_links ||
++		     wpas_drv_get_sta_mlo_info(wpa_s, &drv_mlo) == 0) &&
+ 		    !is_zero_ether_addr(bssid)) {
+-			dst = bssid;
+-			wpa_printf(MSG_DEBUG, "Using current BSSID " MACSTR
++			dst = drv_mlo.valid_links ? drv_mlo.ap_mld_addr : bssid;
++			wpa_printf(MSG_DEBUG, "Using current %s " MACSTR
+ 				   " from the driver as the EAPOL destination",
++				   drv_mlo.valid_links ? "AP MLD MAC address" :
++				   "BSSID",
+ 				   MAC2STR(dst));
+ 		} else {
+ 			dst = wpa_s->last_eapol_src;
+@@ -211,9 +217,10 @@ static int wpa_supplicant_eapol_send(void *ctx, int type, const u8 *buf,
+ 				   MAC2STR(dst));
+ 		}
+ 	} else {
+-		/* BSSID was already set (from (Re)Assoc event, so use it as
+-		 * the EAPOL destination. */
+-		dst = wpa_s->bssid;
++		/* BSSID was already set (from (Re)Assoc event, so use BSSID or
++		 * AP MLD MAC address (in the case of MLO connection) as the
++		 * EAPOL destination. */
++		dst = wpa_s->valid_links ? wpa_s->ap_mld_addr : wpa_s->bssid;
+ 	}
+ 
+ 	msg = wpa_alloc_eapol(wpa_s, type, buf, len, &msglen, NULL);
+-- 
+2.43.0
+

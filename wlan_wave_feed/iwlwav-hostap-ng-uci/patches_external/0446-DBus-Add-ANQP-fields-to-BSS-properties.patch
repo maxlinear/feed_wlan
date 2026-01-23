@@ -1,0 +1,397 @@
+From 2ae1e6f18b5cb02443788a473154318a66692fbf Mon Sep 17 00:00:00 2001
+From: Damien Dejean <damiendejean@chromium.org>
+Date: Mon, 26 Feb 2024 16:32:41 +0000
+Subject: [PATCH] DBus: Add ANQP fields to BSS properties
+
+Add ANQP fields to the BSS properties to allow DBus clients to be
+notified and obtain the values when it changes.
+
+Signed-off-by: Damien Dejean <damiendejean@chromium.org>
+---
+ doc/dbus.doxygen                        |  24 ++++
+ tests/hwsim/test_dbus.py                |  52 +++++++
+ wpa_supplicant/dbus/dbus_new.c          |   8 ++
+ wpa_supplicant/dbus/dbus_new.h          |   1 +
+ wpa_supplicant/dbus/dbus_new_handlers.c | 171 ++++++++++++++++++++++++
+ wpa_supplicant/dbus/dbus_new_handlers.h |   1 +
+ wpa_supplicant/interworking.c           |   2 +
+ wpa_supplicant/notify.c                 |   9 ++
+ wpa_supplicant/notify.h                 |   2 +
+ 9 files changed, 270 insertions(+)
+
+diff --git a/doc/dbus.doxygen b/doc/dbus.doxygen
+index 61d67dca1..9f72614d4 100644
+--- a/doc/dbus.doxygen
++++ b/doc/dbus.doxygen
+@@ -2214,6 +2214,30 @@ scan results.
+ 	<h3>Age - u - (read)</h3>
+ 	<p>Number of seconds since the BSS was last seen.</p>
+       </li>
++      <li>
++	<h3>ANQP - a{sv} - (read)</h3>
++	<p>ANQP information of the BSS. Empty dictionary indicates no ANQP field. Named dictionary entries are:</p>
++	<table>
++	  <tr><td>CapabilityList</td><td>ay</td></tr>
++	  <tr><td>VenueName</td><td>ay</td></tr>
++	  <tr><td>NetworkAuthType</td><td>ay</td></tr>
++	  <tr><td>RoamingConsortium</td><td>ay</td></tr>
++	  <tr><td>IPAddrTypeAvailability</td><td>ay</td></tr>
++	  <tr><td>NAIRealm</td><td>ay</td></tr>
++	  <tr><td>3GPP</td><td>ay</td></tr>
++	  <tr><td>DomainName</td><td>ay</td></tr>
++	  <tr><td>FilsRealmInfo</td><td>ay</td></tr>
++	  <tr><td>HS20CapabilityList</td><td>ay</td></tr>
++	  <tr><td>HS20OperatorFriendlyName</td><td>ay</td></tr>
++	  <tr><td>HS20WanMetrics</td><td>ay</td></tr>
++	  <tr><td>HS20ConnectionCapability</td><td>ay</td></tr>
++	  <tr><td>HS20OperatingClass</td><td>ay</td></tr>
++	  <tr><td>HS20OSUProvidersList</td><td>ay</td></tr>
++	  <tr><td>HS20OperatorIconMetadata</td><td>ay</td></tr>
++	  <tr><td>HS20OSUProvidersNAIList</td><td>ay</td></tr>
++	</table>
++	<p>Unnamed ANQP elements have a generic entry name 'anqp[id]' where 'id' is the InfoID of the ANQP element as described in IEEE Std 802.11-2020, Table 9-331 (ANQP-element definitions).</p>
++      </li>
+     </ul>
+ 
+ \subsection dbus_bss_signals Signals
+diff --git a/tests/hwsim/test_dbus.py b/tests/hwsim/test_dbus.py
+index 97baa8f2c..f5cfecbd6 100644
+--- a/tests/hwsim/test_dbus.py
++++ b/tests/hwsim/test_dbus.py
+@@ -6353,3 +6353,55 @@ def test_dbus_anqp_query_done(dev, apdev):
+     with TestDbusANQPGet(bus) as t:
+         if not t.success():
+             raise Exception("Expected signals not seen")
++
++def test_dbus_bss_anqp_properties(dev, apdev):
++    """D-Bus ANQP BSS properties changed"""
++    (bus, wpa_obj, path, if_obj) = prepare_dbus(dev[0])
++    iface = dbus.Interface(if_obj, WPAS_DBUS_IFACE)
++
++    bssid = apdev[0]['bssid']
++    params = hs20_ap_params(ssid="test-anqp")
++    params["hessid"] = bssid
++    params['mbo'] = '1'
++    params['mbo_cell_data_conn_pref'] = '1'
++    params['hs20_oper_friendly_name'] = ["eng:Example operator",
++                                         "fin:Esimerkkioperaattori"]
++    hapd = hostapd.add_ap(apdev[0], params)
++
++    class TestDbusANQPBSSPropertiesChanged(TestDbus):
++        def __init__(self, bus):
++            TestDbus.__init__(self, bus)
++            self.capability_list = False
++            self.venue_name = False
++            self.roaming_consortium = False
++            self.nai_realm = False
++
++        def __enter__(self):
++            gobject.timeout_add(1, self.run_query)
++            gobject.timeout_add(15000, self.timeout)
++            self.add_signal(self.propertiesChanged, WPAS_DBUS_BSS,
++                            "PropertiesChanged")
++            self.loop.run()
++            return self
++
++        def propertiesChanged(self, properties):
++            logger.debug("propertiesChanged: %s" % str(properties))
++            if 'ANQP' in properties:
++                anqp_properties = properties['ANQP']
++                self.capability_list = 'CapabilityList' in anqp_properties
++                self.venue_name = 'VenueName' in anqp_properties
++                self.roaming_consortium = 'RoamingConsortium' in anqp_properties
++                self.nai_realm = 'NAIRealm' in anqp_properties
++
++        def run_query(self, *args):
++            dev[0].scan_for_bss(bssid, freq="2412", force_scan=True)
++            iface.ANQPGet({"addr": bssid,
++                           "ids": dbus.Array([257,258,261,263], dbus.Signature("q"))})
++            return False
++
++        def success(self):
++            return self.capability_list and self.venue_name and self.roaming_consortium and self.nai_realm
++
++    with TestDbusANQPBSSPropertiesChanged(bus) as t:
++        if not t.success():
++            raise Exception("Expected signals not seen")
+diff --git a/wpa_supplicant/dbus/dbus_new.c b/wpa_supplicant/dbus/dbus_new.c
+index 7c5e42c47..8bd6a9a43 100644
+--- a/wpa_supplicant/dbus/dbus_new.c
++++ b/wpa_supplicant/dbus/dbus_new.c
+@@ -2473,6 +2473,9 @@ void wpas_dbus_bss_signal_prop_changed(struct wpa_supplicant *wpa_s,
+ 	case WPAS_DBUS_BSS_PROP_AGE:
+ 		prop = "Age";
+ 		break;
++	case WPAS_DBUS_BSS_PROP_ANQP:
++		prop = "ANQP";
++		break;
+ 	default:
+ 		wpa_printf(MSG_ERROR, "dbus: %s: Unknown Property value %d",
+ 			   __func__, property);
+@@ -3011,6 +3014,11 @@ static const struct wpa_dbus_property_desc wpas_dbus_bss_properties[] = {
+ 	  NULL,
+ 	  NULL
+ 	},
++	{"ANQP", WPAS_DBUS_NEW_IFACE_BSS, "a{sv}",
++	  wpas_dbus_getter_bss_anqp,
++	  NULL,
++	  NULL,
++	},
+ 	{ NULL, NULL, NULL, NULL, NULL, NULL }
+ };
+ 
+diff --git a/wpa_supplicant/dbus/dbus_new.h b/wpa_supplicant/dbus/dbus_new.h
+index 7148eaaad..952bb422a 100644
+--- a/wpa_supplicant/dbus/dbus_new.h
++++ b/wpa_supplicant/dbus/dbus_new.h
+@@ -53,6 +53,7 @@ enum wpas_dbus_bss_prop {
+ 	WPAS_DBUS_BSS_PROP_WPS,
+ 	WPAS_DBUS_BSS_PROP_IES,
+ 	WPAS_DBUS_BSS_PROP_AGE,
++	WPAS_DBUS_BSS_PROP_ANQP,
+ };
+ 
+ enum wpas_dbus_sta_prop {
+diff --git a/wpa_supplicant/dbus/dbus_new_handlers.c b/wpa_supplicant/dbus/dbus_new_handlers.c
+index 815a5a83a..3897d98f4 100644
+--- a/wpa_supplicant/dbus/dbus_new_handlers.c
++++ b/wpa_supplicant/dbus/dbus_new_handlers.c
+@@ -5757,6 +5757,177 @@ dbus_bool_t wpas_dbus_getter_bss_age(
+ }
+ 
+ 
++/**
++ * wpas_dbus_getter_bss_anqp - Return all the ANQP fields of a BSS
++ * @iter: Pointer to incoming dbus message iter
++ * @error: Location to store error on failure
++ * @user_data: Function specific data
++ * Returns: TRUE on success, FALSE on failure
++ *
++ * Getter for "ANQP" property.
++ */
++dbus_bool_t wpas_dbus_getter_bss_anqp(
++	const struct wpa_dbus_property_desc *property_desc,
++	DBusMessageIter *iter, DBusError *error, void *user_data)
++{
++	DBusMessageIter iter_dict, variant_iter;
++	struct bss_handler_args *args = user_data;
++	struct wpa_bss *bss;
++	struct wpa_bss_anqp *anqp;
++	struct wpa_bss_anqp_elem *elem;
++
++	bss = get_bss_helper(args, error, __func__);
++	if (!bss)
++		return FALSE;
++
++	if (!dbus_message_iter_open_container(iter, DBUS_TYPE_VARIANT,
++					      "a{sv}", &variant_iter) ||
++	    !wpa_dbus_dict_open_write(&variant_iter, &iter_dict))
++		goto nomem;
++
++	anqp = bss->anqp;
++	if (anqp) {
++#ifdef CONFIG_INTERWORKING
++		if (anqp->capability_list &&
++		    !wpa_dbus_dict_append_byte_array(
++			    &iter_dict, "CapabilityList",
++			    wpabuf_head(anqp->capability_list),
++			    wpabuf_len(anqp->capability_list)))
++			goto nomem;
++		if (anqp->venue_name &&
++		    !wpa_dbus_dict_append_byte_array(
++			    &iter_dict, "VenueName",
++			    wpabuf_head(anqp->venue_name),
++			    wpabuf_len(anqp->venue_name)))
++			goto nomem;
++		if (anqp->network_auth_type &&
++		    !wpa_dbus_dict_append_byte_array(
++			    &iter_dict, "NetworkAuthType",
++			    wpabuf_head(anqp->network_auth_type),
++			    wpabuf_len(anqp->network_auth_type)))
++			goto nomem;
++		if (anqp->roaming_consortium &&
++		    !wpa_dbus_dict_append_byte_array(
++			    &iter_dict, "RoamingConsortium",
++			    wpabuf_head(anqp->roaming_consortium),
++			    wpabuf_len(anqp->roaming_consortium)))
++			goto nomem;
++		if (anqp->ip_addr_type_availability &&
++		    !wpa_dbus_dict_append_byte_array(
++			    &iter_dict, "IPAddrTypeAvailability",
++			    wpabuf_head(anqp->ip_addr_type_availability),
++			    wpabuf_len(anqp->ip_addr_type_availability)))
++			goto nomem;
++		if (anqp->nai_realm &&
++		    !wpa_dbus_dict_append_byte_array(
++			    &iter_dict, "NAIRealm",
++			    wpabuf_head(anqp->nai_realm),
++			    wpabuf_len(anqp->nai_realm)))
++			goto nomem;
++		if (anqp->anqp_3gpp &&
++		    !wpa_dbus_dict_append_byte_array(
++			    &iter_dict, "3GPP",
++			    wpabuf_head(anqp->anqp_3gpp),
++			    wpabuf_len(anqp->anqp_3gpp)))
++			goto nomem;
++		if (anqp->domain_name &&
++		    !wpa_dbus_dict_append_byte_array(
++			    &iter_dict, "DomainName",
++			    wpabuf_head(anqp->domain_name),
++			    wpabuf_len(anqp->domain_name)))
++			goto nomem;
++		if (anqp->fils_realm_info &&
++		    !wpa_dbus_dict_append_byte_array(
++			    &iter_dict, "FilsRealmInfo",
++			    wpabuf_head(anqp->fils_realm_info),
++			    wpabuf_len(anqp->fils_realm_info)))
++			goto nomem;
++
++#ifdef CONFIG_HS20
++		if (anqp->hs20_capability_list &&
++		    !wpa_dbus_dict_append_byte_array(
++			    &iter_dict, "HS20CapabilityList",
++			    wpabuf_head(anqp->hs20_capability_list),
++			    wpabuf_len(anqp->hs20_capability_list)))
++			goto nomem;
++		if (anqp->hs20_operator_friendly_name &&
++		    !wpa_dbus_dict_append_byte_array(
++			    &iter_dict, "HS20OperatorFriendlyName",
++			    wpabuf_head(anqp->hs20_operator_friendly_name),
++			    wpabuf_len(anqp->hs20_operator_friendly_name)))
++			goto nomem;
++		if (anqp->hs20_wan_metrics &&
++		    !wpa_dbus_dict_append_byte_array(
++			    &iter_dict, "HS20WanMetrics",
++			    wpabuf_head(anqp->hs20_wan_metrics),
++			    wpabuf_len(anqp->hs20_wan_metrics)))
++			goto nomem;
++		if (anqp->hs20_connection_capability &&
++		    !wpa_dbus_dict_append_byte_array(
++			    &iter_dict, "HS20ConnectionCapability",
++			    wpabuf_head(anqp->hs20_connection_capability),
++			    wpabuf_len(anqp->hs20_connection_capability)))
++			goto nomem;
++		if (anqp->hs20_operating_class &&
++		    !wpa_dbus_dict_append_byte_array(
++			    &iter_dict, "HS20OperatingClass",
++			    wpabuf_head(anqp->hs20_operating_class),
++			    wpabuf_len(anqp->hs20_operating_class)))
++			goto nomem;
++		if (anqp->hs20_osu_providers_list &&
++		    !wpa_dbus_dict_append_byte_array(
++			    &iter_dict, "HS20OSUProvidersList",
++			    wpabuf_head(anqp->hs20_osu_providers_list),
++			    wpabuf_len(anqp->hs20_osu_providers_list)))
++			goto nomem;
++		if (anqp->hs20_operator_icon_metadata &&
++		    !wpa_dbus_dict_append_byte_array(
++			    &iter_dict, "HS20OperatorIconMetadata",
++			    wpabuf_head(anqp->hs20_operator_icon_metadata),
++			    wpabuf_len(anqp->hs20_operator_icon_metadata)))
++			goto nomem;
++		if (anqp->hs20_osu_providers_nai_list &&
++		    !wpa_dbus_dict_append_byte_array(
++			    &iter_dict, "HS20OSUProvidersNAIList",
++			    wpabuf_head(anqp->hs20_osu_providers_nai_list),
++			    wpabuf_len(anqp->hs20_osu_providers_nai_list)))
++			goto nomem;
++#endif /* CONFIG_HS20 */
++
++		dl_list_for_each(elem, &anqp->anqp_elems,
++				 struct wpa_bss_anqp_elem, list) {
++			char title[32];
++
++			os_snprintf(title, sizeof(title), "anqp[%u]",
++				    elem->infoid);
++			if (!wpa_dbus_dict_append_byte_array(
++				    &iter_dict, title,
++				    wpabuf_head(elem->payload),
++				    wpabuf_len(elem->payload)))
++				goto nomem;
++
++			os_snprintf(title, sizeof(title),
++				    "protected-anqp-info[%u]", elem->infoid);
++			if (!wpa_dbus_dict_append_bool(
++				    &iter_dict, title,
++				    elem->protected_response))
++				goto nomem;
++		}
++#endif /* CONFIG_INTERWORKING */
++	}
++
++	if (!wpa_dbus_dict_close_write(&variant_iter, &iter_dict) ||
++	    !dbus_message_iter_close_container(iter, &variant_iter))
++		goto nomem;
++
++	return TRUE;
++
++nomem:
++	dbus_set_error(error, DBUS_ERROR_NO_MEMORY, "no memory");
++	return FALSE;
++}
++
++
+ /**
+  * wpas_dbus_getter_enabled - Check whether network is enabled or disabled
+  * @iter: Pointer to incoming dbus message iter
+diff --git a/wpa_supplicant/dbus/dbus_new_handlers.h b/wpa_supplicant/dbus/dbus_new_handlers.h
+index 48f9d3483..acd6af7ff 100644
+--- a/wpa_supplicant/dbus/dbus_new_handlers.h
++++ b/wpa_supplicant/dbus/dbus_new_handlers.h
+@@ -219,6 +219,7 @@ DECLARE_ACCESSOR(wpas_dbus_getter_bss_rsn);
+ DECLARE_ACCESSOR(wpas_dbus_getter_bss_wps);
+ DECLARE_ACCESSOR(wpas_dbus_getter_bss_ies);
+ DECLARE_ACCESSOR(wpas_dbus_getter_bss_age);
++DECLARE_ACCESSOR(wpas_dbus_getter_bss_anqp);
+ DECLARE_ACCESSOR(wpas_dbus_getter_enabled);
+ DECLARE_ACCESSOR(wpas_dbus_setter_enabled);
+ DECLARE_ACCESSOR(wpas_dbus_getter_network_properties);
+diff --git a/wpa_supplicant/interworking.c b/wpa_supplicant/interworking.c
+index 06b4d1116..a085d2260 100644
+--- a/wpa_supplicant/interworking.c
++++ b/wpa_supplicant/interworking.c
+@@ -3198,6 +3198,8 @@ void anqp_resp_cb(void *ctx, const u8 *dst, u8 dialog_token,
+ 	}
+ 
+ out_parse_done:
++	if (bss)
++		wpas_notify_bss_anqp_changed(wpa_s, bss->id);
+ #ifdef CONFIG_HS20
+ 	hs20_notify_parse_done(wpa_s);
+ #endif /* CONFIG_HS20 */
+diff --git a/wpa_supplicant/notify.c b/wpa_supplicant/notify.c
+index 57b1e5fc3..6d5dbcc29 100644
+--- a/wpa_supplicant/notify.c
++++ b/wpa_supplicant/notify.c
+@@ -559,6 +559,15 @@ void wpas_notify_bss_seen(struct wpa_supplicant *wpa_s, unsigned int id)
+ }
+ 
+ 
++void wpas_notify_bss_anqp_changed(struct wpa_supplicant *wpa_s, unsigned int id)
++{
++	if (wpa_s->p2p_mgmt)
++		return;
++
++	wpas_dbus_bss_signal_prop_changed(wpa_s, WPAS_DBUS_BSS_PROP_ANQP, id);
++}
++
++
+ void wpas_notify_blob_added(struct wpa_supplicant *wpa_s, const char *name)
+ {
+ 	if (wpa_s->p2p_mgmt)
+diff --git a/wpa_supplicant/notify.h b/wpa_supplicant/notify.h
+index 0c249a77e..f6c7ac4e2 100644
+--- a/wpa_supplicant/notify.h
++++ b/wpa_supplicant/notify.h
+@@ -83,6 +83,8 @@ void wpas_notify_bss_ies_changed(struct wpa_supplicant *wpa_s,
+ void wpas_notify_bss_rates_changed(struct wpa_supplicant *wpa_s,
+ 				   unsigned int id);
+ void wpas_notify_bss_seen(struct wpa_supplicant *wpa_s, unsigned int id);
++void wpas_notify_bss_anqp_changed(struct wpa_supplicant *wpa_s,
++				  unsigned int id);
+ void wpas_notify_blob_added(struct wpa_supplicant *wpa_s, const char *name);
+ void wpas_notify_blob_removed(struct wpa_supplicant *wpa_s, const char *name);
+ 
+-- 
+2.43.0
+

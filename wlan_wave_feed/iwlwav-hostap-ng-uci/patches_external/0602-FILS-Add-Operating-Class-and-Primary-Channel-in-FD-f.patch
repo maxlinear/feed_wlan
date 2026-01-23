@@ -1,0 +1,71 @@
+From b9113105ad26e88bfa1431e24e6dd0d6d0741b33 Mon Sep 17 00:00:00 2001
+From: Sriram R <quic_srirrama@quicinc.com>
+Date: Mon, 22 Apr 2024 22:38:42 +0530
+Subject: [PATCH] FILS: Add Operating Class and Primary Channel in FD for
+ non-PSC chan
+
+If a non-PSC 6 GHz channel with bandwidth higher than 20 MHz is
+configured, duplicate beacons/FD/UBPR will be transmitted in other 20
+MHz channels of the current configured bandwidth to aid in faster scan.
+In such cases the duplicate FD needs to carry the Operating Class and
+Primary Channel subfields for non-AP STAs to identify the primary
+non-PSC.
+
+IEEE Std 802.11-2020, 9.6.7.36 (FILS Discovery frame format):
+"The Operating Class subfield specifies the operating class of the
+Primary Channel of the transmitting AP (see 9.4.1.36).
+
+The Primary Channel subfield is set to the channel number of the primary
+channel (see 11.15.2) if the FILS Discovery frame is transmitted as a
+non-HT duplicate PPDU; otherwise, the subfield is not present."
+
+Hence, add the Operating Class and Primary Channel subfields if the
+current channel is non-PSC and the channel bandwidth is 40 MHz or
+higher.
+
+Signed-off-by: Sriram R <quic_srirrama@quicinc.com>
+Signed-off-by: Karthikeyan Kathirvel <quic_kathirve@quicinc.com>
+---
+ src/ap/beacon.c | 19 ++++++++++++++++---
+ 1 file changed, 16 insertions(+), 3 deletions(-)
+
+diff --git a/src/ap/beacon.c b/src/ap/beacon.c
+index ce806edf1..c214f5227 100644
+--- a/src/ap/beacon.c
++++ b/src/ap/beacon.c
+@@ -1948,6 +1948,17 @@ static u8 * hostapd_gen_fils_discovery(struct hostapd_data *hapd, size_t *len)
+ 		FD_FRAME_CTL_CAP_PRESENT;
+ 	total_len += 4 + 1 + 2;
+ 
++	/* Fill primary channel information for 6 GHz channels with over 20 MHz
++	 * bandwidth, if the primary channel is not a PSC */
++	if (is_6ghz_op_class(hapd->iconf->op_class) &&
++	    !is_6ghz_psc_frequency(ieee80211_chan_to_freq(
++					   NULL, hapd->iconf->op_class,
++					   hapd->iconf->channel)) &&
++	    op_class_to_bandwidth(hapd->iconf->op_class) > 20) {
++		ctl |= FD_FRAME_CTL_PRI_CHAN_PRESENT;
++		total_len += 2;
++	}
++
+ 	/* Check for optional subfields and calculate length */
+ 	if (wpa_auth_write_fd_rsn_info(hapd->wpa_auth, fd_rsn_info)) {
+ 		ctl |= FD_FRAME_CTL_RSN_INFO_PRESENT;
+@@ -2009,9 +2020,11 @@ static u8 * hostapd_gen_fils_discovery(struct hostapd_data *hapd, size_t *len)
+ 	WPA_PUT_LE16(pos, hostapd_fils_discovery_cap(hapd));
+ 	pos += 2;
+ 
+-	/* Operating Class - not present */
+-
+-	/* Primary Channel - not present */
++	/* Operating Class and Primary Channel - if a 6 GHz chan is non PSC */
++	if (ctl & FD_FRAME_CTL_PRI_CHAN_PRESENT) {
++		*pos++ = hapd->iconf->op_class;
++		*pos++ = hapd->iconf->channel;
++	}
+ 
+ 	/* AP Configuration Sequence Number - not present */
+ 
+-- 
+2.43.0
+

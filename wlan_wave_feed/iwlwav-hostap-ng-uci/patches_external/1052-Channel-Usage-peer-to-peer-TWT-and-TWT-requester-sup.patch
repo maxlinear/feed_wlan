@@ -1,0 +1,169 @@
+From b62bef8c20aeca1392afb078ff49f6aa8771675b Mon Sep 17 00:00:00 2001
+From: Shivani Baranwal <quic_shivbara@quicinc.com>
+Date: Thu, 29 Aug 2024 11:38:46 +0530
+Subject: [PATCH] Channel Usage, peer-to-peer TWT and TWT requester support
+
+Add config support for channel usage procedure and peer-to-peer TWT on
+AP and TWT Requester support on STA. The actual functionality of these
+operations is expected to be implemented within the drivers.
+
+Signed-off-by: Shivani Baranwal <quic_shivbara@quicinc.com>
+---
+ hostapd/config_file.c              |  4 ++++
+ hostapd/hostapd.conf               | 12 ++++++++++++
+ src/ap/ap_config.h                 |  3 +++
+ src/ap/ieee802_11_shared.c         |  8 ++++++++
+ wpa_supplicant/config.c            |  1 +
+ wpa_supplicant/config.h            |  7 +++++++
+ wpa_supplicant/config_file.c       |  3 +++
+ wpa_supplicant/wpa_supplicant.c    |  2 ++
+ wpa_supplicant/wpa_supplicant.conf |  5 +++++
+ 9 files changed, 45 insertions(+)
+
+diff --git a/hostapd/config_file.c b/hostapd/config_file.c
+index 96f1b1749..e59e98d7c 100644
+--- a/hostapd/config_file.c
++++ b/hostapd/config_file.c
+@@ -5128,6 +5128,10 @@ static int hostapd_config_fill(struct hostapd_config *conf,
+ 		if (val < 0 || val > 1)
+ 			return 1;
+ 		bss->ssid_protection = val;
++	} else if (os_strcmp(buf, "channel_usage") == 0) {
++		conf->channel_usage = atoi(pos);
++	} else if (os_strcmp(buf, "peer_to_peer_twt") == 0) {
++		conf->peer_to_peer_twt = atoi(pos);
+ #ifdef CONFIG_IEEE80211BE
+ 	} else if (os_strcmp(buf, "ieee80211be") == 0) {
+ 		conf->ieee80211be = atoi(pos);
+diff --git a/hostapd/hostapd.conf b/hostapd/hostapd.conf
+index 93524cf5d..b8d7d3412 100644
+--- a/hostapd/hostapd.conf
++++ b/hostapd/hostapd.conf
+@@ -1030,6 +1030,18 @@ wmm_ac_vo_acm=0
+ # Valid range: 0..20 TUs; default is 0 (disabled)
+ #unsol_bcast_probe_resp_interval=0
+ 
++#channel_usage: Whether Channel Usage procedures is supported by AP.
++# 0 = Channel Usage support is disabled (default)
++# 1 = Channel Usage support is enabled
++#channel_usage=0
++
++#peer_to_peer_twt: Indicates an HE AP supports negotiating a peer-to-peer
++# TWT schedule that is requested by a non-AP STA to establish a
++# channel-usage-aidable BSS or an off-channel TDLS direct link.
++# 0 = Does not support Peer-to-peer TWT (default)
++# 1 = Supports Peer-to-peer TWT
++#peer_to_peer_twt=0
++
+ ##### IEEE 802.11be related configuration #####################################
+ 
+ #ieee80211be: Whether IEEE 802.11be (EHT) is enabled
+diff --git a/src/ap/ap_config.h b/src/ap/ap_config.h
+index d42076785..b0ae71e1e 100644
+--- a/src/ap/ap_config.h
++++ b/src/ap/ap_config.h
+@@ -1249,6 +1249,9 @@ struct hostapd_config {
+ 
+ 	/* Whether to enable TWT responder in HT and VHT modes */
+ 	bool ht_vht_twt_responder;
++
++	bool channel_usage;
++	bool peer_to_peer_twt;
+ };
+ 
+ 
+diff --git a/src/ap/ieee802_11_shared.c b/src/ap/ieee802_11_shared.c
+index 3dd3a6a77..9566615eb 100644
+--- a/src/ap/ieee802_11_shared.c
++++ b/src/ap/ieee802_11_shared.c
+@@ -476,6 +476,14 @@ static void hostapd_ext_capab_byte(struct hostapd_data *hapd, u8 *pos, int idx,
+ 			*pos |= 0x01; /* Bit 88 - SAE PK Exclusively */
+ #endif /* CONFIG_SAE_PK */
+ 		break;
++	case 12: /* Bits 96-103 */
++		if (hapd->iconf->peer_to_peer_twt)
++			*pos |= 0x10; /* Bit 100 - Peer to Peer TWT */
++		break;
++	case 13: /* Bits 104-111 */
++		if (hapd->iconf->channel_usage)
++			*pos |= 0x01; /* Bit 104 - Channel Usage support */
++		break;
+ 	}
+ }
+ 
+diff --git a/wpa_supplicant/config.c b/wpa_supplicant/config.c
+index 6284b0ec8..e2e013fb5 100644
+--- a/wpa_supplicant/config.c
++++ b/wpa_supplicant/config.c
+@@ -5575,6 +5575,7 @@ static const struct global_parse_data global_fields[] = {
+ 	{ INT(gas_address3), 0 },
+ 	{ INT_RANGE(ftm_responder, 0, 1), 0 },
+ 	{ INT_RANGE(ftm_initiator, 0, 1), 0 },
++	{ INT_RANGE(twt_requester, 0, 1), 0 },
+ 	{ INT(gas_rand_addr_lifetime), 0 },
+ 	{ INT_RANGE(gas_rand_mac_addr, 0, 2), 0 },
+ #ifdef CONFIG_DPP
+diff --git a/wpa_supplicant/config.h b/wpa_supplicant/config.h
+index b860dd154..2128c0a24 100644
+--- a/wpa_supplicant/config.h
++++ b/wpa_supplicant/config.h
+@@ -1868,6 +1868,13 @@ struct wpa_config {
+ 	 * This is the head for the list of all the paired devices.
+ 	 */
+ 	struct wpa_dev_ik *identity;
++
++	/**
++	 * twt_requester - Whether TWT Requester Support is enabled
++	 *
++	 * This is for setting the bit 77 of the Extended Capabilities element.
++	 */
++	bool twt_requester;
+ };
+ 
+ 
+diff --git a/wpa_supplicant/config_file.c b/wpa_supplicant/config_file.c
+index 9bbe44db6..e9f93f042 100644
+--- a/wpa_supplicant/config_file.c
++++ b/wpa_supplicant/config_file.c
+@@ -1645,6 +1645,9 @@ static void wpa_config_write_global(FILE *f, struct wpa_config *config)
+ 	if (config->ftm_initiator)
+ 		fprintf(f, "ftm_initiator=%d\n", config->ftm_initiator);
+ 
++	if (config->twt_requester)
++		fprintf(f, "twt_requester=%d\n", config->twt_requester);
++
+ 	if (config->osu_dir)
+ 		fprintf(f, "osu_dir=%s\n", config->osu_dir);
+ 
+diff --git a/wpa_supplicant/wpa_supplicant.c b/wpa_supplicant/wpa_supplicant.c
+index c5cf9c70d..55feaedb2 100644
+--- a/wpa_supplicant/wpa_supplicant.c
++++ b/wpa_supplicant/wpa_supplicant.c
+@@ -2330,6 +2330,8 @@ static void wpas_ext_capab_byte(struct wpa_supplicant *wpa_s, u8 *pos, int idx,
+ 		if (!wpa_s->disable_fils)
+ 			*pos |= 0x01;
+ #endif /* CONFIG_FILS */
++		if (wpa_s->conf->twt_requester)
++			*pos |= 0x20; /* Bit 77 - TWT Requester Support */
+ 		break;
+ 	case 10: /* Bits 80-87 */
+ #ifndef CONFIG_NO_ROBUST_AV
+diff --git a/wpa_supplicant/wpa_supplicant.conf b/wpa_supplicant/wpa_supplicant.conf
+index b721f6504..9c9fe959f 100644
+--- a/wpa_supplicant/wpa_supplicant.conf
++++ b/wpa_supplicant/wpa_supplicant.conf
+@@ -608,6 +608,11 @@ fast_reauth=1
+ # 1 = Publish
+ #ftm_initiator=0
+ 
++#twt_requester: Whether TWT requester is enabled
++# 0 = disabled (default)
++# 1 = enabled if supported by the driver
++#twt_requester=0
++
+ # credential block
+ #
+ # Each credential used for automatic network selection is configured as a set
+-- 
+2.43.0
+

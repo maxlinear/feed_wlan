@@ -1,0 +1,99 @@
+From 31bbc9391ea6fbabc2d2579831443a1fe02a5cbf Mon Sep 17 00:00:00 2001
+From: Jouni Malinen <j@w1.fi>
+Date: Sun, 3 Mar 2024 19:55:45 +0200
+Subject: [PATCH] Do not change out-of-range configuration parameters
+
+The INT_RANGE() cases for wpa_supplicant global and network profile
+parameters ended up changing the configured value to the minimum value
+if the provided value was too small or to the maximum value if the
+provided value was too large. This does not seem most logical. Change
+this to not change the configured value at all if the provided value is
+outside the valid range.
+
+Signed-off-by: Jouni Malinen <j@w1.fi>
+---
+ wpa_supplicant/config.c | 40 +++++++++++++++++++---------------------
+ 1 file changed, 19 insertions(+), 21 deletions(-)
+
+diff --git a/wpa_supplicant/config.c b/wpa_supplicant/config.c
+index b81d80318..b4d483082 100644
+--- a/wpa_supplicant/config.c
++++ b/wpa_supplicant/config.c
+@@ -213,27 +213,26 @@ static int wpa_config_parse_int_impl(const struct parse_data *data,
+ 		return -1;
+ 	}
+ 
+-	if (*dst == val)
+-		return 1;
+-	*dst = val;
+-	wpa_printf(MSG_MSGDUMP, "%s=%d (0x%x)", data->name, *dst, *dst);
+-
+-	if (check_range && *dst < (long) data->param3) {
++	if (check_range && val < (long) data->param3) {
+ 		wpa_printf(MSG_ERROR, "Line %d: too small %s (value=%d "
+-			   "min_value=%ld)", line, data->name, *dst,
++			   "min_value=%ld)", line, data->name, val,
+ 			   (long) data->param3);
+-		*dst = (long) data->param3;
+ 		return -1;
+ 	}
+ 
+-	if (check_range && *dst > (long) data->param4) {
++	if (check_range && val > (long) data->param4) {
+ 		wpa_printf(MSG_ERROR, "Line %d: too large %s (value=%d "
+-			   "max_value=%ld)", line, data->name, *dst,
++			   "max_value=%ld)", line, data->name, val,
+ 			   (long) data->param4);
+-		*dst = (long) data->param4;
+ 		return -1;
+ 	}
+ 
++	if (*dst == val)
++		return 1;
++
++	*dst = val;
++	wpa_printf(MSG_MSGDUMP, "%s=%d (0x%x)", data->name, *dst, *dst);
++
+ 	return 0;
+ }
+ 
+@@ -4773,27 +4772,26 @@ wpa_global_config_parse_int_impl(const struct global_parse_data *data,
+ 			   line, pos);
+ 		return -1;
+ 	}
+-	same = *dst == val;
+-	*dst = val;
+-
+-	wpa_printf(MSG_DEBUG, "%s=%d", data->name, *dst);
+ 
+-	if (check_range && *dst < (long) data->param2) {
++	if (check_range && val < (long) data->param2) {
+ 		wpa_printf(MSG_ERROR, "Line %d: too small %s (value=%d "
+-			   "min_value=%ld)", line, data->name, *dst,
++			   "min_value=%ld)", line, data->name, val,
+ 			   (long) data->param2);
+-		*dst = (long) data->param2;
+ 		return -1;
+ 	}
+ 
+-	if (check_range && *dst > (long) data->param3) {
++	if (check_range && val > (long) data->param3) {
+ 		wpa_printf(MSG_ERROR, "Line %d: too large %s (value=%d "
+-			   "max_value=%ld)", line, data->name, *dst,
++			   "max_value=%ld)", line, data->name, val,
+ 			   (long) data->param3);
+-		*dst = (long) data->param3;
+ 		return -1;
+ 	}
+ 
++	same = *dst == val;
++	*dst = val;
++
++	wpa_printf(MSG_DEBUG, "%s=%d", data->name, *dst);
++
+ 	return same;
+ }
+ 
+-- 
+2.43.0
+

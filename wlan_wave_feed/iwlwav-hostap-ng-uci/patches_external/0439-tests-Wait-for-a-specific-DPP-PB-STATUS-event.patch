@@ -1,0 +1,43 @@
+From d8dca78a3a8447aeb1456ee9cd1e29b613dfd007 Mon Sep 17 00:00:00 2001
+From: Jouni Malinen <quic_jouni@quicinc.com>
+Date: Fri, 8 Mar 2024 10:36:38 +0200
+Subject: [PATCH] tests: Wait for a specific DPP-PB-STATUS event
+
+This wait for a specific event is needed to allow a new DPP-PB-STATUS
+event to be added at the start of the PB operation.
+
+Signed-off-by: Jouni Malinen <quic_jouni@quicinc.com>
+---
+ tests/hwsim/test_dpp3.py      | 2 +-
+ tests/hwsim/test_sigma_dut.py | 2 +-
+ 2 files changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/tests/hwsim/test_dpp3.py b/tests/hwsim/test_dpp3.py
+index b4d7116bc..0fde418ba 100644
+--- a/tests/hwsim/test_dpp3.py
++++ b/tests/hwsim/test_dpp3.py
+@@ -356,7 +356,7 @@ def test_dpp_push_button_session_overlap_sta(dev, apdev):
+         raise Exception("Failed to press push button on the AP")
+     if "OK" not in dev[0].request("DPP_PUSH_BUTTON"):
+         raise Exception("Failed to press push button on the station")
+-    ev = dev[0].wait_event(["DPP-PB-STATUS"], timeout=30)
++    ev = dev[0].wait_event(["DPP-PB-STATUS discovered"], timeout=30)
+     if ev is None:
+         raise Exception("Push button status not reported on station")
+     # Force bootstrap key change since both instances share the same global
+diff --git a/tests/hwsim/test_sigma_dut.py b/tests/hwsim/test_sigma_dut.py
+index cb289099f..2a35bd4b4 100644
+--- a/tests/hwsim/test_sigma_dut.py
++++ b/tests/hwsim/test_sigma_dut.py
+@@ -4384,7 +4384,7 @@ def test_sigma_dut_dpp_pb_sta_first(dev, apdev):
+ def dpp_ap_pb_overlap(hapd, hapd2, dev0):
+     if "OK" not in hapd.request("DPP_PUSH_BUTTON"):
+         raise Exception("Failed to press push button on the AP")
+-    ev = dev0.wait_event(["DPP-PB-STATUS"], timeout=30)
++    ev = dev0.wait_event(["DPP-PB-STATUS discovered"], timeout=30)
+     if ev is None:
+         raise Exception("Push button status not reported on station")
+     # Force bootstrap key change since both instances share the same global
+-- 
+2.43.0
+

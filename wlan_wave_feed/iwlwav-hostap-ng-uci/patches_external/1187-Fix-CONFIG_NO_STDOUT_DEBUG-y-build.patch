@@ -1,0 +1,30 @@
+From 65338c58118285c5383f9477a8975f34781ffef9 Mon Sep 17 00:00:00 2001
+From: Ameer Antar <ameerantar@comcast.net>
+Date: Sat, 28 Sep 2024 18:52:06 -0400
+Subject: [PATCH] Fix CONFIG_NO_STDOUT_DEBUG=y build
+
+When building with the no std output setting (CONFIG_NO_STDOUT_DEBUG),
+the build fails with an undefined reference for wpa_debug_stop_log().
+Define this as an empty function along with the others at the top of
+wpa_debug.h in case no std out is configured.
+
+Signed-off-by: Ameer Antar <ameerantar@comcast.net>
+---
+ src/utils/wpa_debug.h | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/src/utils/wpa_debug.h b/src/utils/wpa_debug.h
+index 4c02ad3c7..bf8190f27 100644
+--- a/src/utils/wpa_debug.h
++++ b/src/utils/wpa_debug.h
+@@ -36,6 +36,7 @@ enum {
+ #define wpa_debug_open_file(p) do { } while (0)
+ #define wpa_debug_close_file() do { } while (0)
+ #define wpa_debug_setup_stdout() do { } while (0)
++#define wpa_debug_stop_log() do { } while (0)
+ #define wpa_dbg(args...) do { } while (0)
+ 
+ static inline int wpa_debug_reopen_file(void)
+-- 
+2.43.0
+

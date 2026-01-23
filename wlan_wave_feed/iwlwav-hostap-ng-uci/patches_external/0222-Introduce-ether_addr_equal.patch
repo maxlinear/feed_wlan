@@ -1,0 +1,32 @@
+From 95123ab3b38ed8ac5238c9766ac8a7c3fdf9038b Mon Sep 17 00:00:00 2001
+From: Jouni Malinen <j@w1.fi>
+Date: Sat, 13 Jan 2024 23:05:52 +0200
+Subject: [PATCH] Introduce ether_addr_equal()
+
+This makes a code more readable for the large number of cases that use
+os_memcmp() to check whether two ethernet addresses are equal.
+
+Signed-off-by: Jouni Malinen <j@w1.fi>
+---
+ src/utils/common.h | 5 +++++
+ 1 file changed, 5 insertions(+)
+
+diff --git a/src/utils/common.h b/src/utils/common.h
+index bede21e57..ce17c8011 100644
+--- a/src/utils/common.h
++++ b/src/utils/common.h
+@@ -543,6 +543,11 @@ static inline int is_multicast_ether_addr(const u8 *a)
+ 	return a[0] & 0x01;
+ }
+ 
++static inline bool ether_addr_equal(const u8 *a, const u8 *b)
++{
++	return os_memcmp(a, b, ETH_ALEN) == 0;
++}
++
+ #define broadcast_ether_addr (const u8 *) "\xff\xff\xff\xff\xff\xff"
+ 
+ #include "wpa_debug.h"
+-- 
+2.43.0
+

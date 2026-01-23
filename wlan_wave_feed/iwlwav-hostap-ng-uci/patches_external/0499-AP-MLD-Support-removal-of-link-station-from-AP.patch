@@ -1,0 +1,107 @@
+From a6d92da9aa4442a3360b851812e44337c8252742 Mon Sep 17 00:00:00 2001
+From: Aditya Kumar Singh <quic_adisi@quicinc.com>
+Date: Wed, 6 Mar 2024 12:11:03 +0530
+Subject: [PATCH] AP MLD: Support removal of link station from AP
+
+Whenever ap_free_sta() was called, it deleted the whole station entry
+from the kernel as well. However, with MLD stations, there is a
+requirement to delete only the link station.
+
+Add support to remove the link station alone from an MLD station. If the
+link going to be removed is the association link, the whole station
+entry will be removed.
+
+Signed-off-by: Aditya Kumar Singh <quic_adisi@quicinc.com>
+---
+ src/ap/hostapd.c  |  1 +
+ src/ap/sta_info.c | 36 +++++++++++++++++++++++++++++++++++-
+ src/ap/sta_info.h |  2 ++
+ 3 files changed, 38 insertions(+), 1 deletion(-)
+
+diff --git a/src/ap/hostapd.c b/src/ap/hostapd.c
+index 323c02754..b1ae909a0 100644
+--- a/src/ap/hostapd.c
++++ b/src/ap/hostapd.c
+@@ -418,6 +418,7 @@ static void hostapd_link_remove_timeout_handler(void *eloop_data,
+ 	ieee802_11_set_beacon(hapd);
+ 
+ 	if (!hapd->eht_mld_link_removal_count) {
++		hostapd_free_link_stas(hapd);
+ 		hostapd_disable_iface(hapd->iface);
+ 		return;
+ 	}
+diff --git a/src/ap/sta_info.c b/src/ap/sta_info.c
+index 23ed530fe..122880a3d 100644
+--- a/src/ap/sta_info.c
++++ b/src/ap/sta_info.c
+@@ -187,6 +187,19 @@ void ap_free_sta_pasn(struct hostapd_data *hapd, struct sta_info *sta)
+ 
+ #endif /* CONFIG_PASN */
+ 
++
++static void __ap_free_sta(struct hostapd_data *hapd, struct sta_info *sta)
++{
++#ifdef CONFIG_IEEE80211BE
++	if (hostapd_sta_is_link_sta(hapd, sta) &&
++	    !hostapd_drv_link_sta_remove(hapd, sta->addr))
++		return;
++#endif /* CONFIG_IEEE80211BE */
++
++	hostapd_drv_sta_remove(hapd, sta->addr);
++}
++
++
+ void ap_free_sta(struct hostapd_data *hapd, struct sta_info *sta)
+ {
+ 	int set_beacon = 0;
+@@ -209,7 +222,7 @@ void ap_free_sta(struct hostapd_data *hapd, struct sta_info *sta)
+ 
+ 	if (!hapd->iface->driver_ap_teardown &&
+ 	    !(sta->flags & WLAN_STA_PREAUTH)) {
+-		hostapd_drv_sta_remove(hapd, sta->addr);
++		__ap_free_sta(hapd, sta);
+ 		sta->added_unassoc = 0;
+ 	}
+ 
+@@ -454,6 +467,27 @@ void hostapd_free_stas(struct hostapd_data *hapd)
+ }
+ 
+ 
++#ifdef CONFIG_IEEE80211BE
++void hostapd_free_link_stas(struct hostapd_data *hapd)
++{
++	struct sta_info *sta, *prev;
++
++	sta = hapd->sta_list;
++	while (sta) {
++		prev = sta;
++		sta = sta->next;
++
++		if (!hostapd_sta_is_link_sta(hapd, prev))
++			continue;
++
++		wpa_printf(MSG_DEBUG, "Removing link station from MLD " MACSTR,
++			   MAC2STR(prev->addr));
++		ap_free_sta(hapd, prev);
++	}
++}
++#endif /* CONFIG_IEEE80211BE */
++
++
+ /**
+  * ap_handle_timer - Per STA timer handler
+  * @eloop_ctx: struct hostapd_data *
+diff --git a/src/ap/sta_info.h b/src/ap/sta_info.h
+index b136ff7bf..153e4a000 100644
+--- a/src/ap/sta_info.h
++++ b/src/ap/sta_info.h
+@@ -440,4 +440,6 @@ static inline void ap_sta_set_mld(struct sta_info *sta, bool mld)
+ 
+ void ap_sta_free_sta_profile(struct mld_info *info);
+ 
++void hostapd_free_link_stas(struct hostapd_data *hapd);
++
+ #endif /* STA_INFO_H */
+-- 
+2.43.0
+

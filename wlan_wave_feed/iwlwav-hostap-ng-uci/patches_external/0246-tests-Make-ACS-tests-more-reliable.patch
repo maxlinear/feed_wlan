@@ -1,0 +1,55 @@
+From 9aa82da229c709f5f3108318fb4293b4c8d3e9a9 Mon Sep 17 00:00:00 2001
+From: Jouni Malinen <j@w1.fi>
+Date: Sun, 14 Jan 2024 19:42:23 +0200
+Subject: [PATCH] tests: Make ACS tests more reliable
+
+The test cases that used country code ZA for the actual test on the 5
+GHz band ended up failing in some cases due to various race conditions
+with the initial AP start on the 5 GHz band using country code US.
+Reduce the risk for that type of failures by using the same country code
+ZA for both AP starts.
+
+Signed-off-by: Jouni Malinen <j@w1.fi>
+---
+ tests/hwsim/test_ap_acs.py | 8 ++++----
+ 1 file changed, 4 insertions(+), 4 deletions(-)
+
+diff --git a/tests/hwsim/test_ap_acs.py b/tests/hwsim/test_ap_acs.py
+index ecf3b3f8b..001a5d4fd 100644
+--- a/tests/hwsim/test_ap_acs.py
++++ b/tests/hwsim/test_ap_acs.py
+@@ -19,11 +19,11 @@ def force_prev_ap_on_24g(ap):
+     time.sleep(0.1)
+     hostapd.remove_bss(ap)
+ 
+-def force_prev_ap_on_5g(ap):
++def force_prev_ap_on_5g(ap, country="US"):
+     # For now, make sure the last operating channel was on 5 GHz band to get
+     # sufficient survey data from mac80211_hwsim.
+     hostapd.add_ap(ap, {"ssid": "open", "hw_mode": "a",
+-                        "channel": "36", "country_code": "US"})
++                        "channel": "36", "country_code": country})
+     time.sleep(0.1)
+     hostapd.remove_bss(ap)
+ 
+@@ -349,7 +349,7 @@ def test_ap_acs_vht160(dev, apdev):
+     """Automatic channel selection for VHT160"""
+     try:
+         hapd = None
+-        force_prev_ap_on_5g(apdev[0])
++        force_prev_ap_on_5g(apdev[0], country="ZA")
+         params = hostapd.wpa2_params(ssid="test-acs", passphrase="12345678")
+         params['hw_mode'] = 'a'
+         params['channel'] = '0'
+@@ -381,7 +381,7 @@ def test_ap_acs_vht160(dev, apdev):
+ 
+ def test_ap_acs_vht160_scan_disable(dev, apdev):
+     """Automatic channel selection for VHT160 and DISABLE during scan"""
+-    force_prev_ap_on_5g(apdev[0])
++    force_prev_ap_on_5g(apdev[0], country="ZA")
+     params = hostapd.wpa2_params(ssid="test-acs", passphrase="12345678")
+     params['hw_mode'] = 'a'
+     params['channel'] = '0'
+-- 
+2.43.0
+

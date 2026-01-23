@@ -1,0 +1,109 @@
+From 351089daa3915843c9a361d61d7441aaf81920f8 Mon Sep 17 00:00:00 2001
+From: Pooventhiran G <quic_pooventh@quicinc.com>
+Date: Sat, 1 Mar 2025 11:22:51 +0530
+Subject: [PATCH] MLD: Fix Reconfiguration Multi-Link element parsing on non-AP
+ MLD
+
+The Common Info field in the Reconfiguration Multi-Link element is
+extensible with its Length subfield indicating the total length of the
+field. Accept any value of Length subfield larger than the calculated
+length based on the presence bitmap to support extensibility. Use the
+value of the Length subfield instead of the calculated minimum length
+when determining where the following Link Info field starts.
+
+Fixes: e5ea30feefa3 ("SME: MLD: Handle reconfiguration Multi-Link element")
+Reviewed-by: Rohan Dutta <quic_drohan@quicinc.com>
+Signed-off-by: Pooventhiran G <quic_pooventh@quicinc.com>
+---
+ src/common/ieee802_11_defs.h | 18 ++++++++++++++++++
+ wpa_supplicant/bss.c         | 27 +++++++++++++++++++--------
+ 2 files changed, 37 insertions(+), 8 deletions(-)
+
+diff --git a/src/common/ieee802_11_defs.h b/src/common/ieee802_11_defs.h
+index a2a0cfbb6..d59bcbc9a 100644
+--- a/src/common/ieee802_11_defs.h
++++ b/src/common/ieee802_11_defs.h
+@@ -2909,6 +2909,24 @@ struct eht_ml_probe_req_common_info {
+ #define EHT_PER_STA_RECONF_CTRL_NSTR_BITMAP_SIZE   0x1000
+ #define EHT_PER_STA_RECONF_CTRL_NSTR_INDICATION    0x2000
+ 
++/* IEEE P802.11be/D7.0, Figure 9-1074ad - Common Info field format of the
++ * Reconfiguration Multi-Link element */
++struct eht_ml_reconf_common_info {
++	u8 len;
++
++	/*
++	 * Followed by optional fields based on the multi link reconf presence
++	 * bitmap
++	 *
++	 * MLD MAC Address: 6 octets
++	 * EML Capabilities: 2 octets
++	 * MLD Capabilities and Operations: 2 octets
++	 * Extended MLD Capabilities and Operations: 2 octets
++	 */
++	u8 variable[];
++} STRUCT_PACKED;
++
++
+ /* IEEE P802.11be/D2.0, 9.4.2.312.1 - Multi-Link element / General */
+ 
+ struct ieee80211_eht_ml {
+diff --git a/wpa_supplicant/bss.c b/wpa_supplicant/bss.c
+index 916b12920..f5b84cfbe 100644
+--- a/wpa_supplicant/bss.c
++++ b/wpa_supplicant/bss.c
+@@ -1938,8 +1938,9 @@ u16 wpa_bss_parse_reconf_ml_element(struct wpa_supplicant *wpa_s,
+ 	const u8 *pos = wpa_bss_ie_ptr(bss);
+ 	size_t len = bss->ie_len ? bss->ie_len : bss->beacon_ie_len;
+ 	const struct ieee80211_eht_ml *ml;
++	const struct eht_ml_reconf_common_info *common_info;
+ 	u16 removed_links = 0;
+-	u8 ml_common_len;
++	u8 expected_ml_common_len;
+ 
+ 	if (ieee802_11_parse_elems(pos, len, &elems, 1) == ParseFailed)
+ 		return 0;
+@@ -1954,23 +1955,33 @@ u16 wpa_bss_parse_reconf_ml_element(struct wpa_supplicant *wpa_s,
+ 	ml = (const struct ieee80211_eht_ml *) wpabuf_head(mlbuf);
+ 	len = wpabuf_len(mlbuf);
+ 
+-	if (len < sizeof(*ml))
++	/* There must be at least one octet for the Common Info Length subfield
++	 */
++	if (len < sizeof(*ml) + 1UL)
+ 		goto out;
+ 
+-	ml_common_len = 1;
++	expected_ml_common_len = 1;
+ 	if (le_to_host16(ml->ml_control) &
+ 	    RECONF_MULTI_LINK_CTRL_PRES_MLD_MAC_ADDR)
+-		ml_common_len += ETH_ALEN;
++		expected_ml_common_len += ETH_ALEN;
+ 
+-	if (len < sizeof(*ml) + ml_common_len) {
++	common_info = (const struct eht_ml_reconf_common_info *) ml->variable;
++	if (len < sizeof(*ml) + common_info->len) {
+ 		wpa_printf(MSG_DEBUG,
+ 			   "MLD: Unexpected Reconfiguration ML element length: (%zu < %zu)",
+-			   len, sizeof(*ml) + ml_common_len);
++			   len, sizeof(*ml) + common_info->len);
++		goto out;
++	}
++
++	if (common_info->len < expected_ml_common_len) {
++		wpa_printf(MSG_DEBUG,
++			   "MLD: Invalid common info len=%u; min expected=%u",
++			   common_info->len, expected_ml_common_len);
+ 		goto out;
+ 	}
+ 
+-	pos = ml->variable + ml_common_len;
+-	len -= sizeof(*ml) + ml_common_len;
++	pos = ml->variable + common_info->len;
++	len -= sizeof(*ml) + common_info->len;
+ 
+ 	while (len >= 2 + sizeof(struct ieee80211_eht_per_sta_profile)) {
+ 		size_t sub_elem_len = *(pos + 1);
+-- 
+2.43.0
+

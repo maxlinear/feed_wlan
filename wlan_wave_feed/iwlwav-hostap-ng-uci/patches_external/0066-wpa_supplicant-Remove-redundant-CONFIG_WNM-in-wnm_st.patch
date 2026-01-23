@@ -1,0 +1,28 @@
+From c4dac077bc1b009224457e1d7b830b6aafb371bc Mon Sep 17 00:00:00 2001
+From: Andrei Otcheretianski <andrei.otcheretianski@intel.com>
+Date: Tue, 12 Dec 2023 19:02:49 +0200
+Subject: [PATCH] wpa_supplicant: Remove redundant CONFIG_WNM in wnm_sta.c
+
+The entire file is compiled only under CONFIG_WNM, remove it.
+
+Signed-off-by: Andrei Otcheretianski <andrei.otcheretianski@intel.com>
+---
+ wpa_supplicant/wnm_sta.c | 2 --
+ 1 file changed, 2 deletions(-)
+
+diff --git a/wpa_supplicant/wnm_sta.c b/wpa_supplicant/wnm_sta.c
+index ccfc34d20..58c6bb45a 100644
+--- a/wpa_supplicant/wnm_sta.c
++++ b/wpa_supplicant/wnm_sta.c
+@@ -2036,8 +2036,6 @@ void wnm_set_coloc_intf_elems(struct wpa_supplicant *wpa_s,
+ 
+ void wnm_clear_coloc_intf_reporting(struct wpa_supplicant *wpa_s)
+ {
+-#ifdef CONFIG_WNM
+ 	wpa_s->coloc_intf_dialog_token = 0;
+ 	wpa_s->coloc_intf_auto_report = 0;
+-#endif /* CONFIG_WNM */
+ }
+-- 
+2.43.0
+

@@ -1,0 +1,114 @@
+From 846b1d618cedb03b9eb35d8a52b8505f9454da40 Mon Sep 17 00:00:00 2001
+From: Jouni Malinen <quic_jouni@quicinc.com>
+Date: Wed, 29 May 2024 12:41:51 +0300
+Subject: [PATCH] WNM: Configurable BSS Max Idle Period management on AP
+
+Allow AP's behavior for BSS Max Idle Period management to be configured.
+Previously, this was automatically enabled for all CONFIG_WNM_AP=y
+builds. This can now be changed with the new hostapd configuration
+parameter bss_max_idle:
+0 = BSS Max Idle Period management disabled
+1 = BSS Max Idle Period management enabled
+    (default and the previous behavior)
+2 = BSS Max Idle Period management enabled with requirement for
+    protected keep-alive frames
+
+Signed-off-by: Jouni Malinen <quic_jouni@quicinc.com>
+---
+ hostapd/config_file.c      | 9 +++++++++
+ hostapd/hostapd.conf       | 7 +++++++
+ src/ap/ap_config.c         | 1 +
+ src/ap/ap_config.h         | 1 +
+ src/ap/ieee802_11_shared.c | 7 +++++--
+ 5 files changed, 23 insertions(+), 2 deletions(-)
+
+diff --git a/hostapd/config_file.c b/hostapd/config_file.c
+index c83e71e06..5999f40dd 100644
+--- a/hostapd/config_file.c
++++ b/hostapd/config_file.c
+@@ -2549,6 +2549,15 @@ static int hostapd_config_fill(struct hostapd_config *conf,
+ 		bss->ap_max_inactivity = atoi(pos);
+ 	} else if (os_strcmp(buf, "skip_inactivity_poll") == 0) {
+ 		bss->skip_inactivity_poll = atoi(pos);
++	} else if (os_strcmp(buf, "bss_max_idle") == 0) {
++		int val = atoi(pos);
++
++		if (val < 0 || val > 2) {
++			wpa_printf(MSG_ERROR,
++				   "Line %d: Invalid bss_max_idle value", line);
++			return 1;
++		}
++		bss->bss_max_idle = val;
+ 	} else if (os_strcmp(buf, "config_id") == 0) {
+ 		os_free(bss->config_id);
+ 		bss->config_id = os_strdup(pos);
+diff --git a/hostapd/hostapd.conf b/hostapd/hostapd.conf
+index efae334dc..c6d279c2f 100644
+--- a/hostapd/hostapd.conf
++++ b/hostapd/hostapd.conf
+@@ -522,6 +522,13 @@ wmm_ac_vo_acm=0
+ # even if they are still in range of the AP. This can be done by setting
+ # skip_inactivity_poll to 1 (default 0).
+ #skip_inactivity_poll=0
++#
++# BSS max idle period management
++# 0 = disabled (do not advertise and manage BSS max idle period)
++# 1 = enabled (advertise and manage BSS max idle period; default)
++# 2 = enabled requiring protected frames (advertise and manage BSS max idle
++#     period and require STAs to use protected keep-alive frames)
++#bss_max_idle=1
+ 
+ # Disassociate stations based on excessive transmission failures or other
+ # indications of connection loss. This depends on the driver capabilities and
+diff --git a/src/ap/ap_config.c b/src/ap/ap_config.c
+index e1910d422..32b04ab35 100644
+--- a/src/ap/ap_config.c
++++ b/src/ap/ap_config.c
+@@ -92,6 +92,7 @@ void hostapd_config_defaults_bss(struct hostapd_bss_config *bss)
+ 	bss->eap_sim_id = 3;
+ 	bss->eap_sim_aka_fast_reauth_limit = 1000;
+ 	bss->ap_max_inactivity = AP_MAX_INACTIVITY;
++	bss->bss_max_idle = 1;
+ 	bss->eapol_version = EAPOL_VERSION;
+ 
+ 	bss->max_listen_interval = 65535;
+diff --git a/src/ap/ap_config.h b/src/ap/ap_config.h
+index 49a2cea16..7fd638ea1 100644
+--- a/src/ap/ap_config.h
++++ b/src/ap/ap_config.h
+@@ -465,6 +465,7 @@ struct hostapd_bss_config {
+ 				 */
+ 
+ 	int ap_max_inactivity;
++	int bss_max_idle;
+ 	int ignore_broadcast_ssid;
+ 	int no_probe_resp_if_max_sta;
+ 
+diff --git a/src/ap/ieee802_11_shared.c b/src/ap/ieee802_11_shared.c
+index d02f4515a..b98b3ecc7 100644
+--- a/src/ap/ieee802_11_shared.c
++++ b/src/ap/ieee802_11_shared.c
+@@ -742,7 +742,8 @@ u8 * hostapd_eid_bss_max_idle_period(struct hostapd_data *hapd, u8 *eid)
+ 	u8 *pos = eid;
+ 
+ #ifdef CONFIG_WNM_AP
+-	if (hapd->conf->ap_max_inactivity > 0) {
++	if (hapd->conf->ap_max_inactivity > 0 &&
++	    hapd->conf->bss_max_idle) {
+ 		unsigned int val;
+ 		*pos++ = WLAN_EID_BSS_MAX_IDLE_PERIOD;
+ 		*pos++ = 3;
+@@ -757,7 +758,9 @@ u8 * hostapd_eid_bss_max_idle_period(struct hostapd_data *hapd, u8 *eid)
+ 			val = 65535;
+ 		WPA_PUT_LE16(pos, val);
+ 		pos += 2;
+-		*pos++ = 0x00; /* TODO: Protected Keep-Alive Required */
++		/* Set the Protected Keep-Alive Required bit based on
++		 * configuration */
++		*pos++ = hapd->conf->bss_max_idle == 2 ? BIT(0) : 0x00;
+ 	}
+ #endif /* CONFIG_WNM_AP */
+ 
+-- 
+2.43.0
+

@@ -1,0 +1,34 @@
+From 26273daef2781882fb6b469f1009ccf363d4f055 Mon Sep 17 00:00:00 2001
+From: Benjamin Berg <benjamin.berg@intel.com>
+Date: Sun, 1 Sep 2024 19:31:33 +0300
+Subject: [PATCH] BSS: MLD: Limit TBTT parsing to correct length
+
+Logically, it makes more sense to pass the ap_info_len as that is the
+length that the function is permitted to process. Effectively it does
+not make a difference and the code was entirely safe, but change it
+nontheless to be more correct.
+
+Fixes: de5e01010cb2 ("wpa_supplicant: Support ML probe request")
+Signed-off-by: Benjamin Berg <benjamin.berg@intel.com>
+---
+ wpa_supplicant/bss.c | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/wpa_supplicant/bss.c b/wpa_supplicant/bss.c
+index 2bf97652d..aac5f0362 100644
+--- a/wpa_supplicant/bss.c
++++ b/wpa_supplicant/bss.c
+@@ -1823,8 +1823,8 @@ int wpa_bss_parse_basic_ml_element(struct wpa_supplicant *wpa_s,
+ 				goto out;
+ 
+ 			wpa_bss_parse_ml_rnr_ap_info(wpa_s, bss, mbssid_idx,
+-						     ap_info, len, &seen,
+-						     &missing, ssid);
++						     ap_info, ap_info_len,
++						     &seen, &missing, ssid);
+ 
+ 			pos += ap_info_len;
+ 			len -= ap_info_len;
+-- 
+2.43.0
+

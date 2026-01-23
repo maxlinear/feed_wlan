@@ -1,0 +1,103 @@
+From 5bbc9462a05dd4f64c0b7425ffe641b523e3a5d1 Mon Sep 17 00:00:00 2001
+From: Benjamin Berg <benjamin.berg@intel.com>
+Date: Tue, 21 Nov 2023 01:51:54 +0200
+Subject: [PATCH] tests: Test driver association ML link rejection flow
+
+The underlying driver can reject only specific links in an association
+request. In that case we will only ignore the corresponding BSS. Add a
+test for this flow by simulating an association failure on the second
+link specifically.
+
+Signed-off-by: Benjamin Berg <benjamin.berg@intel.com>
+---
+ src/drivers/driver_nl80211.c | 22 +++++++++++++++++---
+ tests/hwsim/test_eht.py      | 40 ++++++++++++++++++++++++++++++++++++
+ 2 files changed, 59 insertions(+), 3 deletions(-)
+
+diff --git a/src/drivers/driver_nl80211.c b/src/drivers/driver_nl80211.c
+index 56c00736d..c5af62a3f 100644
+--- a/src/drivers/driver_nl80211.c
++++ b/src/drivers/driver_nl80211.c
+@@ -7326,9 +7326,25 @@ static int wpa_driver_nl80211_associate(
+ 			goto fail;
+ 	}
+ 
+-	ret = send_and_recv_msgs_connect_handle(drv, msg, drv->first_bss, 1,
+-						&err_info);
+-	msg = NULL;
++	if (!TEST_FAIL_TAG("assoc")) {
++		ret = send_and_recv_msgs_connect_handle(drv, msg,
++							drv->first_bss, 1,
++							&err_info);
++		msg = NULL;
++	} else {
++		int i;
++
++		/* Error and force TEST_FAIL checking for each link */
++		ret = -EINVAL;
++		for (i = 0; i < MAX_NUM_MLD_LINKS; i++) {
++			if (!(params->mld_params.valid_links & BIT(i)))
++				continue;
++
++			if (TEST_FAIL_TAG("link"))
++				err_info.link_id = i;
++		}
++	}
++
+ 	if (ret) {
+ 		wpa_dbg(drv->ctx, MSG_DEBUG,
+ 			"nl80211: MLME command failed (assoc): ret=%d (%s)",
+diff --git a/tests/hwsim/test_eht.py b/tests/hwsim/test_eht.py
+index cca63db37..dbffe172f 100644
+--- a/tests/hwsim/test_eht.py
++++ b/tests/hwsim/test_eht.py
+@@ -793,6 +793,46 @@ def test_eht_all_links_rejected(dev, apdev, params):
+             # connects.
+             wpas.wait_connected(timeout=15)
+ 
++def test_eht_connect_invalid_link(dev, apdev, params):
++    """EHT MLD AP where one link is incorrectly configured and rejected by mac80211"""
++    with HWSimRadio(use_mlo=True) as (hapd_radio, hapd_iface), \
++        HWSimRadio(use_mlo=True) as (wpas_radio, wpas_iface):
++
++        wpas = WpaSupplicant(global_iface='/tmp/wpas-wlan5')
++        wpas.interface_add(wpas_iface)
++
++        ssid = "mld_ap"
++        passphrase = 'qwertyuiop'
++        ssid = "mld_ap"
++        passphrase = 'qwertyuiop'
++        link_params = eht_mld_ap_wpa2_params(ssid, passphrase, mfp="2",
++                                             key_mgmt="SAE", pwe='2')
++        link_params['channel'] = '1'
++        link_params['bssid'] = '00:11:22:33:44:01'
++        hapd0 = eht_mld_enable_ap(hapd_iface, link_params)
++
++        link_params['channel'] = '6'
++        link_params['bssid'] = '00:11:22:33:44:02'
++        hapd1 = eht_mld_enable_ap(hapd_iface, link_params)
++
++        # We scan for both APs, then try to connect to link 0, but only the
++        # second attempt will work if mac80211 rejects the second link.
++        wpas.set("mld_connect_bssid_pref", "00:11:22:33:44:01")
++        wpas.set("sae_pwe", "1")
++        with fail_test(wpas, 1, "assoc;wpa_driver_nl80211_associate",
++                             2, "link;wpa_driver_nl80211_associate"):
++            wpas.connect(ssid, sae_password=passphrase, ieee80211w="2",
++                         key_mgmt="SAE", scan_freq="2412")
++
++        eht_verify_status(wpas, hapd0, 2412, 20, is_ht=True, mld=True,
++                          valid_links=1, active_links=1)
++
++        out = run_tshark(os.path.join(params['logdir'], 'hwsim0.pcapng'),
++                         'wlan.fc.type_subtype == 0x0000 && wlan.ext_tag.data == 00:01:09:%s:00:00' % wpas.own_addr(),
++                         display=['frame.number'])
++        if not out.splitlines():
++            raise Exception('Association request send by mac80211 had unexpected ML element content (probably it contained a second link)')
++
+ def test_eht_mld_link_removal(dev, apdev):
+     """EHT MLD with two links. Links removed during association"""
+ 
+-- 
+2.43.0
+

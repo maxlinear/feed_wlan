@@ -1,0 +1,41 @@
+From 425d934610bf9ccfa84f5b7c2abdbbc46f4e8fa5 Mon Sep 17 00:00:00 2001
+From: Jouni Malinen <quic_jouni@quicinc.com>
+Date: Sun, 13 Oct 2024 20:39:30 +0300
+Subject: [PATCH] tests: Fix fuzzing tester build
+
+The new pasn_common.c needs to included in PASN fuzzing testers.
+
+Fixes: e15242565794 ("PASN: Routines for generating and processing encrypted data")
+Signed-off-by: Jouni Malinen <quic_jouni@quicinc.com>
+---
+ tests/fuzzing/pasn-init/Makefile | 1 +
+ tests/fuzzing/pasn-resp/Makefile | 1 +
+ 2 files changed, 2 insertions(+)
+
+diff --git a/tests/fuzzing/pasn-init/Makefile b/tests/fuzzing/pasn-init/Makefile
+index d838192a4..c9a4e390c 100644
+--- a/tests/fuzzing/pasn-init/Makefile
++++ b/tests/fuzzing/pasn-init/Makefile
+@@ -27,6 +27,7 @@ OBJS += $(SRC)/crypto/sha256-kdf.o
+ OBJS += $(SRC)/crypto/sha384-kdf.o
+ OBJS += $(SRC)/rsn_supp/wpa_ie.o
+ OBJS += $(SRC)/rsn_supp/pmksa_cache.o
++OBJS += $(SRC)/pasn/pasn_common.o
+ OBJS += $(SRC)/pasn/pasn_initiator.o
+ 
+ OBJS += pasn-init.o
+diff --git a/tests/fuzzing/pasn-resp/Makefile b/tests/fuzzing/pasn-resp/Makefile
+index 85a5279d7..046cb5f38 100644
+--- a/tests/fuzzing/pasn-resp/Makefile
++++ b/tests/fuzzing/pasn-resp/Makefile
+@@ -26,6 +26,7 @@ OBJS += $(SRC)/crypto/sha384-prf.o
+ OBJS += $(SRC)/crypto/sha256-kdf.o
+ OBJS += $(SRC)/crypto/sha384-kdf.o
+ OBJS += $(SRC)/ap/comeback_token.o
++OBJS += $(SRC)/pasn/pasn_common.o
+ OBJS += $(SRC)/pasn/pasn_responder.o
+ 
+ OBJS += pasn-resp.o
+-- 
+2.43.0
+

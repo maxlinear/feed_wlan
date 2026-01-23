@@ -1,0 +1,30 @@
+From 65d865e62706cbe89dae9be9601c97a5d3b32c9d Mon Sep 17 00:00:00 2001
+From: Hu Wang <quic_huw@quicinc.com>
+Date: Wed, 6 Nov 2024 02:50:04 -0800
+Subject: [PATCH] AP: Avoid double free of key data buffer if AES unwrap fails
+
+key_data_buf was freed when aes_unwrap() failed, and then after goto
+out, key_data_buf would be freed again. The separate feeing on
+aes_unwrap() failure is not needed, so remove it.
+
+Fixes: 4abc37e67b ("Support Key Data field decryption for EAPOL-Key msg 2/4 and 4/4")
+Signed-off-by: Jouni Malinen <quic_jouni@quicinc.com>
+---
+ src/ap/wpa_auth.c | 1 -
+ 1 file changed, 1 deletion(-)
+
+diff --git a/src/ap/wpa_auth.c b/src/ap/wpa_auth.c
+index 49866c276..d067b2cfa 100644
+--- a/src/ap/wpa_auth.c
++++ b/src/ap/wpa_auth.c
+@@ -3811,7 +3811,6 @@ SM_STATE(WPA_PTK, PTKCALCNEGOTIATING)
+ 		key_data_buf_len = key_data_length;
+ 		if (aes_unwrap(PTK.kek, PTK.kek_len, key_data_length / 8,
+ 			       key_data, key_data_buf)) {
+-			bin_clear_free(key_data_buf, key_data_buf_len);
+ 			wpa_printf(MSG_INFO,
+ 				   "RSN: AES unwrap failed - could not decrypt EAPOL-Key key data");
+ 			goto out;
+-- 
+2.43.0
+

@@ -1,0 +1,119 @@
+From ae6d2a5c0481d77a60d6fbe208291e532e09c640 Mon Sep 17 00:00:00 2001
+From: Jouni Malinen <quic_jouni@quicinc.com>
+Date: Wed, 9 Oct 2024 20:05:32 +0300
+Subject: [PATCH] AP: Use helper functions in ap_sta_disconnect()
+
+There is a long history with ap_sta_disconnect() being added as the
+handler for Disconnect operation from the RSN Authenticator state
+machine and then evolving over years with
+ap_sta_deauthenticate/disassociate() doing very similar operations, but
+not exactly identical. This mess should really be cleaned up since many
+of the differences are unlikely to be on purpose. As a step towards
+that, use shared helper functions to make these functions avoid
+duplicated implementation for the clearly common parts.
+
+Signed-off-by: Jouni Malinen <quic_jouni@quicinc.com>
+---
+ src/ap/sta_info.c | 55 ++++++++++++++++++++++++-----------------------
+ 1 file changed, 28 insertions(+), 27 deletions(-)
+
+diff --git a/src/ap/sta_info.c b/src/ap/sta_info.c
+index 48ed3c03b..98c141337 100644
+--- a/src/ap/sta_info.c
++++ b/src/ap/sta_info.c
+@@ -953,6 +953,18 @@ static void ap_sta_disconnect_common(struct hostapd_data *hapd,
+ }
+ 
+ 
++static void ap_sta_disassociate_common(struct hostapd_data *hapd,
++				       struct sta_info *sta, u16 reason)
++{
++	sta->disassoc_reason = reason;
++	sta->flags |= WLAN_STA_PENDING_DISASSOC_CB;
++	eloop_cancel_timeout(ap_sta_disassoc_cb_timeout, hapd, sta);
++	eloop_register_timeout(hapd->iface->drv_flags &
++			       WPA_DRIVER_FLAGS_DEAUTH_TX_STATUS ? 2 : 0, 0,
++			       ap_sta_disassoc_cb_timeout, hapd, sta);
++}
++
++
+ static void ap_sta_handle_disassociate(struct hostapd_data *hapd,
+ 				       struct sta_info *sta, u16 reason)
+ {
+@@ -971,13 +983,7 @@ static void ap_sta_handle_disassociate(struct hostapd_data *hapd,
+ 	}
+ 
+ 	ap_sta_disconnect_common(hapd, sta, AP_MAX_INACTIVITY_AFTER_DISASSOC);
+-
+-	sta->disassoc_reason = reason;
+-	sta->flags |= WLAN_STA_PENDING_DISASSOC_CB;
+-	eloop_cancel_timeout(ap_sta_disassoc_cb_timeout, hapd, sta);
+-	eloop_register_timeout(hapd->iface->drv_flags &
+-			       WPA_DRIVER_FLAGS_DEAUTH_TX_STATUS ? 2 : 0, 0,
+-			       ap_sta_disassoc_cb_timeout, hapd, sta);
++	ap_sta_disassociate_common(hapd, sta, reason);
+ }
+ 
+ 
+@@ -993,6 +999,18 @@ static void ap_sta_deauth_cb_timeout(void *eloop_ctx, void *timeout_ctx)
+ }
+ 
+ 
++static void ap_sta_deauthenticate_common(struct hostapd_data *hapd,
++					 struct sta_info *sta, u16 reason)
++{
++	sta->deauth_reason = reason;
++	sta->flags |= WLAN_STA_PENDING_DEAUTH_CB;
++	eloop_cancel_timeout(ap_sta_deauth_cb_timeout, hapd, sta);
++	eloop_register_timeout(hapd->iface->drv_flags &
++			       WPA_DRIVER_FLAGS_DEAUTH_TX_STATUS ? 2 : 0, 0,
++			       ap_sta_deauth_cb_timeout, hapd, sta);
++}
++
++
+ static void ap_sta_handle_deauthenticate(struct hostapd_data *hapd,
+ 					 struct sta_info *sta, u16 reason)
+ {
+@@ -1003,13 +1021,7 @@ static void ap_sta_handle_deauthenticate(struct hostapd_data *hapd,
+ 
+ 	sta->timeout_next = STA_REMOVE;
+ 	ap_sta_disconnect_common(hapd, sta, AP_MAX_INACTIVITY_AFTER_DEAUTH);
+-
+-	sta->deauth_reason = reason;
+-	sta->flags |= WLAN_STA_PENDING_DEAUTH_CB;
+-	eloop_cancel_timeout(ap_sta_deauth_cb_timeout, hapd, sta);
+-	eloop_register_timeout(hapd->iface->drv_flags &
+-			       WPA_DRIVER_FLAGS_DEAUTH_TX_STATUS ? 2 : 0, 0,
+-			       ap_sta_deauth_cb_timeout, hapd, sta);
++	ap_sta_deauthenticate_common(hapd, sta, reason);
+ }
+ 
+ 
+@@ -1644,22 +1656,11 @@ void ap_sta_disconnect(struct hostapd_data *hapd, struct sta_info *sta,
+ 	    hapd->iface->current_mode->mode == HOSTAPD_MODE_IEEE80211AD) {
+ 		/* Deauthentication is not used in DMG/IEEE 802.11ad;
+ 		 * disassociate the STA instead. */
+-		sta->disassoc_reason = reason;
+-		sta->flags |= WLAN_STA_PENDING_DISASSOC_CB;
+-		eloop_cancel_timeout(ap_sta_disassoc_cb_timeout, hapd, sta);
+-		eloop_register_timeout(hapd->iface->drv_flags &
+-				       WPA_DRIVER_FLAGS_DEAUTH_TX_STATUS ?
+-				       2 : 0, 0, ap_sta_disassoc_cb_timeout,
+-				       hapd, sta);
++		ap_sta_disassociate_common(hapd, sta, reason);
+ 		return;
+ 	}
+ 
+-	sta->deauth_reason = reason;
+-	sta->flags |= WLAN_STA_PENDING_DEAUTH_CB;
+-	eloop_cancel_timeout(ap_sta_deauth_cb_timeout, hapd, sta);
+-	eloop_register_timeout(hapd->iface->drv_flags &
+-			       WPA_DRIVER_FLAGS_DEAUTH_TX_STATUS ? 2 : 0, 0,
+-			       ap_sta_deauth_cb_timeout, hapd, sta);
++	ap_sta_deauthenticate_common(hapd, sta, reason);
+ }
+ 
+ 
+-- 
+2.43.0
+

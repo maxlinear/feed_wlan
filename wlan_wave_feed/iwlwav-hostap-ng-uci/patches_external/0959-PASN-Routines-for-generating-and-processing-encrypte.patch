@@ -1,0 +1,215 @@
+From e15242565794af402fd8229fef5e77074c0d1515 Mon Sep 17 00:00:00 2001
+From: Shivani Baranwal <quic_shivbara@quicinc.com>
+Date: Mon, 5 Aug 2024 02:43:59 +0530
+Subject: [PATCH] PASN: Routines for generating and processing encrypted data
+
+This adds functions to use the PASN Encrypted Data element based on the
+definition in IEEE P802.11bh/D6.0.
+
+Signed-off-by: Shivani Baranwal <quic_shivbara@quicinc.com>
+---
+ src/pasn/pasn_common.c    | 101 ++++++++++++++++++++++++++++++++++++++
+ src/pasn/pasn_common.h    |   8 +++
+ src/pasn/pasn_initiator.c |  10 ++++
+ src/pasn/pasn_responder.c |   8 +++
+ 4 files changed, 127 insertions(+)
+
+diff --git a/src/pasn/pasn_common.c b/src/pasn/pasn_common.c
+index 25e44a195..b5dd1758d 100644
+--- a/src/pasn/pasn_common.c
++++ b/src/pasn/pasn_common.c
+@@ -15,6 +15,8 @@
+ #include "crypto/sha384.h"
+ #include "crypto/crypto.h"
+ #include "common/ieee802_11_defs.h"
++#include "common/ieee802_11_common.h"
++#include "crypto/aes_wrap.h"
+ #include "pasn_common.h"
+ 
+ 
+@@ -241,3 +243,102 @@ struct wpa_ptk * pasn_get_ptk(struct pasn_data *pasn)
+ 		return NULL;
+ 	return &pasn->ptk;
+ }
++
++
++int pasn_add_encrypted_data(struct pasn_data *pasn, struct wpabuf *buf,
++			    const u8 *data, size_t data_len)
++{
++	int ret;
++	u8 *encrypted_data, *padded_data = NULL;
++	u8 *len;
++	size_t pad_len = 0;
++
++	pad_len = data_len % 8;
++	if (pad_len) {
++		pad_len = 8 - pad_len;
++		padded_data = os_zalloc(data_len + pad_len);
++		if (!padded_data)
++			return -1;
++		os_memcpy(padded_data, data, data_len);
++		data = padded_data;
++		padded_data[data_len] = 0xdd;
++	}
++	data_len += pad_len + 8;
++
++	encrypted_data = os_malloc(data_len);
++	if (!encrypted_data) {
++		os_free(padded_data);
++		return -1;
++	}
++
++	ret = aes_wrap(pasn->ptk.kek, pasn->ptk.kek_len,
++		       (data_len - 8) / 8, data, encrypted_data);
++	if (ret) {
++		wpa_printf(MSG_DEBUG, "PASN: AES wrap failed, ret=%d", ret);
++		goto out;
++	}
++
++	if (wpabuf_tailroom(buf) < 1 + 1 + 1 + data_len) {
++		wpa_printf(MSG_DEBUG,
++			   "PASN: Not enough room in the buffer for PASN Encrypred Data element");
++		ret = -1;
++		goto out;
++	}
++
++	wpabuf_put_u8(buf, WLAN_EID_EXTENSION);
++	len = wpabuf_put(buf, 1);
++
++	wpabuf_put_u8(buf, WLAN_EID_EXT_PASN_ENCRYPTED_DATA);
++
++	wpabuf_put_data(buf, encrypted_data, data_len);
++	*len = (u8 *) wpabuf_put(buf, 0) - len - 1;
++
++out:
++	os_free(padded_data);
++	os_free(encrypted_data);
++	return ret;
++}
++
++
++int pasn_parse_encrypted_data(struct pasn_data *pasn, const u8 *data,
++			      size_t len)
++{
++	int ret = -1;
++	u8 *buf;
++	u16 buf_len;
++	struct ieee802_11_elems elems;
++	const struct ieee80211_mgmt *mgmt =
++		(const struct ieee80211_mgmt *) data;
++
++	if (len < 24 + 6 ||
++	    ieee802_11_parse_elems(mgmt->u.auth.variable,
++				   len - offsetof(struct ieee80211_mgmt,
++						  u.auth.variable),
++				   &elems, 0) == ParseFailed) {
++		wpa_printf(MSG_DEBUG,
++			   "PASN: Failed parsing Authentication frame");
++		return -1;
++	}
++
++	if (!elems.pasn_encrypted_data || elems.pasn_encrypted_data_len < 8 ||
++	    elems.pasn_encrypted_data_len % 8) {
++		wpa_printf(MSG_DEBUG, "PASN: No encrypted elements");
++		return 0;
++	}
++
++	buf_len = elems.pasn_encrypted_data_len - 8;
++
++	buf = os_malloc(buf_len);
++	if (!buf)
++		return -1;
++
++	ret = aes_unwrap(pasn->ptk.kek, pasn->ptk.kek_len, buf_len / 8,
++			 elems.pasn_encrypted_data, buf);
++	if (ret)
++		wpa_printf(MSG_DEBUG, "PASN: AES unwrap failed, ret=%d", ret);
++	else if (pasn->parse_data_element && pasn->cb_ctx)
++		ret = pasn->parse_data_element(pasn->cb_ctx, buf, buf_len);
++
++	os_free(buf);
++	return ret;
++}
+diff --git a/src/pasn/pasn_common.h b/src/pasn/pasn_common.h
+index 7b7c73792..4a5baf0ca 100644
+--- a/src/pasn/pasn_common.h
++++ b/src/pasn/pasn_common.h
+@@ -151,6 +151,10 @@ struct pasn_data {
+ 	 */
+ 	int (*validate_custom_pmkid)(void *ctx, const u8 *addr,
+ 				     const u8 *pmkid);
++
++	int (*prepare_data_element)(void *ctx, const u8 *peer_addr);
++
++	int (*parse_data_element)(void *ctx, const u8 *data, size_t len);
+ };
+ 
+ /* Initiator */
+@@ -246,6 +250,10 @@ int pasn_get_cipher(struct pasn_data *pasn);
+ size_t pasn_get_pmk_len(struct pasn_data *pasn);
+ u8 * pasn_get_pmk(struct pasn_data *pasn);
+ struct wpa_ptk * pasn_get_ptk(struct pasn_data *pasn);
++int pasn_add_encrypted_data(struct pasn_data *pasn, struct wpabuf *buf,
++			    const u8 *data, size_t data_len);
++int pasn_parse_encrypted_data(struct pasn_data *pasn, const u8 *data,
++			      size_t len);
+ 
+ #ifdef __cplusplus
+ }
+diff --git a/src/pasn/pasn_initiator.c b/src/pasn/pasn_initiator.c
+index ce1055b1b..c8e5b3d99 100644
+--- a/src/pasn/pasn_initiator.c
++++ b/src/pasn/pasn_initiator.c
+@@ -716,6 +716,11 @@ static struct wpabuf * wpas_pasn_build_auth_3(struct pasn_data *pasn)
+ 	wpabuf_free(wrapped_data_buf);
+ 	wrapped_data_buf = NULL;
+ 
++	if (pasn->prepare_data_element && pasn->cb_ctx)
++		pasn->prepare_data_element(pasn->cb_ctx, pasn->peer_addr);
++
++	wpa_pasn_add_extra_ies(buf, pasn->extra_ies, pasn->extra_ies_len);
++
+ 	/* Add the MIC */
+ 	mic_len = pasn_mic_len(pasn->akmp, pasn->cipher);
+ 	wpabuf_put_u8(buf, WLAN_EID_MIC);
+@@ -1386,6 +1391,11 @@ int wpa_pasn_auth_rx(struct pasn_data *pasn, const u8 *data, size_t len,
+ 
+ 	wpa_printf(MSG_DEBUG, "PASN: Success verifying Authentication frame");
+ 
++	if (pasn_parse_encrypted_data(pasn, data, len) < 0) {
++		wpa_printf(MSG_DEBUG, "PASN: Encrypted data processing failed");
++		goto fail;
++	}
++
+ 	frame = wpas_pasn_build_auth_3(pasn);
+ 	if (!frame) {
+ 		wpa_printf(MSG_DEBUG, "PASN: Failed building 3rd auth frame");
+diff --git a/src/pasn/pasn_responder.c b/src/pasn/pasn_responder.c
+index e344898df..12d00ef3e 100644
+--- a/src/pasn/pasn_responder.c
++++ b/src/pasn/pasn_responder.c
+@@ -561,6 +561,9 @@ int handle_auth_pasn_resp(struct pasn_data *pasn, const u8 *own_addr,
+ 	if (rsnxe_ie)
+ 		wpabuf_put_data(buf, rsnxe_ie, 2 + rsnxe_ie[1]);
+ 
++	if (pasn->prepare_data_element && pasn->cb_ctx)
++		pasn->prepare_data_element(pasn->cb_ctx, peer_addr);
++
+ 	wpa_pasn_add_extra_ies(buf, pasn->extra_ies, pasn->extra_ies_len);
+ 
+ 	/* Add the mic */
+@@ -1086,6 +1089,11 @@ int handle_auth_pasn_3(struct pasn_data *pasn, const u8 *own_addr,
+ 		wpabuf_free(wrapped_data);
+ 	}
+ 
++	if (pasn_parse_encrypted_data(pasn, (const u8 *) mgmt, len) < 0) {
++		wpa_printf(MSG_DEBUG, "PASN: Encrypted data processing failed");
++		goto fail;
++	}
++
+ 	wpa_printf(MSG_INFO,
+ 		   "PASN: Success handling transaction == 3. Store PTK");
+ 	return 0;
+-- 
+2.43.0
+

@@ -1,0 +1,34 @@
+From 9e04dac3c04c1969f6e72aea430bd00d465f0faa Mon Sep 17 00:00:00 2001
+From: Jouni Malinen <j@w1.fi>
+Date: Mon, 30 Dec 2024 18:31:21 +0200
+Subject: [PATCH] WNM: A more explicit check for a connection
+
+wnm_scan_process() was only implicitly verifying that there is an
+association based on wpa_s->wnm_dialog_token having been set. While that
+may be sufficient for normal uses within wpa_supplicant, this was not
+covered in a separate WNM fuzzer. Add an explicit check for
+wpa_s->current_ssid to be set within wnm_scan_process() to avoid
+unexpected behavior if something were to allow wnm_dialog_token to be
+set when not actually associated.
+
+Signed-off-by: Jouni Malinen <j@w1.fi>
+---
+ wpa_supplicant/wnm_sta.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/wpa_supplicant/wnm_sta.c b/wpa_supplicant/wnm_sta.c
+index 946f8c96b..187da1133 100644
+--- a/wpa_supplicant/wnm_sta.c
++++ b/wpa_supplicant/wnm_sta.c
+@@ -1011,7 +1011,7 @@ int wnm_scan_process(struct wpa_supplicant *wpa_s, bool pre_scan_check)
+ 		MBO_TRANSITION_REJECT_REASON_UNSPECIFIED;
+ 	struct wpa_ssid *selected_ssid = NULL;
+ 
+-	if (!wpa_s->wnm_dialog_token)
++	if (!ssid || !wpa_s->wnm_dialog_token)
+ 		return 0;
+ 
+ 	wpa_dbg(wpa_s, MSG_DEBUG,
+-- 
+2.43.0
+

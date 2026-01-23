@@ -1,0 +1,72 @@
+From adc6ca34a063206e3c45e4760a6b59e9e8221328 Mon Sep 17 00:00:00 2001
+From: Benjamin Berg <benjamin.berg@intel.com>
+Date: Mon, 29 Apr 2024 13:51:48 +0200
+Subject: [PATCH] WNM: Move neighbor report test into wnm_is_bss_excluded()
+
+Having it in wnm_is_bss_excluded() is more generic as it works for other
+locations (e.g., MLD link selection). So move the test and add a check
+for the abridged bit while at it. Note that without the abridged bit
+check another check would be needed (e.g., checking wnm_dialog_token) to
+ensure that there isn't a rejection unless a BTM is in progress.
+
+compare_scan_neighbor_results() calls wpa_scan_res_match() which calls
+wnm_is_bss_excluded() so the previous behavior is maintained for WNM
+scan result processing.
+
+Signed-off-by: Benjamin Berg <benjamin.berg@intel.com>
+---
+ wpa_supplicant/wnm_sta.c | 25 ++++++++++++++++++++-----
+ 1 file changed, 20 insertions(+), 5 deletions(-)
+
+diff --git a/wpa_supplicant/wnm_sta.c b/wpa_supplicant/wnm_sta.c
+index 613223f77..798e7f588 100644
+--- a/wpa_supplicant/wnm_sta.c
++++ b/wpa_supplicant/wnm_sta.c
+@@ -760,11 +760,6 @@ compare_scan_neighbor_results(struct wpa_supplicant *wpa_s,
+ 		struct neighbor_report *nei;
+ 
+ 		nei = &wpa_s->wnm_neighbor_report_elements[i];
+-		if (nei->preference_present && nei->preference == 0) {
+-			wpa_printf(MSG_DEBUG, "Skip excluded BSS " MACSTR,
+-				   MAC2STR(nei->bssid));
+-			continue;
+-		}
+ 
+ 		target = wpa_bss_get_bssid(wpa_s, nei->bssid);
+ 		if (!target) {
+@@ -2057,6 +2052,8 @@ void wnm_clear_coloc_intf_reporting(struct wpa_supplicant *wpa_s)
+ 
+ bool wnm_is_bss_excluded(struct wpa_supplicant *wpa_s, struct wpa_bss *bss)
+ {
++	int i;
++
+ 	/*
+ 	 * In case disassociation imminent is set, do no try to use a BSS to
+ 	 * which we are connected.
+@@ -2073,5 +2070,23 @@ bool wnm_is_bss_excluded(struct wpa_supplicant *wpa_s, struct wpa_bss *bss)
+ 		}
+ 	}
+ 
++	for (i = 0; i < wpa_s->wnm_num_neighbor_report; i++) {
++		struct neighbor_report *nei;
++
++		nei = &wpa_s->wnm_neighbor_report_elements[i];
++		if (!ether_addr_equal(nei->bssid, bss->bssid))
++			continue;
++
++		if (nei->preference_present && nei->preference == 0)
++			return true;
++
++		break;
++	}
++
++	/* If the abridged bit is set, the BSS must be a known neighbor. */
++	if ((wpa_s->wnm_mode & WNM_BSS_TM_REQ_ABRIDGED) &&
++	    wpa_s->wnm_num_neighbor_report == i)
++		return true;
++
+ 	return false;
+ }
+-- 
+2.43.0
+

@@ -1,0 +1,36 @@
+From 800e481bd71a8d13e054e03efd3e03ee5e560bd1 Mon Sep 17 00:00:00 2001
+From: Jouni Malinen <quic_jouni@quicinc.com>
+Date: Mon, 3 Mar 2025 20:32:23 +0200
+Subject: [PATCH] MLD: Verify Per-STA Profile subelement length in reconf MLE
+
+Strictly speaking, it is not sufficient to verify that there is enough
+space in the Link Info field, but the legth of the Per-STA Profile
+subelement needs to be checked as well before using the STA Control
+field value. There could be another subelement after the Per-STA Profile
+subelement and if the Per-STA Profile subelement would be too short,
+data from that following subelement could have been used. This is a
+theoretical case, but anyway, better be stricter in verifying the length
+fields in this type of cases.
+
+Signed-off-by: Jouni Malinen <quic_jouni@quicinc.com>
+---
+ wpa_supplicant/bss.c | 3 ++-
+ 1 file changed, 2 insertions(+), 1 deletion(-)
+
+diff --git a/wpa_supplicant/bss.c b/wpa_supplicant/bss.c
+index f5b84cfbe..a0f657888 100644
+--- a/wpa_supplicant/bss.c
++++ b/wpa_supplicant/bss.c
+@@ -1993,7 +1993,8 @@ u16 wpa_bss_parse_reconf_ml_element(struct wpa_supplicant *wpa_s,
+ 			goto out;
+ 		}
+ 
+-		if  (*pos == EHT_ML_SUB_ELEM_PER_STA_PROFILE) {
++		if  (*pos == EHT_ML_SUB_ELEM_PER_STA_PROFILE &&
++		     sub_elem_len >= 2) {
+ 			const struct ieee80211_eht_per_sta_profile *sta_prof =
+ 				(const struct ieee80211_eht_per_sta_profile *)
+ 				(pos + 2);
+-- 
+2.43.0
+

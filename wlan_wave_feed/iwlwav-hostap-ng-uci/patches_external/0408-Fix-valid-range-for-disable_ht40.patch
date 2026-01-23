@@ -1,0 +1,29 @@
+From fd24ed949050f7d504ce4b349f119a2d47ce4313 Mon Sep 17 00:00:00 2001
+From: Jouni Malinen <j@w1.fi>
+Date: Sun, 3 Mar 2024 18:36:46 +0200
+Subject: [PATCH] Fix valid range for disable_ht40
+
+This network parameter uses values 0 and 1, so -1 should not have been
+accepted.
+
+Signed-off-by: Jouni Malinen <j@w1.fi>
+---
+ wpa_supplicant/config.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/wpa_supplicant/config.c b/wpa_supplicant/config.c
+index 7662b095b..b81d80318 100644
+--- a/wpa_supplicant/config.c
++++ b/wpa_supplicant/config.c
+@@ -2675,7 +2675,7 @@ static const struct parse_data ssid_fields[] = {
+ #endif /* CONFIG_P2P */
+ #ifdef CONFIG_HT_OVERRIDES
+ 	{ INT_RANGE(disable_ht, 0, 1) },
+-	{ INT_RANGE(disable_ht40, -1, 1) },
++	{ INT_RANGE(disable_ht40, 0, 1) },
+ 	{ INT_RANGE(disable_sgi, 0, 1) },
+ 	{ INT_RANGE(disable_ldpc, 0, 1) },
+ 	{ INT_RANGE(ht40_intolerant, 0, 1) },
+-- 
+2.43.0
+

@@ -1,0 +1,28 @@
+From 33381b724eb06ad903dd31ff12fef5cc7f9858bc Mon Sep 17 00:00:00 2001
+From: Jouni Malinen <j@w1.fi>
+Date: Sat, 22 Feb 2025 10:48:25 +0200
+Subject: [PATCH] trace: Mark wpa_trace_test_fail static
+
+This is not used outside os_unix.c.
+
+Signed-off-by: Jouni Malinen <j@w1.fi>
+---
+ src/utils/os_unix.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/src/utils/os_unix.c b/src/utils/os_unix.c
+index cabfd87c0..000262964 100644
+--- a/src/utils/os_unix.c
++++ b/src/utils/os_unix.c
+@@ -540,7 +540,7 @@ void * os_memdup(const void *src, size_t len)
+ #ifdef WPA_TRACE
+ 
+ #if defined(WPA_TRACE_BFD) && defined(CONFIG_TESTING_OPTIONS)
+-struct wpa_trace_test_fail {
++static struct wpa_trace_test_fail {
+ 	unsigned int fail_after;
+ 	char pattern[256];
+ } wpa_trace_test_fail[5][4];
+-- 
+2.43.0
+

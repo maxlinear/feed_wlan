@@ -1,0 +1,84 @@
+From 51b5b9512ffbf74aff99232425237da5229a0261 Mon Sep 17 00:00:00 2001
+From: Rathees Kumar R Chinannan <quic_rrchinan@quicinc.com>
+Date: Mon, 8 Apr 2024 12:05:16 +0530
+Subject: [PATCH] Update Probe Response template on BSS color change
+
+When AP is beaconing only on the 6 GHz band and unsol_bcast_presp
+interval is set, AP sends unsolicited broadcast Probe Response frames
+for in-band discovery. hostapd sent the Probe Response template for this
+frame only when setting a new Beacon frame template.
+
+Extend this to update the Probe Response template during BSS color
+change.
+
+Signed-off-by: Rathees Kumar R Chinannan <quic_rrchinan@quicinc.com>
+---
+ src/ap/hostapd.c             | 4 ++++
+ src/drivers/driver.h         | 3 +++
+ src/drivers/driver_nl80211.c | 7 +++++++
+ 3 files changed, 14 insertions(+)
+
+diff --git a/src/ap/hostapd.c b/src/ap/hostapd.c
+index 14c225bf6..0506b418f 100644
+--- a/src/ap/hostapd.c
++++ b/src/ap/hostapd.c
+@@ -4571,6 +4571,9 @@ static int hostapd_fill_cca_settings(struct hostapd_data *hapd,
+ 		return ret;
+ 	}
+ 
++	settings->ubpr.unsol_bcast_probe_resp_tmpl =
++		hostapd_unsol_bcast_probe_resp(hapd, &settings->ubpr);
++
+ 	settings->counter_offset_beacon = hapd->cca_c_off_beacon;
+ 	settings->counter_offset_presp = hapd->cca_c_off_proberesp;
+ 
+@@ -4633,6 +4636,7 @@ static void hostapd_switch_color_timeout_handler(void *eloop_data,
+ 
+ 		free_beacon_data(&settings.beacon_cca);
+ 		free_beacon_data(&settings.beacon_after);
++		os_free(settings.ubpr.unsol_bcast_probe_resp_tmpl);
+ 	}
+ }
+ 
+diff --git a/src/drivers/driver.h b/src/drivers/driver.h
+index d467e94d5..568f338b0 100644
+--- a/src/drivers/driver.h
++++ b/src/drivers/driver.h
+@@ -2760,6 +2760,7 @@ struct csa_settings {
+  * @beacon_after: Next Beacon/Probe Response/(Re)Association Response frame info
+  * @counter_offset_beacon: Offset to the count field in Beacon frame tail
+  * @counter_offset_presp: Offset to the count field in Probe Response frame
++ * @ubpr: Unsolicited broadcast Probe Response frame data
+  */
+ struct cca_settings {
+ 	u8 cca_count;
+@@ -2770,6 +2771,8 @@ struct cca_settings {
+ 
+ 	u16 counter_offset_beacon;
+ 	u16 counter_offset_presp;
++
++	struct unsol_bcast_probe_resp ubpr;
+ };
+ 
+ /* TDLS peer capabilities for send_tdls_mgmt() */
+diff --git a/src/drivers/driver_nl80211.c b/src/drivers/driver_nl80211.c
+index 5ef790f31..149f51a74 100644
+--- a/src/drivers/driver_nl80211.c
++++ b/src/drivers/driver_nl80211.c
+@@ -11396,6 +11396,13 @@ static int nl80211_switch_color(void *priv, struct cca_settings *settings)
+ 	}
+ 
+ 	nla_nest_end(msg, beacon_cca);
++
++	if (settings->ubpr.unsol_bcast_probe_resp_interval &&
++	    nl80211_unsol_bcast_probe_resp(bss, msg, &settings->ubpr) < 0) {
++		ret = -ENOBUFS;
++		goto error;
++	}
++
+ 	ret = send_and_recv_cmd(drv, msg);
+ 	if (ret) {
+ 		wpa_printf(MSG_DEBUG,
+-- 
+2.43.0
+

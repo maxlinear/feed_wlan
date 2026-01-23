@@ -1,0 +1,116 @@
+From bb1316baaf83bfca9a9857588f5d097d26eb4257 Mon Sep 17 00:00:00 2001
+From: Veerendranath Jakkam <quic_vjakkam@quicinc.com>
+Date: Wed, 11 Sep 2024 03:06:15 +0530
+Subject: [PATCH] Allow forced enabling of EAPOL-Key msg 2/4 key info bits for
+ testing
+
+This can be used to increasing AP testing coverage for different 4-way
+handshake behavior.
+
+Signed-off-by: Veerendranath Jakkam <quic_vjakkam@quicinc.com>
+---
+ src/rsn_supp/wpa.c                | 5 +++++
+ src/rsn_supp/wpa.h                | 1 +
+ src/rsn_supp/wpa_i.h              | 1 +
+ wpa_supplicant/ctrl_iface.c       | 3 +++
+ wpa_supplicant/wpa_supplicant.c   | 3 +++
+ wpa_supplicant/wpa_supplicant_i.h | 1 +
+ 6 files changed, 14 insertions(+)
+
+diff --git a/src/rsn_supp/wpa.c b/src/rsn_supp/wpa.c
+index 06a0c1774..b7518f9b6 100644
+--- a/src/rsn_supp/wpa.c
++++ b/src/rsn_supp/wpa.c
+@@ -649,6 +649,8 @@ int wpa_supplicant_send_2_of_4(struct wpa_sm *sm, const unsigned char *dst,
+ #ifdef CONFIG_TESTING_OPTIONS
+ 	if (sm->encrypt_eapol_m2)
+ 		key_info |= WPA_KEY_INFO_ENCR_KEY_DATA;
++	if (sm->eapol_2_key_info_set_mask)
++		key_info |= sm->eapol_2_key_info_set_mask;
+ #endif /* CONFIG_TESTING_OPTIONS */
+ 	WPA_PUT_BE16(reply->key_info, key_info);
+ 	if (sm->proto == WPA_PROTO_RSN || sm->proto == WPA_PROTO_OSEN)
+@@ -4972,6 +4974,9 @@ int wpa_sm_set_param(struct wpa_sm *sm, enum wpa_sm_conf_params param,
+ 	case WPA_PARAM_ENCRYPT_EAPOL_M4:
+ 		sm->encrypt_eapol_m4 = value;
+ 		break;
++	case WPA_PARAM_EAPOL_2_KEY_INFO_SET_MASK:
++		sm->eapol_2_key_info_set_mask = value;
++		break;
+ #endif /* CONFIG_TESTING_OPTIONS */
+ #ifdef CONFIG_DPP2
+ 	case WPA_PARAM_DPP_PFS:
+diff --git a/src/rsn_supp/wpa.h b/src/rsn_supp/wpa.h
+index 9312018c5..d8112c4c2 100644
+--- a/src/rsn_supp/wpa.h
++++ b/src/rsn_supp/wpa.h
+@@ -139,6 +139,7 @@ enum wpa_sm_conf_params {
+ 	WPA_PARAM_SSID_PROTECTION,
+ 	WPA_PARAM_RSN_OVERRIDE,
+ 	WPA_PARAM_RSN_OVERRIDE_SUPPORT,
++	WPA_PARAM_EAPOL_2_KEY_INFO_SET_MASK,
+ };
+ 
+ enum wpa_rsn_override {
+diff --git a/src/rsn_supp/wpa_i.h b/src/rsn_supp/wpa_i.h
+index ef26b248f..c2ea95bb7 100644
+--- a/src/rsn_supp/wpa_i.h
++++ b/src/rsn_supp/wpa_i.h
+@@ -194,6 +194,7 @@ struct wpa_sm {
+ 	unsigned int oci_freq_override_ft_assoc;
+ 	unsigned int oci_freq_override_fils_assoc;
+ 	unsigned int disable_eapol_g2_tx;
++	unsigned int eapol_2_key_info_set_mask;
+ 	bool encrypt_eapol_m2;
+ 	bool encrypt_eapol_m4;
+ #endif /* CONFIG_TESTING_OPTIONS */
+diff --git a/wpa_supplicant/ctrl_iface.c b/wpa_supplicant/ctrl_iface.c
+index 6dba46898..b496ca3e6 100644
+--- a/wpa_supplicant/ctrl_iface.c
++++ b/wpa_supplicant/ctrl_iface.c
+@@ -881,6 +881,8 @@ static int wpa_supplicant_ctrl_iface_set(struct wpa_supplicant *wpa_s,
+ 	} else if (os_strcasecmp(cmd, "dpp_test") == 0) {
+ 		dpp_test = atoi(value);
+ #endif /* CONFIG_DPP */
++	} else if (os_strcasecmp(cmd, "eapol_2_key_info_set_mask") == 0) {
++		wpa_s->eapol_2_key_info_set_mask = strtoul(value, NULL, 0x10);
+ #endif /* CONFIG_TESTING_OPTIONS */
+ #ifdef CONFIG_FILS
+ 	} else if (os_strcasecmp(cmd, "disable_fils") == 0) {
+@@ -8957,6 +8959,7 @@ static void wpa_supplicant_ctrl_iface_flush(struct wpa_supplicant *wpa_s)
+ 	wpa_s->oci_freq_override_fils_assoc = 0;
+ 	wpa_s->oci_freq_override_wnm_sleep = 0;
+ 	wpa_s->disable_eapol_g2_tx = 0;
++	wpa_s->eapol_2_key_info_set_mask = 0;
+ 	wpa_s->test_assoc_comeback_type = -1;
+ #ifdef CONFIG_DPP
+ 	os_free(wpa_s->dpp_config_obj_override);
+diff --git a/wpa_supplicant/wpa_supplicant.c b/wpa_supplicant/wpa_supplicant.c
+index 81858327b..74b113db8 100644
+--- a/wpa_supplicant/wpa_supplicant.c
++++ b/wpa_supplicant/wpa_supplicant.c
+@@ -2096,6 +2096,9 @@ int wpa_supplicant_set_suites(struct wpa_supplicant *wpa_s,
+ 			 wpa_s->oci_freq_override_fils_assoc);
+ 	wpa_sm_set_param(wpa_s->wpa, WPA_PARAM_DISABLE_EAPOL_G2_TX,
+ 			 wpa_s->disable_eapol_g2_tx);
++	wpa_sm_set_param(wpa_s->wpa,
++			 WPA_PARAM_EAPOL_2_KEY_INFO_SET_MASK,
++			 wpa_s->eapol_2_key_info_set_mask);
+ #endif /* CONFIG_TESTING_OPTIONS */
+ 
+ 	/* Extended Key ID is only supported in infrastructure BSS so far */
+diff --git a/wpa_supplicant/wpa_supplicant_i.h b/wpa_supplicant/wpa_supplicant_i.h
+index 3f704ecfd..36194c974 100644
+--- a/wpa_supplicant/wpa_supplicant_i.h
++++ b/wpa_supplicant/wpa_supplicant_i.h
+@@ -1374,6 +1374,7 @@ struct wpa_supplicant {
+ 	unsigned int oci_freq_override_fils_assoc;
+ 	unsigned int oci_freq_override_wnm_sleep;
+ 	unsigned int disable_eapol_g2_tx;
++	unsigned int eapol_2_key_info_set_mask;
+ 	int test_assoc_comeback_type;
+ #endif /* CONFIG_TESTING_OPTIONS */
+ 
+-- 
+2.43.0
+

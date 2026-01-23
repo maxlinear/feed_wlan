@@ -1,0 +1,94 @@
+From 0c2d8417c6a0457fa2f48e2848476d2dade99d8d Mon Sep 17 00:00:00 2001
+From: Davide Caratti <davide.caratti@gmail.com>
+Date: Thu, 30 May 2024 10:46:32 +0200
+Subject: [PATCH] dbus: Fix memory leak in case dbus provides tlv in P2P UPnP
+ SD request
+
+Using D-Bus it is possible to trigger a valid UPnP SD request where
+"tlv" is specified: in this case "tlv" is allocated, and then not used
+nor freed. Valgrind complains as follows:
+
+ 72 bytes in 2 blocks are definitely lost in loss record 46 of 68
+    at 0x484C214: calloc (vg_replace_malloc.c:1675)
+    by 0x41C673: wpabuf_alloc (wpabuf.c:124)
+    by 0x41C673: wpabuf_alloc_copy (wpabuf.c:162)
+    by 0x54F8B5: wpas_dbus_handler_p2p_service_sd_req (dbus_new_handlers_p2p.c:2928)
+    by 0x53B9A2: msg_method_handler (dbus_new_helpers.c:356)
+    by 0x53B9A2: message_handler (dbus_new_helpers.c:412)
+    by 0x4EAB4B8: dbus_connection_dispatch (in /usr/lib64/libdbus-1.so.3.19.13)
+    by 0x5495DF: dispatch_data (dbus_common.c:37)
+    by 0x5495DF: process_watch (dbus_common.c:73)
+    by 0x5495DF: process_watch_read (dbus_common.c:89)
+    by 0x41EE8E: eloop_sock_table_dispatch.part.0 (eloop.c:603)
+    by 0x41FA46: eloop_sock_table_dispatch (eloop.c:597)
+    by 0x41FA46: eloop_run (eloop.c:1233)
+    by 0x56A3CE: wpa_supplicant_run (wpa_supplicant.c:8074)
+    by 0x40DB06: main (main.c:393)
+
+Fix it ensuring that "tlv" is freed, both in the error and non-error
+path of wpas_dbus_handler_p2p_service_sd_req(). Also, add a test case in
+test_dbus.py to verify correct behavior.
+
+Signed-off-by: Davide Caratti <davide.caratti@gmail.com>
+---
+ tests/hwsim/test_dbus.py                    | 15 ++++++++++-----
+ wpa_supplicant/dbus/dbus_new_handlers_p2p.c |  4 +---
+ 2 files changed, 11 insertions(+), 8 deletions(-)
+
+diff --git a/tests/hwsim/test_dbus.py b/tests/hwsim/test_dbus.py
+index 2c2a2e44a..28fa7197e 100644
+--- a/tests/hwsim/test_dbus.py
++++ b/tests/hwsim/test_dbus.py
+@@ -3501,11 +3501,16 @@ def test_dbus_p2p_service_discovery(dev, apdev):
+         if "InvalidArgs" not in str(e):
+             raise Exception("Unexpected error message for invalid AddService(): " + str(e))
+ 
+-    args = {'service_type': 'upnp',
+-            'version': 0x10,
+-            'service': 'ssdp:foo'}
+-    ref = p2p.ServiceDiscoveryRequest(args)
+-    p2p.ServiceDiscoveryCancelRequest(ref)
++    tests= [{'service_type': 'upnp',
++             'version': 0x10,
++             'service': 'ssdp:foo'},
++            {'service_type': 'upnp',
++             'version': 0x10,
++             'service': 'ssdp:bar',
++             'tlv': dbus.ByteArray(b"\x02\x00\x00\x01")}]
++    for args in tests:
++        ref = p2p.ServiceDiscoveryRequest(args)
++        p2p.ServiceDiscoveryCancelRequest(ref)
+ 
+     tests = [{'service_type': 'foo'},
+              {'foo': 'bar'},
+diff --git a/wpa_supplicant/dbus/dbus_new_handlers_p2p.c b/wpa_supplicant/dbus/dbus_new_handlers_p2p.c
+index 16b2caad6..53495f2c3 100644
+--- a/wpa_supplicant/dbus/dbus_new_handlers_p2p.c
++++ b/wpa_supplicant/dbus/dbus_new_handlers_p2p.c
+@@ -2952,7 +2952,6 @@ DBusMessage * wpas_dbus_handler_p2p_service_sd_req(
+ 		if (tlv == NULL)
+ 			goto error;
+ 		ref = wpas_p2p_sd_request(wpa_s, addr, tlv);
+-		wpabuf_free(tlv);
+ 	}
+ 
+ 	if (ref != 0) {
+@@ -2964,14 +2963,13 @@ DBusMessage * wpas_dbus_handler_p2p_service_sd_req(
+ 			message, "Unable to send SD request");
+ 	}
+ out:
++	wpabuf_free(tlv);
+ 	os_free(service);
+ 	os_free(peer_object_path);
+ 	return reply;
+ error_clear:
+ 	wpa_dbus_dict_entry_clear(&entry);
+ error:
+-	if (tlv)
+-		wpabuf_free(tlv);
+ 	reply = wpas_dbus_error_invalid_args(message, NULL);
+ 	goto out;
+ }
+-- 
+2.43.0
+

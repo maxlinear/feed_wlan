@@ -1,0 +1,141 @@
+From c9ad16870b75bfd1ec367aa1b8c6503d0ff6c671 Mon Sep 17 00:00:00 2001
+From: Chenming Huang <quic_chenhuan@quicinc.com>
+Date: Thu, 25 Jan 2024 13:53:03 +0530
+Subject: [PATCH] AP MLD: Allow scan processing link to match the request
+
+If the driver provides an identifying cookie value for scan operations,
+use that to select which link processes the scan result. This is needed
+for OBSS scans that can be required in different links if operating as
+an AP MLD.  Distinguish the scans using scan_cookie for QCA vendor scan
+events.
+
+Signed-off-by: Chenming Huang <quic_chenhuan@quicinc.com>
+---
+ src/ap/drv_callbacks.c             | 33 ++++++++++++++++++++++++++++++
+ src/ap/hostapd.h                   |  3 +++
+ src/ap/hw_features.c               |  2 ++
+ src/drivers/driver.h               |  3 +++
+ src/drivers/driver_nl80211_event.c |  1 +
+ 5 files changed, 42 insertions(+)
+
+diff --git a/src/ap/drv_callbacks.c b/src/ap/drv_callbacks.c
+index 6ee62b0e8..9ca720548 100644
+--- a/src/ap/drv_callbacks.c
++++ b/src/ap/drv_callbacks.c
+@@ -1747,6 +1747,34 @@ switch_link_hapd(struct hostapd_data *hapd, int link_id)
+ }
+ 
+ 
++static struct hostapd_data *
++switch_link_scan(struct hostapd_data *hapd, u64 scan_cookie)
++{
++#ifdef CONFIG_IEEE80211BE
++	if (hapd->conf->mld_ap && scan_cookie != 0) {
++		unsigned int i;
++
++		for (i = 0; i < hapd->iface->interfaces->count; i++) {
++			struct hostapd_iface *h;
++			struct hostapd_data *h_hapd;
++
++			h = hapd->iface->interfaces->iface[i];
++			h_hapd = h->bss[0];
++			if (!hostapd_is_ml_partner(hapd, h_hapd))
++				continue;
++
++			if (h_hapd->scan_cookie == scan_cookie) {
++				h_hapd->scan_cookie = 0;
++				return h_hapd;
++			}
++		}
++	}
++#endif /* CONFIG_IEEE80211BE */
++
++	return hapd;
++}
++
++
+ #define HAPD_BROADCAST ((struct hostapd_data *) -1)
+ 
+ static struct hostapd_data * get_hapd_bssid(struct hostapd_iface *iface,
+@@ -2372,6 +2400,11 @@ void wpa_supplicant_event(void *ctx, enum wpa_event_type event,
+ 		michael_mic_failure(hapd, data->michael_mic_failure.src, 1);
+ 		break;
+ 	case EVENT_SCAN_RESULTS:
++#ifdef NEED_AP_MLME
++		if (data)
++			hapd = switch_link_scan(hapd,
++						data->scan_info.scan_cookie);
++#endif /* NEED_AP_MLME */
+ 		if (hapd->iface->scan_cb)
+ 			hapd->iface->scan_cb(hapd->iface);
+ #ifdef CONFIG_IEEE80211BE
+diff --git a/src/ap/hostapd.h b/src/ap/hostapd.h
+index affe4f604..bed4c48ca 100644
+--- a/src/ap/hostapd.h
++++ b/src/ap/hostapd.h
+@@ -482,6 +482,9 @@ struct hostapd_data {
+ #ifdef CONFIG_NAN_USD
+ 	struct nan_de *nan_de;
+ #endif /* CONFIG_NAN_USD */
++
++	u64 scan_cookie; /* Scan instance identifier for the ongoing HT40 scan
++			  */
+ };
+ 
+ 
+diff --git a/src/ap/hw_features.c b/src/ap/hw_features.c
+index fd401d78a..2f4c8b71c 100644
+--- a/src/ap/hw_features.c
++++ b/src/ap/hw_features.c
+@@ -521,6 +521,7 @@ static void ap_ht40_scan_retry(void *eloop_data, void *user_data)
+ 
+ 	if (ret == 0) {
+ 		iface->scan_cb = ieee80211n_check_scan;
++		iface->bss[0]->scan_cookie = params.scan_cookie;
+ 		return;
+ 	}
+ 
+@@ -577,6 +578,7 @@ static int ieee80211n_check_40mhz(struct hostapd_iface *iface)
+ 	}
+ 
+ 	iface->scan_cb = ieee80211n_check_scan;
++	iface->bss[0]->scan_cookie = params.scan_cookie;
+ 	return 1;
+ }
+ 
+diff --git a/src/drivers/driver.h b/src/drivers/driver.h
+index d67c949b6..9a58ac2e2 100644
+--- a/src/drivers/driver.h
++++ b/src/drivers/driver.h
+@@ -6395,6 +6395,8 @@ union wpa_event_data {
+ 	 *	(if available).
+ 	 * @scan_start_tsf_bssid: The BSSID according to which %scan_start_tsf
+ 	 *	is set.
++	 * @scan_cookie: Unique identification representing the corresponding
++	 *      scan request. 0 if no unique identification is available.
+ 	 */
+ 	struct scan_info {
+ 		int aborted;
+@@ -6406,6 +6408,7 @@ union wpa_event_data {
+ 		int nl_scan_event;
+ 		u64 scan_start_tsf;
+ 		u8 scan_start_tsf_bssid[ETH_ALEN];
++		u64 scan_cookie;
+ 	} scan_info;
+ 
+ 	/**
+diff --git a/src/drivers/driver_nl80211_event.c b/src/drivers/driver_nl80211_event.c
+index 51b27bd5e..61b49c1d5 100644
+--- a/src/drivers/driver_nl80211_event.c
++++ b/src/drivers/driver_nl80211_event.c
+@@ -2963,6 +2963,7 @@ static void send_vendor_scan_event(struct wpa_driver_nl80211_data *drv,
+ 	info = &event.scan_info;
+ 	info->aborted = aborted;
+ 	info->external_scan = external_scan;
++	info->scan_cookie = nla_get_u64(tb[QCA_WLAN_VENDOR_ATTR_SCAN_COOKIE]);
+ 
+ 	if (tb[QCA_WLAN_VENDOR_ATTR_SCAN_SSIDS]) {
+ 		nla_for_each_nested(nl,
+-- 
+2.43.0
+

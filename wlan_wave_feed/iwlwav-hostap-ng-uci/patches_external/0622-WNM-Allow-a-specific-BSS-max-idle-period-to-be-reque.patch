@@ -1,0 +1,126 @@
+From 6594ea9ef185e2d9aaebb759b619d6a91c86b21f Mon Sep 17 00:00:00 2001
+From: Jouni Malinen <quic_jouni@quicinc.com>
+Date: Wed, 29 May 2024 19:40:27 +0300
+Subject: [PATCH] WNM: Allow a specific BSS max idle period to be requested
+
+Add a new wpa_supplicant network profile parameter max_idle that can be
+used to specify a specific maximum idle period in units of 1000 TUs
+(1.024 s) for associations.
+
+Signed-off-by: Jouni Malinen <quic_jouni@quicinc.com>
+---
+ wpa_supplicant/config.c            |  1 +
+ wpa_supplicant/config_file.c       |  1 +
+ wpa_supplicant/config_ssid.h       |  8 ++++++++
+ wpa_supplicant/sme.c               | 12 ++++++++++++
+ wpa_supplicant/wpa_supplicant.c    | 11 +++++++++++
+ wpa_supplicant/wpa_supplicant.conf |  5 +++++
+ 6 files changed, 38 insertions(+)
+
+diff --git a/wpa_supplicant/config.c b/wpa_supplicant/config.c
+index 2c756136c..858c9b312 100644
+--- a/wpa_supplicant/config.c
++++ b/wpa_supplicant/config.c
+@@ -2754,6 +2754,7 @@ static const struct parse_data ssid_fields[] = {
+ 	{ INT_RANGE(sae_pk, 0, 2) },
+ 	{ INT_RANGE(disable_eht, 0, 1)},
+ 	{ INT_RANGE(enable_4addr_mode, 0, 1)},
++	{ INT_RANGE(max_idle, 0, 65535)},
+ };
+ 
+ #undef OFFSET
+diff --git a/wpa_supplicant/config_file.c b/wpa_supplicant/config_file.c
+index 1a2c0c9be..6dffcaf77 100644
+--- a/wpa_supplicant/config_file.c
++++ b/wpa_supplicant/config_file.c
+@@ -893,6 +893,7 @@ static void wpa_config_write_network(FILE *f, struct wpa_ssid *ssid)
+ #endif /* CONFIG_HE_OVERRIDES */
+ 	INT(disable_eht);
+ 	INT(enable_4addr_mode);
++	INT(max_idle);
+ 
+ #undef STR
+ #undef INT
+diff --git a/wpa_supplicant/config_ssid.h b/wpa_supplicant/config_ssid.h
+index e40650c27..74f7fed89 100644
+--- a/wpa_supplicant/config_ssid.h
++++ b/wpa_supplicant/config_ssid.h
+@@ -1270,6 +1270,14 @@ struct wpa_ssid {
+ 	 * to use the interface in a bridge.
+ 	 */
+ 	int enable_4addr_mode;
++
++	/**
++	 * max_idle - BSS max idle period to request
++	 *
++	 * If nonzero, request the specified number of 1000 TU (i.e., 1.024 s)
++	 * as the maximum idle period for the STA during association.
++	 */
++	int max_idle;
+ };
+ 
+ #endif /* CONFIG_SSID_H */
+diff --git a/wpa_supplicant/sme.c b/wpa_supplicant/sme.c
+index f6860783e..a6f51a5f0 100644
+--- a/wpa_supplicant/sme.c
++++ b/wpa_supplicant/sme.c
+@@ -893,6 +893,18 @@ static void sme_send_authentication(struct wpa_supplicant *wpa_s,
+ 		os_memcpy(pos, ext_capab, ext_capab_len);
+ 	}
+ 
++	if (ssid->max_idle && wpa_s->sme.assoc_req_ie_len + 5 <=
++	    sizeof(wpa_s->sme.assoc_req_ie)) {
++		u8 *pos = wpa_s->sme.assoc_req_ie + wpa_s->sme.assoc_req_ie_len;
++
++		*pos++ = WLAN_EID_BSS_MAX_IDLE_PERIOD;
++		*pos++ = 3;
++		WPA_PUT_LE16(pos, ssid->max_idle);
++		pos += 2;
++		*pos = 0; /* Idle Options */
++		wpa_s->sme.assoc_req_ie_len += 5;
++	}
++
+ #ifdef CONFIG_TESTING_OPTIONS
+ 	if (wpa_s->rsnxe_override_assoc &&
+ 	    wpabuf_len(wpa_s->rsnxe_override_assoc) <=
+diff --git a/wpa_supplicant/wpa_supplicant.c b/wpa_supplicant/wpa_supplicant.c
+index 25a844c58..5bca64e54 100644
+--- a/wpa_supplicant/wpa_supplicant.c
++++ b/wpa_supplicant/wpa_supplicant.c
+@@ -3576,6 +3576,17 @@ static u8 * wpas_populate_assoc_ies(
+ 		}
+ 	}
+ 
++	if (ssid->max_idle && wpa_ie_len + 5 <= max_wpa_ie_len) {
++		u8 *pos = wpa_ie;
++
++		*pos++ = WLAN_EID_BSS_MAX_IDLE_PERIOD;
++		*pos++ = 3;
++		WPA_PUT_LE16(pos, ssid->max_idle);
++		pos += 2;
++		*pos = 0; /* Idle Options */
++		wpa_ie_len += 5;
++	}
++
+ #ifdef CONFIG_HS20
+ 	if (is_hs20_network(wpa_s, ssid, bss)) {
+ 		struct wpabuf *hs20;
+diff --git a/wpa_supplicant/wpa_supplicant.conf b/wpa_supplicant/wpa_supplicant.conf
+index 2e36845f1..b08f5417a 100644
+--- a/wpa_supplicant/wpa_supplicant.conf
++++ b/wpa_supplicant/wpa_supplicant.conf
+@@ -1757,6 +1757,11 @@ fast_reauth=1
+ # In STA mode it defines the EDMG channel for connection (if supported by AP).
+ #edmg_channel=9
+ 
++# BSS max idle period to request
++# If nonzero, request the specified number of 1000 TU (i.e., 1.024 s)
++# as the maximum idle period for the STA during association.
++#max_idle=600
++
+ # Example blocks:
+ 
+ # Simple case: WPA-PSK, PSK as an ASCII passphrase, allow all valid ciphers
+-- 
+2.43.0
+

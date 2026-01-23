@@ -1,0 +1,40 @@
+From 1c90c8d24e741fcd26bf252dea0bb4c1a9c88a54 Mon Sep 17 00:00:00 2001
+From: Jouni Malinen <quic_jouni@quicinc.com>
+Date: Mon, 22 Jan 2024 13:59:03 +0200
+Subject: [PATCH] DPP: Avoid a potential use-after-free on an error path in AP
+
+The TX status handler for DPP Authentication Confirm message might have
+resulted in use-after-free if the start of a GAS query were to fail,
+e.g., due to being somehow unable to transmit the initial request. Avoid
+this by explicitly confirming that the authentication session was not
+removed.
+
+Signed-off-by: Jouni Malinen <quic_jouni@quicinc.com>
+---
+ src/ap/dpp_hostapd.c | 9 ++++++++-
+ 1 file changed, 8 insertions(+), 1 deletion(-)
+
+diff --git a/src/ap/dpp_hostapd.c b/src/ap/dpp_hostapd.c
+index 812d21afd..3f89bc20c 100644
+--- a/src/ap/dpp_hostapd.c
++++ b/src/ap/dpp_hostapd.c
+@@ -539,8 +539,15 @@ void hostapd_dpp_tx_status(struct hostapd_data *hapd, const u8 *dst,
+ 		return;
+ 	}
+ 
+-	if (hapd->dpp_auth_ok_on_ack)
++	if (hapd->dpp_auth_ok_on_ack) {
+ 		hostapd_dpp_auth_success(hapd, 1);
++		if (!hapd->dpp_auth) {
++			/* The authentication session could have been removed in
++			 * some error cases, e.g., when starting GAS client and
++			 * failing to send the initial request. */
++			return;
++		}
++	}
+ 
+ 	if (!is_broadcast_ether_addr(dst) && !ok) {
+ 		wpa_printf(MSG_DEBUG,
+-- 
+2.43.0
+

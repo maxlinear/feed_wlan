@@ -1,0 +1,33 @@
+From 3b6abe3580c7f6750253bca96722ce7d61e5036d Mon Sep 17 00:00:00 2001
+From: Benjamin Berg <benjamin.berg@intel.com>
+Date: Mon, 29 Apr 2024 13:51:53 +0200
+Subject: [PATCH] WNM: Reject requests with an invalid dialog token
+
+The dialog token must be non-zero. We are using this fact internally to
+track the state in some cases, so ensure that the assumption is valid.
+
+Signed-off-by: Benjamin Berg <benjamin.berg@intel.com>
+---
+ wpa_supplicant/wnm_sta.c | 6 ++++++
+ 1 file changed, 6 insertions(+)
+
+diff --git a/wpa_supplicant/wnm_sta.c b/wpa_supplicant/wnm_sta.c
+index 52d8fb40f..b6c5455d6 100644
+--- a/wpa_supplicant/wnm_sta.c
++++ b/wpa_supplicant/wnm_sta.c
+@@ -1456,6 +1456,12 @@ static void ieee802_11_rx_bss_trans_mgmt_req(struct wpa_supplicant *wpa_s,
+ 		   wpa_s->wnm_dialog_token, wpa_s->wnm_mode,
+ 		   wpa_s->wnm_disassoc_timer, valid_int);
+ 
++	if (!wpa_s->wnm_dialog_token) {
++		wpa_printf(MSG_DEBUG, "WNM: Invalid dialog token");
++		wnm_btm_reset(wpa_s);
++		return;
++	}
++
+ #if defined(CONFIG_MBO) && defined(CONFIG_TESTING_OPTIONS)
+ 	if (wpa_s->reject_btm_req_reason) {
+ 		wpa_printf(MSG_INFO,
+-- 
+2.43.0
+

@@ -1,0 +1,112 @@
+From c29c27dff6a0811728516f8f6718895f29608243 Mon Sep 17 00:00:00 2001
+From: Venkatasaiprudhvi Raj Sannidhi <vsannidhi@maxlinear.com>
+Date: Tue, 2 Sep 2025 22:16:23 -0700
+Subject: [PATCH] WLANRTSYS-93880 [WAV700][MBSSID] PN number for non tx VAP is
+ getting fetched incorrectly
+
+Issue: In case of MBSSID being enabled, if the PN number is requested
+for non TX VAP, it fails.
+
+Root cause: After the PN changes, when driver will request beacon PN from FW, if there is no cipher suite set for beacon, then request will be rejected.
+Now if MBSSID is enabled, as we have only one tx VAP, the beacon keys for other non tx VAPs wouldn't be present.
+Hence, driver is not setting the key for non tx VAP.
+Subsequently, when station will try to connect to the non tx VAP, driver will fail to get beacon PN.
+
+Fix: When the beacon PN is requested for non Tx VAP, the security context is now switched to that of TX VAP, and driver would request the PN number from the TX VAP.
+---
+ src/ap/wpa_auth.c      | 13 +++++++++++++
+ src/ap/wpa_auth.h      |  1 +
+ src/ap/wpa_auth_ft.c   | 11 +++++++++++
+ src/ap/wpa_auth_glue.c |  9 +++++++++
+ 4 files changed, 34 insertions(+)
+
+diff --git a/src/ap/wpa_auth.c b/src/ap/wpa_auth.c
+index ded3a6973..f93f1ff7b 100644
+--- a/src/ap/wpa_auth.c
++++ b/src/ap/wpa_auth.c
+@@ -316,8 +316,17 @@ static inline int wpa_auth_get_seqnum(struct wpa_authenticator *wpa_auth,
+ 				      const u8 *addr, int idx, u8 *seq)
+ {
+ 	int res;
++#ifdef CONFIG_VENDOR_MXL
++	struct wpa_authenticator *wpa_auth_backup = wpa_auth;
++
++	if (wpa_auth->conf.mxl_tx_bss_auth != NULL)
++		wpa_auth = wpa_auth->conf.mxl_tx_bss_auth;
++#endif /* CONFIG_VENDOR_MXL */
+ 
+ 	if (!wpa_auth->cb->get_seqnum)
++#ifdef CONFIG_VENDOR_MXL
++		wpa_auth = wpa_auth_backup;
++#endif /* CONFIG_VENDOR_MXL */
+ 		return -1;
+ #ifdef CONFIG_TESTING_OPTIONS
+ 	os_memset(seq, 0, WPA_KEY_RSC_LEN);
+@@ -344,6 +353,10 @@ static inline int wpa_auth_get_seqnum(struct wpa_authenticator *wpa_auth,
+ 			  WPA_KEY_RSC_LEN);
+ 	}
+ #endif /* CONFIG_TESTING_OPTIONS */
++
++#ifdef CONFIG_VENDOR_MXL
++	wpa_auth = wpa_auth_backup;
++#endif /* CONFIG_VENDOR_MXL */
+ 	return res;
+ }
+ 
+diff --git a/src/ap/wpa_auth.h b/src/ap/wpa_auth.h
+index 70b960e5d..27fe38172 100644
+--- a/src/ap/wpa_auth.h
++++ b/src/ap/wpa_auth.h
+@@ -339,6 +339,7 @@ struct wpa_auth_config {
+ 
+ 	bool spp_amsdu;
+ #ifdef CONFIG_VENDOR_MXL
++	struct wpa_authenticator *mxl_tx_bss_auth;
+ #ifdef CONFIG_IEEE80211BE_MXL_MLO
+ 	struct wpa_auth_mlo_conf mlo_conf;
+ #endif /* CONFIG_IEEE80211BE_MXL_MLO */
+diff --git a/src/ap/wpa_auth_ft.c b/src/ap/wpa_auth_ft.c
+index ddd3cc445..6bc138af3 100644
+--- a/src/ap/wpa_auth_ft.c
++++ b/src/ap/wpa_auth_ft.c
+@@ -2206,6 +2206,17 @@ void wpa_auth_ft_store_keys(struct wpa_state_machine *sm, const u8 *pmk_r0,
+ static inline int wpa_auth_get_seqnum(struct wpa_authenticator *wpa_auth,
+ 				      const u8 *addr, int idx, u8 *seq)
+ {
++#ifdef CONFIG_VENDOR_MXL
++	struct wpa_authenticator *mxl_tx_bss_auth = NULL;
++
++	if (wpa_auth->conf.mxl_tx_bss_auth != NULL) {
++		mxl_tx_bss_auth = wpa_auth->conf.mxl_tx_bss_auth;
++		if (mxl_tx_bss_auth->cb->get_seqnum == NULL)
++			return -1;
++		return mxl_tx_bss_auth->cb->get_seqnum(mxl_tx_bss_auth->cb_ctx, addr, idx, seq);
++	}
++#endif /* CONFIG_VENDOR_MXL */
++
+ 	if (wpa_auth->cb->get_seqnum == NULL)
+ 		return -1;
+ 	return wpa_auth->cb->get_seqnum(wpa_auth->cb_ctx, addr, idx, seq);
+diff --git a/src/ap/wpa_auth_glue.c b/src/ap/wpa_auth_glue.c
+index 8c968f891..485a8578a 100644
+--- a/src/ap/wpa_auth_glue.c
++++ b/src/ap/wpa_auth_glue.c
+@@ -1805,6 +1805,15 @@ int hostapd_setup_wpa(struct hostapd_data *hapd)
+ #endif /* CONFIG_IEEE80211BE_MXL_MLO */
+ #endif /* CONFIG_VENDOR_MXL */
+ 	_conf.msg_ctx = hapd->msg_ctx;
++#ifdef CONFIG_VENDOR_MXL
++	if (hapd->iconf->multibss_enable) {
++		size_t tx_bss_idx = mxl_hostapd_get_mbssid_tx_bss_idx(hapd->iface);
++		struct hostapd_data *mbss_tx_bss = hapd->iface->bss[tx_bss_idx];
++
++		if (mbss_tx_bss != hapd)
++			_conf.mxl_tx_bss_auth = mbss_tx_bss->wpa_auth;
++	}
++#endif /* CONFIG_VENDOR_MXL */
+ 	tx_bss = hostapd_mbssid_get_tx_bss(hapd);
+ 	if (tx_bss != hapd)
+ 		_conf.tx_bss_auth = tx_bss->wpa_auth;
+-- 
+2.43.0
+

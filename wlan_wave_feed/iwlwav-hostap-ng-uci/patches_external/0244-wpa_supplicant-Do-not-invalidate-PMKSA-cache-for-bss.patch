@@ -1,0 +1,32 @@
+From 73f06af143444978f772a4ec00256bc027254a34 Mon Sep 17 00:00:00 2001
+From: Benjamin Berg <benjamin.berg@intel.com>
+Date: Thu, 28 Dec 2023 15:19:24 +0200
+Subject: [PATCH] wpa_supplicant: Do not invalidate PMKSA cache for bssid_*
+ updates
+
+These updates do not cause the PMKSA cache to become invalid. As such,
+allow setting any of bssid_hint, bssid_ignore, and bssid_accept without
+clearing the cache and causing the current connection to be dropped
+immediately.
+
+Signed-off-by: Benjamin Berg <benjamin.berg@intel.com>
+---
+ wpa_supplicant/ctrl_iface.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/wpa_supplicant/ctrl_iface.c b/wpa_supplicant/ctrl_iface.c
+index fed6b6c4d..0708fbdff 100644
+--- a/wpa_supplicant/ctrl_iface.c
++++ b/wpa_supplicant/ctrl_iface.c
+@@ -3626,7 +3626,7 @@ static int wpa_supplicant_ctrl_iface_update_network(
+ #endif /* CONFIG_BGSCAN */
+ 
+ 	if (os_strcmp(name, "bssid") != 0 &&
+-	    os_strcmp(name, "bssid_hint") != 0 &&
++	    os_strncmp(name, "bssid_", 6) != 0 &&
+ 	    os_strcmp(name, "scan_freq") != 0 &&
+ 	    os_strcmp(name, "priority") != 0) {
+ 		wpa_sm_pmksa_cache_flush(wpa_s->wpa, ssid);
+-- 
+2.43.0
+

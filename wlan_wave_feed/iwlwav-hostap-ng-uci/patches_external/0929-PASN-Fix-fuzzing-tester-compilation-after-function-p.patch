@@ -1,0 +1,32 @@
+From c402848c506508bb98595204527b6b708638e82a Mon Sep 17 00:00:00 2001
+From: Jouni Malinen <quic_jouni@quicinc.com>
+Date: Thu, 12 Sep 2024 21:26:03 +0300
+Subject: [PATCH] PASN: Fix fuzzing tester compilation after function prototype
+ change
+
+Addition of the new argument to handle_auth_pasn_1() forgot to update
+testing code.
+
+Fixes: 8f21cdf9d765 ("PASN: Add support to reject PASN auth 1 based on user input")
+Signed-off-by: Jouni Malinen <quic_jouni@quicinc.com>
+---
+ tests/fuzzing/pasn-resp/pasn-resp.c | 3 ++-
+ 1 file changed, 2 insertions(+), 1 deletion(-)
+
+diff --git a/tests/fuzzing/pasn-resp/pasn-resp.c b/tests/fuzzing/pasn-resp/pasn-resp.c
+index d907020b3..8d44de66a 100644
+--- a/tests/fuzzing/pasn-resp/pasn-resp.c
++++ b/tests/fuzzing/pasn-resp/pasn-resp.c
+@@ -74,7 +74,8 @@ int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size)
+ 
+ 	wpa_printf(MSG_DEBUG, "TESTING: Try to parse as PASN Auth 1");
+ 	if (handle_auth_pasn_1(&pasn, own_addr, bssid,
+-			       (const struct ieee80211_mgmt *) data, size))
++			       (const struct ieee80211_mgmt *) data, size,
++			       false))
+ 		wpa_printf(MSG_ERROR, "handle_auth_pasn_1 failed");
+ 
+ 	wpa_printf(MSG_DEBUG, "TESTING: Try to parse as PASN Auth 3");
+-- 
+2.43.0
+

@@ -1,0 +1,28 @@
+From 1af015a5d1933f7eb64fb5bf9b80484575e28a9d Mon Sep 17 00:00:00 2001
+From: Jouni Malinen <j@w1.fi>
+Date: Sat, 1 Mar 2025 20:13:36 +0200
+Subject: [PATCH] DPP: Remove a duplicated check for priv_key
+
+This was checked just a couple of lines above.
+
+Signed-off-by: Jouni Malinen <j@w1.fi>
+---
+ src/common/dpp_backup.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/src/common/dpp_backup.c b/src/common/dpp_backup.c
+index 1e92a14fd..25c0bd548 100644
+--- a/src/common/dpp_backup.c
++++ b/src/common/dpp_backup.c
+@@ -161,7 +161,7 @@ static struct wpabuf * dpp_build_key_pkg(struct dpp_authentication *auth)
+ 	/* Attributes ::= SET OF Attribute { { OneAsymmetricKeyAttributes } } */
+ 	attr = dpp_build_attribute(auth->conf);
+ 	attr = asn1_encaps(attr, ASN1_CLASS_UNIVERSAL, ASN1_TAG_SET);
+-	if (!priv_key || !attr || !alg)
++	if (!attr || !alg)
+ 		goto fail;
+ 
+ 	/*
+-- 
+2.43.0
+

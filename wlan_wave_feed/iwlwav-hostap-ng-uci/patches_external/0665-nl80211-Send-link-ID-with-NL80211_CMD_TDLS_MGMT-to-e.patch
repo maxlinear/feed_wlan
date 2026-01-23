@@ -1,0 +1,42 @@
+From 5f98c853e49b884acbb1fd43e70d954fb3aeec80 Mon Sep 17 00:00:00 2001
+From: Aleti Nageshwar Reddy <quic_anageshw@quicinc.com>
+Date: Wed, 3 Jul 2024 16:04:45 +0530
+Subject: [PATCH] nl80211: Send link ID with NL80211_CMD_TDLS_MGMT to enable
+ TDLS with MLO
+
+The latest Linux kernel is mandating link ID with NL80211_CMD_TDLS_MGMT
+for MLO connections. This resulted in not being able to perform TDLS
+operations during a multi-link association.
+
+Fix this by sending link ID in NL80211_CMD_TDLS_MGMT when available. If
+link ID info is not available, send the link ID of the association link.
+
+Signed-off-by: Jouni Malinen <quic_jouni@quicinc.com>
+---
+ src/drivers/driver_nl80211.c | 5 +++++
+ 1 file changed, 5 insertions(+)
+
+diff --git a/src/drivers/driver_nl80211.c b/src/drivers/driver_nl80211.c
+index 9cd416ce8..32007ca59 100644
+--- a/src/drivers/driver_nl80211.c
++++ b/src/drivers/driver_nl80211.c
+@@ -10533,11 +10533,16 @@ static int nl80211_send_tdls_mgmt(void *priv, const u8 *dst, u8 action_code,
+ 	    nl80211_tdls_set_discovery_resp_link(drv, link_id) < 0)
+ 		return -EOPNOTSUPP;
+ 
++	if (link_id < 0 && drv->sta_mlo_info.valid_links)
++		link_id = drv->sta_mlo_info.assoc_link_id;
++
+ 	if (!(msg = nl80211_drv_msg(drv, 0, NL80211_CMD_TDLS_MGMT)) ||
+ 	    nla_put(msg, NL80211_ATTR_MAC, ETH_ALEN, dst) ||
+ 	    nla_put_u8(msg, NL80211_ATTR_TDLS_ACTION, action_code) ||
+ 	    nla_put_u8(msg, NL80211_ATTR_TDLS_DIALOG_TOKEN, dialog_token) ||
+ 	    nla_put_u16(msg, NL80211_ATTR_STATUS_CODE, status_code) ||
++	    (link_id >= 0 &&
++	     nla_put_u8(msg, NL80211_ATTR_MLO_LINK_ID, link_id)) ||
+ 	    nl80211_add_peer_capab(msg, peer_capab) ||
+ 	    (initiator && nla_put_flag(msg, NL80211_ATTR_TDLS_INITIATOR)) ||
+ 	    nla_put(msg, NL80211_ATTR_IE, len, buf))
+-- 
+2.43.0
+

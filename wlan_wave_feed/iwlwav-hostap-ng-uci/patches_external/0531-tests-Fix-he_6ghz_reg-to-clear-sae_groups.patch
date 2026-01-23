@@ -1,0 +1,25 @@
+From a6062568ab535120dff303c33ceca2f46426d20e Mon Sep 17 00:00:00 2001
+From: Jouni Malinen <quic_jouni@quicinc.com>
+Date: Mon, 15 Apr 2024 23:35:29 +0300
+Subject: [PATCH] tests: Fix he_6ghz_reg to clear sae_groups
+
+Signed-off-by: Jouni Malinen <quic_jouni@quicinc.com>
+---
+ tests/hwsim/test_he.py | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/tests/hwsim/test_he.py b/tests/hwsim/test_he.py
+index 3aec5fd65..544fa2e7b 100644
+--- a/tests/hwsim/test_he.py
++++ b/tests/hwsim/test_he.py
+@@ -1680,6 +1680,7 @@ def test_he_6ghz_reg(dev, apdev):
+         hapd = hostapd.add_ap(apdev[0], params, set_channel=False)
+ 
+         dev[0].set("sae_pwe", "1")
++        dev[0].set("sae_groups", "")
+         dev[0].connect(ssid, sae_password="password", key_mgmt="SAE",
+                        ieee80211w="2", scan_freq=str(freq))
+         hapd.wait_sta()
+-- 
+2.43.0
+

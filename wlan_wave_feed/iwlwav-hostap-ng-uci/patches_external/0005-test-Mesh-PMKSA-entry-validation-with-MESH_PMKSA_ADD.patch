@@ -1,0 +1,28 @@
+From b07f19e082862b5e9d1901bdd95b5a2c9ab1146d Mon Sep 17 00:00:00 2001
+From: Jouni Malinen <j@w1.fi>
+Date: Sat, 2 Dec 2023 20:32:56 +0200
+Subject: [PATCH] test: Mesh PMKSA entry validation with MESH_PMKSA_ADD
+
+Signed-off-by: Jouni Malinen <j@w1.fi>
+---
+ tests/hwsim/test_wpas_mesh.py | 4 ++++
+ 1 file changed, 4 insertions(+)
+
+diff --git a/tests/hwsim/test_wpas_mesh.py b/tests/hwsim/test_wpas_mesh.py
+index 756543784..27397fbfb 100644
+--- a/tests/hwsim/test_wpas_mesh.py
++++ b/tests/hwsim/test_wpas_mesh.py
+@@ -1729,6 +1729,10 @@ def test_wpas_mesh_pmksa_caching_ext(dev, apdev):
+     if pmksa1['pmkid'] != pmksa1b['pmkid']:
+         raise Exception("PMKID mismatch in PMKSA cache entries after external storage restore")
+ 
++    res3 = dev[1].request("MESH_PMKSA_GET " + addr0)
++    if res2 != res3:
++        raise Exception("Unexpected change in MESH_PMKSA_GET result")
++
+     hwsim_utils.test_connectivity(dev[0], dev[1])
+ 
+     res = dev[1].request("MESH_PMKSA_GET foo")
+-- 
+2.43.0
+

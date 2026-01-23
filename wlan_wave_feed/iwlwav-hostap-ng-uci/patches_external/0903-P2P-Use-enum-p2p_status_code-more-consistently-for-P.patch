@@ -1,0 +1,68 @@
+From 64bfba98bdfb7ba7f3f69c44978956489451620f Mon Sep 17 00:00:00 2001
+From: Jouni Malinen <quic_jouni@quicinc.com>
+Date: Wed, 4 Sep 2024 11:19:21 +0300
+Subject: [PATCH] P2P: Use enum p2p_status_code more consistently for PD
+
+It is clearer to use enum p2p_status_code instead of u8 when processing
+and passing the P2P Status Code to other components.
+
+Signed-off-by: Jouni Malinen <quic_jouni@quicinc.com>
+---
+ src/p2p/p2p.h                   | 3 ++-
+ src/p2p/p2p_pd.c                | 4 ++--
+ wpa_supplicant/p2p_supplicant.c | 3 ++-
+ 3 files changed, 6 insertions(+), 4 deletions(-)
+
+diff --git a/src/p2p/p2p.h b/src/p2p/p2p.h
+index 0127f32ca..7df2063f1 100644
+--- a/src/p2p/p2p.h
++++ b/src/p2p/p2p.h
+@@ -1180,7 +1180,8 @@ struct p2p_config {
+ 	 * When P2PS provisioning completes (successfully or not) we must
+ 	 * transmit all of the results to the upper layers.
+ 	 */
+-	void (*p2ps_prov_complete)(void *ctx, u8 status, const u8 *dev,
++	void (*p2ps_prov_complete)(void *ctx, enum p2p_status_code status,
++				   const u8 *dev,
+ 				   const u8 *adv_mac, const u8 *ses_mac,
+ 				   const u8 *grp_mac, u32 adv_id, u32 ses_id,
+ 				   u8 conncap, int passwd_id,
+diff --git a/src/p2p/p2p_pd.c b/src/p2p/p2p_pd.c
+index 0dd2260b4..fb2031310 100644
+--- a/src/p2p/p2p_pd.c
++++ b/src/p2p/p2p_pd.c
+@@ -1637,7 +1637,7 @@ static void p2p_process_prov_disc_bootstrap_resp(struct p2p_data *p2p,
+ 						 size_t len, int rx_freq)
+ {
+ 	struct p2p_device *dev;
+-	u8 status = P2P_SC_SUCCESS;
++	enum p2p_status_code status = P2P_SC_SUCCESS;
+ 	size_t cookie_len = 0;
+ 	const u8 *pos, *cookie;
+ 	u16 comeback_after;
+@@ -1726,7 +1726,7 @@ static void p2p_process_prov_disc_resp(struct p2p_data *p2p,
+ {
+ 	struct p2p_device *dev;
+ 	u16 report_config_methods = 0, req_config_methods;
+-	u8 status = P2P_SC_SUCCESS;
++	enum p2p_status_code status = P2P_SC_SUCCESS;
+ 	u32 adv_id = 0;
+ 	u8 conncap = P2PS_SETUP_NEW;
+ 	u8 adv_mac[ETH_ALEN];
+diff --git a/wpa_supplicant/p2p_supplicant.c b/wpa_supplicant/p2p_supplicant.c
+index 51b5b2561..259ae47dd 100644
+--- a/wpa_supplicant/p2p_supplicant.c
++++ b/wpa_supplicant/p2p_supplicant.c
+@@ -4465,7 +4465,8 @@ static void wpas_p2ps_get_feat_cap_str(char *buf, size_t buf_len,
+ }
+ 
+ 
+-static void wpas_p2ps_prov_complete(void *ctx, u8 status, const u8 *dev,
++static void wpas_p2ps_prov_complete(void *ctx, enum p2p_status_code status,
++				    const u8 *dev,
+ 				    const u8 *adv_mac, const u8 *ses_mac,
+ 				    const u8 *grp_mac, u32 adv_id, u32 ses_id,
+ 				    u8 conncap, int passwd_id,
+-- 
+2.43.0
+

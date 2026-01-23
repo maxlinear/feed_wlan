@@ -1,0 +1,63 @@
+From 70e5bad563821a6d31bd5a3dd766d8e547b3ec5a Mon Sep 17 00:00:00 2001
+From: David Ruth <druth@chromium.org>
+Date: Tue, 16 Jul 2024 19:53:00 +0000
+Subject: [PATCH] dbus: Fix SignalChange property
+
+SignalChange should be defined as a property of an interface.
+Previously, it was incorrectly defined as a property of P2P peers.
+
+Fixes: 7a7ce957460a ("dbus: Emit more information over D-Bus")
+Signed-off-by: David Ruth <druth@chromium.org>
+---
+ doc/dbus.doxygen               |  6 ++++++
+ wpa_supplicant/dbus/dbus_new.c | 10 +++++-----
+ 2 files changed, 11 insertions(+), 5 deletions(-)
+
+diff --git a/doc/dbus.doxygen b/doc/dbus.doxygen
+index 9f72614d4..070210945 100644
+--- a/doc/dbus.doxygen
++++ b/doc/dbus.doxygen
+@@ -1147,6 +1147,12 @@ fi.w1.wpa_supplicant1.CreateInterface.
+       <li>
+ 	<h3>MACAddress - ay - (read)</h3>
+ 	<p>MAC address of the interface</p>
++      </li>
++
++      <li>
++	<h3>SignalChange - "a{sv}" - (read)</h3>
++	<p>Signal and quality properties of the interface</p>
++      </li>
+     </ul>
+ 
+ \subsection dbus_interface_signals Signals
+diff --git a/wpa_supplicant/dbus/dbus_new.c b/wpa_supplicant/dbus/dbus_new.c
+index ef7076934..76e42ffbc 100644
+--- a/wpa_supplicant/dbus/dbus_new.c
++++ b/wpa_supplicant/dbus/dbus_new.c
+@@ -4023,6 +4023,11 @@ static const struct wpa_dbus_property_desc wpas_dbus_interface_properties[] = {
+ 	  NULL,
+ 	  NULL,
+ 	},
++	{ "SignalChange", WPAS_DBUS_NEW_IFACE_INTERFACE, "a{sv}",
++	  wpas_dbus_getter_signal_change,
++	  NULL,
++	  NULL
++	},
+ 	{ NULL, NULL, NULL, NULL, NULL, NULL }
+ };
+ 
+@@ -4620,11 +4625,6 @@ static const struct wpa_dbus_property_desc wpas_dbus_p2p_peer_properties[] = {
+ 	  NULL,
+ 	  NULL
+ 	},
+-	{ "SignalChange", WPAS_DBUS_NEW_IFACE_INTERFACE, "a{sv}",
+-	  wpas_dbus_getter_signal_change,
+-	  NULL,
+-	  NULL
+-	},
+ 	{ NULL, NULL, NULL, NULL, NULL, NULL }
+ };
+ 
+-- 
+2.43.0
+

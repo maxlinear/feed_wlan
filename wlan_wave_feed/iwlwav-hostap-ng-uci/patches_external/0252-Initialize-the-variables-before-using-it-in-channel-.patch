@@ -1,0 +1,30 @@
+From acea0654f0141c8da031d1eb2142454c5e33eeb7 Mon Sep 17 00:00:00 2001
+From: Baligh Gasmi <gasmibal@gmail.com>
+Date: Fri, 12 Jan 2024 10:46:41 +0100
+Subject: [PATCH] Initialize the variables before using it in channel update
+
+seg0 and seg1 variables can have any initial value, but they may cause
+the BSS to have a wrong configuration later on in cases where the
+separate center frequencies are not set.
+
+Signed-off-by: Baligh Gasmi <gasmibal@gmail.com>
+---
+ src/ap/hostapd.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/src/ap/hostapd.c b/src/ap/hostapd.c
+index 6a9b07e86..d6e3e4ede 100644
+--- a/src/ap/hostapd.c
++++ b/src/ap/hostapd.c
+@@ -3831,7 +3831,7 @@ static int hostapd_change_config_freq(struct hostapd_data *hapd,
+ 				      struct hostapd_freq_params *old_params)
+ {
+ 	int channel;
+-	u8 seg0, seg1;
++	u8 seg0 = 0, seg1 = 0;
+ 	struct hostapd_hw_modes *mode;
+ 
+ 	if (!params->channel) {
+-- 
+2.43.0
+

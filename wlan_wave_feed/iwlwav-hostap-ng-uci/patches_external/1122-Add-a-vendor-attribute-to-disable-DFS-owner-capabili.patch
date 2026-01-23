@@ -1,0 +1,45 @@
+From 54eeaa0757e638cfa3ee92a5226559f8a00dc82b Mon Sep 17 00:00:00 2001
+From: Liangwei Dong <quic_liangwei@quicinc.com>
+Date: Tue, 26 Nov 2024 17:50:38 +0800
+Subject: [PATCH] Add a vendor attribute to disable DFS owner capability
+
+Add a u8 attribute QCA_WLAN_VENDOR_ATTR_CONFIG_DFS_OWNER_DISABLE to
+disable DFS owner capability dynamically:
+1: disable DFS owner capability in the driver.
+0: reset DFS owner capability to the default DFS owner capability of
+the driver.
+
+If DFS owner capability is disabled, the driver will not start AP mode
+operations on DFS channels, and all the features depending on DFS owner
+functionality will not be supported.
+
+Signed-off-by: Liangwei Dong <quic_liangwei@quicinc.com>
+---
+ src/common/qca-vendor.h | 11 +++++++++++
+ 1 file changed, 11 insertions(+)
+
+diff --git a/src/common/qca-vendor.h b/src/common/qca-vendor.h
+index 3bf3e2ff7..e59e29524 100644
+--- a/src/common/qca-vendor.h
++++ b/src/common/qca-vendor.h
+@@ -3804,6 +3804,17 @@ enum qca_wlan_vendor_attr_config {
+ 	 */
+ 	QCA_WLAN_VENDOR_ATTR_CONFIG_P2P_GO_BEACON_INTERVAL = 122,
+ 
++	/* 8-bit unsigned value. Disable DFS owner capability
++	 * 1: disable DFS owner capability in the driver.
++	 * 0: reset DFS owner capability to the default DFS owner capability of
++	 * the driver.
++	 *
++	 * If DFS owner capability is disabled, the driver will not start AP
++	 * mode operations on DFS channels, and all the features depending on
++	 * DFS owner functionality will not be supported.
++	 */
++	QCA_WLAN_VENDOR_ATTR_CONFIG_DFS_OWNER_DISABLE = 123,
++
+ 	/* keep last */
+ 	QCA_WLAN_VENDOR_ATTR_CONFIG_AFTER_LAST,
+ 	QCA_WLAN_VENDOR_ATTR_CONFIG_MAX =
+-- 
+2.43.0
+

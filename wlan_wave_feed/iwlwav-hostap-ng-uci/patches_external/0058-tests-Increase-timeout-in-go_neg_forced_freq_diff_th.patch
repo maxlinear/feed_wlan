@@ -1,0 +1,96 @@
+From 86dd0388897f07d5e1c030b10fa03ed87b4e2d62 Mon Sep 17 00:00:00 2001
+From: Jouni Malinen <quic_jouni@quicinc.com>
+Date: Thu, 14 Dec 2023 12:13:20 +0200
+Subject: [PATCH] tests: Increase timeout in
+ go_neg_forced_freq_diff_than_bss_freq
+
+It can take significant amount of time to find the peer in this type of
+a case where an AP connection is forced on a different channel while
+going through p2p_find on both devices.
+
+Signed-off-by: Jouni Malinen <quic_jouni@quicinc.com>
+---
+ tests/hwsim/p2p_utils.py        | 17 ++++++++++-------
+ tests/hwsim/test_p2p_channel.py |  6 ++++--
+ 2 files changed, 14 insertions(+), 9 deletions(-)
+
+diff --git a/tests/hwsim/p2p_utils.py b/tests/hwsim/p2p_utils.py
+index 6365e5cda..31d0f74a4 100644
+--- a/tests/hwsim/p2p_utils.py
++++ b/tests/hwsim/p2p_utils.py
+@@ -322,19 +322,20 @@ def go_neg_pin_authorized(i_dev, r_dev, i_intent=None, r_intent=None,
+         hwsim_utils.test_connectivity_p2p(r_dev, i_dev)
+     return [i_res, r_res]
+ 
+-def go_neg_init_pbc(i_dev, r_dev, i_intent, res, freq, provdisc):
++def go_neg_init_pbc(i_dev, r_dev, i_intent, res, freq, provdisc, timeout=20):
+     logger.debug("Initiate GO Negotiation from i_dev")
+     try:
+         i_res = i_dev.p2p_go_neg_init(r_dev.p2p_dev_addr(), None, "pbc",
+-                                      timeout=20, go_intent=i_intent, freq=freq,
+-                                      provdisc=provdisc)
++                                      timeout=timeout, go_intent=i_intent,
++                                      freq=freq, provdisc=provdisc)
+         logger.debug("i_res: " + str(i_res))
+     except Exception as e:
+         i_res = None
+         logger.info("go_neg_init_pbc thread caught an exception from p2p_go_neg_init: " + str(e))
+     res.put(i_res)
+ 
+-def go_neg_pbc(i_dev, r_dev, i_intent=None, r_intent=None, i_freq=None, r_freq=None, provdisc=False, r_listen=False):
++def go_neg_pbc(i_dev, r_dev, i_intent=None, r_intent=None, i_freq=None,
++               r_freq=None, provdisc=False, r_listen=False, timeout=20):
+     if r_listen:
+         r_dev.p2p_listen()
+     else:
+@@ -343,10 +344,12 @@ def go_neg_pbc(i_dev, r_dev, i_intent=None, r_intent=None, i_freq=None, r_freq=N
+     logger.info("Start GO negotiation " + i_dev.ifname + " -> " + r_dev.ifname)
+     r_dev.dump_monitor()
+     res = Queue()
+-    t = threading.Thread(target=go_neg_init_pbc, args=(i_dev, r_dev, i_intent, res, i_freq, provdisc))
++    t = threading.Thread(target=go_neg_init_pbc, args=(i_dev, r_dev, i_intent,
++                                                       res, i_freq, provdisc,
++                                                       timeout))
+     t.start()
+     logger.debug("Wait for GO Negotiation Request on r_dev")
+-    ev = r_dev.wait_global_event(["P2P-GO-NEG-REQUEST"], timeout=15)
++    ev = r_dev.wait_global_event(["P2P-GO-NEG-REQUEST"], timeout=timeout - 5)
+     if ev is None:
+         t.join()
+         raise Exception("GO Negotiation timed out")
+@@ -357,7 +360,7 @@ def go_neg_pbc(i_dev, r_dev, i_intent=None, r_intent=None, i_freq=None, r_freq=N
+     logger.debug("Re-initiate GO Negotiation from r_dev")
+     try:
+         r_res = r_dev.p2p_go_neg_init(i_dev.p2p_dev_addr(), None, "pbc",
+-                                      go_intent=r_intent, timeout=20,
++                                      go_intent=r_intent, timeout=timeout,
+                                       freq=r_freq)
+     except Exception as e:
+         logger.info("go_neg_pbc - r_dev.p2p_go_neg_init() exception: " + str(e))
+diff --git a/tests/hwsim/test_p2p_channel.py b/tests/hwsim/test_p2p_channel.py
+index 5f6ed4389..cfff6b048 100644
+--- a/tests/hwsim/test_p2p_channel.py
++++ b/tests/hwsim/test_p2p_channel.py
+@@ -472,7 +472,8 @@ def test_go_neg_forced_freq_diff_than_bss_freq(dev, apdev):
+         # GO and peer force the same freq, different than BSS freq,
+         # wpas to become GO
+         [i_res, r_res] = go_neg_pbc(i_dev=dev[1], i_intent=1, i_freq=5180,
+-                                    r_dev=wpas, r_intent=14, r_freq=5180)
++                                    r_dev=wpas, r_intent=14, r_freq=5180,
++                                    timeout=60)
+         check_grpform_results(i_res, r_res)
+         if i_res['freq'] != "5180":
+            raise Exception("P2P group formed on unexpected frequency: " + i_res['freq'])
+@@ -486,7 +487,8 @@ def test_go_neg_forced_freq_diff_than_bss_freq(dev, apdev):
+         # GO and peer force the same freq, different than BSS freq, wpas to
+         # become client
+         [i_res2, r_res2] = go_neg_pbc(i_dev=dev[1], i_intent=14, i_freq=2422,
+-                                      r_dev=wpas, r_intent=1, r_freq=2422)
++                                      r_dev=wpas, r_intent=1, r_freq=2422,
++                                      timeout=60)
+         check_grpform_results(i_res2, r_res2)
+         if i_res2['freq'] != "2422":
+            raise Exception("P2P group formed on unexpected frequency: " + i_res2['freq'])
+-- 
+2.43.0
+

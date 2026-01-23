@@ -1,0 +1,55 @@
+From 99e82880e8cade5661d3b08d726889e58bf5db26 Mon Sep 17 00:00:00 2001
+From: Harshitha Prem <quic_hprem@quicinc.com>
+Date: Fri, 12 Jul 2024 13:04:21 +0530
+Subject: [PATCH] Fix mesh 6 GHz incorrect channel bandwidth
+
+When the wiphy supports multiple bands and reports different capability
+values between 5 GHz and 6 GHz channels, the 6 GHz mesh interface is
+unable to correctly map the channel width in function
+ibss_mesh_setup_freq(). This issue arises because the modes of 5 GHz and
+6 GHz interfaces are the same (HOSTAPD_MODE_IEEE80211A) in supported
+modes.
+
+To address this, use function get_mode() to determine the appropriate
+mode during mesh setup. This will iterates through all the hw_features
+sets and ensures compatibility with the band of the channel supported in
+hw_features set.
+
+Signed-off-by: Harshitha Prem <quic_hprem@quicinc.com>
+---
+ wpa_supplicant/wpa_supplicant.c | 12 +++---------
+ 1 file changed, 3 insertions(+), 9 deletions(-)
+
+diff --git a/wpa_supplicant/wpa_supplicant.c b/wpa_supplicant/wpa_supplicant.c
+index b679103c3..17e531500 100644
+--- a/wpa_supplicant/wpa_supplicant.c
++++ b/wpa_supplicant/wpa_supplicant.c
+@@ -3189,7 +3189,7 @@ void ibss_mesh_setup_freq(struct wpa_supplicant *wpa_s,
+ 	int ieee80211_mode = wpas_mode_to_ieee80211_mode(ssid->mode);
+ 	enum hostapd_hw_mode hw_mode;
+ 	struct hostapd_hw_modes *mode = NULL;
+-	int i, obss_scan = 1;
++	int obss_scan = 1;
+ 	u8 channel;
+ 	bool is_6ghz, is_24ghz;
+ 
+@@ -3208,14 +3208,8 @@ void ibss_mesh_setup_freq(struct wpa_supplicant *wpa_s,
+ 	}
+ 
+ 	hw_mode = ieee80211_freq_to_chan(freq->freq, &channel);
+-	for (i = 0; wpa_s->hw.modes && i < wpa_s->hw.num_modes; i++) {
+-		if (wpa_s->hw.modes[i].mode == hw_mode &&
+-		    hw_mode_get_channel(&wpa_s->hw.modes[i], freq->freq,
+-					NULL) != NULL) {
+-			mode = &wpa_s->hw.modes[i];
+-			break;
+-		}
+-	}
++	mode = get_mode(wpa_s->hw.modes, wpa_s->hw.num_modes,
++			hw_mode, is_6ghz_freq(ssid->frequency));
+ 
+ 	if (!mode)
+ 		return;
+-- 
+2.43.0
+

@@ -1,0 +1,162 @@
+From 3c79173c328e005da03c8115e10ff5e58f28055d Mon Sep 17 00:00:00 2001
+From: Manaswini Paluri <quic_mpaluri@quicinc.com>
+Date: Wed, 28 Feb 2024 11:11:43 +0530
+Subject: [PATCH] Add TWT responder support for AP in HT and VHT modes
+
+Add support for TWT responder for AP operating in HT and VHT modes by
+introducing a new configuration parameter ht_vht_twt_responder. When
+this is enabled, TWT responder mode support in HT and VHT modes is
+enabled if the driver supports this and is disabled otherwise.
+
+Signed-off-by: Manaswini Paluri<quic_mpaluri@quicinc.com>
+---
+ hostapd/config_file.c             |  2 ++
+ hostapd/hostapd.conf              |  6 ++++++
+ src/ap/ap_config.h                |  3 +++
+ src/ap/beacon.c                   |  7 +++++--
+ src/ap/ieee802_11.h               |  1 +
+ src/ap/ieee802_11_shared.c        | 12 ++++++++++++
+ src/drivers/driver.h              |  2 ++
+ src/drivers/driver_nl80211_capa.c |  2 ++
+ 8 files changed, 33 insertions(+), 2 deletions(-)
+
+diff --git a/hostapd/config_file.c b/hostapd/config_file.c
+index 9a8f34e0d..c83e71e06 100644
+--- a/hostapd/config_file.c
++++ b/hostapd/config_file.c
+@@ -3664,6 +3664,8 @@ static int hostapd_config_fill(struct hostapd_config *conf,
+ 		}
+ 	} else if (os_strcmp(buf, "require_ht") == 0) {
+ 		conf->require_ht = atoi(pos);
++	} else if (os_strcmp(buf, "ht_vht_twt_responder") == 0) {
++		conf->ht_vht_twt_responder = atoi(pos);
+ 	} else if (os_strcmp(buf, "obss_interval") == 0) {
+ 		conf->obss_interval = atoi(pos);
+ #ifdef CONFIG_IEEE80211AC
+diff --git a/hostapd/hostapd.conf b/hostapd/hostapd.conf
+index 51ca05e25..efae334dc 100644
+--- a/hostapd/hostapd.conf
++++ b/hostapd/hostapd.conf
+@@ -646,6 +646,12 @@ wmm_ac_vo_acm=0
+ # no co-existence issues with neighboring devices are found.
+ #obss_interval=0
+ 
++# ht_vht_twt_responder: Whether TWT responder is enabled in HT and VHT modes
++# 0 = disable; Disable TWT responder support in  HT and VHT modes (default).
++# 1 = enable; Enable TWT responder support in HT and VHT modes if supported by
++# the driver.
++#ht_vht_twt_responder=0
++
+ ##### IEEE 802.11ac related configuration #####################################
+ 
+ # ieee80211ac: Whether IEEE 802.11ac (VHT) is enabled
+diff --git a/src/ap/ap_config.h b/src/ap/ap_config.h
+index aa513be4c..49a2cea16 100644
+--- a/src/ap/ap_config.h
++++ b/src/ap/ap_config.h
+@@ -1226,6 +1226,9 @@ struct hostapd_config {
+ 		MBSSID_ENABLED = 1,
+ 		ENHANCED_MBSSID_ENABLED = 2,
+ 	} mbssid;
++
++	/* Whether to enable TWT responder in HT and VHT modes */
++	bool ht_vht_twt_responder;
+ };
+ 
+ 
+diff --git a/src/ap/beacon.c b/src/ap/beacon.c
+index 00ce933ad..5ba950523 100644
+--- a/src/ap/beacon.c
++++ b/src/ap/beacon.c
+@@ -2547,6 +2547,7 @@ static int __ieee802_11_set_beacon(struct hostapd_data *hapd)
+ 	struct hostapd_config *iconf = iface->conf;
+ 	struct hostapd_hw_modes *cmode = iface->current_mode;
+ 	struct wpabuf *beacon, *proberesp, *assocresp;
++	bool twt_he_responder = false;
+ 	int res, ret = -1, i;
+ 	struct hostapd_hw_modes *mode;
+ 
+@@ -2590,11 +2591,13 @@ static int __ieee802_11_set_beacon(struct hostapd_data *hapd)
+ 	params.he_bss_color_partial =
+ 		hapd->iface->conf->he_op.he_bss_color_partial;
+ 	params.he_bss_color = hapd->iface->conf->he_op.he_bss_color;
+-	params.twt_responder = hostapd_get_he_twt_responder(hapd,
+-							    IEEE80211_MODE_AP);
++	twt_he_responder = hostapd_get_he_twt_responder(hapd,
++							IEEE80211_MODE_AP);
+ 	params.unsol_bcast_probe_resp_tmpl =
+ 		hostapd_unsol_bcast_probe_resp(hapd, &params);
+ #endif /* CONFIG_IEEE80211AX */
++	params.twt_responder =
++		twt_he_responder || hostapd_get_ht_vht_twt_responder(hapd);
+ 	hapd->reenable_beacon = 0;
+ #ifdef CONFIG_SAE
+ 	params.sae_pwe = hapd->conf->sae_pwe;
+diff --git a/src/ap/ieee802_11.h b/src/ap/ieee802_11.h
+index a35486d46..f76e9bcde 100644
+--- a/src/ap/ieee802_11.h
++++ b/src/ap/ieee802_11.h
+@@ -129,6 +129,7 @@ u16 copy_sta_he_6ghz_capab(struct hostapd_data *hapd, struct sta_info *sta,
+ 			   const u8 *he_6ghz_capab);
+ int hostapd_get_he_twt_responder(struct hostapd_data *hapd,
+ 				 enum ieee80211_op_mode mode);
++bool hostapd_get_ht_vht_twt_responder(struct hostapd_data *hapd);
+ u8 * hostapd_eid_cca(struct hostapd_data *hapd, u8 *eid);
+ void hostapd_tx_status(struct hostapd_data *hapd, const u8 *addr,
+ 		       const u8 *buf, size_t len, int ack);
+diff --git a/src/ap/ieee802_11_shared.c b/src/ap/ieee802_11_shared.c
+index 85790c7ed..d02f4515a 100644
+--- a/src/ap/ieee802_11_shared.c
++++ b/src/ap/ieee802_11_shared.c
+@@ -441,6 +441,8 @@ static void hostapd_ext_capab_byte(struct hostapd_data *hapd, u8 *pos, int idx,
+ 		if (hostapd_get_he_twt_responder(hapd, IEEE80211_MODE_AP))
+ 			*pos |= 0x40; /* Bit 78 - TWT responder */
+ #endif /* CONFIG_IEEE80211AX */
++		if (hostapd_get_ht_vht_twt_responder(hapd))
++			*pos |= 0x40; /* Bit 78 - TWT responder */
+ 		break;
+ 	case 10: /* Bits 80-87 */
+ #ifdef CONFIG_SAE
+@@ -1198,3 +1200,13 @@ struct sta_info * hostapd_ml_get_assoc_sta(struct hostapd_data *hapd,
+ 
+ 	return sta;
+ }
++
++
++bool hostapd_get_ht_vht_twt_responder(struct hostapd_data *hapd)
++{
++	return hapd->iconf->ht_vht_twt_responder &&
++		((hapd->iconf->ieee80211n && !hapd->conf->disable_11n) ||
++		 (hapd->iconf->ieee80211ac && !hapd->conf->disable_11ac)) &&
++		(hapd->iface->drv_flags2 &
++		 WPA_DRIVER_FLAGS2_HT_VHT_TWT_RESPONDER);
++}
+diff --git a/src/drivers/driver.h b/src/drivers/driver.h
+index 36dc07805..09cafeb0e 100644
+--- a/src/drivers/driver.h
++++ b/src/drivers/driver.h
+@@ -2323,6 +2323,8 @@ struct wpa_driver_capa {
+ #define WPA_DRIVER_FLAGS2_OWE_OFFLOAD_AP	0x0000000000080000ULL
+ /** Driver support AP SAE authentication offload */
+ #define WPA_DRIVER_FLAGS2_SAE_OFFLOAD_AP	0x0000000000100000ULL
++/** Driver supports TWT responder in HT and VHT modes */
++#define WPA_DRIVER_FLAGS2_HT_VHT_TWT_RESPONDER	0x0000000000200000ULL
+ 	u64 flags2;
+ 
+ #define FULL_AP_CLIENT_STATE_SUPP(drv_flags) \
+diff --git a/src/drivers/driver_nl80211_capa.c b/src/drivers/driver_nl80211_capa.c
+index 65389d206..dc16bd445 100644
+--- a/src/drivers/driver_nl80211_capa.c
++++ b/src/drivers/driver_nl80211_capa.c
+@@ -1441,6 +1441,8 @@ static void qca_nl80211_get_features(struct wpa_driver_nl80211_data *drv)
+ 	if (check_feature(QCA_WLAN_VENDOR_FEATURE_AP_ALLOWED_FREQ_LIST,
+ 			  &info))
+ 		drv->qca_ap_allowed_freqs = 1;
++	if (check_feature(QCA_WLAN_VENDOR_FEATURE_HT_VHT_TWT_RESPONDER, &info))
++		drv->capa.flags2 |= WPA_DRIVER_FLAGS2_HT_VHT_TWT_RESPONDER;
+ 	os_free(info.flags);
+ }
+ 
+-- 
+2.43.0
+
