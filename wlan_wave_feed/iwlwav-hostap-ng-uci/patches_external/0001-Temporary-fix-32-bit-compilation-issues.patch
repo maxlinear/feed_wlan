@@ -1,18 +1,18 @@
-From 53e7a7a617462626c6123647c17bd0dee57b1c05 Mon Sep 17 00:00:00 2001
+From b2455d2d2a559ae321b11618450365e018915dc3 Mon Sep 17 00:00:00 2001
 From: fromans <fromans@maxlinear.com>
 Date: Fri, 17 Nov 2023 12:46:12 +0200
 Subject: [PATCH] Temporary: fix 32 bit compilation issues
 
 ---
- src/ap/ieee802_11_eht.c | 4 ++--
- 1 file changed, 2 insertions(+), 2 deletions(-)
+ src/ap/ieee802_11_eht.c | 17 ++++++++++++-----
+ 1 file changed, 12 insertions(+), 5 deletions(-)
 
 diff --git a/src/ap/ieee802_11_eht.c b/src/ap/ieee802_11_eht.c
-index fc02f1198..e62ae776b 100644
+index 577fa563b..8e0a7d3d1 100644
 --- a/src/ap/ieee802_11_eht.c
 +++ b/src/ap/ieee802_11_eht.c
-@@ -1190,7 +1190,7 @@ u16 hostapd_process_ml_assoc_req(struct hostapd_data *hapd,
- 		goto out;
+@@ -1222,7 +1222,7 @@ u16 hostapd_process_ml_assoc_req(struct hostapd_data *hapd,
+ 		wpa_printf(MSG_DEBUG, "MLD: EXT ML capabilities not present");
  	}
  
 -	wpa_printf(MSG_DEBUG, "MLD: expected_common_info_len=%lu",
@@ -20,15 +20,28 @@ index fc02f1198..e62ae776b 100644
  		   common_info_len);
  
  	if (sizeof(*ml) + common_info_len > ml_len) {
-@@ -1360,7 +1360,7 @@ u16 hostapd_process_ml_assoc_req(struct hostapd_data *hapd,
- 		ml_len -= sub_elem_len;
+@@ -1392,10 +1392,17 @@ u16 hostapd_process_ml_assoc_req(struct hostapd_data *hapd,
  
- 		wpa_printf(MSG_DEBUG, "MLD: link ctrl=0x%x, " MACSTR
--			   ", nstr bitmap len=%lu",
-+			   ", nstr bitmap len=%zu",
- 			   control, MAC2STR(link_info->peer_addr),
- 			   link_info->nstr_bitmap_len);
+ 		pos = sub_elem_end;
  
+-		wpa_printf(MSG_DEBUG, "MLD: link ctrl=0x%x, " MACSTR
+-			   ", nstr bitmap len=%u",
+-			   control, MAC2STR(link_info->peer_addr),
+-			   link_info->nstr_bitmap_len);
++#ifdef CONFIG_VENDOR_MXL
++      wpa_printf(MSG_DEBUG, "MLD: link ctrl=0x%x, " MACSTR
++            ", nstr bitmap len=%zu",
++            control, MAC2STR(link_info->peer_addr),
++            link_info->nstr_bitmap_len);
++#else
++      wpa_printf(MSG_DEBUG, "MLD: link ctrl=0x%x, " MACSTR
++            ", nstr bitmap len=%lu",
++            control, MAC2STR(link_info->peer_addr),
++            link_info->nstr_bitmap_len);
++#endif /* CONFIG_VENDOR_MXL */
+ 
+ 		link_info->valid = true;
+ 	}
 -- 
 2.43.0
 

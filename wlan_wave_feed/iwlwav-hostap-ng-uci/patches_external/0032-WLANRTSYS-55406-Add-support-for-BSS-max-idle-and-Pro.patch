@@ -1,4 +1,4 @@
-From 85ad3983ea1e2a15d20a99098b1c3cf5835e4141 Mon Sep 17 00:00:00 2001
+From b12520a80c2d55587ba4732c18c3ad4644fec4b5 Mon Sep 17 00:00:00 2001
 From: Jurijs Soloveckis <jsoloveckis@maxlinear.com>
 Date: Sat, 20 May 2023 08:50:35 +0200
 Subject: [PATCH] WLANRTSYS-55406: Add support for BSS max idle and Protected
@@ -6,19 +6,19 @@ Subject: [PATCH] WLANRTSYS-55406: Add support for BSS max idle and Protected
 
 ---
  hostapd/config_file.c      |  8 ++++++++
- src/ap/ap_config.c         |  1 +
- src/ap/ap_config.h         |  1 +
- src/ap/ieee802_11.c        | 14 +++++++++++++-
- src/ap/ieee802_11.h        |  2 +-
- src/ap/ieee802_11_shared.c | 20 +++++++++++---------
+ src/ap/ap_config.c         |  3 +++
+ src/ap/ap_config.h         |  3 +++
+ src/ap/ieee802_11.c        | 16 +++++++++++++++
+ src/ap/ieee802_11.h        |  4 ++++
+ src/ap/ieee802_11_shared.c | 41 +++++++++++++++++++++++++++++++++-----
  src/ap/sta_info.h          |  1 +
- 7 files changed, 36 insertions(+), 11 deletions(-)
+ 7 files changed, 71 insertions(+), 5 deletions(-)
 
 diff --git a/hostapd/config_file.c b/hostapd/config_file.c
-index 920dcfc5c..380a30a84 100644
+index 513bb680f..74604b5e7 100644
 --- a/hostapd/config_file.c
 +++ b/hostapd/config_file.c
-@@ -2609,6 +2609,14 @@ static int hostapd_config_fill(struct hostapd_config *conf,
+@@ -2528,6 +2528,14 @@ static int hostapd_config_fill(struct hostapd_config *conf,
  		bss->isolate = atoi(pos);
  	} else if (os_strcmp(buf, "ap_max_inactivity") == 0) {
  		bss->ap_max_inactivity = atoi(pos);
@@ -32,36 +32,40 @@ index 920dcfc5c..380a30a84 100644
 +		bss->ap_protected_keep_alive_required = val;
  	} else if (os_strcmp(buf, "skip_inactivity_poll") == 0) {
  		bss->skip_inactivity_poll = atoi(pos);
- 	} else if (os_strcmp(buf, "config_id") == 0) {
+ 	} else if (os_strcmp(buf, "bss_max_idle") == 0) {
 diff --git a/src/ap/ap_config.c b/src/ap/ap_config.c
-index 63cb6841d..7eafa9069 100644
+index d2f994c78..fb4ba4183 100644
 --- a/src/ap/ap_config.c
 +++ b/src/ap/ap_config.c
-@@ -96,6 +96,7 @@ void hostapd_config_defaults_bss(struct hostapd_bss_config *bss)
- 	bss->eap_sim_id = 3;
+@@ -97,6 +97,9 @@ void hostapd_config_defaults_bss(struct hostapd_bss_config *bss)
  	bss->eap_sim_aka_fast_reauth_limit = 1000;
  	bss->ap_max_inactivity = AP_MAX_INACTIVITY;
+ 	bss->bss_max_idle = 1;
++#ifdef CONFIG_VENDOR_MXL
 +	bss->ap_protected_keep_alive_required = 0;
++#endif /* CONFIG_VENDOR_MXL */
  	bss->eapol_version = EAPOL_VERSION;
  
  	bss->max_listen_interval = 65535;
 diff --git a/src/ap/ap_config.h b/src/ap/ap_config.h
-index 1f7ae595c..b7508a1eb 100644
+index 97cdaa66a..b01ddbdc1 100644
 --- a/src/ap/ap_config.h
 +++ b/src/ap/ap_config.h
-@@ -505,6 +505,7 @@ struct hostapd_bss_config {
- 				 */
- 
- 	int ap_max_inactivity;
+@@ -520,6 +520,9 @@ struct hostapd_bss_config {
+ 	int bss_max_idle;
+ 	int max_acceptable_idle_period;
+ 	bool no_disconnect_on_group_keyerror;
++#ifdef CONFIG_VENDOR_MXL
 +	int ap_protected_keep_alive_required;
++#endif /* CONFIG_VENDOR_MXL */
  	int ignore_broadcast_ssid;
  	int no_probe_resp_if_max_sta;
  
 diff --git a/src/ap/ieee802_11.c b/src/ap/ieee802_11.c
-index ca7b9f4b9..91e15bdc9 100644
+index 86f872f53..710aae147 100644
 --- a/src/ap/ieee802_11.c
 +++ b/src/ap/ieee802_11.c
-@@ -3870,6 +3870,14 @@ static bool check_sa_query(struct hostapd_data *hapd, struct sta_info *sta,
+@@ -4243,6 +4243,14 @@ static bool check_sa_query(struct hostapd_data *hapd, struct sta_info *sta,
  	return false;
  }
  
@@ -76,7 +80,7 @@ index ca7b9f4b9..91e15bdc9 100644
  
  static int __check_assoc_ies(struct hostapd_data *hapd, struct sta_info *sta,
  			     const u8 *ies, size_t ies_len,
-@@ -3889,6 +3897,9 @@ static int __check_assoc_ies(struct hostapd_data *hapd, struct sta_info *sta,
+@@ -4264,6 +4272,9 @@ static int __check_assoc_ies(struct hostapd_data *hapd, struct sta_info *sta,
  		return resp;
  	resp = check_ext_capab(hapd, sta, elems->ext_capab,
  			       elems->ext_capab_len);
@@ -86,49 +90,51 @@ index ca7b9f4b9..91e15bdc9 100644
  	if (resp != WLAN_STATUS_SUCCESS)
  		return resp;
  	resp = copy_supp_rates(hapd, sta, elems);
-@@ -4947,7 +4958,8 @@ static u16 send_assoc_resp(struct hostapd_data *hapd, struct sta_info *sta,
+@@ -5343,8 +5354,13 @@ static u16 send_assoc_resp(struct hostapd_data *hapd, struct sta_info *sta,
  #endif /* CONFIG_IEEE80211AX */
  
  	p = hostapd_eid_ext_capab(hapd, p, false);
--	p = hostapd_eid_bss_max_idle_period(hapd, p);
++#ifndef CONFIG_VENDOR_MXL
+ 	p = hostapd_eid_bss_max_idle_period(hapd, p,
+ 					    sta ? sta->max_idle_period : 0);
++#else /* CONFIG_VENDOR_MXL */
 +	if (sta && sta->bss_max_idle_period)
 +		p = hostapd_eid_bss_max_idle_period(hapd, sta, p);
++#endif /* CONFIG_VENDOR_MXL */
  	if (sta && sta->qos_map_enabled)
  		p = hostapd_eid_qos_map_set(hapd, p);
  
 diff --git a/src/ap/ieee802_11.h b/src/ap/ieee802_11.h
-index c361f31de..8dc13b327 100644
+index 5dab6060a..d54cc2b88 100644
 --- a/src/ap/ieee802_11.h
 +++ b/src/ap/ieee802_11.h
-@@ -149,7 +149,7 @@ u8 * hostapd_eid_time_adv(struct hostapd_data *hapd, u8 *eid);
+@@ -150,8 +150,12 @@ u8 * hostapd_eid_time_adv(struct hostapd_data *hapd, u8 *eid);
  u8 * hostapd_eid_time_zone(struct hostapd_data *hapd, u8 *eid);
  int hostapd_update_time_adv(struct hostapd_data *hapd);
  void hostapd_client_poll_ok(struct hostapd_data *hapd, const u8 *addr);
--u8 * hostapd_eid_bss_max_idle_period(struct hostapd_data *hapd, u8 *eid);
++#ifndef CONFIG_VENDOR_MXL
+ u8 * hostapd_eid_bss_max_idle_period(struct hostapd_data *hapd, u8 *eid,
+ 				     u16 value);
++#else /* CONFIG_VENDOR_MXL */
 +u8 * hostapd_eid_bss_max_idle_period(struct hostapd_data *hapd, struct sta_info *sta, u8 *eid);
++#endif /* CONFIG_VENDOR_MXL */
  
  int auth_sae_init_committed(struct hostapd_data *hapd, struct sta_info *sta);
  #ifdef CONFIG_SAE
 diff --git a/src/ap/ieee802_11_shared.c b/src/ap/ieee802_11_shared.c
-index cf118cdd3..b8704ee58 100644
+index 3164ad6b9..7286c0c17 100644
 --- a/src/ap/ieee802_11_shared.c
 +++ b/src/ap/ieee802_11_shared.c
-@@ -734,27 +734,29 @@ int hostapd_update_time_adv(struct hostapd_data *hapd)
+@@ -758,6 +758,7 @@ int hostapd_update_time_adv(struct hostapd_data *hapd)
  }
  
  
--u8 * hostapd_eid_bss_max_idle_period(struct hostapd_data *hapd, u8 *eid)
-+u8 * hostapd_eid_bss_max_idle_period(struct hostapd_data *hapd, struct sta_info *sta, u8 *eid)
++#ifndef CONFIG_VENDOR_MXL
+ u8 * hostapd_eid_bss_max_idle_period(struct hostapd_data *hapd, u8 *eid,
+ 				     u16 value)
  {
- 	u8 *pos = eid;
- 
- #ifdef CONFIG_WNM_AP
--	if (hapd->conf->ap_max_inactivity > 0) {
--		unsigned int val;
-+	unsigned int val = (sta->bss_max_idle_period * 1024); /* in ms */
-+	unsigned int ap_val = hapd->conf->ap_max_inactivity * 1000; /* in ms */
-+
-+	if (ap_val || val) {
+@@ -769,11 +770,11 @@ u8 * hostapd_eid_bss_max_idle_period(struct hostapd_data *hapd, u8 *eid,
+ 		unsigned int val;
  		*pos++ = WLAN_EID_BSS_MAX_IDLE_PERIOD;
  		*pos++ = 3;
 -		val = hapd->conf->ap_max_inactivity;
@@ -144,22 +150,51 @@ index cf118cdd3..b8704ee58 100644
  		if (val == 0)
  			val = 1;
  		if (val > 65535)
- 			val = 65535;
- 		WPA_PUT_LE16(pos, val);
- 		pos += 2;
--		*pos++ = 0x00; /* TODO: Protected Keep-Alive Required */
-+		*pos++ = hapd->conf->ap_protected_keep_alive_required;
- 	}
- #endif /* CONFIG_WNM_AP */
+@@ -790,6 +791,36 @@ u8 * hostapd_eid_bss_max_idle_period(struct hostapd_data *hapd, u8 *eid,
  
+ 	return pos;
+ }
++#else /* CONFIG_VENDOR_MXL */
++u8 * hostapd_eid_bss_max_idle_period(struct hostapd_data *hapd, struct sta_info *sta, u8 *eid)
++{
++   u8 *pos = eid;
++
++#ifdef CONFIG_WNM_AP
++   unsigned int val = (sta->bss_max_idle_period * 1024); /* in ms */
++   unsigned int ap_val = hapd->conf->ap_max_inactivity * 1000; /* in ms */
++
++   if (ap_val || val) {
++      *pos++ = WLAN_EID_BSS_MAX_IDLE_PERIOD;
++      *pos++ = 3;
++      if(ap_val)
++         val = val ? MIN(val, ap_val) : ap_val; /* in ms */
++      if (val > 68000 * 1000) /* in ms */
++         val = 68000 * 1000;
++      val /= 1024;  /* in 1000 TUs */
++      if (val == 0)
++         val = 1;
++      if (val > 65535)
++         val = 65535;
++      WPA_PUT_LE16(pos, val);
++      pos += 2;
++      *pos++ = hapd->conf->ap_protected_keep_alive_required;
++   }
++#endif /* CONFIG_WNM_AP */
++
++   return pos;
++}
++#endif /* CONFIG_VENDOR_MXL */
+ 
+ 
+ #ifdef CONFIG_MBO
 diff --git a/src/ap/sta_info.h b/src/ap/sta_info.h
-index 8f6a7d474..f4073e843 100644
+index da458d4b7..2a19afbfc 100644
 --- a/src/ap/sta_info.h
 +++ b/src/ap/sta_info.h
-@@ -336,6 +336,7 @@ struct sta_info {
- 	u8 mld_assoc_link_id;
- #endif /* CONFIG_IEEE80211BE */
+@@ -325,6 +325,7 @@ struct sta_info {
  
+ 	u64 last_known_sta_id_timestamp;
+ #ifdef CONFIG_VENDOR_MXL
 +	u16 bss_max_idle_period;
  	u32 ssi_signal; /* dBm */
  

@@ -1,52 +1,58 @@
-From ade1169b1f6b756d895d731e5d326a88516e162a Mon Sep 17 00:00:00 2001
+From 6872ab9697bada69efa3a482199edbcbb4dd3039 Mon Sep 17 00:00:00 2001
 From: Jurijs Soloveckis <jsoloveckis@maxlinear.com>
 Date: Tue, 21 Mar 2023 14:26:39 +0100
 Subject: [PATCH] WLANRTSYS-53901: RNR IE - Reduced Neighbor Report alignment
 
 ---
  hostapd/config_file.c        |  2 ++
- src/ap/ap_config.c           |  1 +
+ src/ap/ap_config.c           |  3 +++
  src/ap/ap_config.h           |  2 ++
  src/ap/ap_drv_ops.h          |  9 +++++++++
  src/ap/drv_callbacks.c       |  9 +++++++++
  src/ap/hostapd.c             | 34 ++++++++++++++++++++++++++++++++
  src/ap/hostapd.h             |  1 +
- src/ap/ieee802_11.c          | 17 +++++++++++++++-
+ src/ap/ieee802_11.c          | 13 ++++++++++++
  src/ap/ieee802_11_he.c       | 15 ++++++++++++--
  src/drivers/driver.h         |  7 +++++++
  src/drivers/driver_nl80211.c | 38 ++++++++++++++++++++++++++++++++++++
- 11 files changed, 132 insertions(+), 3 deletions(-)
+ 11 files changed, 131 insertions(+), 2 deletions(-)
 
 diff --git a/hostapd/config_file.c b/hostapd/config_file.c
-index 5d9488631..d27fec218 100644
+index 79838c79b..9f0dae2c3 100644
 --- a/hostapd/config_file.c
 +++ b/hostapd/config_file.c
-@@ -3670,6 +3670,8 @@ static int hostapd_config_fill(struct hostapd_config *conf,
- 		conf->mbssid = mbssid;
+@@ -3753,6 +3753,8 @@ static int hostapd_config_fill(struct hostapd_config *conf,
+ #ifdef CONFIG_VENDOR_MXL
  	} else if (os_strcmp(buf, "multibss_enable") == 0) {
  		conf->multibss_enable = atoi(pos);
 +	} else if (os_strcmp(buf, "he_oper_max_co_hosted_bssid_ind") == 0) {
 +		conf->he_oper_max_co_hosted_bssid_ind = atoi(pos);
+ #endif /* CONFIG_VENDOR_MXL */
  #endif /* CONFIG_IEEE80211AX */
  	} else if (os_strcmp(buf, "max_listen_interval") == 0) {
- 		bss->max_listen_interval = atoi(pos);
 diff --git a/src/ap/ap_config.c b/src/ap/ap_config.c
-index a5dddbe86..725fcdbaf 100644
+index 9eb459486..9c8072176 100644
 --- a/src/ap/ap_config.c
 +++ b/src/ap/ap_config.c
-@@ -295,6 +295,7 @@ struct hostapd_config * hostapd_config_defaults(void)
+@@ -300,10 +300,13 @@ struct hostapd_config * hostapd_config_defaults(void)
  	conf->he_6ghz_max_ampdu_len_exp = 7;
  	conf->he_6ghz_rx_ant_pat = 1;
  	conf->he_6ghz_tx_ant_pat = 1;
++#ifdef CONFIG_VENDOR_MXL
+ 	conf->he_6ghz_reg_pwr_type = HE_REG_INFO_6GHZ_AP_TYPE_VLP;
+ 	conf->reg_def_cli_eirp_psd = -1;
+ 	conf->reg_sub_cli_eirp_psd = -1;
+ 	conf->reg_def_cli_eirp = -1;
 +	conf->he_oper_max_co_hosted_bssid_ind = 5;
++#endif /* CONFIG_VENDOR_MXL */
  #endif /* CONFIG_IEEE80211AX */
  
  	/* The third octet of the country string uses an ASCII space character
 diff --git a/src/ap/ap_config.h b/src/ap/ap_config.h
-index a530dae18..501ac046a 100644
+index 4b15d4af2..15d5c7ff9 100644
 --- a/src/ap/ap_config.h
 +++ b/src/ap/ap_config.h
-@@ -1256,9 +1256,11 @@ struct hostapd_config {
+@@ -1309,9 +1309,11 @@ struct hostapd_config {
  	u8 owl; /* Forwarding incoming probe reqests to upper layers */
  #ifdef CONFIG_IEEE80211AX
  	enum bcast_twt_wake_duration_unit btwt_wake_dur_unit;
@@ -55,14 +61,14 @@ index a530dae18..501ac046a 100644
  	/* Extended Capabilities: Max Number of MSDUs in A-MSDU */
  	u8 ext_cap_max_num_msdus_in_amsdu;
 +	u8 psd_20mhz;
- #ifdef CONFIG_VENDOR_MXL
  	struct mxl_hostapd_config mxl_conf;
  #endif /* CONFIG_VENDOR_MXL */
+ };
 diff --git a/src/ap/ap_drv_ops.h b/src/ap/ap_drv_ops.h
-index 54733c762..f17a50d1e 100644
+index de1796f7b..e640ad6be 100644
 --- a/src/ap/ap_drv_ops.h
 +++ b/src/ap/ap_drv_ops.h
-@@ -477,6 +477,15 @@ static inline int hostapd_drv_set_mbssid_num_vaps_in_group(struct hostapd_data *
+@@ -510,6 +510,15 @@ static inline int hostapd_drv_set_mbssid_num_vaps_in_group(struct hostapd_data *
  	return hapd->driver->set_mbssid_num_vaps_in_group(hapd->drv_priv, mbssid_num_vaps_in_group);
  }
  
@@ -79,10 +85,10 @@ index 54733c762..f17a50d1e 100644
  static inline int hostapd_drv_driver_cmd(struct hostapd_data *hapd,
  					 char *cmd, char *buf, size_t buf_len)
 diff --git a/src/ap/drv_callbacks.c b/src/ap/drv_callbacks.c
-index 3906c0b7b..497bcb501 100644
+index 9fd990ad7..3d59b46d3 100644
 --- a/src/ap/drv_callbacks.c
 +++ b/src/ap/drv_callbacks.c
-@@ -1223,6 +1223,15 @@ void hostapd_event_ch_switch(struct hostapd_data *hapd, int freq, int ht,
+@@ -1385,6 +1385,15 @@ void hostapd_event_ch_switch(struct hostapd_data *hapd, int freq, int ht,
  	for (i = 0; i < hapd->iface->num_bss; i++)
  		hostapd_neighbor_set_own_report(hapd->iface->bss[i]);
  
@@ -99,10 +105,10 @@ index 3906c0b7b..497bcb501 100644
  	if (hapd->conf->ocv &&
  	    !(hapd->iface->drv_flags2 &
 diff --git a/src/ap/hostapd.c b/src/ap/hostapd.c
-index 0f9f56d48..30bc7302d 100644
+index c65dadc7c..4feb49b4b 100644
 --- a/src/ap/hostapd.c
 +++ b/src/ap/hostapd.c
-@@ -2706,6 +2706,10 @@ static int hostapd_setup_interface_complete_sync(struct hostapd_iface *iface,
+@@ -2924,6 +2924,10 @@ static int hostapd_setup_interface_complete_sync(struct hostapd_iface *iface,
  
  	prev_addr = hapd->own_addr;
  
@@ -113,7 +119,7 @@ index 0f9f56d48..30bc7302d 100644
  	for (j = 0; j < iface->num_bss; j++) {
  		hapd = iface->bss[j];
  		if (j)
-@@ -4671,3 +4675,33 @@ void mxl_hostapd_clear_old(struct hostapd_iface *iface, s32 flush)
+@@ -5452,3 +5456,33 @@ void mxl_hostapd_clear_old(struct hostapd_iface *iface, s32 flush)
  	}
  }
  #endif /* CONFIG_VENDOR_MXL */
@@ -148,10 +154,10 @@ index 0f9f56d48..30bc7302d 100644
 +	return 0;
 +}
 diff --git a/src/ap/hostapd.h b/src/ap/hostapd.h
-index 31a8c0976..02a79f7af 100644
+index 291dd4995..0428a5e46 100644
 --- a/src/ap/hostapd.h
 +++ b/src/ap/hostapd.h
-@@ -740,6 +740,7 @@ void hostapd_periodic_iface(struct hostapd_iface *iface);
+@@ -819,6 +819,7 @@ void hostapd_periodic_iface(struct hostapd_iface *iface);
  int hostapd_owe_trans_get_info(struct hostapd_data *hapd);
  void hostapd_ocv_check_csa_sa_query(void *eloop_ctx, void *timeout_ctx);
  bool hostapd_can_send_btwt_config(struct hostapd_data *hapd);
@@ -160,53 +166,36 @@ index 31a8c0976..02a79f7af 100644
  void hostapd_switch_color(struct hostapd_data *hapd, u64 bitmap);
  void hostapd_cleanup_cca_params(struct hostapd_data *hapd);
 diff --git a/src/ap/ieee802_11.c b/src/ap/ieee802_11.c
-index f5fabea0f..67a83c485 100644
+index f1a0977da..c38119ee0 100644
 --- a/src/ap/ieee802_11.c
 +++ b/src/ap/ieee802_11.c
-@@ -7381,6 +7381,9 @@ hostapd_eid_rnr_iface_len(struct hostapd_data *hapd,
- 			if (!bss || !bss->conf || !bss->started)
- 				continue;
+@@ -8258,8 +8258,21 @@ static bool hostapd_eid_rnr_bss(struct hostapd_data *hapd,
  
-+			if (bss->conf->bss_idx == MASTER_VAP_BSS_IDX)
-+				continue;
+ 	bss_param |= RNR_BSS_PARAM_CO_LOCATED;
+ 
++#ifdef CONFIG_VENDOR_MXL
++	if (hapd->iconf->multibss_enable) {
++		bss_param |= RNR_BSS_PARAM_MULTIPLE_BSSID;
++		if(bss->conf->bss_idx == MULTIBSS_REFERENCE_BSS_IDX)
++			bss_param |= RNR_BSS_PARAM_TRANSMITTED_BSSID;
++	}
 +
- 			if (bss == reporting_hapd ||
- 			    bss->conf->ignore_broadcast_ssid)
- 				continue;
-@@ -7635,6 +7638,9 @@ static u8 * hostapd_eid_rnr_iface(struct hostapd_data *hapd,
- 			if (!bss || !bss->conf || !bss->started)
- 				continue;
++	if (iface->conf->psd_20mhz)
++		*eid++ = iface->conf->psd_20mhz;
++	else
++		*eid++ = RNR_20_MHZ_PSD_MAX_TXPOWER - 1;
++#else /* CONFIG_VENDOR_MXL */
+ 	*eid++ = bss_param;
+ 	*eid++ = RNR_20_MHZ_PSD_MAX_TXPOWER;
++#endif /* CONFIG_VENDOR_MXL */
  
-+			if (bss->conf->bss_idx == MASTER_VAP_BSS_IDX)
-+				continue;
-+
- 			if (bss == reporting_hapd ||
- 			    bss->conf->ignore_broadcast_ssid)
- 				continue;
-@@ -7671,8 +7677,17 @@ static u8 * hostapd_eid_rnr_iface(struct hostapd_data *hapd,
- 
- 			bss_param |= RNR_BSS_PARAM_CO_LOCATED;
- 
-+			if (hapd->iconf->multibss_enable) {
-+				bss_param |= RNR_BSS_PARAM_MULTIPLE_BSSID;
-+				if(bss->conf->bss_idx == MULTIBSS_REFERENCE_BSS_IDX)
-+					bss_param |= RNR_BSS_PARAM_TRANSMITTED_BSSID;
-+			}
-+
- 			*eid++ = bss_param;
--			*eid++ = RNR_20_MHZ_PSD_MAX_TXPOWER - 1;
-+			if (iface->conf->psd_20mhz)
-+				*eid++ = iface->conf->psd_20mhz;
-+			else
-+				*eid++ = RNR_20_MHZ_PSD_MAX_TXPOWER - 1;
- 
- 			if (!ap_mld) {
- 				len += RNR_TBTT_INFO_LEN;
+ #ifdef CONFIG_IEEE80211BE
+ 	if (ap_mld) {
 diff --git a/src/ap/ieee802_11_he.c b/src/ap/ieee802_11_he.c
-index 5c5216abc..cadf5b41e 100644
+index b01cf87c2..db95708f5 100644
 --- a/src/ap/ieee802_11_he.c
 +++ b/src/ap/ieee802_11_he.c
-@@ -176,12 +176,19 @@ u8 * hostapd_eid_he_operation(struct hostapd_data *hapd, u8 *eid)
+@@ -177,12 +177,19 @@ u8 * hostapd_eid_he_operation(struct hostapd_data *hapd, u8 *eid)
  	u8 *pos = eid;
  	int oper_size = 6;
  	u32 params = 0;
@@ -226,7 +215,7 @@ index 5c5216abc..cadf5b41e 100644
  
  	*pos++ = WLAN_EID_EXTENSION;
  	*pos++ = 1 + oper_size;
-@@ -216,10 +223,14 @@ u8 * hostapd_eid_he_operation(struct hostapd_data *hapd, u8 *eid)
+@@ -217,10 +224,14 @@ u8 * hostapd_eid_he_operation(struct hostapd_data *hapd, u8 *eid)
  	oper->he_mcs_nss_set =
  		host_to_le16(hapd->iface->conf->he_op.he_basic_mcs_nss_set);
  
@@ -242,12 +231,12 @@ index 5c5216abc..cadf5b41e 100644
 +
  	if (is_6ghz_op_class(hapd->iconf->op_class)) {
  		enum oper_chan_width oper_chwidth =
- 			hostapd_get_oper_chwidth(hapd->iconf);
+ 			hapd->iconf->he_oper_chwidth;
 diff --git a/src/drivers/driver.h b/src/drivers/driver.h
-index 11edc16fc..870a20a62 100644
+index fe9591551..b4501b638 100644
 --- a/src/drivers/driver.h
 +++ b/src/drivers/driver.h
-@@ -5230,6 +5230,13 @@ struct wpa_driver_ops {
+@@ -5527,6 +5527,13 @@ struct wpa_driver_ops {
  	 */
  	int(*set_mbssid_num_vaps_in_group)(void *priv, const u8 mbssid_num_vaps_in_group);
  
@@ -262,10 +251,10 @@ index 11edc16fc..870a20a62 100644
  	int (*register_frame)(void *priv, u16 type,
  			      const u8 *match, size_t match_len,
 diff --git a/src/drivers/driver_nl80211.c b/src/drivers/driver_nl80211.c
-index 162ca9317..b91f66fb0 100644
+index 8b3bd035d..3f757b204 100644
 --- a/src/drivers/driver_nl80211.c
 +++ b/src/drivers/driver_nl80211.c
-@@ -14111,6 +14111,43 @@ int nl80211_set_mbssid_num_vaps_in_group(void *priv, const u8 mbssid_num_vaps_in
+@@ -14954,6 +14954,43 @@ int nl80211_set_mbssid_num_vaps_in_group(void *priv, const u8 mbssid_num_vaps_in
  	return ret;
  }
  
@@ -309,7 +298,7 @@ index 162ca9317..b91f66fb0 100644
  const struct wpa_driver_ops wpa_driver_nl80211_ops = {
  	.name = "nl80211",
  	.desc = "Linux nl80211/cfg80211",
-@@ -14266,6 +14303,7 @@ const struct wpa_driver_ops wpa_driver_nl80211_ops = {
+@@ -15119,6 +15156,7 @@ const struct wpa_driver_ops wpa_driver_nl80211_ops = {
  	.unconnected_sta = nl80211_unconnected_sta,
  	.set_mbssid_vap_mode = nl80211_set_mbssid_vap,
  	.set_mbssid_num_vaps_in_group = nl80211_set_mbssid_num_vaps_in_group,

@@ -1,4 +1,4 @@
-From 78789e4fc4bbe7ccaff2d12a942f32643b0b8d60 Mon Sep 17 00:00:00 2001
+From a7cb09f6719f55332e41d2fb9c5f69e20336928e Mon Sep 17 00:00:00 2001
 From: Jurijs Soloveckis <jsoloveckis@maxlinear.com>
 Date: Fri, 4 Aug 2023 11:50:49 +0200
 Subject: [PATCH] WLANRTSYS-57531: Improvement for max_listen_interval
@@ -19,11 +19,11 @@ Fix:
  3 files changed, 6 insertions(+), 2 deletions(-)
 
 diff --git a/src/ap/ap_config.c b/src/ap/ap_config.c
-index 9f95c206f..af9326295 100644
+index 0c4e85792..5a01b30f9 100644
 --- a/src/ap/ap_config.c
 +++ b/src/ap/ap_config.c
-@@ -101,7 +101,7 @@ void hostapd_config_defaults_bss(struct hostapd_bss_config *bss)
- 	bss->ap_protected_keep_alive_required = 0;
+@@ -104,7 +104,7 @@ void hostapd_config_defaults_bss(struct hostapd_bss_config *bss)
+ #endif /* CONFIG_VENDOR_MXL */
  	bss->eapol_version = EAPOL_VERSION;
  
 -	bss->max_listen_interval = 65535;
@@ -32,18 +32,18 @@ index 9f95c206f..af9326295 100644
  	bss->pwd_group = 19; /* ECC: GF(p=256) */
  
 diff --git a/src/ap/sta_info.c b/src/ap/sta_info.c
-index 067e1a982..bae3dcf6a 100644
+index 9ffb474ed..16ee24235 100644
 --- a/src/ap/sta_info.c
 +++ b/src/ap/sta_info.c
-@@ -500,6 +500,7 @@ void ap_handle_timer(void *eloop_ctx, void *timeout_ctx)
- 	struct sta_info *sta = timeout_ctx;
- 	unsigned long next_time = 0;
+@@ -575,6 +575,7 @@ void ap_handle_timer(void *eloop_ctx, void *timeout_ctx)
+ 	int max_inactivity = hapd->conf->ap_max_inactivity;
+ #else /* CONFIG_VENDOR_MXL */
  	u16 reason;
 +	unsigned int disassoc_delay;
+ #endif /* CONFIG_VENDOR_MXL */
  
  	wpa_printf(MSG_DEBUG, "%s: %s: " MACSTR " flags=0x%x timeout_next=%d",
- 		   hapd->conf->iface, __func__, MAC2STR(sta->addr), sta->flags,
-@@ -624,7 +625,9 @@ skip_poll:
+@@ -702,7 +703,9 @@ skip_poll:
  		wpa_printf(MSG_DEBUG, "%s: register ap_handle_timer timeout "
  			   "for " MACSTR " (%d seconds - AP_DISASSOC_DELAY)",
  			   __func__, MAC2STR(sta->addr), AP_DISASSOC_DELAY);
@@ -55,10 +55,10 @@ index 067e1a982..bae3dcf6a 100644
  		break;
  	case STA_DISASSOC:
 diff --git a/src/ap/sta_info.h b/src/ap/sta_info.h
-index e9a4c2bb2..dab35f392 100644
+index 285e84cfa..49da0a662 100644
 --- a/src/ap/sta_info.h
 +++ b/src/ap/sta_info.h
-@@ -380,6 +380,7 @@ struct sta_info {
+@@ -372,6 +372,7 @@ struct sta_info {
  #define AP_MAX_INACTIVITY (5 * 60)
  #define AP_DISASSOC_DELAY (3)
  #define AP_DEAUTH_DELAY (1)

@@ -1,0 +1,37 @@
+From b66cf9271b7bfb3734543d8b5e42c3b5396017f0 Mon Sep 17 00:00:00 2001
+From: Sai Pratyusha Magam <quic_smagam@quicinc.com>
+Date: Fri, 3 Jan 2025 11:23:22 +0530
+Subject: [PATCH] RSNO: Generate IGTK if any of the RSN variants has PMF
+ enabled
+
+With RSN overriding enabled, AP can be configured to set MFPC to 0 and
+MFPR to 0 in the RSNE and MFPC to 1 and MFPR to 1 in the RSNOE and
+RSNO2E. IGTK generation, configuration to the driver, and inclusion of
+the IGTK KDE in 4-way handshake should also take into account the
+management frame protection settings in the override variants.
+
+Signed-off-by: Sai Pratyusha Magam <quic_smagam@quicinc.com>
+---
+ src/ap/hostapd.h | 8 ++++++++
+ 1 file changed, 8 insertions(+)
+
+diff --git a/src/ap/hostapd.h b/src/ap/hostapd.h
+index b534c9898..979bbce00 100644
+--- a/src/ap/hostapd.h
++++ b/src/ap/hostapd.h
+@@ -1055,4 +1055,12 @@ void hostapd_handle_acs_whm_warning (struct hostapd_iface *iface);
+ bool hostapd_is_unii4_freq (int freq);
+ void hostapd_unconnected_sta_scan_fail_handle_cb (void *eloop_ctx, void *timeout_ctx);
+ #endif /* CONFIG_VENDOR_MXL */
++
++static inline bool ap_pmf_enabled(struct hostapd_bss_config *conf)
++{
++	return conf->ieee80211w != NO_MGMT_FRAME_PROTECTION ||
++		conf->rsn_override_mfp != NO_MGMT_FRAME_PROTECTION ||
++		conf->rsn_override_mfp_2 != NO_MGMT_FRAME_PROTECTION;
++}
++
+ #endif /* HOSTAPD_H */
+-- 
+2.43.0
+

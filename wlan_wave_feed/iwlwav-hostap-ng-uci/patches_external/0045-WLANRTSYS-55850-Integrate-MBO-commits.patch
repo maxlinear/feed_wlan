@@ -1,4 +1,4 @@
-From 109be674d75158c8dd9a81c9f12706f731e4bd2b Mon Sep 17 00:00:00 2001
+From f69266de4610fc10fe307b7d6e0380d8b162fa83 Mon Sep 17 00:00:00 2001
 From: Jurijs Soloveckis <jsoloveckis@maxlinear.com>
 Date: Tue, 6 Jun 2023 14:14:25 +0200
 Subject: [PATCH] WLANRTSYS-55850: Integrate MBO commits
@@ -57,10 +57,10 @@ Subject: [PATCH] WLANRTSYS-55850: Integrate MBO commits
  14 files changed, 445 insertions(+), 51 deletions(-)
 
 diff --git a/hostapd/config_file.c b/hostapd/config_file.c
-index f1a20e5a1..f0df44170 100644
+index de1be552f..b0aa7d59e 100644
 --- a/hostapd/config_file.c
 +++ b/hostapd/config_file.c
-@@ -4628,6 +4628,22 @@ static int hostapd_config_fill(struct hostapd_config *conf,
+@@ -4669,6 +4669,22 @@ static int hostapd_config_fill(struct hostapd_config *conf,
  		bss->mbo_cell_data_conn_pref = atoi(pos);
  	} else if (os_strcmp(buf, "oce") == 0) {
  		bss->oce = atoi(pos);
@@ -84,10 +84,10 @@ index f1a20e5a1..f0df44170 100644
  #ifdef CONFIG_TESTING_OPTIONS
  #define PARSE_TEST_PROBABILITY(_val)				\
 diff --git a/hostapd/ctrl_iface.c b/hostapd/ctrl_iface.c
-index 877a28182..f28617b08 100644
+index 9ed4a5a7f..3a8428fc0 100644
 --- a/hostapd/ctrl_iface.c
 +++ b/hostapd/ctrl_iface.c
-@@ -1301,6 +1301,23 @@ static int hostapd_ctrl_iface_set(struct hostapd_data *hapd, char *cmd)
+@@ -1279,6 +1279,23 @@ static int hostapd_ctrl_iface_set(struct hostapd_data *hapd, char *cmd)
  		 * TODO: Need to configure drivers that do AP MLME offload with
  		 * disallowing station logic.
  		 */
@@ -111,7 +111,7 @@ index 877a28182..f28617b08 100644
  #endif /* CONFIG_MBO */
  #ifdef CONFIG_DPP
  	} else if (os_strcasecmp(cmd, "dpp_configurator_params") == 0) {
-@@ -5201,6 +5218,115 @@ static int hostapd_ctrl_iface_update_wan_metrics(struct hostapd_data *hapd,
+@@ -5842,6 +5859,115 @@ static int hostapd_ctrl_iface_update_wan_metrics(struct hostapd_data *hapd,
  	return 0;
  }
  
@@ -227,7 +227,7 @@ index 877a28182..f28617b08 100644
  static int hostapd_ctrl_iface_receive_process(struct hostapd_data *hapd,
  					      char *buf, char *reply,
  					      int reply_size,
-@@ -5848,6 +5974,14 @@ static int hostapd_ctrl_iface_receive_process(struct hostapd_data *hapd,
+@@ -6536,6 +6662,14 @@ static int hostapd_ctrl_iface_receive_process(struct hostapd_data *hapd,
  	} else if (os_strncmp(buf, "UPDATE_WAN_METRICS ", 19) == 0) {
  		if (hostapd_ctrl_iface_update_wan_metrics(hapd, buf + 19))
  			reply_len = -1;
@@ -243,10 +243,10 @@ index 877a28182..f28617b08 100644
  		os_memcpy(reply, "UNKNOWN COMMAND\n", 16);
  		reply_len = 16;
 diff --git a/hostapd/hostapd_cli.c b/hostapd/hostapd_cli.c
-index c097fac95..e08187d26 100644
+index 63728804d..dba2a0198 100644
 --- a/hostapd/hostapd_cli.c
 +++ b/hostapd/hostapd_cli.c
-@@ -2177,6 +2177,44 @@ static int hostapd_cli_cmd_update_wan_metrics(struct wpa_ctrl *ctrl,
+@@ -2247,6 +2247,44 @@ static int hostapd_cli_cmd_update_wan_metrics(struct wpa_ctrl *ctrl,
  	return wpa_ctrl_command(ctrl, buf);
  }
  
@@ -291,7 +291,7 @@ index c097fac95..e08187d26 100644
  struct hostapd_cli_cmd {
  	const char *cmd;
  	int (*handler)(struct wpa_ctrl *ctrl, int argc, char *argv[]);
-@@ -2456,6 +2494,12 @@ static const struct hostapd_cli_cmd hostapd_cli_commands[] = {
+@@ -2547,6 +2585,12 @@ static const struct hostapd_cli_cmd hostapd_cli_commands[] = {
  	  "<bss> <mac_addr> <freq> frame=<frame_buf>" },
  	{ "update_wan_metrics", hostapd_cli_cmd_update_wan_metrics, NULL,
  	  "<WAN Info>:<DL Speed>:<UL Speed>:<DL Load>:<UL Load>:<LMD> = update_wan_metrics" },
@@ -305,10 +305,10 @@ index c097fac95..e08187d26 100644
  };
  
 diff --git a/src/ap/ap_config.c b/src/ap/ap_config.c
-index 974957627..96b544f70 100644
+index 2eb759412..117c531a0 100644
 --- a/src/ap/ap_config.c
 +++ b/src/ap/ap_config.c
-@@ -150,6 +150,7 @@ void hostapd_config_defaults_bss(struct hostapd_bss_config *bss)
+@@ -154,6 +154,7 @@ void hostapd_config_defaults_bss(struct hostapd_bss_config *bss)
  #ifdef CONFIG_MBO
  	bss->mbo_cell_data_conn_pref = -1;
  	bss->mbo_cell_aware = 1;
@@ -316,7 +316,7 @@ index 974957627..96b544f70 100644
  #endif /* CONFIG_MBO */
  
  	/* Disable TLS v1.3 by default for now to avoid interoperability issue.
-@@ -1521,12 +1522,13 @@ static int hostapd_config_check_bss(struct hostapd_bss_config *bss,
+@@ -1545,12 +1546,13 @@ static int hostapd_config_check_bss(struct hostapd_bss_config *bss,
  #endif /* CONFIG_HS20 */
  
  #ifdef CONFIG_MBO
@@ -337,10 +337,10 @@ index 974957627..96b544f70 100644
  
  #ifdef CONFIG_OCV
 diff --git a/src/ap/ap_config.h b/src/ap/ap_config.h
-index efd0d984c..29efea15a 100644
+index 027b6bcfc..2c8d3f192 100644
 --- a/src/ap/ap_config.h
 +++ b/src/ap/ap_config.h
-@@ -801,6 +801,7 @@ struct hostapd_bss_config {
+@@ -803,6 +803,7 @@ struct hostapd_bss_config {
  	unsigned int oce;
  	int mbo_cell_data_conn_pref;
  	int mbo_cell_aware;
@@ -349,10 +349,10 @@ index efd0d984c..29efea15a 100644
  
  	int ftm_responder;
 diff --git a/src/ap/drv_callbacks.c b/src/ap/drv_callbacks.c
-index e74021fa8..614c3647b 100644
+index dba4ee0cc..9d7853adb 100644
 --- a/src/ap/drv_callbacks.c
 +++ b/src/ap/drv_callbacks.c
-@@ -684,13 +684,21 @@ skip_wpa_check:
+@@ -724,13 +724,21 @@ skip_wpa_check:
  #endif /* CONFIG_WPS */
  
  #ifdef CONFIG_MBO
@@ -381,10 +381,10 @@ index e74021fa8..614c3647b 100644
  
  #ifdef CONFIG_IEEE80211R_AP
 diff --git a/src/ap/gas_serv.c b/src/ap/gas_serv.c
-index 9bf2473ea..b3b92ba81 100644
+index c3ea17e63..d2d68e908 100644
 --- a/src/ap/gas_serv.c
 +++ b/src/ap/gas_serv.c
-@@ -191,6 +191,36 @@ static void anqp_add_hs_capab_list(struct hostapd_data *hapd,
+@@ -183,6 +183,36 @@ static void anqp_add_hs_capab_list(struct hostapd_data *hapd,
  }
  #endif /* CONFIG_HS20 */
  
@@ -421,7 +421,7 @@ index 9bf2473ea..b3b92ba81 100644
  
  static struct anqp_element * get_anqp_elem(struct hostapd_data *hapd,
  					   u16 infoid)
-@@ -310,6 +340,9 @@ static void anqp_add_capab_list(struct hostapd_data *hapd,
+@@ -302,6 +332,9 @@ static void anqp_add_capab_list(struct hostapd_data *hapd,
  #ifdef CONFIG_HS20
  	anqp_add_hs_capab_list(hapd, buf);
  #endif /* CONFIG_HS20 */
@@ -431,7 +431,7 @@ index 9bf2473ea..b3b92ba81 100644
  	gas_anqp_set_element_len(buf, len);
  }
  
-@@ -939,23 +972,6 @@ static void anqp_add_operator_icon_metadata(struct hostapd_data *hapd,
+@@ -705,23 +738,6 @@ static void anqp_add_operating_class(struct hostapd_data *hapd,
  
  #endif /* CONFIG_HS20 */
  
@@ -456,10 +456,10 @@ index 9bf2473ea..b3b92ba81 100644
  				    const u16 *infoid,
  				    unsigned int num_infoid)
 diff --git a/src/ap/hostapd.h b/src/ap/hostapd.h
-index 1667855c4..aaf458616 100644
+index 366639df0..b23f3db18 100644
 --- a/src/ap/hostapd.h
 +++ b/src/ap/hostapd.h
-@@ -426,6 +426,8 @@ struct hostapd_data {
+@@ -443,6 +443,8 @@ struct hostapd_data {
  
  #ifdef CONFIG_MBO
  	unsigned int mbo_assoc_disallow;
@@ -469,10 +469,10 @@ index 1667855c4..aaf458616 100644
  
  	struct dl_list nr_db;
 diff --git a/src/ap/ieee802_11.c b/src/ap/ieee802_11.c
-index 91e15bdc9..618b10e11 100644
+index 710aae147..054930927 100644
 --- a/src/ap/ieee802_11.c
 +++ b/src/ap/ieee802_11.c
-@@ -4293,13 +4293,19 @@ static int __check_assoc_ies(struct hostapd_data *hapd, struct sta_info *sta,
+@@ -4666,13 +4666,19 @@ static int __check_assoc_ies(struct hostapd_data *hapd, struct sta_info *sta,
  #ifdef CONFIG_MBO
  	mbo_ap_check_sta_assoc(hapd, sta, elems);
  
@@ -499,10 +499,10 @@ index 91e15bdc9..618b10e11 100644
  
  #if defined(CONFIG_FILS) && defined(CONFIG_OCV)
 diff --git a/src/ap/ieee802_11_shared.c b/src/ap/ieee802_11_shared.c
-index e4a1ade75..a2295c389 100644
+index 68752f73e..883ce4397 100644
 --- a/src/ap/ieee802_11_shared.c
 +++ b/src/ap/ieee802_11_shared.c
-@@ -798,14 +798,21 @@ u8 * hostapd_eid_mbo(struct hostapd_data *hapd, u8 *eid, size_t len)
+@@ -857,14 +857,21 @@ u8 * hostapd_eid_mbo(struct hostapd_data *hapd, u8 *eid, size_t len)
  	if (hapd->conf->mbo_enabled) {
  		*mbo_pos++ = MBO_ATTR_ID_AP_CAPA_IND;
  		*mbo_pos++ = 1;
@@ -533,10 +533,10 @@ index e4a1ade75..a2295c389 100644
  
  	if (OCE_STA_CFON_ENABLED(hapd) || OCE_AP_ENABLED(hapd)) {
 diff --git a/src/ap/sta_info.c b/src/ap/sta_info.c
-index 9c795010e..bdb526bad 100644
+index e8bf5ffad..87c288dd7 100644
 --- a/src/ap/sta_info.c
 +++ b/src/ap/sta_info.c
-@@ -1429,8 +1429,8 @@ void ap_sta_set_authorized(struct hostapd_data *hapd, struct sta_info *sta,
+@@ -1689,8 +1689,8 @@ void ap_sta_set_authorized_event(struct hostapd_data *hapd,
  		dev_addr = p2p_group_get_dev_addr(hapd->p2p_group, sta->addr);
  
  	if (dev_addr)
@@ -547,7 +547,7 @@ index 9c795010e..bdb526bad 100644
  		if (os_snprintf_error(end - pos, ret))
  			goto free_alloc;
  		pos += ret;
-@@ -1459,6 +1459,9 @@ void ap_sta_set_authorized(struct hostapd_data *hapd, struct sta_info *sta,
+@@ -1715,6 +1715,9 @@ void ap_sta_set_authorized_event(struct hostapd_data *hapd,
  		char *rates, *capabilities, *assoc_req;
  		int assoc_req_len;
  		int ret;
@@ -557,7 +557,7 @@ index 9c795010e..bdb526bad 100644
  
  		dpp_pkhash_buf[0] = '\0';
  		keyid_buf[0] = '\0';
-@@ -1523,6 +1526,7 @@ void ap_sta_set_authorized(struct hostapd_data *hapd, struct sta_info *sta,
+@@ -1780,6 +1783,7 @@ void ap_sta_set_authorized_event(struct hostapd_data *hapd,
  			wpa_printf(MSG_ERROR, "%s: sprintf_s error %d", __func__, ret);
  			os_free(rates);
  			os_free(capabilities);
@@ -565,7 +565,7 @@ index 9c795010e..bdb526bad 100644
  			goto free_alloc;
  		}
  
-@@ -1538,6 +1542,7 @@ void ap_sta_set_authorized(struct hostapd_data *hapd, struct sta_info *sta,
+@@ -1795,6 +1799,7 @@ void ap_sta_set_authorized_event(struct hostapd_data *hapd,
  				wpa_printf(MSG_ERROR, "%s: sprintf_s error %d", __func__, ret);
  				os_free(rates);
  				os_free(capabilities);
@@ -573,7 +573,7 @@ index 9c795010e..bdb526bad 100644
  				goto free_alloc;
  			}
  			len += ret;
-@@ -1551,6 +1556,7 @@ void ap_sta_set_authorized(struct hostapd_data *hapd, struct sta_info *sta,
+@@ -1808,6 +1813,7 @@ void ap_sta_set_authorized_event(struct hostapd_data *hapd,
  				wpa_printf(MSG_ERROR, "%s: sprintf_s error %d", __func__, ret);
  				os_free(rates);
  				os_free(capabilities);
@@ -581,7 +581,7 @@ index 9c795010e..bdb526bad 100644
  				goto free_alloc;
  			}
  		len += ret;
-@@ -1567,6 +1573,7 @@ void ap_sta_set_authorized(struct hostapd_data *hapd, struct sta_info *sta,
+@@ -1824,6 +1830,7 @@ void ap_sta_set_authorized_event(struct hostapd_data *hapd,
  					wpa_printf(MSG_ERROR, "%s: sprintf_s error %d", __func__, ret);
  					os_free(rates);
  					os_free(capabilities);
@@ -589,7 +589,7 @@ index 9c795010e..bdb526bad 100644
  					goto free_alloc;
  				}
  				len += ret;
-@@ -1579,6 +1586,7 @@ void ap_sta_set_authorized(struct hostapd_data *hapd, struct sta_info *sta,
+@@ -1836,6 +1843,7 @@ void ap_sta_set_authorized_event(struct hostapd_data *hapd,
  				wpa_printf(MSG_ERROR, "%s: sprintf_s error %d", __func__, ret);
  				os_free(rates);
  				os_free(capabilities);
@@ -597,7 +597,7 @@ index 9c795010e..bdb526bad 100644
  				goto free_alloc;
  			}
  			len += ret;
-@@ -1591,6 +1599,7 @@ void ap_sta_set_authorized(struct hostapd_data *hapd, struct sta_info *sta,
+@@ -1848,6 +1856,7 @@ void ap_sta_set_authorized_event(struct hostapd_data *hapd,
  				wpa_printf(MSG_ERROR, "%s: sprintf_s error %d", __func__, ret);
  				os_free(rates);
  				os_free(capabilities);
@@ -605,7 +605,7 @@ index 9c795010e..bdb526bad 100644
  				goto free_alloc;
  			}
  			len += ret;
-@@ -1633,8 +1642,40 @@ void ap_sta_set_authorized(struct hostapd_data *hapd, struct sta_info *sta,
+@@ -1890,8 +1899,40 @@ void ap_sta_set_authorized_event(struct hostapd_data *hapd,
  		}
  		pos += ret;
  
@@ -648,7 +648,7 @@ index 9c795010e..bdb526bad 100644
  
  		if (hapd->msg_ctx_parent &&
  		    hapd->msg_ctx_parent != hapd->msg_ctx)
-@@ -1644,6 +1685,7 @@ void ap_sta_set_authorized(struct hostapd_data *hapd, struct sta_info *sta,
+@@ -1901,6 +1942,7 @@ void ap_sta_set_authorized_event(struct hostapd_data *hapd,
  					  dpp_pkhash_buf);
  		os_free(rates);
  		os_free(capabilities);
@@ -657,10 +657,10 @@ index 9c795010e..bdb526bad 100644
  		wpa_msg(hapd->msg_ctx, MSG_INFO, AP_STA_DISCONNECTED "%s", buf);
  
 diff --git a/src/ap/wnm_ap.c b/src/ap/wnm_ap.c
-index b0e6e104a..ecb1b73d7 100644
+index 59f470b55..066af6184 100644
 --- a/src/ap/wnm_ap.c
 +++ b/src/ap/wnm_ap.c
-@@ -588,9 +588,6 @@ static void ieee802_11_rx_bss_trans_mgmt_query(struct hostapd_data *hapd,
+@@ -612,9 +612,6 @@ static void ieee802_11_rx_bss_trans_mgmt_query(struct hostapd_data *hapd,
  	btm_req_nr_list_len = nei_rep_tmp - nei_rep;
  
  #ifdef CONFIG_MBO
@@ -670,7 +670,7 @@ index b0e6e104a..ecb1b73d7 100644
  	/* MBO: Add Cellular Preference value for Multimode stations */
  	if (hapd->conf->mbo_enabled && hapd->conf->mbo_cell_aware) {
  		struct sta_info *sta = ap_get_sta(hapd, addr);
-@@ -602,7 +599,6 @@ static void ieee802_11_rx_bss_trans_mgmt_query(struct hostapd_data *hapd,
+@@ -626,7 +623,6 @@ static void ieee802_11_rx_bss_trans_mgmt_query(struct hostapd_data *hapd,
  			mbo_len = 3;
  		}
  	}
@@ -678,7 +678,7 @@ index b0e6e104a..ecb1b73d7 100644
  #endif /* CONFIG_MBO */
  
  	ieee802_11_send_bss_trans_mgmt_request(hapd, addr, dialog_token,
-@@ -720,6 +716,109 @@ static void ieee802_11_rx_bss_trans_mgmt_resp(struct hostapd_data *hapd,
+@@ -744,6 +740,109 @@ static void ieee802_11_rx_bss_trans_mgmt_resp(struct hostapd_data *hapd,
  		    pos, end - pos);
  }
  
@@ -788,7 +788,7 @@ index b0e6e104a..ecb1b73d7 100644
  
  static void wnm_beacon_protection_failure(struct hostapd_data *hapd,
  					  const u8 *addr)
-@@ -772,6 +871,9 @@ static void ieee802_11_rx_wnm_notification_req(struct hostapd_data *hapd,
+@@ -796,6 +895,9 @@ static void ieee802_11_rx_wnm_notification_req(struct hostapd_data *hapd,
  		mbo_ap_wnm_notification_req(hapd, addr, buf, len);
  		break;
  	}
@@ -799,10 +799,10 @@ index b0e6e104a..ecb1b73d7 100644
  
  
 diff --git a/src/common/ieee802_11_defs.h b/src/common/ieee802_11_defs.h
-index 8ba020ca7..52a79adc7 100644
+index 8f837a876..fe2179f79 100644
 --- a/src/common/ieee802_11_defs.h
 +++ b/src/common/ieee802_11_defs.h
-@@ -1076,6 +1076,18 @@ struct ieee80211_mgmt {
+@@ -1128,6 +1128,18 @@ struct ieee80211_mgmt {
  					le16 keydata_len;
  					u8 variable[];
  				} STRUCT_PACKED wnm_sleep_resp;
@@ -822,12 +822,12 @@ index 8ba020ca7..52a79adc7 100644
  					u8 action;
  					u8 variable[];
 diff --git a/src/common/wpa_ctrl.h b/src/common/wpa_ctrl.h
-index 922d49c9e..11c21c066 100644
+index 70e11d6eb..79119a654 100644
 --- a/src/common/wpa_ctrl.h
 +++ b/src/common/wpa_ctrl.h
-@@ -440,6 +440,8 @@ extern "C" {
- #define UNCONNECTED_STA_RSSI "UNCONNECTED-STA-RSSI "
+@@ -465,6 +465,8 @@ extern "C" {
  #define AP_PROBE_REQ_RECEIVED "AP-PROBE-REQ-RECEIVED "
+ #endif /* CONFIG_VENDOR_MXL */
  
 +#define AP_STA_WNM_NOTIF "AP-STA-WNM-NOTIF "
 +

@@ -1,4 +1,4 @@
-From 3f11dabe5c3dcc05f290f944f3811e2af9742c51 Mon Sep 17 00:00:00 2001
+From 088023229d621a26f04d8e3a1e374501c2592b63 Mon Sep 17 00:00:00 2001
 From: Jurijs Soloveckis <jsoloveckis@maxlinear.com>
 Date: Thu, 17 Nov 2022 14:58:35 +0100
 Subject: [PATCH] WLANRTSYS-50088: hostapd: additional implementation for 20-40
@@ -8,7 +8,7 @@ Subject: [PATCH] WLANRTSYS-50088: hostapd: additional implementation for 20-40
  hostapd/Makefile                   |   3 +
  hostapd/config_file.c              |   6 ++
  hostapd/mxl_config.c               | 123 +++++++++++++++++++++++++++++
- src/ap/ap_config.c                 |  12 +++
+ src/ap/ap_config.c                 |  13 ++-
  src/ap/ap_config.h                 |   9 +++
  src/ap/hw_features.c               |  11 +++
  src/ap/ieee802_11.c                |   4 +
@@ -22,12 +22,12 @@ Subject: [PATCH] WLANRTSYS-50088: hostapd: additional implementation for 20-40
  src/common/mxl_ieee802_11_common.h |  22 ++++++
  src/common/mxl_wpa_ctrl.h          |  20 +++++
  src/drivers/driver.h               |   6 ++
- src/drivers/driver_nl80211.c       |  11 ++-
+ src/drivers/driver_nl80211.c       |  12 +++
  src/drivers/mxl_driver.h           |  21 +++++
  src/utils/mxl_common.h             |   4 +
  wpa_supplicant/Makefile            |   1 +
  wpa_supplicant/wpa_supplicant.c    |   6 ++
- 22 files changed, 543 insertions(+), 2 deletions(-)
+ 22 files changed, 546 insertions(+), 1 deletion(-)
  create mode 100644 hostapd/mxl_config.c
  create mode 100644 src/ap/mxl_coexistence.c
  create mode 100644 src/ap/mxl_coexistence.h
@@ -38,10 +38,10 @@ Subject: [PATCH] WLANRTSYS-50088: hostapd: additional implementation for 20-40
  create mode 100644 src/drivers/mxl_driver.h
 
 diff --git a/hostapd/Makefile b/hostapd/Makefile
-index a638bc23b..205f75b5b 100644
+index 35f565559..70713534b 100644
 --- a/hostapd/Makefile
 +++ b/hostapd/Makefile
-@@ -358,8 +358,11 @@ endif
+@@ -362,8 +362,11 @@ endif
  
  ifdef CONFIG_VENDOR_MXL
  CFLAGS+= -DCONFIG_VENDOR_MXL
@@ -54,7 +54,7 @@ index a638bc23b..205f75b5b 100644
  
  include ../src/drivers/drivers.mak
 diff --git a/hostapd/config_file.c b/hostapd/config_file.c
-index 7cf0ccfbe..dfb34fa1d 100644
+index 0e35730f9..2af5e3ea2 100644
 --- a/hostapd/config_file.c
 +++ b/hostapd/config_file.c
 @@ -24,6 +24,9 @@
@@ -67,9 +67,9 @@ index 7cf0ccfbe..dfb34fa1d 100644
  
  
  #ifndef CONFIG_NO_VLAN
-@@ -4789,6 +4792,9 @@ static int hostapd_config_fill(struct hostapd_config *conf,
- 			return 1;
- 		}
+@@ -4930,6 +4933,9 @@ static int hostapd_config_fill(struct hostapd_config *conf,
+ 		bss->mld_indicate_disabled = atoi(pos);
+ #endif /* CONFIG_TESTING_OPTIONS */
  #endif /* CONFIG_IEEE80211BE */
 +#ifdef CONFIG_VENDOR_MXL
 +	} else if (mxl_hostapd_config_fill(conf, bss, buf, pos, line)) {
@@ -207,7 +207,7 @@ index 000000000..36aa6c5ab
 +	(void)mxl_bss_conf;
 +}
 diff --git a/src/ap/ap_config.c b/src/ap/ap_config.c
-index 2c66217e8..c5e3fc37a 100644
+index 52808c59b..fcc1bb392 100644
 --- a/src/ap/ap_config.c
 +++ b/src/ap/ap_config.c
 @@ -23,6 +23,9 @@
@@ -220,7 +220,7 @@ index 2c66217e8..c5e3fc37a 100644
  
  
  static void hostapd_config_free_vlan(struct hostapd_bss_config *bss)
-@@ -172,6 +175,9 @@ void hostapd_config_defaults_bss(struct hostapd_bss_config *bss)
+@@ -177,6 +180,9 @@ void hostapd_config_defaults_bss(struct hostapd_bss_config *bss)
  	bss->pasn_comeback_after = 10;
  	bss->pasn_noauth = 1;
  #endif /* CONFIG_PASN */
@@ -230,17 +230,18 @@ index 2c66217e8..c5e3fc37a 100644
  }
  
  
-@@ -295,6 +301,9 @@ struct hostapd_config * hostapd_config_defaults(void)
- 	conf->airtime_update_interval = AIRTIME_DEFAULT_UPDATE_INTERVAL;
+@@ -305,7 +311,9 @@ struct hostapd_config * hostapd_config_defaults(void)
  #endif /* CONFIG_AIRTIME_POLICY */
  
+ 	hostapd_set_and_check_bw320_offset(conf, 0);
+-
 +#ifdef CONFIG_VENDOR_MXL
 +	mxl_hostapd_config_defaults(conf);
 +#endif /* CONFIG_VENDOR_MXL */
  	return conf;
  }
  
-@@ -981,6 +990,9 @@ void hostapd_config_free_bss(struct hostapd_bss_config *conf)
+@@ -1003,6 +1011,9 @@ void hostapd_config_free_bss(struct hostapd_bss_config *conf)
  #ifdef CONFIG_PASN
  	os_free(conf->pasn_groups);
  #endif /* CONFIG_PASN */
@@ -251,7 +252,7 @@ index 2c66217e8..c5e3fc37a 100644
  	os_free(conf);
  }
 diff --git a/src/ap/ap_config.h b/src/ap/ap_config.h
-index 5699a6be1..760d69950 100644
+index 02eb4b6fb..43c971f4c 100644
 --- a/src/ap/ap_config.h
 +++ b/src/ap/ap_config.h
 @@ -19,6 +19,9 @@
@@ -264,20 +265,20 @@ index 5699a6be1..760d69950 100644
  
  enum macaddr_acl {
  	ACCEPT_UNLESS_DENIED = 0,
-@@ -949,6 +952,9 @@ struct hostapd_bss_config {
- 	/* The AP's MLD MAC address within the AP MLD */
- 	u8 mld_addr[ETH_ALEN];
- #endif /* CONFIG_IEEE80211BE */
+@@ -978,6 +981,9 @@ struct hostapd_bss_config {
+ 	int mbssid_index;
+ 
+ 	bool spp_amsdu;
 +#ifdef CONFIG_VENDOR_MXL
 +	struct mxl_hostapd_bss_config mxl_bss_conf;
 +#endif /* CONFIG_VENDOR_MXL */
  };
  
  /**
-@@ -1185,6 +1191,9 @@ struct hostapd_config {
- 		MBSSID_ENABLED = 1,
- 		ENHANCED_MBSSID_ENABLED = 2,
- 	} mbssid;
+@@ -1237,6 +1243,9 @@ struct hostapd_config {
+ 
+ 	bool channel_usage;
+ 	bool peer_to_peer_twt;
 +#ifdef CONFIG_VENDOR_MXL
 +	struct mxl_hostapd_config mxl_conf;
 +#endif /* CONFIG_VENDOR_MXL */
@@ -285,7 +286,7 @@ index 5699a6be1..760d69950 100644
  
  
 diff --git a/src/ap/hw_features.c b/src/ap/hw_features.c
-index 9edbb5ae2..ac718015d 100644
+index cef38173e..d6cae518c 100644
 --- a/src/ap/hw_features.c
 +++ b/src/ap/hw_features.c
 @@ -23,6 +23,9 @@
@@ -298,7 +299,7 @@ index 9edbb5ae2..ac718015d 100644
  
  
  void hostapd_free_hw_features(struct hostapd_hw_modes *hw_features,
-@@ -355,6 +358,9 @@ static void ieee80211n_check_scan(struct hostapd_iface *iface)
+@@ -375,6 +378,9 @@ static void ieee80211n_check_scan(struct hostapd_iface *iface)
  		return;
  	}
  
@@ -308,7 +309,7 @@ index 9edbb5ae2..ac718015d 100644
  	if (iface->current_mode->mode == HOSTAPD_MODE_IEEE80211A)
  		oper40 = ieee80211n_check_40mhz_5g(iface, scan_res);
  	else
-@@ -549,6 +555,11 @@ static int ieee80211n_check_40mhz(struct hostapd_iface *iface)
+@@ -570,6 +576,11 @@ static int ieee80211n_check_40mhz(struct hostapd_iface *iface)
  	if (!iface->conf->secondary_channel || iface->conf->no_pri_sec_switch)
  		return 0;
  
@@ -321,10 +322,10 @@ index 9edbb5ae2..ac718015d 100644
  	wpa_printf(MSG_DEBUG, "Scan for neighboring BSSes prior to enabling "
  		   "40 MHz channel");
 diff --git a/src/ap/ieee802_11.c b/src/ap/ieee802_11.c
-index 51035f4ba..739eda29d 100644
+index d8807cbef..4cbb37575 100644
 --- a/src/ap/ieee802_11.c
 +++ b/src/ap/ieee802_11.c
-@@ -59,6 +59,7 @@
+@@ -61,6 +61,7 @@
  #include "pasn/pasn_common.h"
  #ifdef CONFIG_VENDOR_MXL
  #include "mxl_hostapd.h"
@@ -332,7 +333,7 @@ index 51035f4ba..739eda29d 100644
  #endif /* CONFIG_VENDOR_MXL */
  
  
-@@ -5916,6 +5917,9 @@ static void handle_beacon(struct hostapd_data *hapd,
+@@ -6247,6 +6248,9 @@ static void handle_beacon(struct hostapd_data *hapd,
  					     sizeof(mgmt->u.beacon)), &elems,
  				      0);
  
@@ -343,7 +344,7 @@ index 51035f4ba..739eda29d 100644
  }
  
 diff --git a/src/ap/ieee802_11_ht.c b/src/ap/ieee802_11_ht.c
-index f90f1254e..25007d7ef 100644
+index 9bc046141..1894a82eb 100644
 --- a/src/ap/ieee802_11_ht.c
 +++ b/src/ap/ieee802_11_ht.c
 @@ -19,6 +19,9 @@
@@ -366,7 +367,7 @@ index f90f1254e..25007d7ef 100644
  
  		pos += sizeof(*scan_params);
  	}
-@@ -335,6 +341,9 @@ void hostapd_2040_coex_action(struct hostapd_data *hapd,
+@@ -375,6 +381,9 @@ void hostapd_2040_coex_action(struct hostapd_data *hapd,
  				       HOSTAPD_LEVEL_INFO,
  				       "Switching to 20 MHz operation");
  			iface->conf->secondary_channel = 0;
@@ -376,7 +377,7 @@ index f90f1254e..25007d7ef 100644
  			ieee802_11_set_beacons(iface);
  		}
  		if (!iface->num_sta_ht40_intolerant &&
-@@ -390,6 +399,14 @@ void ht40_intolerant_add(struct hostapd_iface *iface, struct sta_info *sta)
+@@ -430,6 +439,14 @@ void ht40_intolerant_add(struct hostapd_iface *iface, struct sta_info *sta)
  	if (iface->current_mode->mode != HOSTAPD_MODE_IEEE80211G)
  		return;
  
@@ -391,7 +392,7 @@ index f90f1254e..25007d7ef 100644
  	wpa_printf(MSG_INFO, "HT: Forty MHz Intolerant is set by STA " MACSTR
  		   " in Association Request", MAC2STR(sta->addr));
  
-@@ -402,8 +419,15 @@ void ht40_intolerant_add(struct hostapd_iface *iface, struct sta_info *sta)
+@@ -442,8 +459,15 @@ void ht40_intolerant_add(struct hostapd_iface *iface, struct sta_info *sta)
  
  	if (iface->conf->secondary_channel &&
  	    (iface->drv_flags & WPA_DRIVER_FLAGS_HT_2040_COEX)) {
@@ -407,7 +408,7 @@ index f90f1254e..25007d7ef 100644
  	}
  }
  
-@@ -531,4 +555,7 @@ void ap_ht2040_timeout(void *eloop_data, void *user_data)
+@@ -572,4 +596,7 @@ void ap_ht2040_timeout(void *eloop_data, void *user_data)
  
  	iface->conf->secondary_channel = iface->secondary_ch;
  	ieee802_11_set_beacons(iface);
@@ -653,7 +654,7 @@ index 68c3f0504..2fb84e182 100644
  {
  	struct hostapd_iface *iface = hapd->iface;
 diff --git a/src/common/hw_features_common.c b/src/common/hw_features_common.c
-index 57b5a8e23..9484592c7 100644
+index d9276b935..41dccc23d 100644
 --- a/src/common/hw_features_common.c
 +++ b/src/common/hw_features_common.c
 @@ -14,6 +14,9 @@
@@ -803,10 +804,10 @@ index 000000000..3218a1970
 +
 +#endif /* MXL_WPA_CTRL_H */
 diff --git a/src/drivers/driver.h b/src/drivers/driver.h
-index 4c43e607a..4bc6f019a 100644
+index c7857188d..a057ddb2f 100644
 --- a/src/drivers/driver.h
 +++ b/src/drivers/driver.h
-@@ -27,6 +27,9 @@
+@@ -30,6 +30,9 @@
  #include "pae/ieee802_1x_kay.h"
  #endif /* CONFIG_MACSEC */
  #include "utils/list.h"
@@ -814,9 +815,9 @@ index 4c43e607a..4bc6f019a 100644
 +#include "mxl_driver.h"
 +#endif /* CONFIG_VENDOR_MXL */
  
- #define HOSTAPD_CHAN_DISABLED 0x00000001
- #define HOSTAPD_CHAN_NO_IR 0x00000002
-@@ -401,6 +404,9 @@ struct wpa_scan_results {
+ struct nan_subscribe_params;
+ struct nan_publish_params;
+@@ -434,6 +437,9 @@ struct wpa_scan_results {
  	struct wpa_scan_res **res;
  	size_t num;
  	struct os_reltime fetch_time;
@@ -827,10 +828,10 @@ index 4c43e607a..4bc6f019a 100644
  
  /**
 diff --git a/src/drivers/driver_nl80211.c b/src/drivers/driver_nl80211.c
-index 2adbeb348..c359ef02c 100644
+index 0a8d62aab..0ee68fa41 100644
 --- a/src/drivers/driver_nl80211.c
 +++ b/src/drivers/driver_nl80211.c
-@@ -972,6 +972,10 @@ static int process_beacon_event(struct nl_msg *msg, void *arg)
+@@ -913,6 +913,10 @@ static int process_beacon_event(struct nl_msg *msg, void *arg)
  		os_memset(&event, 0, sizeof(event));
  		event.rx_mgmt.frame = nla_data(tb[NL80211_ATTR_FRAME]);
  		event.rx_mgmt.frame_len = nla_len(tb[NL80211_ATTR_FRAME]);
@@ -841,16 +842,19 @@ index 2adbeb348..c359ef02c 100644
  		wpa_supplicant_event(drv->ctx, EVENT_RX_MGMT, &event);
  	}
  
-@@ -5524,8 +5528,11 @@ static int nl80211_set_channel(struct i802_bss *bss,
+@@ -5600,8 +5604,16 @@ static int nl80211_set_channel(struct i802_bss *bss,
  		   freq->he_enabled, freq->eht_enabled, freq->bandwidth,
  		   freq->center_freq1, freq->center_freq2);
  
--	msg = nl80211_drv_msg(drv, 0, set_chan ? NL80211_CMD_SET_CHANNEL :
--			      NL80211_CMD_SET_WIPHY);
++#ifndef CONFIG_VENDOR_MXL
+ 	msg = nl80211_bss_msg(bss, 0, set_chan ? NL80211_CMD_SET_CHANNEL :
+ 			      NL80211_CMD_SET_WIPHY);
++#else /* CONFIG_VENDOR_MXL */
 +	if (set_chan)
 +		msg = nl80211_bss_msg(bss, 0, NL80211_CMD_SET_CHANNEL);
 +	else
 +		msg = nl80211_drv_msg(drv, 0, NL80211_CMD_SET_WIPHY);
++#endif /* CONFIG_VENDOR_MXL */
 +
  	if (!msg || nl80211_put_freq_params(msg, freq) < 0) {
  		nlmsg_free(msg);
@@ -898,10 +902,10 @@ index dadbd8ee6..121f55f93 100644
  #define EOK 0
  #endif
 diff --git a/wpa_supplicant/Makefile b/wpa_supplicant/Makefile
-index 420807691..dab270b5b 100644
+index ab2fa7f61..852fd7d31 100644
 --- a/wpa_supplicant/Makefile
 +++ b/wpa_supplicant/Makefile
-@@ -1954,6 +1954,7 @@ endif
+@@ -2001,6 +2001,7 @@ endif
  ifdef CONFIG_VENDOR_MXL
  CFLAGS += -DCONFIG_VENDOR_MXL
  CFLAGS += -DCONFIG_VENDOR_MXL_BUILD_FOR_SUPPLICANT
@@ -910,10 +914,10 @@ index 420807691..dab270b5b 100644
  
  dynamic_eap_methods: $(EAPDYN)
 diff --git a/wpa_supplicant/wpa_supplicant.c b/wpa_supplicant/wpa_supplicant.c
-index c4c58b757..35d286946 100644
+index e63048d18..f097b0050 100644
 --- a/wpa_supplicant/wpa_supplicant.c
 +++ b/wpa_supplicant/wpa_supplicant.c
-@@ -69,6 +69,9 @@
+@@ -70,6 +70,9 @@
  #include "ap/ap_config.h"
  #include "ap/hostapd.h"
  #endif /* CONFIG_MESH */
@@ -923,7 +927,7 @@ index c4c58b757..35d286946 100644
  
  const char *const wpa_supplicant_version =
  "wpa_supplicant v" VERSION_STR "\n"
-@@ -2875,6 +2878,9 @@ static void ibss_mesh_select_40mhz(struct wpa_supplicant *wpa_s,
+@@ -3164,6 +3167,9 @@ static void ibss_mesh_select_40mhz(struct wpa_supplicant *wpa_s,
  			return;
  		}
  

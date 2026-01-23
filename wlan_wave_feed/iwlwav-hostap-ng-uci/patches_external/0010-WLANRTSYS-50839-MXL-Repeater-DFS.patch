@@ -1,4 +1,4 @@
-From 9a6f36733aae105e9418d6e4510c0a6b53255018 Mon Sep 17 00:00:00 2001
+From 5cda0aba52359c504235f53528468f5d320ed1fa Mon Sep 17 00:00:00 2001
 From: mvuls <mvuls@maxlinear.com>
 Date: Thu, 9 Nov 2023 21:35:19 +0200
 Subject: [PATCH] WLANRTSYS-50839: MXL Repeater DFS
@@ -42,10 +42,10 @@ index b2f56e4b3..6ecb3e8ba 100644
  		return 0;
  	return 1;
 diff --git a/src/ap/dfs.c b/src/ap/dfs.c
-index 0bd050ab3..7e4bd5310 100644
+index 4906c4d5b..af5f1b439 100644
 --- a/src/ap/dfs.c
 +++ b/src/ap/dfs.c
-@@ -1471,6 +1471,10 @@ int mxl_set_dfs_state_freq(struct hostapd_iface *iface, int freq, u32 state) { r
+@@ -1498,6 +1498,10 @@ int mxl_set_dfs_state_freq(struct hostapd_iface *iface, int freq, u32 state) { r
  void mxl_dfs_adjust_center_freq(struct hostapd_iface *iface, struct hostapd_channel_data *chan, int secondary_channel,
  				int sec_chan_idx_80p80, u8 *oper_centr_freq_seg0_idx, u8 *oper_centr_freq_seg1_idx)
  	{ return dfs_adjust_center_freq(iface, chan, secondary_channel, sec_chan_idx_80p80, oper_centr_freq_seg0_idx, oper_centr_freq_seg1_idx); }
@@ -275,10 +275,10 @@ index 8b1b0e2ab..6e77d4312 100644
 +
  #endif /* _VENDOR_CMDS_H_ */
 diff --git a/src/drivers/driver_nl80211_event.c b/src/drivers/driver_nl80211_event.c
-index 8418127ae..a1736995d 100644
+index fbeccc6c2..a76474ccb 100644
 --- a/src/drivers/driver_nl80211_event.c
 +++ b/src/drivers/driver_nl80211_event.c
-@@ -3237,6 +3237,12 @@ static void mxl_nl80211_handle_flush_stations(struct wpa_driver_nl80211_data *dr
+@@ -3375,6 +3375,12 @@ static void mxl_nl80211_handle_flush_stations(struct wpa_driver_nl80211_data *dr
  	mxl_drv_event_flush_stations(drv->ctx, data, len);
  }
  
@@ -291,7 +291,7 @@ index 8418127ae..a1736995d 100644
  #endif /* CONFIG_DRIVER_NL80211_MXL */
  
  static void nl80211_vendor_event_mxl(struct wpa_driver_nl80211_data *drv,
-@@ -3246,6 +3252,9 @@ static void nl80211_vendor_event_mxl(struct wpa_driver_nl80211_data *drv,
+@@ -3384,6 +3390,9 @@ static void nl80211_vendor_event_mxl(struct wpa_driver_nl80211_data *drv,
  		case LTQ_NL80211_VENDOR_EVENT_FLUSH_STATIONS:
  			mxl_nl80211_handle_flush_stations(drv, data, len);
  			break;
@@ -302,10 +302,10 @@ index 8418127ae..a1736995d 100644
  			wpa_printf(MSG_DEBUG, "nl80211: Ignore unsupported MXL vendor event %u", subcmd);
  			break;
 diff --git a/wpa_supplicant/Makefile b/wpa_supplicant/Makefile
-index dab270b5b..f5dd3b3ae 100644
+index 852fd7d31..ea7290a0c 100644
 --- a/wpa_supplicant/Makefile
 +++ b/wpa_supplicant/Makefile
-@@ -1955,6 +1955,7 @@ ifdef CONFIG_VENDOR_MXL
+@@ -2002,6 +2002,7 @@ ifdef CONFIG_VENDOR_MXL
  CFLAGS += -DCONFIG_VENDOR_MXL
  CFLAGS += -DCONFIG_VENDOR_MXL_BUILD_FOR_SUPPLICANT
  OBJS += ../src/common/mxl_ieee802_11_common.o
@@ -314,7 +314,7 @@ index dab270b5b..f5dd3b3ae 100644
  
  dynamic_eap_methods: $(EAPDYN)
 diff --git a/wpa_supplicant/config.c b/wpa_supplicant/config.c
-index 1aff67be2..39d195fa7 100644
+index 77eb9bf68..ca4521e2c 100644
 --- a/wpa_supplicant/config.c
 +++ b/wpa_supplicant/config.c
 @@ -19,7 +19,9 @@
@@ -328,7 +328,7 @@ index 1aff67be2..39d195fa7 100644
  
  #if !defined(CONFIG_CTRL_IFACE) && defined(CONFIG_NO_CONFIG_WRITE)
  #define NO_CONFIG_WRITE
-@@ -5496,6 +5498,9 @@ static const struct global_parse_data global_fields[] = {
+@@ -5652,6 +5654,9 @@ static const struct global_parse_data global_fields[] = {
  	{ INT_RANGE(mac_addr, 0, 2), 0 },
  	{ INT(rand_addr_lifetime), 0 },
  	{ INT_RANGE(preassoc_mac_addr, 0, 2), 0 },
@@ -339,10 +339,10 @@ index 1aff67be2..39d195fa7 100644
  	{ INT(passive_scan), 0 },
  	{ INT(reassoc_same_bss_optim), 0 },
 diff --git a/wpa_supplicant/config.h b/wpa_supplicant/config.h
-index 02139e6b2..14055bb79 100644
+index 69946076e..590d2b6a0 100644
 --- a/wpa_supplicant/config.h
 +++ b/wpa_supplicant/config.h
-@@ -1430,6 +1430,10 @@ struct wpa_config {
+@@ -1479,6 +1479,10 @@ struct wpa_config {
  	 */
  	enum wpas_mac_addr_style preassoc_mac_addr;
  

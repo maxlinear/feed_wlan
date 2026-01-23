@@ -1,4 +1,4 @@
-From dda0bc59de19953a28c5f2a2317af71f56b5b71d Mon Sep 17 00:00:00 2001
+From 2dfd2b345a6146df81c03e76d602d109e1d9f3d8 Mon Sep 17 00:00:00 2001
 From: Jurijs Soloveckis <jsoloveckis@maxlinear.com>
 Date: Thu, 6 Jul 2023 14:29:47 +0200
 Subject: [PATCH] WLANRTSYS-56718: IOP fixes implementation
@@ -12,10 +12,10 @@ Subject: [PATCH] WLANRTSYS-56718: IOP fixes implementation
  4 files changed, 4 insertions(+), 4 deletions(-)
 
 diff --git a/hostapd/ctrl_iface.c b/hostapd/ctrl_iface.c
-index b02513ba4..8b27cfd5d 100644
+index 463f0ac11..43017fcf5 100644
 --- a/hostapd/ctrl_iface.c
 +++ b/hostapd/ctrl_iface.c
-@@ -6493,7 +6493,7 @@ static void hostapd_ctrl_iface_receive(int sock, void *eloop_ctx,
+@@ -7172,7 +7172,7 @@ static void hostapd_ctrl_iface_receive(int sock, void *eloop_ctx,
  	struct sockaddr_storage from;
  	socklen_t fromlen = sizeof(from);
  	char *reply, *pos = buf;
@@ -25,10 +25,10 @@ index b02513ba4..8b27cfd5d 100644
  	int level = MSG_DEBUG;
  #ifdef CONFIG_CTRL_IFACE_UDP
 diff --git a/hostapd/hostapd_cli.c b/hostapd/hostapd_cli.c
-index d356df70a..e49876ba3 100644
+index fddba81ac..335f00257 100644
 --- a/hostapd/hostapd_cli.c
 +++ b/hostapd/hostapd_cli.c
-@@ -195,7 +195,7 @@ static void hostapd_cli_msg_cb(char *msg, size_t len)
+@@ -203,7 +203,7 @@ static void hostapd_cli_msg_cb(char *msg, size_t len)
  
  static int _wpa_ctrl_command(struct wpa_ctrl *ctrl, const char *cmd, int print)
  {
@@ -38,10 +38,10 @@ index d356df70a..e49876ba3 100644
  	int ret;
  
 diff --git a/wpa_supplicant/ctrl_iface.c b/wpa_supplicant/ctrl_iface.c
-index b7ccfe7b3..b806d5c4e 100644
+index 7499d6aaa..a9ed2a8db 100644
 --- a/wpa_supplicant/ctrl_iface.c
 +++ b/wpa_supplicant/ctrl_iface.c
-@@ -12381,7 +12381,7 @@ char * wpa_supplicant_ctrl_iface_process(struct wpa_supplicant *wpa_s,
+@@ -13081,7 +13081,7 @@ char * wpa_supplicant_ctrl_iface_process(struct wpa_supplicant *wpa_s,
  					 char *buf, size_t *resp_len)
  {
  	char *reply;
@@ -51,7 +51,7 @@ index b7ccfe7b3..b806d5c4e 100644
  
  	if (os_strncmp(buf, WPA_CTRL_RSP, os_strlen(WPA_CTRL_RSP)) == 0 ||
 diff --git a/wpa_supplicant/wpa_cli.c b/wpa_supplicant/wpa_cli.c
-index 00d510258..087c4cb5a 100644
+index 8f0f51449..6e2c7dbf9 100644
 --- a/wpa_supplicant/wpa_cli.c
 +++ b/wpa_supplicant/wpa_cli.c
 @@ -227,7 +227,7 @@ static void wpa_cli_msg_cb(char *msg, size_t len)

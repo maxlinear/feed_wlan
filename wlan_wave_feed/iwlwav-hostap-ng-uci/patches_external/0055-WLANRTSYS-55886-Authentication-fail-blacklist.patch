@@ -1,4 +1,4 @@
-From 2455e8ff750d783b5f2996c812fe293afee2d0fa Mon Sep 17 00:00:00 2001
+From 9d96ad15c1b2b63ffa71124981e774e4a63c93ea Mon Sep 17 00:00:00 2001
 From: Dmitrijs Martinovs <dmartinovs@maxlinear.com>
 Date: Mon, 12 Jun 2023 09:40:24 +0200
 Subject: [PATCH] WLANRTSYS-55886: Authentication fail blacklist
@@ -16,10 +16,10 @@ Subject: [PATCH] WLANRTSYS-55886: Authentication fail blacklist
  9 files changed, 133 insertions(+)
 
 diff --git a/hostapd/config_file.c b/hostapd/config_file.c
-index 1022a6a7a..f50f247c5 100644
+index f90a6e3eb..1572ed654 100644
 --- a/hostapd/config_file.c
 +++ b/hostapd/config_file.c
-@@ -2902,6 +2902,10 @@ static int hostapd_config_fill(struct hostapd_config *conf,
+@@ -2843,6 +2843,10 @@ static int hostapd_config_fill(struct hostapd_config *conf,
  		bss->openssl_ecdh_curves = os_strdup(pos);
  	} else if (os_strcmp(buf, "fragment_size") == 0) {
  		bss->fragment_size = atoi(pos);
@@ -31,10 +31,10 @@ index 1022a6a7a..f50f247c5 100644
  		bss->eap_req_id_retry_interval = atoi(pos);
  	} else if (os_strcmp(buf, "eap_aaa_req_retries") == 0) {
 diff --git a/src/ap/ap_config.c b/src/ap/ap_config.c
-index 1383efe4e..71a71cc8f 100644
+index c228ce9b8..c4f795161 100644
 --- a/src/ap/ap_config.c
 +++ b/src/ap/ap_config.c
-@@ -108,6 +108,8 @@ void hostapd_config_defaults_bss(struct hostapd_bss_config *bss)
+@@ -111,6 +111,8 @@ void hostapd_config_defaults_bss(struct hostapd_bss_config *bss)
  	bss->assoc_sa_query_max_timeout = 1000;
  	bss->assoc_sa_query_retry_timeout = 201;
  	bss->group_mgmt_cipher = WPA_CIPHER_AES_128_CMAC;
@@ -44,10 +44,10 @@ index 1383efe4e..71a71cc8f 100644
  	bss->pmksa_interval = 0;
  	bss->auth_quiet_period = 0;
 diff --git a/src/ap/ap_config.h b/src/ap/ap_config.h
-index b14765dd3..098d5133a 100644
+index 1a40785c6..fa101ffc2 100644
 --- a/src/ap/ap_config.h
 +++ b/src/ap/ap_config.h
-@@ -380,6 +380,13 @@ struct hostapd_bss_config {
+@@ -383,6 +383,13 @@ struct hostapd_bss_config {
  	int eap_aaa_req_retries; /* Number of retries for Radius requests */
  	int eap_aaa_req_timeout; /* Radius request timeout in seconds after which
  			the request must be retransmitted for the # of retries available */
@@ -62,10 +62,10 @@ index b14765dd3..098d5133a 100644
  				seconds following failed authentication.A value of 0 (zero)
  				disables it.*/
 diff --git a/src/ap/hostapd.c b/src/ap/hostapd.c
-index 31ccdd46d..c2f9dac54 100644
+index 0f16ee1b3..950127762 100644
 --- a/src/ap/hostapd.c
 +++ b/src/ap/hostapd.c
-@@ -3400,6 +3400,7 @@ hostapd_alloc_bss_data(struct hostapd_iface *hapd_iface,
+@@ -3618,6 +3618,7 @@ hostapd_alloc_bss_data(struct hostapd_iface *hapd_iface,
  	hapd->ctrl_sock = -1;
  	dl_list_init(&hapd->ctrl_dst);
  	dl_list_init(&hapd->nr_db);
@@ -74,10 +74,10 @@ index 31ccdd46d..c2f9dac54 100644
  #ifdef CONFIG_IEEE80211R_AP
  	dl_list_init(&hapd->l2_queue);
 diff --git a/src/ap/hostapd.h b/src/ap/hostapd.h
-index e4487be78..11536c06a 100644
+index d4ec16f86..f2d4d00cf 100644
 --- a/src/ap/hostapd.h
 +++ b/src/ap/hostapd.h
-@@ -441,6 +441,8 @@ struct hostapd_data {
+@@ -462,6 +462,8 @@ struct hostapd_data {
  
  	int dhcp_sock; /* UDP socket used with the DHCP server */
  
@@ -87,10 +87,10 @@ index e4487be78..11536c06a 100644
  
  #ifdef CONFIG_DPP
 diff --git a/src/ap/ieee802_11_auth.c b/src/ap/ieee802_11_auth.c
-index 4277d82cb..8e045819c 100644
+index 913a99597..2a9d0a942 100644
 --- a/src/ap/ieee802_11_auth.c
 +++ b/src/ap/ieee802_11_auth.c
-@@ -197,6 +197,95 @@ static int hostapd_radius_acl_query(struct hostapd_data *hapd, const u8 *addr,
+@@ -200,6 +200,95 @@ static int hostapd_radius_acl_query(struct hostapd_data *hapd, const u8 *addr,
  }
  #endif /* CONFIG_NO_RADIUS */
  
@@ -186,7 +186,7 @@ index 4277d82cb..8e045819c 100644
  
  /**
   * hostapd_check_acl - Check a specified STA against accept/deny ACLs
-@@ -251,6 +340,9 @@ int hostapd_allowed_address(struct hostapd_data *hapd, const u8 *addr,
+@@ -254,6 +343,9 @@ int hostapd_allowed_address(struct hostapd_data *hapd, const u8 *addr,
  	int res;
  
  	os_memset(out, 0, sizeof(*out));
@@ -211,10 +211,10 @@ index 7d1aa9341..7747963ac 100644
  int mxl_ieee802_11_multi_ap_set_deny_mac(struct hostapd_data *hapd,
  	struct multi_ap_blacklist* entry, const u8 remove);
 diff --git a/src/ap/sta_info.c b/src/ap/sta_info.c
-index bdb526bad..dfe4c14be 100644
+index 87c288dd7..99fac76d6 100644
 --- a/src/ap/sta_info.c
 +++ b/src/ap/sta_info.c
-@@ -1878,6 +1878,21 @@ void ap_sta_delayed_1x_auth_fail_disconnect(struct hostapd_data *hapd,
+@@ -2136,6 +2136,21 @@ void ap_sta_delayed_1x_auth_fail_disconnect(struct hostapd_data *hapd,
  					    struct sta_info *sta,
  					    unsigned timeout)
  {
@@ -237,7 +237,7 @@ index bdb526bad..dfe4c14be 100644
  		"IEEE 802.1X: Force disconnection of " MACSTR
  		" after EAP-Failure in %u ms", MAC2STR(sta->addr), timeout);
 diff --git a/src/common/ieee802_11_defs.h b/src/common/ieee802_11_defs.h
-index 91b9f280e..3e5e5646c 100644
+index 79f13a852..398ea253c 100644
 --- a/src/common/ieee802_11_defs.h
 +++ b/src/common/ieee802_11_defs.h
 @@ -11,6 +11,7 @@
@@ -248,7 +248,7 @@ index 91b9f280e..3e5e5646c 100644
  #ifdef CONFIG_VENDOR_MXL
  #include "mxl_ieee802_11_defs.h"
  #endif /* CONFIG_VENDOR_MXL */
-@@ -1231,6 +1232,12 @@ struct ieee80211_ampe_ie {
+@@ -1283,6 +1284,12 @@ struct ieee80211_ampe_ie {
  } STRUCT_PACKED;
  
  

@@ -1,4 +1,4 @@
-From 74eea79d7adbe7f67de0988bfabbafc371ce95e3 Mon Sep 17 00:00:00 2001
+From 69e7e28b16915f4334d5e15f2d9e2572596e6913 Mon Sep 17 00:00:00 2001
 From: mvuls <mvuls@maxlinear.com>
 Date: Wed, 8 Nov 2023 17:12:30 +0200
 Subject: [PATCH] WLANRTSYS-50839: MXL DFS ETSI clear for life
@@ -20,10 +20,10 @@ Subject: [PATCH] WLANRTSYS-50839: MXL DFS ETSI clear for life
  create mode 100644 src/ap/mxl_dfs_file.h
 
 diff --git a/hostapd/Makefile b/hostapd/Makefile
-index ba7be1ac1..b03f4c1e4 100644
+index 4c9361532..0ebc18a60 100644
 --- a/hostapd/Makefile
 +++ b/hostapd/Makefile
-@@ -368,6 +368,7 @@ OBJS += mxl_ctrl_iface.o
+@@ -372,6 +372,7 @@ OBJS += mxl_ctrl_iface.o
  OBJS += ../src/drivers/mxl_driver_nl80211.o
  OBJS += ../src/ap/mxl_dfs_common.o
  OBJS += ../src/ap/mxl_sub_band_dfs.o
@@ -58,10 +58,10 @@ index 0c456ef9d..f54bbf8d8 100644
 +
 +
 diff --git a/src/ap/dfs.c b/src/ap/dfs.c
-index ffecc09fa..0bd050ab3 100644
+index 6f783c520..4906c4d5b 100644
 --- a/src/ap/dfs.c
 +++ b/src/ap/dfs.c
-@@ -19,6 +19,7 @@
+@@ -20,6 +20,7 @@
  #include "dfs.h"
  #ifdef CONFIG_VENDOR_MXL
  #include "mxl_dfs_common.h"
@@ -69,7 +69,7 @@ index ffecc09fa..0bd050ab3 100644
  #endif /* CONFIG_VENDOR_MXL */
  
  enum dfs_channel_type {
-@@ -652,6 +653,9 @@ static int set_dfs_state_freq(struct hostapd_iface *iface, int freq, u32 state)
+@@ -662,6 +663,9 @@ static int set_dfs_state_freq(struct hostapd_iface *iface, int freq, u32 state)
  			if (chan->flag & HOSTAPD_CHAN_RADAR) {
  				chan->flag &= ~HOSTAPD_CHAN_DFS_MASK;
  				chan->flag |= state;
@@ -79,7 +79,7 @@ index ffecc09fa..0bd050ab3 100644
  				return 1; /* Channel found */
  			}
  		}
-@@ -1166,6 +1170,9 @@ int hostapd_dfs_complete_cac(struct hostapd_iface *iface, int success, int freq,
+@@ -1192,6 +1196,9 @@ int hostapd_dfs_complete_cac(struct hostapd_iface *iface, int success, int freq,
  			set_dfs_state(iface, freq, ht_enabled, chan_offset,
  				      chan_width, cf1, cf2,
  				      HOSTAPD_CHAN_DFS_AVAILABLE);
@@ -89,7 +89,7 @@ index ffecc09fa..0bd050ab3 100644
  
  			/*
  			 * Radar event from background chain for the selected
-@@ -1492,6 +1499,10 @@ int hostapd_dfs_radar_detected(struct hostapd_iface *iface, int freq,
+@@ -1521,6 +1528,10 @@ int hostapd_dfs_radar_detected(struct hostapd_iface *iface, int freq,
  			   cf1, cf2, HOSTAPD_CHAN_DFS_UNAVAILABLE))
  		return 0;
  
@@ -100,7 +100,7 @@ index ffecc09fa..0bd050ab3 100644
  	if (!hostapd_dfs_is_background_event(iface, freq)) {
  		/* Skip if reported radar event not overlapped our channels */
  		if (!dfs_are_channels_overlapped(iface, freq, chan_width,
-@@ -1529,6 +1540,10 @@ int hostapd_dfs_nop_finished(struct hostapd_iface *iface, int freq,
+@@ -1558,6 +1569,10 @@ int hostapd_dfs_nop_finished(struct hostapd_iface *iface, int freq,
  	set_dfs_state(iface, freq, ht_enabled, chan_offset, chan_width,
  		      cf1, cf2, HOSTAPD_CHAN_DFS_USABLE);
  
@@ -112,7 +112,7 @@ index ffecc09fa..0bd050ab3 100644
  		/* Handle cases where all channels were initially unavailable */
  		hostapd_handle_dfs(iface);
 diff --git a/src/ap/hw_features.c b/src/ap/hw_features.c
-index 82a39b426..17718e8b0 100644
+index 8386da4a9..612668869 100644
 --- a/src/ap/hw_features.c
 +++ b/src/ap/hw_features.c
 @@ -25,6 +25,8 @@
@@ -124,7 +124,7 @@ index 82a39b426..17718e8b0 100644
  #endif /* CONFIG_VENDOR_MXL */
  
  
-@@ -1312,6 +1314,10 @@ int hostapd_select_hw_mode(struct hostapd_iface *iface)
+@@ -1332,6 +1334,10 @@ int hostapd_select_hw_mode(struct hostapd_iface *iface)
  			return -2;
  		}
  	}
@@ -409,10 +409,10 @@ index 9f560192c..b75d7ee4a 100644
  
  struct mxl_hostapd_data {
 diff --git a/src/drivers/driver.h b/src/drivers/driver.h
-index 1e4b3fece..610458d87 100644
+index 505fadc9a..fd1d3a699 100644
 --- a/src/drivers/driver.h
 +++ b/src/drivers/driver.h
-@@ -179,6 +179,9 @@ struct hostapd_channel_data {
+@@ -186,6 +186,9 @@ struct hostapd_channel_data {
  	 * punct_bitmap - RU puncturing bitmap
  	 */
  	u16 punct_bitmap;
@@ -423,10 +423,10 @@ index 1e4b3fece..610458d87 100644
  
  #define HE_MAC_CAPAB_0		0
 diff --git a/src/drivers/driver_nl80211_capa.c b/src/drivers/driver_nl80211_capa.c
-index 8e033ceb0..847631bfb 100644
+index d367eed3f..8cb90caae 100644
 --- a/src/drivers/driver_nl80211_capa.c
 +++ b/src/drivers/driver_nl80211_capa.c
-@@ -1681,6 +1681,9 @@ static void phy_info_freq(struct hostapd_hw_modes *mode,
+@@ -1709,6 +1709,9 @@ static void phy_info_freq(struct hostapd_hw_modes *mode,
  	chan->flag = 0;
  	chan->allowed_bw = ~0;
  	chan->dfs_cac_ms = 0;

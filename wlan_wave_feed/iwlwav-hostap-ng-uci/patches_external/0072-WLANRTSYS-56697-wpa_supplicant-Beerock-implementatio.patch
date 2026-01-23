@@ -1,4 +1,4 @@
-From 485bcd45ecb52b3d1beb4c62b5f5f18d64183a36 Mon Sep 17 00:00:00 2001
+From a73fb5bb0f08c0292f317034116dabfac3ba1f25 Mon Sep 17 00:00:00 2001
 From: mvulsx <mvuls@maxlinear.com>
 Date: Tue, 4 Jul 2023 11:59:19 +0000
 Subject: [PATCH] WLANRTSYS-56697: wpa_supplicant: Beerock implementation
@@ -18,12 +18,12 @@ Signed-off-by: mvulsx <mvuls@maxlinear.com>
  src/drivers/driver_nl80211_event.c |  21 ++
  wpa_supplicant/Makefile            |   1 +
  wpa_supplicant/ctrl_iface.c        | 416 ++++++++++++++++++++++++++++-
- wpa_supplicant/driver_i.h          |   8 +
+ wpa_supplicant/driver_i.h          |   9 +
  wpa_supplicant/events.c            |  41 +++
  wpa_supplicant/mxl_supplicant.c    |  74 +++++
  wpa_supplicant/mxl_supplicant.h    |  28 ++
  wpa_supplicant/wpa_cli.c           |  37 +++
- 12 files changed, 669 insertions(+), 9 deletions(-)
+ 12 files changed, 670 insertions(+), 9 deletions(-)
  create mode 100644 wpa_supplicant/mxl_supplicant.c
  create mode 100644 wpa_supplicant/mxl_supplicant.h
 
@@ -48,30 +48,30 @@ index 27f027d06..e6f761570 100644
  struct intel_vendor_radar {
    s32 width; /* enum nl80211_chan_width (drv) -> enum chan_width (hostap) */
 diff --git a/src/common/wpa_ctrl.h b/src/common/wpa_ctrl.h
-index d96579444..686b6abed 100644
+index 077df6ad3..d9df6c85e 100644
 --- a/src/common/wpa_ctrl.h
 +++ b/src/common/wpa_ctrl.h
-@@ -455,6 +455,7 @@ extern "C" {
+@@ -479,6 +479,7 @@ extern "C" {
  
  #define HOSTAPD_DISCONNECTED "HOSTAPD-DISCONNECTED"
  #define UNCONNECTED_STA_RSSI "UNCONNECTED-STA-RSSI "
 +#define CSA_RECEIVED "CSA-RECEIVED "
  #define AP_PROBE_REQ_RECEIVED "AP-PROBE-REQ-RECEIVED "
+ #endif /* CONFIG_VENDOR_MXL */
  
- #define AP_STA_WNM_NOTIF "AP-STA-WNM-NOTIF "
 diff --git a/src/drivers/driver.h b/src/drivers/driver.h
-index 1767fff24..2c402b36b 100644
+index bba76019f..fe6e93b4a 100644
 --- a/src/drivers/driver.h
 +++ b/src/drivers/driver.h
-@@ -5952,6 +5952,7 @@ enum wpa_event_type {
- 	EVENT_LINK_RECONFIG,
+@@ -6271,6 +6271,7 @@ enum wpa_event_type {
  
+ #ifdef CONFIG_VENDOR_MXL
  	EVENT_LTQ_UNCONNECTED_STA_RX,
 +	EVENT_LTQ_CSA_RECEIVED,
+ #endif /* CONFIG_VENDOR_MXL */
  };
  
- 
-@@ -6596,6 +6597,8 @@ union wpa_event_data {
+@@ -6927,6 +6928,8 @@ union wpa_event_data {
  		int link_id;
  	} eapol_rx;
  
@@ -80,7 +80,7 @@ index 1767fff24..2c402b36b 100644
  	/**
  	 * signal_change - Data for EVENT_SIGNAL_CHANGE events
  	 */
-@@ -7012,6 +7015,25 @@ static inline void drv_event_eapol_rx2(void *ctx, const u8 *src, const u8 *data,
+@@ -7358,6 +7361,25 @@ static inline void drv_event_eapol_rx2(void *ctx, const u8 *src, const u8 *data,
  	wpa_supplicant_event(ctx, EVENT_EAPOL_RX, &event);
  }
  
@@ -106,7 +106,7 @@ index 1767fff24..2c402b36b 100644
  static inline void drv_event_ltq_unconnected_sta(void *ctx, const u8 *data, size_t data_len)
  {
  	errno_t err;
-@@ -7039,6 +7061,7 @@ const char * event_to_string(enum wpa_event_type event);
+@@ -7385,6 +7407,7 @@ const char * event_to_string(enum wpa_event_type event);
  
  /* Convert chan_width to a string for logging and control interfaces */
  const char * channel_width_to_string(enum chan_width width);
@@ -115,7 +115,7 @@ index 1767fff24..2c402b36b 100644
  int channel_width_to_int(enum chan_width width);
  
 diff --git a/src/drivers/driver_common.c b/src/drivers/driver_common.c
-index afd5ff637..7c2636d60 100644
+index e86a071c8..35d8d9adb 100644
 --- a/src/drivers/driver_common.c
 +++ b/src/drivers/driver_common.c
 @@ -52,6 +52,7 @@ const char * event_to_string(enum wpa_event_type event)
@@ -126,7 +126,7 @@ index afd5ff637..7c2636d60 100644
  	E2S(SIGNAL_CHANGE);
  	E2S(INTERFACE_ENABLED);
  	E2S(INTERFACE_DISABLED);
-@@ -130,6 +131,24 @@ const char * channel_width_to_string(enum chan_width width)
+@@ -133,6 +134,24 @@ const char * channel_width_to_string(enum chan_width width)
  	}
  }
  
@@ -152,10 +152,10 @@ index afd5ff637..7c2636d60 100644
  int channel_width_to_int(enum chan_width width)
  {
 diff --git a/src/drivers/driver_nl80211_event.c b/src/drivers/driver_nl80211_event.c
-index cad60acc6..7082c1d02 100644
+index 8841426ce..641127833 100644
 --- a/src/drivers/driver_nl80211_event.c
 +++ b/src/drivers/driver_nl80211_event.c
-@@ -3286,6 +3286,24 @@ static void ltq_nl80211_handle_unconnected_sta(struct wpa_driver_nl80211_data *d
+@@ -3424,6 +3424,24 @@ static void ltq_nl80211_handle_unconnected_sta(struct wpa_driver_nl80211_data *d
  	drv_event_ltq_unconnected_sta(drv->ctx, data, len);
  }
  
@@ -180,7 +180,7 @@ index cad60acc6..7082c1d02 100644
  static void nl80211_vendor_event_mxl(struct wpa_driver_nl80211_data *drv,
  				     u32 subcmd, u8 *data, size_t len)
  {
-@@ -3293,6 +3311,9 @@ static void nl80211_vendor_event_mxl(struct wpa_driver_nl80211_data *drv,
+@@ -3431,6 +3449,9 @@ static void nl80211_vendor_event_mxl(struct wpa_driver_nl80211_data *drv,
  		case LTQ_NL80211_VENDOR_EVENT_FLUSH_STATIONS:
  			mxl_nl80211_handle_flush_stations(drv, data, len);
  			break;
@@ -191,10 +191,10 @@ index cad60acc6..7082c1d02 100644
  			mxl_nl80211_handle_radar(drv, data, len);
  			break;
 diff --git a/wpa_supplicant/Makefile b/wpa_supplicant/Makefile
-index f5dd3b3ae..0cc61c639 100644
+index ea7290a0c..544cf6634 100644
 --- a/wpa_supplicant/Makefile
 +++ b/wpa_supplicant/Makefile
-@@ -1955,6 +1955,7 @@ ifdef CONFIG_VENDOR_MXL
+@@ -2002,6 +2002,7 @@ ifdef CONFIG_VENDOR_MXL
  CFLAGS += -DCONFIG_VENDOR_MXL
  CFLAGS += -DCONFIG_VENDOR_MXL_BUILD_FOR_SUPPLICANT
  OBJS += ../src/common/mxl_ieee802_11_common.o
@@ -203,13 +203,13 @@ index f5dd3b3ae..0cc61c639 100644
  endif
  
 diff --git a/wpa_supplicant/ctrl_iface.c b/wpa_supplicant/ctrl_iface.c
-index 52c6a4399..b7ccfe7b3 100644
+index e24542638..7499d6aaa 100644
 --- a/wpa_supplicant/ctrl_iface.c
 +++ b/wpa_supplicant/ctrl_iface.c
-@@ -58,6 +58,10 @@
- #include "mesh.h"
+@@ -60,6 +60,10 @@
  #include "dpp_supplicant.h"
  #include "sme.h"
+ #include "nan_usd.h"
 +#ifdef CONFIG_VENDOR_MXL
 +#include "mxl_supplicant.h"
 +#include "drivers/mxl_driver_nl80211.h"
@@ -217,7 +217,7 @@ index 52c6a4399..b7ccfe7b3 100644
  
  #ifdef __NetBSD__
  #include <net/if_ether.h>
-@@ -3058,10 +3062,13 @@ static int wpa_supplicant_ctrl_iface_scan_result(
+@@ -3105,10 +3109,13 @@ static int wpa_supplicant_ctrl_iface_scan_result(
  	pos = buf;
  	end = buf + buflen;
  
@@ -233,7 +233,7 @@ index 52c6a4399..b7ccfe7b3 100644
  	pos += ret;
  	ie = wpa_bss_get_vendor_ie(bss, WPA_IE_VENDOR_TYPE);
  	if (ie)
-@@ -3192,7 +3199,7 @@ static int wpa_supplicant_ctrl_iface_scan_result(
+@@ -3235,7 +3242,7 @@ static int wpa_supplicant_ctrl_iface_scan_result(
  		pos += ret;
  	}
  
@@ -242,7 +242,7 @@ index 52c6a4399..b7ccfe7b3 100644
  			  wpa_ssid_txt(bss->ssid, bss->ssid_len));
  	if (os_snprintf_error(end - pos, ret))
  		return -1;
-@@ -3216,12 +3223,6 @@ static int wpa_supplicant_ctrl_iface_scan_results(
+@@ -3259,12 +3266,6 @@ static int wpa_supplicant_ctrl_iface_scan_results(
  
  	pos = buf;
  	end = buf + buflen;
@@ -255,7 +255,7 @@ index 52c6a4399..b7ccfe7b3 100644
  	dl_list_for_each(bss, &wpa_s->bss_id, struct wpa_bss, list_id) {
  		ret = wpa_supplicant_ctrl_iface_scan_result(wpa_s, bss, pos,
  							    end - pos);
-@@ -8703,6 +8704,391 @@ static int wpa_supplicant_vendor_cmd(struct wpa_supplicant *wpa_s, char *cmd,
+@@ -8863,6 +8864,391 @@ static int wpa_supplicant_vendor_cmd(struct wpa_supplicant *wpa_s, char *cmd,
  	return ret;
  }
  
@@ -647,7 +647,7 @@ index 52c6a4399..b7ccfe7b3 100644
  
  static void wpa_supplicant_ctrl_iface_flush(struct wpa_supplicant *wpa_s)
  {
-@@ -12820,6 +13206,18 @@ char * wpa_supplicant_ctrl_iface_process(struct wpa_supplicant *wpa_s,
+@@ -13532,6 +13918,18 @@ char * wpa_supplicant_ctrl_iface_process(struct wpa_supplicant *wpa_s,
  	} else if (os_strncmp(buf, "GET_PREF_FREQ_LIST ", 19) == 0) {
  		reply_len = wpas_ctrl_iface_get_pref_freq_list(
  			wpa_s, buf + 19, reply, reply_size);
@@ -667,13 +667,14 @@ index 52c6a4399..b7ccfe7b3 100644
  	} else if (os_strncmp(buf, "FILS_HLP_REQ_ADD ", 17) == 0) {
  		if (wpas_ctrl_iface_fils_hlp_req_add(wpa_s, buf + 17))
 diff --git a/wpa_supplicant/driver_i.h b/wpa_supplicant/driver_i.h
-index 1778afa7e..6f73900ae 100644
+index 29532c7cf..5c6d5799e 100644
 --- a/wpa_supplicant/driver_i.h
 +++ b/wpa_supplicant/driver_i.h
-@@ -1183,4 +1183,12 @@ wpas_drv_get_sta_mlo_info(struct wpa_supplicant *wpa_s,
- 	return wpa_s->driver->get_sta_mlo_info(wpa_s->drv_priv, mlo_info);
+@@ -1261,5 +1261,14 @@ wpas_drv_nan_cancel_subscribe(struct wpa_supplicant *wpa_s, int subscribe_id)
+ 	return wpa_s->driver->nan_cancel_subscribe(wpa_s->drv_priv,
+ 						   subscribe_id);
  }
- 
++#ifdef CONFIG_VENDOR_MXL
 +static inline int wpa_drv_unconnected_sta(struct wpa_supplicant *wpa_s,
 +					  struct intel_vendor_unconnected_sta_req_cfg *req)
 +{
@@ -681,21 +682,22 @@ index 1778afa7e..6f73900ae 100644
 +		return -1;
 +	return wpa_s->driver->unconnected_sta(wpa_s->drv_priv, req);
 +}
-+
++#endif /* CONFIG_VENDOR_MXL */
+ 
  #endif /* DRIVER_I_H */
 diff --git a/wpa_supplicant/events.c b/wpa_supplicant/events.c
-index a72ece681..9ecbbeb50 100644
+index 17b55a421..f693a860c 100644
 --- a/wpa_supplicant/events.c
 +++ b/wpa_supplicant/events.c
-@@ -51,6 +51,7 @@
- #include "mesh_mpm.h"
+@@ -53,6 +53,7 @@
  #include "wmm_ac.h"
+ #include "nan_usd.h"
  #include "dpp_supplicant.h"
 +#include "drivers/driver_nl80211.h"
  
  
  #define MAX_OWE_TRANSITION_BSS_SELECT_COUNT 5
-@@ -5847,6 +5848,40 @@ static void wpas_event_unprot_beacon(struct wpa_supplicant *wpa_s,
+@@ -6101,6 +6102,40 @@ static void wpas_event_unprot_beacon(struct wpa_supplicant *wpa_s,
  	wpabuf_free(buf);
  }
  
@@ -736,7 +738,7 @@ index a72ece681..9ecbbeb50 100644
  
  static const char * bitmap_to_str(u8 value, char *buf)
  {
-@@ -6886,6 +6921,12 @@ void wpa_supplicant_event(void *ctx, enum wpa_event_type event,
+@@ -7198,6 +7233,12 @@ void wpa_supplicant_event(void *ctx, enum wpa_event_type event,
  		if (data)
  			wpas_tid_link_map(wpa_s, &data->t2l_map_info);
  		break;
@@ -864,10 +866,10 @@ index 000000000..04a62f48c
 +
 +#endif
 diff --git a/wpa_supplicant/wpa_cli.c b/wpa_supplicant/wpa_cli.c
-index 6438966f9..00d510258 100644
+index 400431e09..8f0f51449 100644
 --- a/wpa_supplicant/wpa_cli.c
 +++ b/wpa_supplicant/wpa_cli.c
-@@ -2860,6 +2860,29 @@ static int wpa_cli_cmd_wmm_ac_delts(struct wpa_ctrl *ctrl, int argc,
+@@ -2831,6 +2831,29 @@ static int wpa_cli_cmd_wmm_ac_delts(struct wpa_ctrl *ctrl, int argc,
  	return wpa_cli_cmd(ctrl, "WMM_AC_DELTS", 1, argc, argv);
  }
  
@@ -897,7 +899,7 @@ index 6438966f9..00d510258 100644
  
  static int wpa_cli_cmd_wmm_ac_status(struct wpa_ctrl *ctrl, int argc,
  				    char *argv[])
-@@ -3981,6 +4004,20 @@ static const struct wpa_cli_cmd wpa_cli_commands[] = {
+@@ -4001,6 +4024,20 @@ static const struct wpa_cli_cmd wpa_cli_commands[] = {
  	{ "p2p_lo_stop", wpa_cli_cmd_p2p_lo_stop, NULL,
  	  cli_cmd_flag_none,
  	  "= stop P2P listen offload" },

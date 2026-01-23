@@ -1,4 +1,4 @@
-From b999bc7b9542942408599ba87fcc454c749cdb65 Mon Sep 17 00:00:00 2001
+From 24c4f82a408da647a29c036767a98a3d18688097 Mon Sep 17 00:00:00 2001
 From: Jurijs Soloveckis <jsoloveckis@maxlinear.com>
 Date: Tue, 14 Mar 2023 15:36:34 +0100
 Subject: [PATCH] WLANRTSYS-53101: 6GHz beacon alignment
@@ -15,16 +15,16 @@ Subject: [PATCH] WLANRTSYS-53101: 6GHz beacon alignment
  src/ap/ap_config.h           | 14 ++++++++++++++
  src/ap/beacon.c              | 17 +++++++++++++++++
  src/ap/ieee802_11.c          |  7 +++++++
- src/ap/ieee802_11_he.c       |  8 +++++---
+ src/ap/ieee802_11_he.c       | 10 ++++++++--
  src/ap/ieee802_11_shared.c   |  4 ++++
  src/common/ieee802_11_defs.h |  2 ++
- 9 files changed, 61 insertions(+), 3 deletions(-)
+ 9 files changed, 64 insertions(+), 2 deletions(-)
 
 diff --git a/hostapd/config_file.c b/hostapd/config_file.c
-index cbee24122..5d9488631 100644
+index bf51966be..79838c79b 100644
 --- a/hostapd/config_file.c
 +++ b/hostapd/config_file.c
-@@ -4869,6 +4869,14 @@ static int hostapd_config_fill(struct hostapd_config *conf,
+@@ -5014,6 +5014,14 @@ static int hostapd_config_fill(struct hostapd_config *conf,
  			wpa_printf(MSG_ERROR, "Num of BTWT schedules exceeds the limit %d", num_sched);
  		}
  #endif
@@ -40,10 +40,10 @@ index cbee24122..5d9488631 100644
  	} else if (mxl_hostapd_config_fill(conf, bss, buf, pos, line)) {
  #endif /* CONFIG_VENDOR_MXL */
 diff --git a/hostapd/hostapd.conf b/hostapd/hostapd.conf
-index f02cd9274..be1ea038d 100644
+index 338a16c82..dcd1e8bb8 100644
 --- a/hostapd/hostapd.conf
 +++ b/hostapd/hostapd.conf
-@@ -818,6 +818,9 @@ wmm_ac_vo_acm=0
+@@ -843,6 +843,9 @@ wmm_ac_vo_acm=0
  # disable_11ax: Boolean (0/1) to disable HE for a specific BSS
  #disable_11ax=0
  
@@ -54,31 +54,31 @@ index f02cd9274..be1ea038d 100644
  # 0 = not supported (default)
  # 1 = supported
 diff --git a/src/ap/ap_config.c b/src/ap/ap_config.c
-index d1a6ce246..a5dddbe86 100644
+index 558dcb419..9eb459486 100644
 --- a/src/ap/ap_config.c
 +++ b/src/ap/ap_config.c
-@@ -310,6 +310,7 @@ struct hostapd_config * hostapd_config_defaults(void)
- #endif /* CONFIG_AIRTIME_POLICY */
- 
+@@ -321,6 +321,7 @@ struct hostapd_config * hostapd_config_defaults(void)
+ 	hostapd_set_and_check_bw320_offset(conf, 0);
+ #ifdef CONFIG_VENDOR_MXL
  	conf->mbssid_aid_offset = NON_MULTIBSS_AID_OFFSET;
 +	conf->ext_cap_max_num_msdus_in_amsdu = EXT_CAP_MAX_NUM_MSDU_IN_AMSDU_DEFAULT;
- #ifdef CONFIG_VENDOR_MXL
  	mxl_hostapd_config_defaults(conf);
  #endif /* CONFIG_VENDOR_MXL */
+ 	return conf;
 diff --git a/src/ap/ap_config.h b/src/ap/ap_config.h
-index 59d3b8b52..a530dae18 100644
+index 58d852ff4..4b15d4af2 100644
 --- a/src/ap/ap_config.h
 +++ b/src/ap/ap_config.h
-@@ -1257,6 +1257,8 @@ struct hostapd_config {
+@@ -1310,6 +1310,8 @@ struct hostapd_config {
  #ifdef CONFIG_IEEE80211AX
  	enum bcast_twt_wake_duration_unit btwt_wake_dur_unit;
  #endif
 +	/* Extended Capabilities: Max Number of MSDUs in A-MSDU */
 +	u8 ext_cap_max_num_msdus_in_amsdu;
- #ifdef CONFIG_VENDOR_MXL
  	struct mxl_hostapd_config mxl_conf;
  #endif /* CONFIG_VENDOR_MXL */
-@@ -1396,4 +1398,16 @@ void hostapd_remove_acl_mac(struct mac_acl_entry **acl, int *num,
+ };
+@@ -1487,4 +1489,16 @@ void hostapd_remove_acl_mac(struct mac_acl_entry **acl, int *num,
  #define IGNORE_BROADCAST_SSID_EMPTY_SSID	1
  #define IGNORE_BROADCAST_SSID_CLEAR_SSID	2
  
@@ -96,7 +96,7 @@ index 59d3b8b52..a530dae18 100644
 +
  #endif /* HOSTAPD_CONFIG_H */
 diff --git a/src/ap/beacon.c b/src/ap/beacon.c
-index 0245e94a6..b5022b07e 100644
+index 6922ef925..e83a8533a 100644
 --- a/src/ap/beacon.c
 +++ b/src/ap/beacon.c
 @@ -218,6 +218,13 @@ static u8 * hostapd_eid_country_add(struct hostapd_data *hapd, u8 *pos,
@@ -131,10 +131,10 @@ index 0245e94a6..b5022b07e 100644
  	for (i = 0; i < mode->num_channels; i++) {
  		struct hostapd_channel_data *chan = &mode->channels[i];
 diff --git a/src/ap/ieee802_11.c b/src/ap/ieee802_11.c
-index 367666e76..f5fabea0f 100644
+index 260481a42..f1a0977da 100644
 --- a/src/ap/ieee802_11.c
 +++ b/src/ap/ieee802_11.c
-@@ -3966,6 +3966,13 @@ static int __check_assoc_ies(struct hostapd_data *hapd, struct sta_info *sta,
+@@ -4341,6 +4341,13 @@ static int __check_assoc_ies(struct hostapd_data *hapd, struct sta_info *sta,
  				return resp;
  		}
  	}
@@ -149,10 +149,10 @@ index 367666e76..f5fabea0f 100644
  #ifdef CONFIG_IEEE80211BE
  	if (hapd->iconf->ieee80211be && !hapd->conf->disable_11be) {
 diff --git a/src/ap/ieee802_11_he.c b/src/ap/ieee802_11_he.c
-index f308a6daf..5c5216abc 100644
+index cc731b914..b01cf87c2 100644
 --- a/src/ap/ieee802_11_he.c
 +++ b/src/ap/ieee802_11_he.c
-@@ -170,6 +170,8 @@ u8 * hostapd_eid_he_capab(struct hostapd_data *hapd, u8 *eid,
+@@ -171,6 +171,8 @@ u8 * hostapd_eid_he_capab(struct hostapd_data *hapd, u8 *eid,
  
  u8 * hostapd_eid_he_operation(struct hostapd_data *hapd, u8 *eid)
  {
@@ -161,16 +161,19 @@ index f308a6daf..5c5216abc 100644
  	struct ieee80211_he_operation *oper;
  	u8 *pos = eid;
  	int oper_size = 6;
-@@ -223,7 +225,7 @@ u8 * hostapd_eid_he_operation(struct hostapd_data *hapd, u8 *eid)
- 			hostapd_get_oper_chwidth(hapd->iconf);
+@@ -224,7 +226,11 @@ u8 * hostapd_eid_he_operation(struct hostapd_data *hapd, u8 *eid)
+ 			hapd->iconf->he_oper_chwidth;
  		u8 seg0 = hapd->iconf->he_oper_centr_freq_seg0_idx;
  		u8 seg1 = hostapd_get_oper_centr_freq_seg1_idx(hapd->iconf);
--		u8 control;
++#ifndef CONFIG_VENDOR_MXL
+ 		u8 control;
++#else /* CONFIG_VENDOR_MXL */
 +		u8 control = 0;
- 
++#endif /* CONFIG_VENDOR_MXL */
  #ifdef CONFIG_IEEE80211BE
- 		if (hapd->iconf->punct_bitmap) {
-@@ -278,8 +280,8 @@ u8 * hostapd_eid_he_operation(struct hostapd_data *hapd, u8 *eid)
+ 		u16 punct_bitmap = hostapd_get_punct_bitmap(hapd);
+ 
+@@ -281,8 +287,8 @@ u8 * hostapd_eid_he_operation(struct hostapd_data *hapd, u8 *eid)
  
  		*pos++ = seg0;
  		*pos++ = seg1;
@@ -182,10 +185,10 @@ index f308a6daf..5c5216abc 100644
  
  	oper->he_oper_params = host_to_le32(params);
 diff --git a/src/ap/ieee802_11_shared.c b/src/ap/ieee802_11_shared.c
-index 692da65b7..cf118cdd3 100644
+index d7007aada..3164ad6b9 100644
 --- a/src/ap/ieee802_11_shared.c
 +++ b/src/ap/ieee802_11_shared.c
-@@ -417,8 +417,12 @@ static void hostapd_ext_capab_byte(struct hostapd_data *hapd, u8 *pos, int idx,
+@@ -428,8 +428,12 @@ static void hostapd_ext_capab_byte(struct hostapd_data *hapd, u8 *pos, int idx,
  			*pos |= 0x01; /* Bit 48 - UTF-8 SSID */
  		break;
  	case 7: /* Bits 56-63 */
@@ -199,10 +202,10 @@ index 692da65b7..cf118cdd3 100644
  			*pos |= 0x40; /* Bit 70 - FTM responder */
  		if (hapd->conf->ftm_initiator)
 diff --git a/src/common/ieee802_11_defs.h b/src/common/ieee802_11_defs.h
-index 744b17e2c..9c55e2ab1 100644
+index f5047f773..78cc5d164 100644
 --- a/src/common/ieee802_11_defs.h
 +++ b/src/common/ieee802_11_defs.h
-@@ -2472,6 +2472,8 @@ enum he_6ghz_ap_type {
+@@ -2617,6 +2617,8 @@ static inline bool he_reg_is_sp(enum he_reg_info_6ghz_ap_type type)
  #define SPATIAL_REUSE_SRG_INFORMATION_PRESENT	BIT(3)
  #define SPATIAL_REUSE_HESIGA_SR_VAL15_ALLOWED	BIT(4)
  

@@ -1,4 +1,4 @@
-From 7b37ec5b49d52ff0b5f4bdcd93d947056bb75ba0 Mon Sep 17 00:00:00 2001
+From 97d12b0d647b0305381d25446244c5e36e3534be Mon Sep 17 00:00:00 2001
 From: mvulsx <mvuls@maxlinear.com>
 Date: Mon, 3 Jul 2023 13:34:25 +0000
 Subject: [PATCH] WLANRTSYS-56666: wpa_supplicant: Implement notifying to upper
@@ -6,46 +6,46 @@ Subject: [PATCH] WLANRTSYS-56666: wpa_supplicant: Implement notifying to upper
 
 Signed-off-by: mvulsx <mvuls@maxlinear.com>
 ---
- src/common/ieee802_11_common.h     |  2 +
- src/common/wpa_ctrl.h              |  6 ++
- src/drivers/driver.h               |  4 +-
- src/drivers/driver_bsd.c           |  2 +-
- src/drivers/driver_nl80211.c       | 38 +++++++++++-
- src/drivers/driver_nl80211.h       |  2 +
- src/drivers/driver_nl80211_event.c |  5 +-
- wpa_supplicant/driver_i.h          |  4 +-
- wpa_supplicant/events.c            | 99 ++++++++++++++++++++++++++++++
- wpa_supplicant/wpa_cli.c           | 10 +++
- wpa_supplicant/wpa_priv.c          |  2 +-
- wpa_supplicant/wpa_supplicant.c    | 17 ++++-
- wpa_supplicant/wpa_supplicant_i.h  |  3 +
- 13 files changed, 184 insertions(+), 10 deletions(-)
+ src/common/ieee802_11_common.h     |   2 +
+ src/common/wpa_ctrl.h              |   6 ++
+ src/drivers/driver.h               |   6 ++
+ src/drivers/driver_bsd.c           |   2 +-
+ src/drivers/driver_nl80211.c       |  44 +++++++++++++
+ src/drivers/driver_nl80211.h       |   2 +
+ src/drivers/driver_nl80211_event.c |   5 +-
+ wpa_supplicant/driver_i.h          |   7 +-
+ wpa_supplicant/events.c            | 101 +++++++++++++++++++++++++++++
+ wpa_supplicant/wpa_cli.c           |  10 +++
+ wpa_supplicant/wpa_priv.c          |   2 +-
+ wpa_supplicant/wpa_supplicant.c    |  17 ++++-
+ wpa_supplicant/wpa_supplicant_i.h  |   3 +
+ 13 files changed, 202 insertions(+), 5 deletions(-)
 
 diff --git a/src/common/ieee802_11_common.h b/src/common/ieee802_11_common.h
-index 5c4a9ec5e..1792f5a4a 100644
+index ae8b2559e..b869ffe4b 100644
 --- a/src/common/ieee802_11_common.h
 +++ b/src/common/ieee802_11_common.h
-@@ -58,6 +58,7 @@ struct ieee802_11_elems {
+@@ -64,6 +64,7 @@ struct ieee802_11_elems {
  	const u8 *opmode_notif;
  	const u8 *vendor_ht_cap;
  	const u8 *vendor_vht;
 +	const u8 *vendor_ie_to_notify;
  	const u8 *p2p;
- 	const u8 *wfd;
- 	const u8 *link_id;
-@@ -129,6 +130,7 @@ struct ieee802_11_elems {
+ 	const u8 *p2p2_ie;
+ 	const u8 *pasn_encrypted_data;
+@@ -144,6 +145,7 @@ struct ieee802_11_elems {
  	u8 peer_mgmt_len;
  	u8 vendor_ht_cap_len;
  	u8 vendor_vht_len;
 +	u8 vendor_ie_to_notify_len;
  	u8 p2p_len;
- 	u8 wfd_len;
- 	u8 interworking_len;
+ 	u8 p2p2_ie_len;
+ 	u8 pasn_encrypted_data_len;
 diff --git a/src/common/wpa_ctrl.h b/src/common/wpa_ctrl.h
-index 5ff02dcaa..80b0c6bb2 100644
+index 454b0b650..12b8e64ec 100644
 --- a/src/common/wpa_ctrl.h
 +++ b/src/common/wpa_ctrl.h
-@@ -104,6 +104,12 @@ extern "C" {
+@@ -108,6 +108,12 @@ extern "C" {
  /** SAE authentication failed due to unknown password identifier */
  #define WPA_EVENT_SAE_UNKNOWN_PASSWORD_IDENTIFIER \
  	"CTRL-EVENT-SAE-UNKNOWN-PASSWORD-IDENTIFIER "
@@ -59,30 +59,34 @@ index 5ff02dcaa..80b0c6bb2 100644
  #define WPA_EVENT_UNPROT_BEACON "CTRL-EVENT-UNPROT-BEACON "
  /** Decision made to do a within-ESS roam */
 diff --git a/src/drivers/driver.h b/src/drivers/driver.h
-index 31e1321e1..1767fff24 100644
+index bff1e3884..bba76019f 100644
 --- a/src/drivers/driver.h
 +++ b/src/drivers/driver.h
-@@ -3456,12 +3456,14 @@ struct wpa_driver_ops {
- 	 * e.g., wpa_supplicant_event()
- 	 * @ifname: interface name, e.g., wlan0
+@@ -3615,13 +3615,19 @@ struct wpa_driver_ops {
  	 * @global_priv: private driver global data from global_init()
+ 	 * @p2p_mode: P2P mode for a GO (not applicable for other interface
+ 	 *	types)
 +	 * @param: driver specific configuration parameters
  	 * Returns: Pointer to private data, %NULL on failure
  	 *
  	 * This function can be used instead of init() if the driver wrapper
  	 * uses global data.
  	 */
--	void * (*init2)(void *ctx, const char *ifname, void *global_priv);
++#ifndef CONFIG_VENDOR_MXL
+ 	void * (*init2)(void *ctx, const char *ifname, void *global_priv,
+ 			enum wpa_p2p_mode p2p_mode);
++#else /* CONFIG_VENDOR_MXL */
 +	void * (*init2)(void *ctx, const char *ifname, void *global_priv,
 +			const char *param);
++#endif /* CONFIG_VENDOR_MXL */
  
  	/**
  	 * get_interfaces - Get information about available interfaces
 diff --git a/src/drivers/driver_bsd.c b/src/drivers/driver_bsd.c
-index 850637f0d..2df625650 100644
+index 66155b41c..ecde8ce38 100644
 --- a/src/drivers/driver_bsd.c
 +++ b/src/drivers/driver_bsd.c
-@@ -1558,7 +1558,7 @@ get80211opmode(struct bsd_driver_data *drv)
+@@ -1562,7 +1562,7 @@ get80211opmode(struct bsd_driver_data *drv)
  }
  
  static void *
@@ -92,24 +96,33 @@ index 850637f0d..2df625650 100644
  #define	GETPARAM(drv, param, v) \
  	(((v) = get80211param(drv, param)) != -1)
 diff --git a/src/drivers/driver_nl80211.c b/src/drivers/driver_nl80211.c
-index 2f8a1d94e..cfe62796b 100644
+index 46eb442ff..dce346194 100644
 --- a/src/drivers/driver_nl80211.c
 +++ b/src/drivers/driver_nl80211.c
-@@ -2533,10 +2533,10 @@ failed:
+@@ -2511,6 +2511,7 @@ failed:
+  * @global_priv: private driver global data from global_init()
   * Returns: Pointer to private data, %NULL on failure
   */
++#ifndef CONFIG_VENDOR_MXL
  static void * wpa_driver_nl80211_init(void *ctx, const char *ifname,
--				      void *global_priv)
+ 				      void *global_priv,
+ 				      enum wpa_p2p_mode p2p_mode)
+@@ -2518,6 +2519,14 @@ static void * wpa_driver_nl80211_init(void *ctx, const char *ifname,
+ 	return wpa_driver_nl80211_drv_init(ctx, ifname, global_priv, 0, NULL,
+ 					   NULL, p2p_mode);
+ }
++#else /* CONFIG_VENDOR_MXL */
++static void * wpa_driver_nl80211_init(void *ctx, const char *ifname,
 +				      void *global_priv, const char *param)
- {
--	return wpa_driver_nl80211_drv_init(ctx, ifname, global_priv, 0, NULL,
--					   NULL);
++{
 +	return wpa_driver_nl80211_drv_init(ctx, ifname, global_priv, 0,
 +					   NULL, param);
- }
++}
++#endif /* CONFIG_VENDOR_MXL */
  
  
-@@ -2610,6 +2610,15 @@ static int nl80211_register_action_frame(struct i802_bss *bss,
+ static int nl80211_register_frame(struct i802_bss *bss,
+@@ -2598,6 +2607,15 @@ static int nl80211_register_action_frame(struct i802_bss *bss,
  }
  
  
@@ -125,7 +138,7 @@ index 2f8a1d94e..cfe62796b 100644
  static int nl80211_mgmt_subscribe_non_ap(struct i802_bss *bss)
  {
  	struct wpa_driver_nl80211_data *drv = bss->drv;
-@@ -2766,6 +2775,16 @@ static int nl80211_mgmt_subscribe_non_ap(struct i802_bss *bss)
+@@ -2765,6 +2783,16 @@ static int nl80211_mgmt_subscribe_non_ap(struct i802_bss *bss)
  	    (nl80211_register_action_frame(bss, (u8 *) "\x05\x02", 2) < 0))
  		ret = -1;
  
@@ -142,15 +155,19 @@ index 2f8a1d94e..cfe62796b 100644
  	/* Robust AV SCS Response */
  	if (nl80211_register_action_frame(bss, (u8 *) "\x13\x01", 2) < 0)
  		ret = -1;
-@@ -9975,6 +9994,7 @@ static int nl80211_set_param(void *priv, const char *param)
+@@ -10180,7 +10208,11 @@ static int nl80211_set_param(void *priv, const char *param)
  {
  	struct i802_bss *bss = priv;
  	struct wpa_driver_nl80211_data *drv = bss->drv;
++#ifndef CONFIG_VENDOR_MXL
+ 	const char *pos;
++#else /* CONFIG_VENDOR_MXL */
 +	char *pos;
++#endif /* CONFIG_VENDOR_MXL */
  
  	if (param == NULL)
  		return 0;
-@@ -10005,6 +10025,18 @@ static int nl80211_set_param(void *priv, const char *param)
+@@ -10213,6 +10245,18 @@ static int nl80211_set_param(void *priv, const char *param)
  		drv->test_use_roc_tx = 1;
  	}
  
@@ -170,7 +187,7 @@ index 2f8a1d94e..cfe62796b 100644
  		drv->capa.flags &= ~WPA_DRIVER_FLAGS_CONTROL_PORT;
  		drv->capa.flags2 &= ~(WPA_DRIVER_FLAGS2_CONTROL_PORT_RX |
 diff --git a/src/drivers/driver_nl80211.h b/src/drivers/driver_nl80211.h
-index 55e01b4b9..17d90b952 100644
+index 15a5e13a1..6072f52db 100644
 --- a/src/drivers/driver_nl80211.h
 +++ b/src/drivers/driver_nl80211.h
 @@ -247,6 +247,8 @@ struct wpa_driver_nl80211_data {
@@ -183,10 +200,10 @@ index 55e01b4b9..17d90b952 100644
  	u8 auth_mld_link_id;
  	u8 auth_ap_mld_addr[ETH_ALEN];
 diff --git a/src/drivers/driver_nl80211_event.c b/src/drivers/driver_nl80211_event.c
-index a30aef5a6..cad60acc6 100644
+index bda776d04..8841426ce 100644
 --- a/src/drivers/driver_nl80211_event.c
 +++ b/src/drivers/driver_nl80211_event.c
-@@ -272,7 +272,7 @@ static void mlme_event_assoc(struct wpa_driver_nl80211_data *drv,
+@@ -275,7 +275,7 @@ static void mlme_event_assoc(struct wpa_driver_nl80211_data *drv,
  {
  	const struct ieee80211_mgmt *mgmt;
  	union wpa_event_data event;
@@ -195,7 +212,7 @@ index a30aef5a6..cad60acc6 100644
  	int ssid_len;
  
  	if (!(drv->capa.flags & WPA_DRIVER_FLAGS_SME) &&
-@@ -318,6 +318,9 @@ static void mlme_event_assoc(struct wpa_driver_nl80211_data *drv,
+@@ -321,6 +321,9 @@ static void mlme_event_assoc(struct wpa_driver_nl80211_data *drv,
  	event.assoc_info.resp_frame = frame;
  	event.assoc_info.resp_frame_len = len;
  	if (len > 24 + sizeof(mgmt->u.assoc_resp)) {
@@ -206,28 +223,38 @@ index a30aef5a6..cad60acc6 100644
  		event.assoc_info.resp_ies_len =
  			len - 24 - sizeof(mgmt->u.assoc_resp);
 diff --git a/wpa_supplicant/driver_i.h b/wpa_supplicant/driver_i.h
-index 9a4c23537..1778afa7e 100644
+index 43847cf4a..29532c7cf 100644
 --- a/wpa_supplicant/driver_i.h
 +++ b/wpa_supplicant/driver_i.h
-@@ -13,11 +13,11 @@
+@@ -14,7 +14,7 @@
  
  /* driver_ops */
  static inline void * wpa_drv_init(struct wpa_supplicant *wpa_s,
 -				  const char *ifname)
 +				  const char *ifname, const char *param)
  {
- 	if (wpa_s->driver->init2)
+ 	if (wpa_s->driver->init2) {
+ 		enum wpa_p2p_mode p2p_mode = WPA_P2P_MODE_WFD_R1;
+@@ -23,9 +23,14 @@ static inline void * wpa_drv_init(struct wpa_supplicant *wpa_s,
+ 		p2p_mode = wpa_s->p2p_mode;
+ #endif /* CONFIG_P2P */
+ 
++#ifndef CONFIG_VENDOR_MXL
  		return wpa_s->driver->init2(wpa_s, ifname,
--					    wpa_s->global_drv_priv);
+ 					    wpa_s->global_drv_priv,
+ 					    p2p_mode);
++#else /* CONFIG_VENDOR_MXL */
++		return wpa_s->driver->init2(wpa_s, ifname,
 +					    wpa_s->global_drv_priv, param);
++#endif /* CONFIG_VENDOR_MXL */
+ 	}
  	if (wpa_s->driver->init) {
  		return wpa_s->driver->init(wpa_s, ifname);
- 	}
 diff --git a/wpa_supplicant/events.c b/wpa_supplicant/events.c
-index b33e5da1e..a72ece681 100644
+index 282281019..17b55a421 100644
 --- a/wpa_supplicant/events.c
 +++ b/wpa_supplicant/events.c
-@@ -3296,12 +3296,82 @@ static int wpa_supplicant_use_own_rsne_params(struct wpa_supplicant *wpa_s,
+@@ -3420,6 +3420,75 @@ static int wpa_supplicant_use_own_rsne_params(struct wpa_supplicant *wpa_s,
  	return 0;
  }
  
@@ -303,14 +330,17 @@ index b33e5da1e..a72ece681 100644
  
  static int wpa_supplicant_event_associnfo(struct wpa_supplicant *wpa_s,
  					  union wpa_event_data *data)
- {
- 	int l, len, found = 0, found_x = 0, wpa_found, rsn_found;
- 	const u8 *p;
+@@ -3429,6 +3498,9 @@ static int wpa_supplicant_event_associnfo(struct wpa_supplicant *wpa_s,
+ 	int found_x = 0;
+ #endif /* CONFIG_NO_WPA */
+ 	const u8 *p, *ie;
++#ifdef CONFIG_VENDOR_MXL
 +	u8 addr[ETH_ALEN];
++#endif /* CONFIG_VENDOR_MXL */
  	u8 bssid[ETH_ALEN];
  	bool bssid_known;
- 
-@@ -3332,6 +3402,15 @@ static int wpa_supplicant_event_associnfo(struct wpa_supplicant *wpa_s,
+ 	enum wpa_rsn_override rsn_override;
+@@ -3468,6 +3540,15 @@ static int wpa_supplicant_event_associnfo(struct wpa_supplicant *wpa_s,
  
  		multi_ap_process_assoc_resp(wpa_s, data->assoc_info.resp_ies,
  					    data->assoc_info.resp_ies_len);
@@ -326,7 +356,7 @@ index b33e5da1e..a72ece681 100644
  	}
  	if (data->assoc_info.beacon_ies)
  		wpa_hexdump(MSG_DEBUG, "beacon_ies",
-@@ -5904,6 +5983,8 @@ void wpa_supplicant_event(void *ctx, enum wpa_event_type event,
+@@ -6184,6 +6265,8 @@ void wpa_supplicant_event(void *ctx, enum wpa_event_type event,
  			wpa_printf(MSG_DEBUG,
  				   "FST: MB IEs updated from auth IE");
  #endif /* CONFIG_FST */
@@ -335,7 +365,7 @@ index b33e5da1e..a72ece681 100644
  		sme_event_auth(wpa_s, data);
  		wpa_s->auth_status_code = data->auth.status_code;
  		wpas_notify_auth_status_code(wpa_s);
-@@ -6364,6 +6445,24 @@ void wpa_supplicant_event(void *ctx, enum wpa_event_type event,
+@@ -6662,6 +6745,24 @@ void wpa_supplicant_event(void *ctx, enum wpa_event_type event,
  				break;
  #endif /* CONFIG_PASN */
  
@@ -361,10 +391,10 @@ index b33e5da1e..a72ece681 100644
  			if (stype == WLAN_FC_STYPE_AUTH &&
  			    !(wpa_s->drv_flags & WPA_DRIVER_FLAGS_SME) &&
 diff --git a/wpa_supplicant/wpa_cli.c b/wpa_supplicant/wpa_cli.c
-index 65078edf1..6438966f9 100644
+index 2ab291712..400431e09 100644
 --- a/wpa_supplicant/wpa_cli.c
 +++ b/wpa_supplicant/wpa_cli.c
-@@ -4422,6 +4422,16 @@ static void wpa_cli_action_process(const char *msg)
+@@ -4460,6 +4460,16 @@ static void wpa_cli_action_process(const char *msg)
  		wpa_cli_exec(action_file, ifname, pos);
  	} else if (str_starts(pos, HS20_T_C_ACCEPTANCE)) {
  		wpa_cli_exec(action_file, ifname, pos);
@@ -382,7 +412,7 @@ index 65078edf1..6438966f9 100644
  		wpa_cli_exec(action_file, ifname, pos);
  	} else if (str_starts(pos, DPP_EVENT_CONFOBJ_AKM)) {
 diff --git a/wpa_supplicant/wpa_priv.c b/wpa_supplicant/wpa_priv.c
-index 31a9af650..74db48525 100644
+index 88f3f2a52..f33154ea0 100644
 --- a/wpa_supplicant/wpa_priv.c
 +++ b/wpa_supplicant/wpa_priv.c
 @@ -92,7 +92,7 @@ static void wpa_priv_cmd_register(struct wpa_priv_interface *iface,
@@ -395,10 +425,10 @@ index 31a9af650..74db48525 100644
  		iface->drv_priv = iface->driver->init(iface, iface->ifname);
  	} else {
 diff --git a/wpa_supplicant/wpa_supplicant.c b/wpa_supplicant/wpa_supplicant.c
-index 3e86a8d0e..f033f24ff 100644
+index 7407661ed..413ad20b7 100644
 --- a/wpa_supplicant/wpa_supplicant.c
 +++ b/wpa_supplicant/wpa_supplicant.c
-@@ -6923,7 +6923,7 @@ next_driver:
+@@ -7429,7 +7429,7 @@ next_driver:
  	if (wpa_supplicant_set_driver(wpa_s, driver) < 0)
  		return -1;
  
@@ -407,7 +437,7 @@ index 3e86a8d0e..f033f24ff 100644
  	if (wpa_s->drv_priv == NULL) {
  		const char *pos;
  		int level = MSG_ERROR;
-@@ -6967,6 +6967,19 @@ next_driver:
+@@ -7473,6 +7473,19 @@ next_driver:
  	return 0;
  }
  
@@ -427,7 +457,7 @@ index 3e86a8d0e..f033f24ff 100644
  
  #ifdef CONFIG_GAS_SERVER
  
-@@ -7392,6 +7405,8 @@ static int wpa_supplicant_init_iface(struct wpa_supplicant *wpa_s,
+@@ -7906,6 +7919,8 @@ static int wpa_supplicant_init_iface(struct wpa_supplicant *wpa_s,
  
  	wpa_supplicant_set_default_scan_ies(wpa_s);
  
@@ -437,10 +467,10 @@ index 3e86a8d0e..f033f24ff 100644
  }
  
 diff --git a/wpa_supplicant/wpa_supplicant_i.h b/wpa_supplicant/wpa_supplicant_i.h
-index 2668c10fa..c626781d6 100644
+index b0999dbfc..c08fda45e 100644
 --- a/wpa_supplicant/wpa_supplicant_i.h
 +++ b/wpa_supplicant/wpa_supplicant_i.h
-@@ -1413,6 +1413,9 @@ struct wpa_supplicant {
+@@ -1423,6 +1423,9 @@ struct wpa_supplicant {
  	struct wpabuf *lci;
  	struct os_reltime lci_time;
  

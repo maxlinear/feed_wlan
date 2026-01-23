@@ -1,4 +1,4 @@
-From 9144eae5937c702b4d61ae78bff8233280334fb9 Mon Sep 17 00:00:00 2001
+From 7e1458f70c7938fe481910a8c2d6ba0444fd457d Mon Sep 17 00:00:00 2001
 From: rportnikh <rportnikh@maxlinear.com>
 Date: Tue, 5 Sep 2023 12:57:56 +0300
 Subject: [PATCH] 
@@ -6,7 +6,7 @@ Subject: [PATCH]
 
 ---
  hostapd/Makefile          |   4 +
- hostapd/ctrl_iface.c      |  80 ++++--------
+ hostapd/ctrl_iface.c      |  72 ++++------
  hostapd/hostapd_cli.c     | 269 +++++++++++++++++++++++++++++---------
  hostapd/mxl_ctrl_iface.c  |  61 +++++----
  hostapd/mxl_ctrl_iface.h  |   2 +-
@@ -14,13 +14,13 @@ Subject: [PATCH]
  hostapd/mxl_hostapd_cli.h |  14 +-
  src/ap/ctrl_iface_ap.c    |  24 +---
  src/ap/mxl_wds.c          |   6 +-
- 9 files changed, 306 insertions(+), 166 deletions(-)
+ 9 files changed, 303 insertions(+), 161 deletions(-)
 
 diff --git a/hostapd/Makefile b/hostapd/Makefile
-index 9ebee8eaf..971fb9f7d 100644
+index cea011293..e402d7b70 100644
 --- a/hostapd/Makefile
 +++ b/hostapd/Makefile
-@@ -1337,6 +1337,10 @@ ifdef CONFIG_WIFI_CERTIFICATION
+@@ -1364,6 +1364,10 @@ ifdef CONFIG_WIFI_CERTIFICATION
  CFLAGS += -DCONFIG_WIFI_CERTIFICATION
  endif
  
@@ -32,32 +32,13 @@ index 9ebee8eaf..971fb9f7d 100644
  	install -D $(<) $(@)
  
 diff --git a/hostapd/ctrl_iface.c b/hostapd/ctrl_iface.c
-index 1d3c74b3f..49799de2f 100644
+index cebeb538d..7317f5fe7 100644
 --- a/hostapd/ctrl_iface.c
 +++ b/hostapd/ctrl_iface.c
-@@ -646,16 +646,14 @@ static int hostapd_ctrl_iface_hs20_wnm_notif(struct hostapd_data *hapd,
- 	u8 addr[ETH_ALEN];
- 	const char *url;
- 
--	hapd = mxl_get_bss_index(cmd, hapd->iface);
-+	hapd = mxl_get_bss_index(&cmd, hapd, true, true);
- 	if (NULL == hapd) {
- 		return -1;
- 	}
--
--	cmd = os_strchr(cmd, ' ');
-+	
- 	if (NULL == cmd) {
- 		return -1;
- 	}
--	cmd++;
- 
- 	if (hwaddr_aton(cmd, addr))
- 		return -1;
-@@ -683,17 +681,15 @@ static int hostapd_ctrl_iface_hs20_deauth_req(struct hostapd_data *hapd,
- 	size_t url_len;
+@@ -652,16 +652,14 @@ static int hostapd_ctrl_iface_hs20_deauth_req(struct hostapd_data *hapd,
  	struct wpabuf *req;
  
+ #ifdef CONFIG_VENDOR_MXL
 -	hapd = mxl_get_bss_index(cmd, hapd->iface);
 +	hapd = mxl_get_bss_index(&cmd, hapd, true, true);
  	if (NULL == hapd) {
@@ -70,12 +51,10 @@ index 1d3c74b3f..49799de2f 100644
  		return -1;
  	}
 -	cmd++;
--
-+	
+ #endif /* CONFIG_VENDOR_MXL */
+ 
  	/* <STA MAC Addr> <Code(0/1)> <Re-auth-Delay(sec)> [URL] */
- 	if (hwaddr_aton(cmd, addr))
- 		return -1;
-@@ -746,16 +742,14 @@ static int hostapd_ctrl_iface_set_qos_map_set(struct hostapd_data *hapd,
+@@ -715,16 +713,14 @@ static int hostapd_ctrl_iface_set_qos_map_set(struct hostapd_data *hapd,
  	const char *pos = cmd;
  	int val, ret;
  
@@ -93,7 +72,7 @@ index 1d3c74b3f..49799de2f 100644
  
  	for (;;) {
  		if (count == sizeof(qos_map_set)) {
-@@ -804,16 +798,14 @@ static int hostapd_ctrl_iface_send_qos_map_conf(struct hostapd_data *hapd,
+@@ -773,16 +769,14 @@ static int hostapd_ctrl_iface_send_qos_map_conf(struct hostapd_data *hapd,
  	u8 qos_map_set_len = hapd->conf->qos_map_set_len;
  	int ret;
  
@@ -111,7 +90,7 @@ index 1d3c74b3f..49799de2f 100644
  
  	if (!qos_map_set_len) {
  		wpa_printf(MSG_INFO, "QoS Map Set is not set");
-@@ -4023,7 +4015,7 @@ static int hostapd_ctrl_iface_set_neighbor_per_vap(struct hostapd_data *hapd, ch
+@@ -4279,7 +4273,7 @@ static int hostapd_ctrl_iface_set_neighbor_per_vap(struct hostapd_data *hapd, ch
  	char *tmp;
  	int ret;
  
@@ -120,7 +99,7 @@ index 1d3c74b3f..49799de2f 100644
  	if (!hapd) {
  		wpa_printf(MSG_INFO,
  			   "CTRL: SET_NEIGHBOR_PER_VAP - there is no iface with the given name");
-@@ -4037,10 +4029,7 @@ static int hostapd_ctrl_iface_set_neighbor_per_vap(struct hostapd_data *hapd, ch
+@@ -4293,10 +4287,7 @@ static int hostapd_ctrl_iface_set_neighbor_per_vap(struct hostapd_data *hapd, ch
  		return -1;
  	}
  
@@ -132,7 +111,7 @@ index 1d3c74b3f..49799de2f 100644
  		wpa_printf(MSG_INFO,
  			   "CTRL: SET_NEIGHBOR_PER_VAP - neighbor BSSID is missing");
  		return -1;
-@@ -4163,17 +4152,14 @@ static int hostapd_ctrl_iface_remove_neighbor_per_vap(struct hostapd_data *hapd,
+@@ -4419,17 +4410,14 @@ static int hostapd_ctrl_iface_remove_neighbor_per_vap(struct hostapd_data *hapd,
  	u8 bssid[ETH_ALEN];
  	char *tmp;
  
@@ -152,7 +131,7 @@ index 1d3c74b3f..49799de2f 100644
  		wpa_printf(MSG_INFO,
  				"CTRL: REMOVE_NEIGHBOR_PER_VAP - neighbor BSSID is missing");
  		return -1;
-@@ -4197,7 +4183,7 @@ static int hostapd_ctrl_iface_remove_neighbor_per_vap(struct hostapd_data *hapd,
+@@ -4453,7 +4441,7 @@ static int hostapd_ctrl_iface_remove_neighbor_per_vap(struct hostapd_data *hapd,
  static int hostapd_ctrl_iface_clean_neighbordb_per_vap(struct hostapd_data *hapd,
  					      char *buf)
  {
@@ -161,7 +140,7 @@ index 1d3c74b3f..49799de2f 100644
  	if (!hapd) {
  		wpa_printf(MSG_INFO,
  				"CTRL: CLEAN_NEIGHBOR_DB_PER_VAP - there is no iface with the given name");
-@@ -4569,7 +4555,7 @@ static int hostapd_ctrl_iface_get_sta_measurements(struct hostapd_data *hapd,
+@@ -5200,7 +5188,7 @@ static int hostapd_ctrl_iface_get_sta_measurements(struct hostapd_data *hapd,
  	struct intel_vendor_sta_info sta_info;
  	struct sta_info *sta;
  
@@ -170,7 +149,7 @@ index 1d3c74b3f..49799de2f 100644
  	if (hapd == NULL) {
  		ret = sprintf_s(buf, buflen, "FAIL\n");
  		if (ret <= 0) {
-@@ -4579,10 +4565,7 @@ static int hostapd_ctrl_iface_get_sta_measurements(struct hostapd_data *hapd,
+@@ -5210,10 +5198,7 @@ static int hostapd_ctrl_iface_get_sta_measurements(struct hostapd_data *hapd,
  		return ret;
  	}
  
@@ -182,7 +161,7 @@ index 1d3c74b3f..49799de2f 100644
  		ret = sprintf_s(buf, buflen, "FAIL\n");
  		if (ret <= 0) {
  			wpa_printf(MSG_ERROR, "%s: sprintf_s error %d", __func__, ret);
-@@ -4798,7 +4781,7 @@ static int hostapd_ctrl_iface_get_vap_measurements(struct hostapd_data *hapd,
+@@ -5429,7 +5414,7 @@ static int hostapd_ctrl_iface_get_vap_measurements(struct hostapd_data *hapd,
  	int ret, len = 0;
  	struct intel_vendor_vap_info vap_info;
  
@@ -191,7 +170,7 @@ index 1d3c74b3f..49799de2f 100644
  	if (hapd == NULL) {
  		ret = sprintf_s(buf, buflen, "FAIL: bss index\n");
  		if (ret <= 0) {
-@@ -5539,7 +5522,7 @@ static int hostapd_ctrl_iface_set_csa_deauth(struct hostapd_data *hapd,
+@@ -6171,7 +6156,7 @@ static int hostapd_ctrl_iface_set_csa_deauth(struct hostapd_data *hapd,
  	int ret;
  	char *str, *pos2;
  
@@ -200,7 +179,7 @@ index 1d3c74b3f..49799de2f 100644
  	if (!hapd) {
  		wpa_printf(MSG_INFO,
  				"CTRL: SET_CSA_DEAUTH - there is no iface with the given name");
-@@ -5583,7 +5566,7 @@ static int hostapd_ctrl_iface_get_csa_deauth (struct hostapd_data *hapd, const c
+@@ -6215,7 +6200,7 @@ static int hostapd_ctrl_iface_get_csa_deauth (struct hostapd_data *hapd, const c
  {
  	int ret, len = 0;
  
@@ -209,7 +188,7 @@ index 1d3c74b3f..49799de2f 100644
  	if (hapd == NULL) {
  		ret = sprintf_s(buf, buflen, "CTRL: GET_CSA_DEAUTH - there is no iface with the given name\n");
  		if (ret <= 0) {
-@@ -5620,7 +5603,8 @@ static int hostapd_ctrl_iface_set_bss_load(struct hostapd_data *hapd, const char
+@@ -6252,7 +6237,8 @@ static int hostapd_ctrl_iface_set_bss_load(struct hostapd_data *hapd, const char
  	int ret;
  	int is_enable;
  
@@ -219,7 +198,7 @@ index 1d3c74b3f..49799de2f 100644
  	if (hapd == NULL) {
  		ret = sprintf_s(buf, buflen, "FAIL\n");
  		if (ret <= 0) {
-@@ -5630,9 +5614,7 @@ static int hostapd_ctrl_iface_set_bss_load(struct hostapd_data *hapd, const char
+@@ -6262,9 +6248,7 @@ static int hostapd_ctrl_iface_set_bss_load(struct hostapd_data *hapd, const char
  		return ret;
  	}
  
@@ -229,7 +208,7 @@ index 1d3c74b3f..49799de2f 100644
  		is_enable = atoi(cmd);
  		if (!IS_VALID_BOOL_RANGE(is_enable)) {
  			wpa_printf(MSG_ERROR, "set_bss_load: invalid value");
-@@ -5665,17 +5647,13 @@ static int hostapd_ctrl_iface_get_sta_wpa_psk(struct hostapd_data *hapd, char *c
+@@ -6297,17 +6281,13 @@ static int hostapd_ctrl_iface_get_sta_wpa_psk(struct hostapd_data *hapd, char *c
  	struct sta_info *sta;
  	const char *key_id, *wpa_passphrase;
  
@@ -249,7 +228,7 @@ index 1d3c74b3f..49799de2f 100644
  		wpa_printf(MSG_ERROR, "No STA MAC address provided");
  		return -1;
  	}
-@@ -5711,19 +5689,18 @@ static int hostapd_ctrl_iface_send_action_frame(struct hostapd_data *hapd, char
+@@ -6343,19 +6323,18 @@ static int hostapd_ctrl_iface_send_action_frame(struct hostapd_data *hapd, char
  	char *tmp;
  	int ret;
  
@@ -271,7 +250,7 @@ index 1d3c74b3f..49799de2f 100644
  
  	if (hwaddr_aton(cmd, addr)) {
  		wpa_printf(MSG_ERROR,
-@@ -5775,16 +5752,14 @@ static int hostapd_ctrl_iface_update_wan_metrics(struct hostapd_data *hapd,
+@@ -6407,16 +6386,14 @@ static int hostapd_ctrl_iface_update_wan_metrics(struct hostapd_data *hapd,
  {
  	char buf[128];
  
@@ -289,7 +268,7 @@ index 1d3c74b3f..49799de2f 100644
  
  	os_strlcpy(buf, cmd, 128);
  	wpa_printf(MSG_DEBUG, "hostapd_ctrl_iface_update_wan_metrics, bss=%s", hapd->conf->iface);
-@@ -5855,7 +5830,7 @@ static int hostapd_ctrl_iface_cellular_pref_set(struct hostapd_data *hapd, char
+@@ -6487,7 +6464,7 @@ static int hostapd_ctrl_iface_cellular_pref_set(struct hostapd_data *hapd, char
  	char *token, *context = NULL;
  	int val;
  
@@ -298,7 +277,7 @@ index 1d3c74b3f..49799de2f 100644
  	if (!hapd) {
  		wpa_printf(MSG_INFO,
  				"CTRL: CELLULAR_PREF_SET - there is no iface with the given name");
-@@ -5874,10 +5849,7 @@ static int hostapd_ctrl_iface_cellular_pref_set(struct hostapd_data *hapd, char
+@@ -6506,10 +6483,7 @@ static int hostapd_ctrl_iface_cellular_pref_set(struct hostapd_data *hapd, char
  		return -1;
  	}
  
@@ -311,10 +290,10 @@ index 1d3c74b3f..49799de2f 100644
  				"CTRL: CELLULAR_PREF_SET - Cellular Preference is missing");
  		return -1;
 diff --git a/hostapd/hostapd_cli.c b/hostapd/hostapd_cli.c
-index 0ebb66053..7526723eb 100644
+index 9d39a804b..c2b9c4028 100644
 --- a/hostapd/hostapd_cli.c
 +++ b/hostapd/hostapd_cli.c
-@@ -384,16 +384,22 @@ static int hostapd_cli_cmd_deauthenticate(struct wpa_ctrl *ctrl, int argc,
+@@ -392,16 +392,22 @@ static int hostapd_cli_cmd_deauthenticate(struct wpa_ctrl *ctrl, int argc,
  					  char *argv[])
  {
  	char buf[64];
@@ -343,7 +322,7 @@ index 0ebb66053..7526723eb 100644
  	return wpa_ctrl_command(ctrl, buf);
  }
  
-@@ -402,16 +408,22 @@ static int hostapd_cli_cmd_disassociate(struct wpa_ctrl *ctrl, int argc,
+@@ -410,16 +416,22 @@ static int hostapd_cli_cmd_disassociate(struct wpa_ctrl *ctrl, int argc,
  					char *argv[])
  {
  	char buf[64];
@@ -372,7 +351,7 @@ index 0ebb66053..7526723eb 100644
  	return wpa_ctrl_command(ctrl, buf);
  }
  
-@@ -792,9 +804,13 @@ static int hostapd_cli_cmd_all_sta(struct wpa_ctrl *ctrl, int argc,
+@@ -800,9 +812,13 @@ static int hostapd_cli_cmd_all_sta(struct wpa_ctrl *ctrl, int argc,
  	char addr[32], cmd[64];
  	int res, total;
  	char *tmp;
@@ -389,7 +368,7 @@ index 0ebb66053..7526723eb 100644
  		return -1;
  	}
  
-@@ -806,7 +822,7 @@ static int hostapd_cli_cmd_all_sta(struct wpa_ctrl *ctrl, int argc,
+@@ -814,7 +830,7 @@ static int hostapd_cli_cmd_all_sta(struct wpa_ctrl *ctrl, int argc,
  
  	total = res;
  	tmp = cmd + total;
@@ -398,7 +377,7 @@ index 0ebb66053..7526723eb 100644
  	if (res <= 0) {
  		printf("%s: sprintf_s error %d", __func__, res);
  		return -1;
-@@ -816,7 +832,8 @@ static int hostapd_cli_cmd_all_sta(struct wpa_ctrl *ctrl, int argc,
+@@ -824,7 +840,8 @@ static int hostapd_cli_cmd_all_sta(struct wpa_ctrl *ctrl, int argc,
  		return 0;
  
  	do {
@@ -408,7 +387,7 @@ index 0ebb66053..7526723eb 100644
  		if (res <= 0) {
  			printf("%s: sprintf_s error %d", __func__, res);
  			return -1;
-@@ -879,15 +896,21 @@ static int hostapd_cli_cmd_set_qos_map_set(struct wpa_ctrl *ctrl,
+@@ -887,15 +904,21 @@ static int hostapd_cli_cmd_set_qos_map_set(struct wpa_ctrl *ctrl,
  {
  	char buf[200];
  	int res;
@@ -434,7 +413,7 @@ index 0ebb66053..7526723eb 100644
  	if (os_snprintf_error(sizeof(buf), res))
  		return -1;
  	return wpa_ctrl_command(ctrl, buf);
-@@ -899,14 +922,20 @@ static int hostapd_cli_cmd_send_qos_map_conf(struct wpa_ctrl *ctrl,
+@@ -907,14 +930,20 @@ static int hostapd_cli_cmd_send_qos_map_conf(struct wpa_ctrl *ctrl,
  {
  	char buf[50];
  	int res;
@@ -458,7 +437,7 @@ index 0ebb66053..7526723eb 100644
  	if (os_snprintf_error(sizeof(buf), res))
  		return -1;
  	return wpa_ctrl_command(ctrl, buf);
-@@ -918,15 +947,20 @@ static int hostapd_cli_cmd_hs20_wnm_notif(struct wpa_ctrl *ctrl, int argc,
+@@ -926,15 +955,20 @@ static int hostapd_cli_cmd_hs20_wnm_notif(struct wpa_ctrl *ctrl, int argc,
  {
  	char buf[300];
  	int res;
@@ -483,7 +462,7 @@ index 0ebb66053..7526723eb 100644
  	if (os_snprintf_error(sizeof(buf), res))
  		return -1;
  	return wpa_ctrl_command(ctrl, buf);
-@@ -938,21 +972,28 @@ static int hostapd_cli_cmd_hs20_deauth_req(struct wpa_ctrl *ctrl, int argc,
+@@ -946,21 +980,28 @@ static int hostapd_cli_cmd_hs20_deauth_req(struct wpa_ctrl *ctrl, int argc,
  {
  	char buf[300];
  	int res;
@@ -518,7 +497,7 @@ index 0ebb66053..7526723eb 100644
  	if (os_snprintf_error(sizeof(buf), res))
  		return -1;
  	return wpa_ctrl_command(ctrl, buf);
-@@ -1392,14 +1433,20 @@ static int hostapd_cli_cmd_set_neighbor_per_vap(struct wpa_ctrl *ctrl, int argc,
+@@ -1437,14 +1478,20 @@ static int hostapd_cli_cmd_set_neighbor_per_vap(struct wpa_ctrl *ctrl, int argc,
  {
  	char cmd[2048];
  	int res;
@@ -542,7 +521,7 @@ index 0ebb66053..7526723eb 100644
  			argc >= 6 ? argv[5] : "", argc == 7 ? argv[6] : "");
  	if (res <= 0) {
  		printf("%s: sprintf_s error %d", __func__, res);
-@@ -1426,14 +1473,18 @@ static int hostapd_cli_cmd_remove_neighbor_per_vap(struct wpa_ctrl *ctrl, int ar
+@@ -1471,14 +1518,18 @@ static int hostapd_cli_cmd_remove_neighbor_per_vap(struct wpa_ctrl *ctrl, int ar
  {
  	char cmd[400];
  	int res;
@@ -564,7 +543,7 @@ index 0ebb66053..7526723eb 100644
  	if (res <= 0) {
  		printf("%s: sprintf_s error %d", __func__, res);
  		return -1;
-@@ -1446,13 +1497,18 @@ static int hostapd_cli_cmd_clean_neighbordb_per_vap(struct wpa_ctrl *ctrl, int a
+@@ -1491,13 +1542,18 @@ static int hostapd_cli_cmd_clean_neighbordb_per_vap(struct wpa_ctrl *ctrl, int a
  {
  	char cmd[400];
  	int res;
@@ -586,7 +565,7 @@ index 0ebb66053..7526723eb 100644
  	if (res <= 0) {
  		printf("%s: sprintf_s error %d", __func__, res);
  		return -1;
-@@ -1843,10 +1899,14 @@ static int hostapd_cli_cmd_sta_measurements(struct wpa_ctrl *ctrl, int argc,
+@@ -1913,10 +1969,14 @@ static int hostapd_cli_cmd_sta_measurements(struct wpa_ctrl *ctrl, int argc,
  {
  	char cmd[256];
  	int res, total, i;
@@ -603,7 +582,7 @@ index 0ebb66053..7526723eb 100644
  	return -1;
  	}
  
-@@ -1885,10 +1945,14 @@ static int hostapd_cli_cmd_vap_measurements(struct wpa_ctrl *ctrl, int argc,
+@@ -1955,10 +2015,14 @@ static int hostapd_cli_cmd_vap_measurements(struct wpa_ctrl *ctrl, int argc,
  	char cmd[256];
  	int res, total;
  	char *tmp;
@@ -621,7 +600,7 @@ index 0ebb66053..7526723eb 100644
  		return -1;
  	}
  
-@@ -1900,7 +1964,7 @@ static int hostapd_cli_cmd_vap_measurements(struct wpa_ctrl *ctrl, int argc,
+@@ -1970,7 +2034,7 @@ static int hostapd_cli_cmd_vap_measurements(struct wpa_ctrl *ctrl, int argc,
  
  	total = res;
  	tmp = cmd + total;
@@ -630,7 +609,7 @@ index 0ebb66053..7526723eb 100644
  	if (res <= 0) {
  		printf("%s: sprintf_s error %d", __func__, res);
  		return -1;
-@@ -2084,10 +2148,14 @@ static int hostapd_cli_cmd_set_bss_load(struct wpa_ctrl *ctrl, int argc,
+@@ -2154,10 +2218,14 @@ static int hostapd_cli_cmd_set_bss_load(struct wpa_ctrl *ctrl, int argc,
  	char cmd[256];
  	int res;
  	int total, i;
@@ -647,7 +626,7 @@ index 0ebb66053..7526723eb 100644
  		return -1;
  	}
  
-@@ -2151,14 +2219,20 @@ static int hostapd_cli_cmd_get_sta_wpa_psk(struct wpa_ctrl *ctrl, int argc,
+@@ -2221,14 +2289,20 @@ static int hostapd_cli_cmd_get_sta_wpa_psk(struct wpa_ctrl *ctrl, int argc,
  {
  	int res;
  	char cmd[64];
@@ -672,7 +651,7 @@ index 0ebb66053..7526723eb 100644
  	if (res <= 0) {
  		printf("%s: sprintf_s error %d", __func__, res);
  		return -1;
-@@ -2169,7 +2243,11 @@ static int hostapd_cli_cmd_get_sta_wpa_psk(struct wpa_ctrl *ctrl, int argc,
+@@ -2239,7 +2313,11 @@ static int hostapd_cli_cmd_get_sta_wpa_psk(struct wpa_ctrl *ctrl, int argc,
  
  static int hostapd_cli_cmd_send_action_frame(struct wpa_ctrl *ctrl, int argc, char *argv[])
  {
@@ -685,7 +664,7 @@ index 0ebb66053..7526723eb 100644
  }
  
  static int hostapd_cli_cmd_update_wan_metrics(struct wpa_ctrl *ctrl,
-@@ -2177,14 +2255,19 @@ static int hostapd_cli_cmd_update_wan_metrics(struct wpa_ctrl *ctrl,
+@@ -2247,14 +2325,19 @@ static int hostapd_cli_cmd_update_wan_metrics(struct wpa_ctrl *ctrl,
  {
  	char buf[200];
  	int res;
@@ -708,7 +687,7 @@ index 0ebb66053..7526723eb 100644
  	if (res <= 0) {
  		printf("%s: sprintf_s error %d", __func__, res);
  		return -1;
-@@ -2215,13 +2298,19 @@ static int hostapd_cli_cmd_cellular_pref_set(struct wpa_ctrl *ctrl, int argc, ch
+@@ -2285,13 +2368,19 @@ static int hostapd_cli_cmd_cellular_pref_set(struct wpa_ctrl *ctrl, int argc, ch
  {
  	char cmd[256];
  	int res;
@@ -731,7 +710,7 @@ index 0ebb66053..7526723eb 100644
  	if (res <= 0) {
  		printf("%s: sprintf_s error %d", __func__, res);
  		return -1;
-@@ -2394,17 +2483,29 @@ static const struct hostapd_cli_cmd hostapd_cli_commands[] = {
+@@ -2464,17 +2553,29 @@ static const struct hostapd_cli_cmd hostapd_cli_commands[] = {
  	{ "sta", hostapd_cli_cmd_sta, hostapd_complete_stations,
  	  "<addr> = get MIB variables for one station" },
  	{ "all_sta", hostapd_cli_cmd_all_sta, NULL,
@@ -761,7 +740,7 @@ index 0ebb66053..7526723eb 100644
  #ifdef CONFIG_TAXONOMY
  	{ "signature", hostapd_cli_cmd_signature, hostapd_complete_stations,
  	  "<addr> = get taxonomy signature for a station" },
-@@ -2469,7 +2570,11 @@ static const struct hostapd_cli_cmd hostapd_cli_commands[] = {
+@@ -2539,7 +2640,11 @@ static const struct hostapd_cli_cmd hostapd_cli_commands[] = {
  	  "<arg,arg,...> = set QoS Map set element" },
  	{ "send_qos_map_conf", hostapd_cli_cmd_send_qos_map_conf,
  	  hostapd_complete_stations,
@@ -773,7 +752,7 @@ index 0ebb66053..7526723eb 100644
  	{ "chan_switch", hostapd_cli_cmd_chan_switch, NULL,
  	  "<cs_count> <freq> [sec_channel_offset=] [center_freq1=]\n"
  	  "  [center_freq2=] [bandwidth=] [blocktx] [ht|vht]\n"
-@@ -2477,10 +2582,18 @@ static const struct hostapd_cli_cmd hostapd_cli_commands[] = {
+@@ -2552,10 +2657,18 @@ static const struct hostapd_cli_cmd hostapd_cli_commands[] = {
  	{ "notify_cw_change", hostapd_cli_cmd_notify_cw_change, NULL,
  	  "<channel_width> = 0 - 20 MHz, 1 - 40 MHz, 2 - 80 MHz, 3 - 160 MHz" },
  	{ "hs20_wnm_notif", hostapd_cli_cmd_hs20_wnm_notif, NULL,
@@ -792,7 +771,7 @@ index 0ebb66053..7526723eb 100644
  	  "  = send WNM-Notification imminent deauthentication indication" },
  	{ "vendor", hostapd_cli_cmd_vendor, NULL,
  	  "<vendor id> <sub command id> [<hex formatted data>]\n"
-@@ -2507,16 +2620,28 @@ static const struct hostapd_cli_cmd hostapd_cli_commands[] = {
+@@ -2590,16 +2703,28 @@ static const struct hostapd_cli_cmd hostapd_cli_commands[] = {
  	  "<addr> <ssid=> <nr=> [lci=] [civic=] [stat]\n"
  	  "  = add AP to neighbor database" },
  	{ "set_neighbor_per_vap", hostapd_cli_cmd_set_neighbor_per_vap, NULL,
@@ -821,7 +800,7 @@ index 0ebb66053..7526723eb 100644
  	{ "req_lci", hostapd_cli_cmd_req_lci, hostapd_complete_stations,
  	  "<addr> = send LCI request to a station"},
  	{ "req_range", hostapd_cli_cmd_req_range, NULL,
-@@ -2615,9 +2740,17 @@ static const struct hostapd_cli_cmd hostapd_cli_commands[] = {
+@@ -2706,9 +2831,17 @@ static const struct hostapd_cli_cmd hostapd_cli_commands[] = {
  	  "<addr> <freq> <center_freq1=> [center_freq2=] <bandwidth=>\n"
  	  "get unconnected station statistics" },
  	{ "sta_measurements", hostapd_cli_cmd_sta_measurements, NULL,
@@ -839,7 +818,7 @@ index 0ebb66053..7526723eb 100644
  	{ "radio_info", hostapd_cli_cmd_radio_info, NULL,
  	  "get radio info" },
  	{ "set_restricted_chan", hostapd_cli_cmd_set_restricted_chan, NULL,
-@@ -2648,7 +2781,11 @@ static const struct hostapd_cli_cmd hostapd_cli_commands[] = {
+@@ -2739,7 +2872,11 @@ static const struct hostapd_cli_cmd hostapd_cli_commands[] = {
  	  " Get bss used color table and collision history" },
  #endif /* CONFIG_IEEE80211AX */
  	{ "set_bss_load", hostapd_cli_cmd_set_bss_load, NULL,
@@ -851,7 +830,7 @@ index 0ebb66053..7526723eb 100644
  	{ "reconf", hostapd_cli_cmd_reconf, NULL,
  	  "[BSS name] = reconfigure interface (add/remove BSS's while other BSS "
  	  "are unaffected)\n"
-@@ -2657,9 +2794,17 @@ static const struct hostapd_cli_cmd hostapd_cli_commands[] = {
+@@ -2748,9 +2885,17 @@ static const struct hostapd_cli_cmd hostapd_cli_commands[] = {
  	{ "get_sta_wpa_psk", hostapd_cli_cmd_get_sta_wpa_psk, NULL,
  	  "= get STAs key ID and passphrase if set in wpa_psk_file" },
  	{ "send_action_frame", hostapd_cli_cmd_send_action_frame, NULL,
@@ -870,7 +849,7 @@ index 0ebb66053..7526723eb 100644
  	{ "mbo_bss_assoc_disallow", hostapd_cli_cmd_mbo_bss_assoc_disallow, NULL,
  	  " = set mbo bss assoc disallow"},
 diff --git a/hostapd/mxl_ctrl_iface.c b/hostapd/mxl_ctrl_iface.c
-index e6a3a2f33..8669345db 100644
+index a4b60b157..65c943b33 100644
 --- a/hostapd/mxl_ctrl_iface.c
 +++ b/hostapd/mxl_ctrl_iface.c
 @@ -31,31 +31,42 @@
@@ -966,7 +945,7 @@ index e6a3a2f33..8669345db 100644
  		ret = sprintf_s(reply, reply_len, "CTRL: GET_STA_SOFTBLOCK - MAC address is missing\n");
  		if (ret <= 0) {
  			wpa_printf(MSG_ERROR, "%s: sprintf_s error %d", __func__, ret);
-@@ -2818,16 +2823,19 @@ int mxl_hostapd_ctrl_iface_receive_process(struct hostapd_data *hapd,
+@@ -2821,16 +2826,19 @@ int mxl_hostapd_ctrl_iface_receive_process(struct hostapd_data *hapd,
  		if (mxl_hostapd_ctrl_iface_report_sta_statistics(hapd, buf + 22))
  			*reply_len = -1;
  	} else if (os_strncmp(buf, "ACCEPT_ACL ", sizeof("ACCEPT_ACL ") - 1 ) == 0) {
@@ -990,7 +969,7 @@ index e6a3a2f33..8669345db 100644
  				mac = buf_start + sizeof("ADD_MAC ") - 1 ;//ADD_MAC and DEL_MAC same len
  				if (os_strncmp(buf_start, "ADD_MAC ", sizeof("ADD_MAC ") - 1) == 0) {
  					if (mxl_hostapd_ctrl_iface_acl_add_mac(
-@@ -2868,15 +2876,18 @@ int mxl_hostapd_ctrl_iface_receive_process(struct hostapd_data *hapd,
+@@ -2871,15 +2879,18 @@ int mxl_hostapd_ctrl_iface_receive_process(struct hostapd_data *hapd,
  			}
  		}
  	} else if (os_strncmp(buf, "DENY_ACL ", sizeof("DENY_ACL ") -1) == 0) {
@@ -1087,7 +1066,7 @@ index d0101ee10..68d0cb71b 100644
  	  "<bss> <addr> <remove=x> [<reject_sta=x>"					\
  	  "<snrProbeHWM=x> <snrProbeLWM=x>"						\
 diff --git a/src/ap/ctrl_iface_ap.c b/src/ap/ctrl_iface_ap.c
-index 2f734599e..46cc39696 100644
+index de9b2c211..1473cbd4c 100644
 --- a/src/ap/ctrl_iface_ap.c
 +++ b/src/ap/ctrl_iface_ap.c
 @@ -33,7 +33,6 @@
@@ -1098,7 +1077,7 @@ index 2f734599e..46cc39696 100644
  static size_t hostapd_write_ht_mcs_bitmask(char *buf, size_t buflen,
  					   size_t curr_len, const u8 *mcs_set)
  {
-@@ -441,7 +440,7 @@ int hostapd_ctrl_iface_sta_first(struct hostapd_data *hapd, const char *cmd,
+@@ -519,7 +518,7 @@ int hostapd_ctrl_iface_sta_first(struct hostapd_data *hapd, const char *cmd,
  {
  	int ret;
  
@@ -1107,7 +1086,7 @@ index 2f734599e..46cc39696 100644
  	if (hapd == NULL) {
  		ret = sprintf_s(buf, buflen, "FAIL: bss index\n");
  		if (ret <= 0) {
-@@ -504,7 +503,7 @@ int hostapd_ctrl_iface_sta_next(struct hostapd_data *hapd, const char *cmd,
+@@ -582,7 +581,7 @@ int hostapd_ctrl_iface_sta_next(struct hostapd_data *hapd, const char *cmd,
  	struct sta_info *sta;
  	int ret;
  
@@ -1116,7 +1095,7 @@ index 2f734599e..46cc39696 100644
  	if (hapd == NULL) {
  		ret = sprintf_s(buf, buflen, "FAIL\n");
  		if (ret <= 0) {
-@@ -514,10 +513,7 @@ int hostapd_ctrl_iface_sta_next(struct hostapd_data *hapd, const char *cmd,
+@@ -592,10 +591,7 @@ int hostapd_ctrl_iface_sta_next(struct hostapd_data *hapd, const char *cmd,
  		return ret;
  	}
  
@@ -1128,7 +1107,7 @@ index 2f734599e..46cc39696 100644
  		ret = sprintf_s(buf, buflen, "FAIL\n");
  		if (ret <= 0) {
  			wpa_printf(MSG_ERROR, "%s: sprintf_s error %d", __func__, ret);
-@@ -604,14 +600,11 @@ int hostapd_ctrl_iface_deauthenticate(struct hostapd_data *hapd,
+@@ -682,14 +678,11 @@ int hostapd_ctrl_iface_deauthenticate(struct hostapd_data *hapd,
  	wpa_dbg(hapd->msg_ctx, MSG_DEBUG, "CTRL_IFACE DEAUTHENTICATE %s",
  		txtaddr);
  
@@ -1145,7 +1124,7 @@ index 2f734599e..46cc39696 100644
  		return -1;
  
  	if (hwaddr_aton(txtaddr, addr))
-@@ -676,14 +669,11 @@ int hostapd_ctrl_iface_disassociate(struct hostapd_data *hapd,
+@@ -757,14 +750,11 @@ int hostapd_ctrl_iface_disassociate(struct hostapd_data *hapd,
  	wpa_dbg(hapd->msg_ctx, MSG_DEBUG, "CTRL_IFACE DISASSOCIATE %s",
  		txtaddr);
  

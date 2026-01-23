@@ -1,4 +1,4 @@
-From 9f34518b8ac886acb31daff0e934b111f621780d Mon Sep 17 00:00:00 2001
+From 32a78d6c4c81975575f18bad23d30c41b75bf614 Mon Sep 17 00:00:00 2001
 From: mvulsx <mvuls@maxlinear.com>
 Date: Wed, 2 Aug 2023 08:37:26 +0200
 Subject: [PATCH] WLANRTSYS-57496: Add support for 64 compilation and
@@ -11,7 +11,7 @@ Signed-off-by: mvulsx <mvuls@maxlinear.com>
  2 files changed, 6 insertions(+), 6 deletions(-)
 
 diff --git a/src/utils/common.h b/src/utils/common.h
-index 9cb154297..2cdf3fcf6 100644
+index 7da451a9e..425b70293 100644
 --- a/src/utils/common.h
 +++ b/src/utils/common.h
 @@ -115,7 +115,7 @@ typedef INT8 s8;
@@ -24,10 +24,10 @@ index 9cb154297..2cdf3fcf6 100644
  typedef uint16_t u16;
  typedef uint8_t u8;
 diff --git a/wpa_supplicant/config.c b/wpa_supplicant/config.c
-index f85f7d819..4557659ee 100644
+index 00ab40f77..ca046b4d4 100644
 --- a/wpa_supplicant/config.c
 +++ b/wpa_supplicant/config.c
-@@ -2418,22 +2418,22 @@ static char * wpa_config_write_mac_value(const struct parse_data *data,
+@@ -2436,22 +2436,22 @@ static char * wpa_config_write_mac_value(const struct parse_data *data,
  
  /* STR: Define a string variable for an ASCII string; f = field name */
  #ifdef NO_CONFIG_WRITE

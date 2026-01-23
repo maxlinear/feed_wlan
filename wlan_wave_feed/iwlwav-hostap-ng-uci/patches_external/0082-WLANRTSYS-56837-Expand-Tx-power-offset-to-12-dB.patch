@@ -1,4 +1,4 @@
-From c647db6e730d871e97307573657bcea070814d21 Mon Sep 17 00:00:00 2001
+From b2afa51d9588346470836f86453e8761293e0200 Mon Sep 17 00:00:00 2001
 From: Gal Savion <gsavion@maxlinear.com>
 Date: Wed, 12 Jul 2023 18:14:14 +0300
 Subject: [PATCH] WLANRTSYS-56837: Expand Tx power offset to (-12) dB
@@ -8,10 +8,10 @@ Subject: [PATCH] WLANRTSYS-56837: Expand Tx power offset to (-12) dB
  1 file changed, 1 insertion(+), 1 deletion(-)
 
 diff --git a/src/ap/ap_config.h b/src/ap/ap_config.h
-index 18ccd171c..13617c87b 100644
+index 09722c380..3cc7254b3 100644
 --- a/src/ap/ap_config.h
 +++ b/src/ap/ap_config.h
-@@ -1325,7 +1325,7 @@ struct hostapd_config {
+@@ -1357,7 +1357,7 @@ struct hostapd_config {
  	int acs_unii4;
  #endif /* CONFIG_ACS */
  

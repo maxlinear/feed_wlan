@@ -1,4 +1,4 @@
-From 7ddde4a529f0a2ea3ba60b916b1de500722ee72e Mon Sep 17 00:00:00 2001
+From 8b1978a70c540d2e5ff3a4bf5e1476a3fd01cac1 Mon Sep 17 00:00:00 2001
 From: mvuls <mvuls@maxlinear.com>
 Date: Thu, 9 Nov 2023 08:54:53 +0200
 Subject: [PATCH] WLANRTSYS-50839: MXL DFS First non-DFS channel
@@ -22,10 +22,10 @@ index f54bbf8d8..b2f56e4b3 100644
 -
 -
 diff --git a/src/ap/hostapd.c b/src/ap/hostapd.c
-index 4598218aa..7acd4bccd 100644
+index ce0a19ffd..a1e30575d 100644
 --- a/src/ap/hostapd.c
 +++ b/src/ap/hostapd.c
-@@ -1939,6 +1939,11 @@ static int configured_fixed_chan_to_freq(struct hostapd_iface *iface)
+@@ -2148,6 +2148,11 @@ static int configured_fixed_chan_to_freq(struct hostapd_iface *iface)
  {
  	int freq, i, j;
  
@@ -38,7 +38,7 @@ index 4598218aa..7acd4bccd 100644
  		return 0;
  	if (iface->conf->op_class) {
 diff --git a/src/ap/hw_features.c b/src/ap/hw_features.c
-index 17718e8b0..b08e74cc6 100644
+index 612668869..2d3061a63 100644
 --- a/src/ap/hw_features.c
 +++ b/src/ap/hw_features.c
 @@ -27,6 +27,7 @@
@@ -49,7 +49,7 @@ index 17718e8b0..b08e74cc6 100644
  #endif /* CONFIG_VENDOR_MXL */
  
  
-@@ -1137,6 +1138,11 @@ int hostapd_determine_mode(struct hostapd_iface *iface)
+@@ -1157,6 +1158,11 @@ int hostapd_determine_mode(struct hostapd_iface *iface)
  static enum hostapd_chan_status
  hostapd_check_chans(struct hostapd_iface *iface)
  {

@@ -1,4 +1,4 @@
-From 1365249787fea69029c9905941718ba6c6c566e5 Mon Sep 17 00:00:00 2001
+From 423e023b87adb9f88aa94160d81d5f7a0af2a60e Mon Sep 17 00:00:00 2001
 From: Dmitrijs Martinovs <dmartinovs@maxlinear.com>
 Date: Wed, 7 Jun 2023 16:39:09 +0200
 Subject: [PATCH] WLANRTSYS-55995: HT capabilities AMPDU parameters
@@ -11,11 +11,11 @@ Subject: [PATCH] WLANRTSYS-55995: HT capabilities AMPDU parameters
  4 files changed, 23 insertions(+)
 
 diff --git a/hostapd/config_file.c b/hostapd/config_file.c
-index 9f17d7a9e..e399d6d56 100644
+index 4b8aba984..89a62f8f1 100644
 --- a/hostapd/config_file.c
 +++ b/hostapd/config_file.c
-@@ -3812,6 +3812,14 @@ static int hostapd_config_fill(struct hostapd_config *conf,
- 		conf->require_ht = atoi(pos);
+@@ -3878,6 +3878,14 @@ static int hostapd_config_fill(struct hostapd_config *conf,
+ 		conf->ht_vht_twt_responder = atoi(pos);
  	} else if (os_strcmp(buf, "obss_interval") == 0) {
  		conf->obss_interval = atoi(pos);
 +	} else if (os_strcmp(buf, "ht_maximum_ampdu_length_exponent") == 0) {
@@ -30,10 +30,10 @@ index 9f17d7a9e..e399d6d56 100644
  	} else if (os_strcmp(buf, "ieee80211ac") == 0) {
  		conf->ieee80211ac = atoi(pos);
 diff --git a/src/ap/ap_config.h b/src/ap/ap_config.h
-index ba50bbcf4..4360b337a 100644
+index be429699c..0a1e37e22 100644
 --- a/src/ap/ap_config.h
 +++ b/src/ap/ap_config.h
-@@ -1219,6 +1219,8 @@ struct hostapd_config {
+@@ -1250,6 +1250,8 @@ struct hostapd_config {
  	u16 ht_capab;
  	int ht_tx_bf_capab_from_hw;
  	u32 ht_tx_bf_capab;
@@ -43,7 +43,7 @@ index ba50bbcf4..4360b337a 100644
  	int secondary_channel;
  	bool secondary_channel_set;
 diff --git a/src/ap/ieee802_11_ht.c b/src/ap/ieee802_11_ht.c
-index 8617f96a4..0eeeae37b 100644
+index 8f053f0b9..11b321791 100644
 --- a/src/ap/ieee802_11_ht.c
 +++ b/src/ap/ieee802_11_ht.c
 @@ -40,6 +40,15 @@ u8 * hostapd_eid_ht_capabilities(struct hostapd_data *hapd, u8 *eid)
@@ -63,10 +63,10 @@ index 8617f96a4..0eeeae37b 100644
  		  16);
  	/* tx_bf_capability_info */
 diff --git a/src/common/ieee802_11_defs.h b/src/common/ieee802_11_defs.h
-index 52a79adc7..3fd701ce5 100644
+index fe2179f79..9f7422fd3 100644
 --- a/src/common/ieee802_11_defs.h
 +++ b/src/common/ieee802_11_defs.h
-@@ -1257,6 +1257,10 @@ struct ieee80211_ampe_ie {
+@@ -1309,6 +1309,10 @@ struct ieee80211_ampe_ie {
  #define HT_CAP_INFO_40MHZ_INTOLERANT		((u16) BIT(14))
  #define HT_CAP_INFO_LSIG_TXOP_PROTECT_SUPPORT	((u16) BIT(15))
  

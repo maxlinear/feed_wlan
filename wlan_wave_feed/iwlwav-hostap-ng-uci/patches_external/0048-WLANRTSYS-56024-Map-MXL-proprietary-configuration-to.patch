@@ -1,4 +1,4 @@
-From 7035a05b2863bee3ad86493528ba46e02efde920 Mon Sep 17 00:00:00 2001
+From 42227c51d43b0ad51909dfbc363b68cec7d607e6 Mon Sep 17 00:00:00 2001
 From: Dmitrijs Martinovs <dmartinovs@maxlinear.com>
 Date: Thu, 8 Jun 2023 14:09:42 +0200
 Subject: [PATCH] WLANRTSYS-56024: Map MXL proprietary configuration to
@@ -9,10 +9,10 @@ Subject: [PATCH] WLANRTSYS-56024: Map MXL proprietary configuration to
  1 file changed, 2 insertions(+), 1 deletion(-)
 
 diff --git a/hostapd/config_file.c b/hostapd/config_file.c
-index e399d6d56..0749f8d03 100644
+index 89a62f8f1..f8e0f461c 100644
 --- a/hostapd/config_file.c
 +++ b/hostapd/config_file.c
-@@ -5392,7 +5392,8 @@ static int hostapd_config_fill(struct hostapd_config *conf,
+@@ -5511,7 +5511,8 @@ static int hostapd_config_fill(struct hostapd_config *conf,
  		if (get_hex_config(bss->ext_capa, EXT_CAPA_MAX_LEN,
  				   line, "ext_capa", pos))
  			return 1;
@@ -20,8 +20,8 @@ index e399d6d56..0749f8d03 100644
 +	// TODO: tmp solution - remake this to work with 1 parameter name
 +	} else if (os_strcmp(buf, "rnr") == 0 || os_strcmp(buf, "rnr_auto_update") == 0) {
  		bss->rnr = atoi(pos);
- #ifdef CONFIG_IEEE80211BE
- 	} else if (os_strcmp(buf, "ieee80211be") == 0) {
+ 	} else if (os_strcmp(buf, "ssid_protection") == 0) {
+ 		int val = atoi(pos);
 -- 
 2.43.0
 

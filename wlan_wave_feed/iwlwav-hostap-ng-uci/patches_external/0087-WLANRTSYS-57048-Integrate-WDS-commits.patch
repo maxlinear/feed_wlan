@@ -1,4 +1,4 @@
-From 7fceb881de645c9f7346060b5030ddcc9b25489c Mon Sep 17 00:00:00 2001
+From a084ba39706ed05af1984dce1585be0c6b057183 Mon Sep 17 00:00:00 2001
 From: Jurijs Soloveckis <jsoloveckis@maxlinear.com>
 Date: Thu, 20 Jul 2023 13:54:30 +0200
 Subject: [PATCH] WLANRTSYS-57048: Integrate WDS commits
@@ -9,7 +9,7 @@ Subject: [PATCH] WLANRTSYS-57048: Integrate WDS commits
  hostapd/config_file.c              |   1 -
  hostapd/mxl_config.c               |  48 +++
  src/ap/ap_config.c                 |   1 +
- src/ap/drv_callbacks.c             |   1 +
+ src/ap/drv_callbacks.c             |   3 +
  src/ap/hostapd.c                   |   8 +
  src/ap/ieee802_11.c                |   8 +
  src/ap/ieee802_11.h                |   6 +-
@@ -20,15 +20,15 @@ Subject: [PATCH] WLANRTSYS-57048: Integrate WDS commits
  src/common/mxl_vendor.h            |   2 +
  src/common/vendor_cmds_copy.h      |  16 +
  src/drivers/driver_nl80211_event.c |  19 ++
- 15 files changed, 661 insertions(+), 2 deletions(-)
+ 15 files changed, 663 insertions(+), 2 deletions(-)
  create mode 100644 src/ap/mxl_wds.c
  create mode 100644 src/ap/mxl_wds.h
 
 diff --git a/hostapd/Makefile b/hostapd/Makefile
-index 14a1b73f9..af82e8fcd 100644
+index 753921e58..7a73470e9 100644
 --- a/hostapd/Makefile
 +++ b/hostapd/Makefile
-@@ -378,6 +378,7 @@ OBJS += ../src/ap/mxl_zwdfs.o
+@@ -382,6 +382,7 @@ OBJS += ../src/ap/mxl_zwdfs.o
  OBJS += ../src/ap/mxl_softblock.o
  OBJS += ../src/ap/mxl_rrm.o
  OBJS += ../src/ap/mxl_ieee802_11.o
@@ -37,10 +37,10 @@ index 14a1b73f9..af82e8fcd 100644
  
  include ../src/drivers/drivers.mak
 diff --git a/hostapd/config_file.c b/hostapd/config_file.c
-index 745a3814d..c4e0407ad 100644
+index 24931b40f..1f68906dc 100644
 --- a/hostapd/config_file.c
 +++ b/hostapd/config_file.c
-@@ -5494,7 +5494,6 @@ static int hostapd_config_fill(struct hostapd_config *conf,
+@@ -5576,7 +5576,6 @@ static int hostapd_config_fill(struct hostapd_config *conf,
  			return 1;
  		}
  		conf->sConfigMRCoexCts2SelfActive = val;
@@ -115,10 +115,10 @@ index 0c7cf7c7e..a75bf88a1 100644
  
  void mxl_hostapd_config_defaults(struct hostapd_config *conf)
 diff --git a/src/ap/ap_config.c b/src/ap/ap_config.c
-index 9df7ad256..4f8e93bf6 100644
+index c8d3c15b1..3a35b83d7 100644
 --- a/src/ap/ap_config.c
 +++ b/src/ap/ap_config.c
-@@ -199,6 +199,7 @@ void hostapd_config_defaults_bss(struct hostapd_bss_config *bss)
+@@ -206,6 +206,7 @@ void hostapd_config_defaults_bss(struct hostapd_bss_config *bss)
  	bss->bcast_twt_config_sent = false;
  	os_memset((void *)&bss->broadcast_twt_schedules, 0, sizeof(broadcast_twt_schedules_t));
  #endif
@@ -127,22 +127,24 @@ index 9df7ad256..4f8e93bf6 100644
  	mxl_hostapd_config_defaults_bss(bss);
  #endif /* CONFIG_VENDOR_MXL */
 diff --git a/src/ap/drv_callbacks.c b/src/ap/drv_callbacks.c
-index 6ca4f5da6..ff8503827 100644
+index c637dd46b..c0175eeb7 100644
 --- a/src/ap/drv_callbacks.c
 +++ b/src/ap/drv_callbacks.c
-@@ -42,6 +42,7 @@
- #include "dpp_hostapd.h"
+@@ -44,6 +44,9 @@
  #include "fils_hlp.h"
  #include "neighbor_db.h"
+ #include "nan_usd_ap.h"
++#ifdef CONFIG_VENDOR_MXL
 +#include "../hostapd/mxl_ctrl_iface.h"
++#endif /* CONFIG_VENDOR_MXL */
  
  
  #ifdef CONFIG_FILS
 diff --git a/src/ap/hostapd.c b/src/ap/hostapd.c
-index 2a73cb46a..f3146756e 100644
+index 1547af7ec..2f2abd4d8 100644
 --- a/src/ap/hostapd.c
 +++ b/src/ap/hostapd.c
-@@ -59,6 +59,7 @@
+@@ -60,6 +60,7 @@
  #ifdef CONFIG_VENDOR_MXL
  #include "mxl_hostapd.h"
  #include "mxl_dfs_common.h"
@@ -150,7 +152,7 @@ index 2a73cb46a..f3146756e 100644
  #endif /* CONFIG_VENDOR_MXL */
  #include "drivers/driver_nl80211.h"
  #include "drivers/mxl_driver_nl80211.h"
-@@ -1645,6 +1646,13 @@ static int hostapd_setup_bss(struct hostapd_data *hapd, int first,
+@@ -1830,6 +1831,13 @@ setup_mld:
  			wpa_printf(MSG_WARNING, "set rssi_ignore_probe_request failed");
  	}
  
@@ -165,10 +167,10 @@ index 2a73cb46a..f3146756e 100644
  		conf->wmm_enabled = hapd->iconf->ieee80211n |
  			hapd->iconf->ieee80211ax;
 diff --git a/src/ap/ieee802_11.c b/src/ap/ieee802_11.c
-index 95868613d..dd916c72c 100644
+index f220c09b4..b01303b77 100644
 --- a/src/ap/ieee802_11.c
 +++ b/src/ap/ieee802_11.c
-@@ -8383,3 +8383,11 @@ void punct_update_legacy_bw(u16 bitmap, u8 pri, enum oper_chan_width *width,
+@@ -9101,3 +9101,11 @@ u8 * hostapd_eid_mbssid(struct hostapd_data *hapd, u8 *eid, u8 *end,
  }
  
  #endif /* CONFIG_NATIVE_WINDOWS */
@@ -181,7 +183,7 @@ index 95868613d..dd916c72c 100644
 +}
 +#endif /* CONFIG_VENDOR_MXL */
 diff --git a/src/ap/ieee802_11.h b/src/ap/ieee802_11.h
-index 7633bc468..33cb6975e 100644
+index 77dd558e4..a2512d8c0 100644
 --- a/src/ap/ieee802_11.h
 +++ b/src/ap/ieee802_11.h
 @@ -119,7 +119,6 @@ u16 copy_sta_vendor_vht(struct hostapd_data *hapd, struct sta_info *sta,
@@ -192,7 +194,7 @@ index 7633bc468..33cb6975e 100644
  int update_ht_state(struct hostapd_data *hapd, struct sta_info *sta);
  void ht40_intolerant_add(struct hostapd_iface *iface, struct sta_info *sta);
  void ht40_intolerant_remove(struct hostapd_iface *iface, struct sta_info *sta);
-@@ -271,4 +270,9 @@ int multiple_bssid_ie_get_len(struct hostapd_data *hapd, bool is_beacon);
+@@ -285,4 +284,9 @@ int multiple_bssid_ie_get_len(struct hostapd_data *hapd, bool is_beacon);
  u8 * hostapd_eid_multiple_bssid(struct hostapd_data *hapd, u8 *eid, bool is_beacon);
  u8 * hostapd_eid_ssid(struct hostapd_data *hapd, u8 *eid);
  
@@ -867,10 +869,10 @@ index 4b7e42fba..82854f8d1 100644
  typedef enum {
    WHM_DRV_MAC_FATAL = 1,
 diff --git a/src/drivers/driver_nl80211_event.c b/src/drivers/driver_nl80211_event.c
-index a30fe8ea5..b9cc900ea 100644
+index 2caaa6c33..8c63566fe 100644
 --- a/src/drivers/driver_nl80211_event.c
 +++ b/src/drivers/driver_nl80211_event.c
-@@ -3270,6 +3270,19 @@ static void mxl_nl80211_handle_coc(struct wpa_driver_nl80211_data *drv, const u8
+@@ -3409,6 +3409,19 @@ static void mxl_nl80211_handle_coc(struct wpa_driver_nl80211_data *drv, const u8
  	mxl_drv_event_coc(drv->ctx, data, len);
  }
  
@@ -890,7 +892,7 @@ index a30fe8ea5..b9cc900ea 100644
  
  static void mxl_nl80211_handle_softblock_drop(struct wpa_driver_nl80211_data *drv,
  				const u8 *data, size_t len)
-@@ -3343,6 +3356,12 @@ static void nl80211_vendor_event_mxl(struct wpa_driver_nl80211_data *drv,
+@@ -3482,6 +3495,12 @@ static void nl80211_vendor_event_mxl(struct wpa_driver_nl80211_data *drv,
  		case LTQ_NL80211_VENDOR_EVENT_UNCONNECTED_STA:
  			ltq_nl80211_handle_unconnected_sta(drv, data, len);
  			break;

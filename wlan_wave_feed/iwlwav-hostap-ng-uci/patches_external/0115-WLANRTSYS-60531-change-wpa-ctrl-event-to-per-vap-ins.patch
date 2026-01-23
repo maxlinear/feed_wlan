@@ -1,4 +1,4 @@
-From faaa3aca92e8ac542345f8507251899de6fe198b Mon Sep 17 00:00:00 2001
+From a6abbc32f279e0957f3602a668940e9a020941b9 Mon Sep 17 00:00:00 2001
 From: rportnikh <rportnikh@maxlinear.com>
 Date: Sun, 26 Nov 2023 17:17:29 +0200
 Subject: [PATCH] WLANRTSYS-60531- change wpa-ctrl event to per vap instead of
@@ -9,10 +9,10 @@ Subject: [PATCH] WLANRTSYS-60531- change wpa-ctrl event to per vap instead of
  1 file changed, 8 insertions(+), 3 deletions(-)
 
 diff --git a/hostapd/ctrl_iface.c b/hostapd/ctrl_iface.c
-index e99448e6f..ab16898b1 100644
+index a720d448d..cfc3ff237 100644
 --- a/hostapd/ctrl_iface.c
 +++ b/hostapd/ctrl_iface.c
-@@ -6994,13 +6994,17 @@ static void hostapd_ctrl_iface_msg_cb(void *ctx, int level,
+@@ -8012,13 +8012,17 @@ static void hostapd_ctrl_iface_msg_cb(void *ctx, int level,
  				      const char *txt, size_t len)
  {
  	struct hostapd_data *hapd = ctx;
@@ -33,7 +33,7 @@ index e99448e6f..ab16898b1 100644
  	pos = os_strchr(txt, ' ');
  	if (pos == NULL)
  		total = len;
-@@ -7050,6 +7054,7 @@ static void hostapd_ctrl_iface_msg_cb(void *ctx, int level,
+@@ -8068,6 +8072,7 @@ static void hostapd_ctrl_iface_msg_cb(void *ctx, int level,
  	hapd = hapd->iface->bss[0];
  	hostapd_ctrl_iface_send(hapd, level, type, buf, len + ifacelen + 1);
  	os_free(buf);

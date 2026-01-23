@@ -1,4 +1,4 @@
-From 133fea59d3f63a8353c7958d65424d27c2294ff0 Mon Sep 17 00:00:00 2001
+From 153963d09785d17265b3272fe0ccb4c7372a44a5 Mon Sep 17 00:00:00 2001
 From: Dmitrijs Martinovs <dmartinovs@maxlinear.com>
 Date: Tue, 20 Jun 2023 13:52:09 +0200
 Subject: [PATCH] WLANRTSYS-56281: Add rssi_ignore_probe_request pipe
@@ -9,10 +9,10 @@ Subject: [PATCH] WLANRTSYS-56281: Add rssi_ignore_probe_request pipe
  1 file changed, 7 insertions(+)
 
 diff --git a/src/ap/hostapd.c b/src/ap/hostapd.c
-index 396547d60..8576d46e9 100644
+index 3717f57ff..9201a67fe 100644
 --- a/src/ap/hostapd.c
 +++ b/src/ap/hostapd.c
-@@ -1633,6 +1633,13 @@ static int hostapd_setup_bss(struct hostapd_data *hapd, int first,
+@@ -1818,6 +1818,13 @@ setup_mld:
  		return -1;
  #endif /* CONFIG_VENDOR_MXL */
  

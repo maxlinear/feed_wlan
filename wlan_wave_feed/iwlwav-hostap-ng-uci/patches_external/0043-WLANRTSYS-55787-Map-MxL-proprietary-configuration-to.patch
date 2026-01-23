@@ -1,4 +1,4 @@
-From 4068c619f04c2ea18a0e1082a96283f9ff74ccc5 Mon Sep 17 00:00:00 2001
+From 154f5366e19a40bff941571aaeca8b1a6aae3744 Mon Sep 17 00:00:00 2001
 From: Dmitrijs Martinovs <dmartinovs@maxlinear.com>
 Date: Mon, 5 Jun 2023 11:42:39 +0300
 Subject: [PATCH] WLANRTSYS-55787: Map MxL proprietary configuration to
@@ -10,10 +10,10 @@ Subject: [PATCH] WLANRTSYS-55787: Map MxL proprietary configuration to
  2 files changed, 21 insertions(+), 6 deletions(-)
 
 diff --git a/hostapd/config_file.c b/hostapd/config_file.c
-index 6883277d3..4ff1eaa45 100644
+index 299c03d62..cda636476 100644
 --- a/hostapd/config_file.c
 +++ b/hostapd/config_file.c
-@@ -3749,8 +3749,14 @@ static int hostapd_config_fill(struct hostapd_config *conf,
+@@ -3813,8 +3813,14 @@ static int hostapd_config_fill(struct hostapd_config *conf,
  				   line, pos);
  			return 1;
  		}
@@ -30,7 +30,7 @@ index 6883277d3..4ff1eaa45 100644
  	} else if (os_strcmp(buf, "assoc_sa_query_max_timeout") == 0) {
  		bss->assoc_sa_query_max_timeout = atoi(pos);
  		if (bss->assoc_sa_query_max_timeout == 0) {
-@@ -3928,15 +3934,18 @@ static int hostapd_config_fill(struct hostapd_config *conf,
+@@ -3994,15 +4000,18 @@ static int hostapd_config_fill(struct hostapd_config *conf,
  		conf->color_coll_notify_interval = val;
  	} else if (os_strcmp(buf, "he_bss_color_partial") == 0) {
  		conf->he_op.he_bss_color_partial = atoi(pos);
@@ -54,10 +54,10 @@ index 6883277d3..4ff1eaa45 100644
  	} else if (os_strcmp(buf, "he_basic_mcs_nss_set") == 0) {
  		conf->he_op.he_basic_mcs_nss_set = atoi(pos);
 diff --git a/src/ap/ap_config.c b/src/ap/ap_config.c
-index 7b73fbcaa..974957627 100644
+index dd2dca62f..2eb759412 100644
 --- a/src/ap/ap_config.c
 +++ b/src/ap/ap_config.c
-@@ -330,8 +330,14 @@ struct hostapd_config * hostapd_config_defaults(void)
+@@ -337,8 +337,14 @@ struct hostapd_config * hostapd_config_defaults(void)
  #endif /* CONFIG_ACS */
  
  #ifdef CONFIG_IEEE80211AX

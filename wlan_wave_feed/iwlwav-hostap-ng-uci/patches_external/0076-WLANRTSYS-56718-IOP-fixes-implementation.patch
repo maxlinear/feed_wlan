@@ -1,4 +1,4 @@
-From d683b25681f5352d59eb6cc139ba685355e598d0 Mon Sep 17 00:00:00 2001
+From 6413c7db068a12277e3e1f27b9d3b9a48d505909 Mon Sep 17 00:00:00 2001
 From: Jurijs Soloveckis <jsoloveckis@maxlinear.com>
 Date: Thu, 6 Jul 2023 14:21:45 +0200
 Subject: [PATCH] WLANRTSYS-56718: IOP fixes implementation
@@ -11,10 +11,10 @@ Subject: [PATCH] WLANRTSYS-56718: IOP fixes implementation
  3 files changed, 12 insertions(+), 2 deletions(-)
 
 diff --git a/hostapd/config_file.c b/hostapd/config_file.c
-index d4b3c9e26..595661612 100644
+index 9ce800524..1e4030111 100644
 --- a/hostapd/config_file.c
 +++ b/hostapd/config_file.c
-@@ -3742,7 +3742,7 @@ static int hostapd_config_fill(struct hostapd_config *conf,
+@@ -3801,7 +3801,7 @@ static int hostapd_config_fill(struct hostapd_config *conf,
  		bss->enable_bss_load_ie = val;
  	} else if (os_strcmp(buf, "rts_threshold") == 0) {
  		conf->rts_threshold = atoi(pos);
@@ -24,10 +24,10 @@ index d4b3c9e26..595661612 100644
  				   "Line %d: invalid rts_threshold %d",
  				   line, conf->rts_threshold);
 diff --git a/src/ap/ap_config.h b/src/ap/ap_config.h
-index 0ddcf54d9..18ccd171c 100644
+index 057950fad..09722c380 100644
 --- a/src/ap/ap_config.h
 +++ b/src/ap/ap_config.h
-@@ -1148,6 +1148,15 @@ enum unii4_config_type
+@@ -1179,6 +1179,15 @@ enum unii4_config_type
  #define COLOR_COLL_NOTIFY_INTERVAL_MIN			0
  #define COLOR_COLL_NOTIFY_INTERVAL_MAX			60
  
@@ -44,10 +44,10 @@ index 0ddcf54d9..18ccd171c 100644
  	NON_MULTIBSS_AID_OFFSET = 0,
  	MULTIBSS_AID_OFFSET = 64
 diff --git a/src/drivers/driver_nl80211.c b/src/drivers/driver_nl80211.c
-index cfe62796b..fa4278bc4 100644
+index dce346194..9ed1adf9d 100644
 --- a/src/drivers/driver_nl80211.c
 +++ b/src/drivers/driver_nl80211.c
-@@ -41,6 +41,7 @@
+@@ -42,6 +42,7 @@
  #include "radiotap_iter.h"
  #include "rfkill.h"
  #include "driver_nl80211.h"
@@ -55,7 +55,7 @@ index cfe62796b..fa4278bc4 100644
  
  
  #ifndef NETLINK_CAP_ACK
-@@ -7888,7 +7889,7 @@ static int i802_set_rts(void *priv, int rts)
+@@ -8020,7 +8021,7 @@ static int i802_set_rts(void *priv, int rts)
  	int ret;
  	u32 val;
  

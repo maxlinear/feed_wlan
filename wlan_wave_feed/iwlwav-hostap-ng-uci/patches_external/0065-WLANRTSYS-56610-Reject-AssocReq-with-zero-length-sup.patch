@@ -1,4 +1,4 @@
-From 2ccdc82015e59204f9183f408b70fd342ab26d53 Mon Sep 17 00:00:00 2001
+From 5ddbfccd7425804c6cd80343b935093ad14252f2 Mon Sep 17 00:00:00 2001
 From: mvulsx <mvuls@maxlinear.com>
 Date: Fri, 30 Jun 2023 05:34:27 +0000
 Subject: [PATCH] WLANRTSYS-56610: Reject AssocReq with zero length supported
@@ -10,10 +10,10 @@ Signed-off-by: mvulsx <mvuls@maxlinear.com>
  1 file changed, 7 insertions(+)
 
 diff --git a/src/ap/ieee802_11.c b/src/ap/ieee802_11.c
-index c8a2b7217..431de4624 100644
+index 6d4fe60b2..0ff21f5c3 100644
 --- a/src/ap/ieee802_11.c
 +++ b/src/ap/ieee802_11.c
-@@ -3520,6 +3520,13 @@ static u16 copy_supp_rates(struct hostapd_data *hapd, struct sta_info *sta,
+@@ -3838,6 +3838,13 @@ static u16 copy_supp_rates(struct hostapd_data *hapd, struct sta_info *sta,
  		return WLAN_STATUS_UNSPECIFIED_FAILURE;
  	}
  

@@ -1,4 +1,4 @@
-From 75486340124121b7d3047db92cf9e131f055cd34 Mon Sep 17 00:00:00 2001
+From c9b0c7360887385f2eb81122d82aff8f25f94a04 Mon Sep 17 00:00:00 2001
 From: Dmitrijs Martinovs <dmartinovs@maxlinear.com>
 Date: Tue, 5 Sep 2023 10:31:33 +0200
 Subject: [PATCH] WLANRTSYS-58387: Add support for neighbor report anqp element
@@ -9,10 +9,10 @@ Subject: [PATCH] WLANRTSYS-58387: Add support for neighbor report anqp element
  2 files changed, 34 insertions(+), 2 deletions(-)
 
 diff --git a/src/ap/gas_serv.c b/src/ap/gas_serv.c
-index 3355e6c96..d98876e34 100644
+index e657b919f..33776ab13 100644
 --- a/src/ap/gas_serv.c
 +++ b/src/ap/gas_serv.c
-@@ -315,8 +315,8 @@ static void anqp_add_capab_list(struct hostapd_data *hapd,
+@@ -307,8 +307,8 @@ static void anqp_add_capab_list(struct hostapd_data *hapd,
  	if (get_anqp_elem(hapd, ANQP_EMERGENCY_NAI))
  		wpabuf_put_le16(buf, ANQP_EMERGENCY_NAI);
  #ifdef CONFIG_VENDOR_MXL
@@ -23,7 +23,7 @@ index 3355e6c96..d98876e34 100644
  #else
  	if (get_anqp_elem(hapd, ANQP_NEIGHBOR_REPORT))
  #endif /* CONFIG_VENDOR_MXL */
-@@ -672,6 +672,29 @@ static void anqp_add_fils_realm_info(struct hostapd_data *hapd,
+@@ -664,6 +664,29 @@ static void anqp_add_fils_realm_info(struct hostapd_data *hapd,
  }
  #endif /* CONFIG_FILS */
  
@@ -53,7 +53,7 @@ index 3355e6c96..d98876e34 100644
  
  #ifdef CONFIG_HS20
  
-@@ -1050,6 +1073,8 @@ gas_serv_build_gas_resp_payload(struct hostapd_data *hapd,
+@@ -813,6 +836,8 @@ gas_serv_build_gas_resp_payload(struct hostapd_data *hapd,
  		anqp_add_elem(hapd, buf, ANQP_TDLS_CAPABILITY);
  	if (request & ANQP_REQ_EMERGENCY_NAI)
  		anqp_add_elem(hapd, buf, ANQP_EMERGENCY_NAI);
@@ -62,7 +62,7 @@ index 3355e6c96..d98876e34 100644
  
  	for (i = 0; i < num_extra_req; i++) {
  #ifdef CONFIG_FILS
-@@ -1194,6 +1219,11 @@ static void rx_anqp_query_list_id(struct hostapd_data *hapd, u16 info_id,
+@@ -947,6 +972,11 @@ static void rx_anqp_query_list_id(struct hostapd_data *hapd, u16 info_id,
  			     "Emergency NAI",
  			     get_anqp_elem(hapd, info_id) != NULL, qi);
  		break;

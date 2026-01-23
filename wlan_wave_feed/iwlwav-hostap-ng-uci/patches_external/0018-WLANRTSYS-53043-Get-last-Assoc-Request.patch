@@ -1,4 +1,4 @@
-From 8a400dd99f7fb326bb7534e5d513b4ddb4957b38 Mon Sep 17 00:00:00 2001
+From be38f9f005d062781a91052349d16adf4d3325a5 Mon Sep 17 00:00:00 2001
 From: Jurijs Soloveckis <jsoloveckis@maxlinear.com>
 Date: Tue, 14 Feb 2023 13:14:19 +0100
 Subject: [PATCH] WLANRTSYS-53043: Get last Assoc Request
@@ -12,16 +12,16 @@ Subject: [PATCH] WLANRTSYS-53043: Get last Assoc Request
  src/ap/sta_info.c            | 42 +++++++++++++++++++++++--
  src/ap/sta_info.h            |  4 +++
  src/drivers/driver.h         |  2 ++
- src/drivers/driver_nl80211.c |  7 +++++
- 9 files changed, 166 insertions(+), 3 deletions(-)
+ src/drivers/driver_nl80211.c |  8 +++++
+ 9 files changed, 167 insertions(+), 3 deletions(-)
 
 diff --git a/hostapd/ctrl_iface.c b/hostapd/ctrl_iface.c
-index 98866b91d..9aeadbd24 100644
+index cf98c640c..d76a8146a 100644
 --- a/hostapd/ctrl_iface.c
 +++ b/hostapd/ctrl_iface.c
-@@ -4520,6 +4520,64 @@ static int hostapd_ctrl_iface_get_restricted_chan(struct hostapd_iface *iface,
- 	return len;
+@@ -5160,6 +5160,64 @@ static int hostapd_ctrl_iface_get_restricted_chan(struct hostapd_iface *iface,
  }
+ #endif /* CONFIG_VENDOR_MXL */
  
 +static int hostapd_ctrl_iface_get_last_assoc_req (struct hostapd_data *hapd, const char *cmd, char *reply, size_t reply_len)
 +{
@@ -84,7 +84,7 @@ index 98866b91d..9aeadbd24 100644
  static int hostapd_ctrl_iface_receive_process(struct hostapd_data *hapd,
  					      char *buf, char *reply,
  					      int reply_size,
-@@ -5115,6 +5173,9 @@ static int hostapd_ctrl_iface_receive_process(struct hostapd_data *hapd,
+@@ -5800,6 +5858,9 @@ static int hostapd_ctrl_iface_receive_process(struct hostapd_data *hapd,
  	} else if (os_strncmp(buf, "GET_RESTRICTED_CHANNELS", 23) == 0) {
  		reply_len = hostapd_ctrl_iface_get_restricted_chan(hapd->iface, NULL, reply,
  					reply_size);
@@ -95,10 +95,10 @@ index 98866b91d..9aeadbd24 100644
  		os_memcpy(reply, "UNKNOWN COMMAND\n", 16);
  		reply_len = 16;
 diff --git a/hostapd/hostapd_cli.c b/hostapd/hostapd_cli.c
-index 996ed3b4b..c9c9e295e 100644
+index 6bc99937d..069e2f142 100644
 --- a/hostapd/hostapd_cli.c
 +++ b/hostapd/hostapd_cli.c
-@@ -1922,6 +1922,26 @@ static int hostapd_cli_cmd_get_restricted_chan(struct wpa_ctrl *ctrl,
+@@ -1992,6 +1992,26 @@ static int hostapd_cli_cmd_get_restricted_chan(struct wpa_ctrl *ctrl,
  	return wpa_ctrl_command(ctrl, cmd);
  }
  
@@ -125,7 +125,7 @@ index 996ed3b4b..c9c9e295e 100644
  struct hostapd_cli_cmd {
  	const char *cmd;
  	int (*handler)(struct wpa_ctrl *ctrl, int argc, char *argv[]);
-@@ -2167,6 +2187,8 @@ static const struct hostapd_cli_cmd hostapd_cli_commands[] = {
+@@ -2258,6 +2278,8 @@ static const struct hostapd_cli_cmd hostapd_cli_commands[] = {
  	  " set restricted channels, list_of_channels example 1 6 11-13" },
  	{ "get_restricted_chan", hostapd_cli_cmd_get_restricted_chan, NULL,
  	  " get list of restricted channels" },
@@ -135,19 +135,19 @@ index 996ed3b4b..c9c9e295e 100644
  };
  
 diff --git a/src/ap/ap_drv_ops.c b/src/ap/ap_drv_ops.c
-index cfd00febf..e3725cb23 100644
+index 4d3482de0..864d6af84 100644
 --- a/src/ap/ap_drv_ops.c
 +++ b/src/ap/ap_drv_ops.c
-@@ -431,6 +431,8 @@ int hostapd_sta_add(struct hostapd_data *hapd,
- 		    const struct ieee80211_he_6ghz_band_cap *he_6ghz_capab,
- 		    u32 flags, u8 qosinfo, u8 vht_opmode, int supp_p2p_ps,
+@@ -487,6 +487,8 @@ int hostapd_sta_add(struct hostapd_data *hapd,
+           const struct ieee80211_he_6ghz_band_cap *he_6ghz_capab,
+           u32 flags, u8 qosinfo, u8 vht_opmode, int supp_p2p_ps,
  		    int set,
 +		    struct ieee80211_mgmt *last_assoc_req,
 +		    size_t last_assoc_req_len,
  		    int ssi_signal,
  		    const u8 *link_addr, bool mld_link_sta)
- {
-@@ -475,6 +477,8 @@ int hostapd_sta_add(struct hostapd_data *hapd,
+ #endif /* CONFIG_VENDOR_MXL */
+@@ -535,6 +537,8 @@ int hostapd_sta_add(struct hostapd_data *hapd,
  	}
  #endif /* CONFIG_IEEE80211BE */
  
@@ -157,7 +157,7 @@ index cfd00febf..e3725cb23 100644
  	return hapd->driver->sta_add(hapd->drv_priv, &params);
  }
 diff --git a/src/ap/ap_drv_ops.h b/src/ap/ap_drv_ops.h
-index c43b48ab2..a120169ce 100644
+index 32115445f..538741ab1 100644
 --- a/src/ap/ap_drv_ops.h
 +++ b/src/ap/ap_drv_ops.h
 @@ -15,6 +15,7 @@ struct wpa_driver_scan_params;
@@ -168,7 +168,7 @@ index c43b48ab2..a120169ce 100644
  
  u32 hostapd_sta_flags_to_drv(u32 flags);
  int hostapd_build_ap_extra_ies(struct hostapd_data *hapd,
-@@ -47,7 +48,9 @@ int hostapd_sta_add(struct hostapd_data *hapd,
+@@ -65,7 +66,9 @@ int hostapd_sta_add(struct hostapd_data *hapd,
  		    size_t eht_capab_len,
  		    const struct ieee80211_he_6ghz_band_cap *he_6ghz_capab,
  		    u32 flags, u8 qosinfo, u8 vht_opmode, int supp_p2p_ps,
@@ -176,14 +176,14 @@ index c43b48ab2..a120169ce 100644
 +		    int set, struct ieee80211_mgmt *last_assoc_req,
 +		    size_t last_assoc_req_len,
 +		    int ssi_signal, const u8 *link_addr, bool mld_link_sta);
+ #endif /* CONFIG_VENDOR_MXL */
  int hostapd_set_privacy(struct hostapd_data *hapd, int enabled);
  int hostapd_set_generic_elem(struct hostapd_data *hapd, const u8 *elem,
- 			     size_t elem_len);
 diff --git a/src/ap/ieee802_11.c b/src/ap/ieee802_11.c
-index b77da4d6a..fa3899fe9 100644
+index b0f029038..29f026e72 100644
 --- a/src/ap/ieee802_11.c
 +++ b/src/ap/ieee802_11.c
-@@ -4743,6 +4743,8 @@ static int add_associated_sta(struct hostapd_data *hapd,
+@@ -5149,6 +5149,8 @@ static int add_associated_sta(struct hostapd_data *hapd,
  			    sta->flags | WLAN_STA_ASSOC, sta->qosinfo,
  			    sta->vht_opmode, sta->p2p_ie ? 1 : 0,
  			    set,
@@ -191,8 +191,8 @@ index b77da4d6a..fa3899fe9 100644
 +			    sta->last_assoc_req_len,
  			    sta->ssi_signal,
  			    mld_link_addr, mld_link_sta)) {
- 		hostapd_logger(hapd, sta->addr,
-@@ -5279,6 +5281,7 @@ static void handle_assoc(struct hostapd_data *hapd,
+ #endif /* CONFIG_VENDOR_MXL */
+@@ -5676,6 +5678,7 @@ static void handle_assoc(struct hostapd_data *hapd,
  	int omit_rsnxe = 0;
  	bool set_beacon = false;
  	bool mld_addrs_not_translated = false;
@@ -200,7 +200,7 @@ index b77da4d6a..fa3899fe9 100644
  
  	if (len < IEEE80211_HDRLEN + (reassoc ? sizeof(mgmt->u.reassoc_req) :
  				      sizeof(mgmt->u.assoc_req))) {
-@@ -5598,6 +5601,18 @@ static void handle_assoc(struct hostapd_data *hapd,
+@@ -6000,6 +6003,18 @@ static void handle_assoc(struct hostapd_data *hapd,
  		 */
  	}
  
@@ -219,7 +219,7 @@ index b77da4d6a..fa3899fe9 100644
  	/* Make sure that the previously registered inactivity timer will not
  	 * remove the STA immediately. */
  	sta->timeout_next = STA_NULLFUNC;
-@@ -6549,6 +6564,13 @@ static void handle_assoc_cb(struct hostapd_data *hapd,
+@@ -6978,6 +6993,13 @@ static void handle_assoc_cb(struct hostapd_data *hapd,
  		return;
  	}
  
@@ -234,10 +234,10 @@ index b77da4d6a..fa3899fe9 100644
  		status = le_to_host16(mgmt->u.reassoc_resp.status_code);
  	else
 diff --git a/src/ap/sta_info.c b/src/ap/sta_info.c
-index e2fb39b56..3412e2602 100644
+index 283970f2a..bd946e4b8 100644
 --- a/src/ap/sta_info.c
 +++ b/src/ap/sta_info.c
-@@ -442,6 +442,8 @@ void ap_free_sta(struct hostapd_data *hapd, struct sta_info *sta)
+@@ -492,6 +492,8 @@ void ap_free_sta(struct hostapd_data *hapd, struct sta_info *sta)
  	forced_memzero(sta->last_tk, WPA_TK_MAX_LEN);
  #endif /* CONFIG_TESTING_OPTIONS */
  
@@ -246,7 +246,7 @@ index e2fb39b56..3412e2602 100644
  	os_free(sta);
  }
  
-@@ -1386,7 +1388,8 @@ void ap_sta_set_authorized(struct hostapd_data *hapd, struct sta_info *sta,
+@@ -1641,7 +1643,8 @@ void ap_sta_set_authorized_event(struct hostapd_data *hapd,
  		char keyid_buf[100];
  		char ip_addr[100];
  		char signal_strength[30];
@@ -256,7 +256,7 @@ index e2fb39b56..3412e2602 100644
  		int ret;
  
  		dpp_pkhash_buf[0] = '\0';
-@@ -1409,6 +1412,16 @@ void ap_sta_set_authorized(struct hostapd_data *hapd, struct sta_info *sta,
+@@ -1664,6 +1667,16 @@ void ap_sta_set_authorized_event(struct hostapd_data *hapd,
  		}
  		capabilities[0] = '\0';
  
@@ -273,7 +273,7 @@ index e2fb39b56..3412e2602 100644
  #ifdef CONFIG_P2P
  		if (wpa_auth_get_ip_addr(sta->wpa_sm, ip_addr_buf) == 0) {
  			os_snprintf(ip_addr, sizeof(ip_addr),
-@@ -1515,6 +1528,31 @@ void ap_sta_set_authorized(struct hostapd_data *hapd, struct sta_info *sta,
+@@ -1771,6 +1784,31 @@ void ap_sta_set_authorized_event(struct hostapd_data *hapd,
  			len += ret;
  		}
  
@@ -305,59 +305,60 @@ index e2fb39b56..3412e2602 100644
  		wpa_msg(hapd->msg_ctx, MSG_INFO, AP_STA_CONNECTED "%s%s%s%s%s%s%s",
  			buf, ip_addr, signal_strength, rates, capabilities, keyid_buf, dpp_pkhash_buf);
  
-@@ -1772,7 +1810,7 @@ int ap_sta_re_add(struct hostapd_data *hapd, struct sta_info *sta)
+@@ -2071,7 +2109,7 @@ int ap_sta_re_add(struct hostapd_data *hapd, struct sta_info *sta)
  			    sta->supported_rates_len,
  			    0, NULL, NULL, NULL, 0, NULL, 0, NULL,
  			    sta->flags, 0, 0, 0, 0,
 -			    sta->ssi_signal,
 +			    NULL, 0, sta->ssi_signal,
  			    mld_link_addr, mld_link_sta)) {
+ #endif /* CONFIG_VENDOR_MXL */
  		hostapd_logger(hapd, sta->addr,
- 			       HOSTAPD_MODULE_IEEE80211,
 diff --git a/src/ap/sta_info.h b/src/ap/sta_info.h
-index 116e9930a..deecff1e2 100644
+index 00ca9b5a4..b2df7bee8 100644
 --- a/src/ap/sta_info.h
 +++ b/src/ap/sta_info.h
-@@ -335,6 +335,10 @@ struct sta_info {
- #endif /* CONFIG_IEEE80211BE */
- 
+@@ -324,6 +324,10 @@ struct sta_info {
+ 	u64 last_known_sta_id_timestamp;
+ #ifdef CONFIG_VENDOR_MXL
  	u32 ssi_signal; /* dBm */
 +
 +	/* IEEE 802.11f (IAPP) related data */
 +	struct ieee80211_mgmt *last_assoc_req;
 +	size_t last_assoc_req_len;
+ #endif /* CONFIG_VENDOR_MXL */
  };
  
- 
 diff --git a/src/drivers/driver.h b/src/drivers/driver.h
-index 9d092eb43..e2f3c6b63 100644
+index af0183962..894a97a94 100644
 --- a/src/drivers/driver.h
 +++ b/src/drivers/driver.h
-@@ -2554,6 +2554,8 @@ struct hostapd_sta_add_params {
- 	s8 mld_link_id;
- 	const u8 *mld_link_addr;
+@@ -2639,6 +2639,8 @@ struct hostapd_sta_add_params {
+ 	u16 eml_cap;
+ #ifdef CONFIG_VENDOR_MXL
  	int ssi_signal;
 +	struct ieee80211_mgmt *last_assoc_req;
 +	size_t last_assoc_req_len;
+ #endif /* CONFIG_VENDOR_MXL */
  };
  
- struct mac_address {
 diff --git a/src/drivers/driver_nl80211.c b/src/drivers/driver_nl80211.c
-index 4bc9314e8..4106c2aec 100644
+index e1b613898..f4de9c0ea 100644
 --- a/src/drivers/driver_nl80211.c
 +++ b/src/drivers/driver_nl80211.c
-@@ -5892,6 +5892,13 @@ static int wpa_driver_nl80211_sta_add(void *priv,
+@@ -5984,6 +5984,14 @@ static int wpa_driver_nl80211_sta_add(void *priv,
  			goto fail;
  	}
  
++#ifdef CONFIG_VENDOR_MXL
 +	if (params->last_assoc_req && (params->last_assoc_req_len)) {
 +		if (nla_put(msg, NL80211_ATTR_FRAME,
 +				params->last_assoc_req_len,
 +				params->last_assoc_req))
 +			goto fail;
 +	}
-+
- 	ret = send_and_recv_msgs(drv, msg, NULL, NULL, NULL, NULL, NULL);
++#endif /* CONFIG_VENDOR_MXL */
+ 	ret = send_and_recv_cmd(drv, msg);
  	msg = NULL;
  	if (ret)
 -- 

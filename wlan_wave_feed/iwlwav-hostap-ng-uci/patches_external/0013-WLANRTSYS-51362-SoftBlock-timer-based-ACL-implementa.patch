@@ -1,4 +1,4 @@
-From 1d467bfd536af69248a7aed7d5b13d93a2eda638 Mon Sep 17 00:00:00 2001
+From b23fe0971767405d925fe66288143f031608ac43 Mon Sep 17 00:00:00 2001
 From: Jurijs Soloveckis <jsoloveckis@maxlinear.com>
 Date: Tue, 27 Dec 2022 10:31:21 +0100
 Subject: [PATCH] WLANRTSYS-51362: SoftBlock timer based ACL implementation
@@ -8,7 +8,7 @@ Subject: [PATCH] WLANRTSYS-51362: SoftBlock timer based ACL implementation
  hostapd/mxl_config.c          |  45 +++++-
  hostapd/mxl_ctrl_iface.c      | 188 +++++++++++++++++++++---
  src/ap/beacon.c               |   8 +
- src/ap/hostapd.c              |  10 ++
+ src/ap/hostapd.c              |   9 ++
  src/ap/ieee802_11.c           |  10 ++
  src/ap/mxl_config.h           |  10 ++
  src/ap/mxl_hostapd.c          |  39 +++++
@@ -17,15 +17,15 @@ Subject: [PATCH] WLANRTSYS-51362: SoftBlock timer based ACL implementation
  src/ap/mxl_softblock.h        |  67 +++++++++
  src/common/vendor_cmds_copy.h |  15 ++
  src/utils/mxl_common.h        |  10 ++
- 13 files changed, 654 insertions(+), 21 deletions(-)
+ 13 files changed, 653 insertions(+), 21 deletions(-)
  create mode 100644 src/ap/mxl_softblock.c
  create mode 100644 src/ap/mxl_softblock.h
 
 diff --git a/hostapd/Makefile b/hostapd/Makefile
-index 0fca86790..9370b4b5c 100644
+index 5c7e336fc..662348195 100644
 --- a/hostapd/Makefile
 +++ b/hostapd/Makefile
-@@ -370,6 +370,7 @@ OBJS += ../src/ap/mxl_dfs_common.o
+@@ -374,6 +374,7 @@ OBJS += ../src/ap/mxl_dfs_common.o
  OBJS += ../src/ap/mxl_sub_band_dfs.o
  OBJS += ../src/ap/mxl_dfs_file.o
  OBJS += ../src/ap/mxl_zwdfs.o
@@ -335,10 +335,10 @@ index 81ace69e3..18c44613f 100644
  			} else {
  				*reply_len = -1;
 diff --git a/src/ap/beacon.c b/src/ap/beacon.c
-index df2920751..50bb2ed3e 100644
+index 7ad5b3d30..c690b8332 100644
 --- a/src/ap/beacon.c
 +++ b/src/ap/beacon.c
-@@ -1457,6 +1457,14 @@ void handle_probe_req(struct hostapd_data *hapd,
+@@ -1552,6 +1552,14 @@ void handle_probe_req(struct hostapd_data *hapd,
  		return;
  	}
  
@@ -354,22 +354,21 @@ index df2920751..50bb2ed3e 100644
  		wpa_printf(MSG_MSGDUMP, "Probe Request from " MACSTR " for "
  			   "broadcast SSID ignored", MAC2STR(mgmt->sa));
 diff --git a/src/ap/hostapd.c b/src/ap/hostapd.c
-index 20456c605..0cf5c8be2 100644
+index 8d1029265..aee2b3a50 100644
 --- a/src/ap/hostapd.c
 +++ b/src/ap/hostapd.c
-@@ -1344,6 +1344,11 @@ static int hostapd_setup_bss(struct hostapd_data *hapd, int first,
- 			os_memcpy(hapd->own_addr, if_addr, ETH_ALEN);
+@@ -1518,6 +1518,10 @@ setup_mld:
+ 		hostapd_mld_add_link(hapd);
  	}
- 
+ #endif /* CONFIG_IEEE80211BE */
 +#ifdef CONFIG_VENDOR_MXL
 +	if (mxl_hostapd_setup_bss_pre(hapd))
 +		return -1;
 +#endif /* CONFIG_VENDOR_MXL */
-+
+ 
  	if (conf->wmm_enabled < 0)
  		conf->wmm_enabled = hapd->iconf->ieee80211n |
- 			hapd->iconf->ieee80211ax;
-@@ -1582,6 +1587,11 @@ static int hostapd_setup_bss(struct hostapd_data *hapd, int first,
+@@ -1749,6 +1753,11 @@ setup_mld:
  	if (hapd->wpa_auth && wpa_init_keys(hapd->wpa_auth) < 0)
  		return -1;
  
@@ -382,10 +381,10 @@ index 20456c605..0cf5c8be2 100644
  }
  
 diff --git a/src/ap/ieee802_11.c b/src/ap/ieee802_11.c
-index 739eda29d..eb647ea11 100644
+index 4cbb37575..5e64accb8 100644
 --- a/src/ap/ieee802_11.c
 +++ b/src/ap/ieee802_11.c
-@@ -2988,6 +2988,16 @@ static void handle_auth(struct hostapd_data *hapd,
+@@ -3293,6 +3293,16 @@ static void handle_auth(struct hostapd_data *hapd,
  		}
  	}
  

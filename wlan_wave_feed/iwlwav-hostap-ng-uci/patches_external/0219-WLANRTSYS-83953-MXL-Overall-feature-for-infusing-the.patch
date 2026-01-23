@@ -1,0 +1,203 @@
+From d4968f8c2af5303a5be4be3b942a2a03229b70dc Mon Sep 17 00:00:00 2001
+From: rmunjewar <rmunjewar@maxlinear.com>
+Date: Tue, 5 Nov 2024 12:16:43 +0530
+Subject: [PATCH] WLANRTSYS-83953 [MXL] Overall feature for infusing the
+ puncturing into the acs in SP/ISP modes.
+
+WLANRTSYS-83953 [MXL] Addign user config parameter acs_6g_punct_mode
+
+WLANRTSYS-83953 [MXL] Seperating check channel and set channel in ACS flow
+
+WLANRTSYS-83953 [MXL] creating pri subband mask
+
+WLANRTSYS-83953 [MXL] Adding tx calculation for ranking
+
+WLANRTSYS-83953 [MXL] cleaning and setting bitmap in driver and hostap conf varaibles
+
+WLANRTSYS-83953 [MXL] Calculating the sec sub band tx power
+
+WLANRTSYS-83953 [MXL] Correcting the pri_20 and sec_20 values based on afc database
+---
+ hostapd/mxl_config_proprietary.c      | 13 ++++++++++++-
+ hostapd/mxl_ctrl_iface_proprietary.c  |  6 +++++-
+ hostapd/mxl_hostapd_cli.h             |  1 -
+ hostapd/mxl_hostapd_cli_proprietary.c |  6 +++++-
+ src/ap/mxl_acs.c                      |  2 +-
+ src/ap/mxl_acs.h                      |  2 +-
+ src/ap/mxl_common_proprietary.c       |  6 +++++-
+ src/ap/mxl_dfs_debug.c                |  2 +-
+ src/ap/mxl_dfs_debug.h                |  2 +-
+ src/ap/mxl_hostapd.h                  |  2 +-
+ src/ap/mxl_hostapd_proprietary.c      |  6 +++++-
+ 11 files changed, 37 insertions(+), 11 deletions(-)
+
+diff --git a/hostapd/mxl_config_proprietary.c b/hostapd/mxl_config_proprietary.c
+index 0c93ee83a..7ea7af1d2 100644
+--- a/hostapd/mxl_config_proprietary.c
++++ b/hostapd/mxl_config_proprietary.c
+@@ -1,6 +1,10 @@
+ /******************************************************************************
+ 
+-         Copyright (c) 2024, MaxLinear, Inc.
++         Copyright (c) 2020 - 2025, MaxLinear, Inc.
++         Copyright 2016 - 2020 Intel Corporation
++         Copyright 2015 - 2016 Lantiq Beteiligungs-GmbH & Co. KG
++         Copyright 2009 - 2014 Lantiq Deutschland GmbH
++         Copyright 2007 - 2008 Infineon Technologies AG
+ 
+   For licensing information, see the file 'LICENSE' in the root folder of
+   this software module.
+@@ -390,6 +394,13 @@ int mxl_config_check_smart_acs_config(struct hostapd_config *conf, struct hostap
+ 			return 1;
+ 		}
+ 		mxl_conf->acs_eht_mode = (enum acs_eht_modes)val;
++	} else if ((os_strcmp(buf, "acs_6g_punct_mode") == 0 && is_6ghz_op_class(conf->op_class))) {
++		int val = atoi(pos);
++		if(!IS_VALID_BOOL_RANGE(val)) {
++			wpa_printf(MSG_ERROR, "Line %d: invalid 6G ACS fused puncturing value %d, range is 0..1", line, val);
++			return 0;
++		}
++		mxl_conf->acs_6g_punct_mode = val;
+ 	} else if (os_strcmp(buf, "scan_timeout") == 0) {
+ 		int val = atoi(pos);
+ 		if (!IS_VALID_RANGE(val, SCAN_TIMEOUT_MIN, SCAN_TIMEOUT_MAX)) {
+diff --git a/hostapd/mxl_ctrl_iface_proprietary.c b/hostapd/mxl_ctrl_iface_proprietary.c
+index ce1cbbcfe..bf7bc05bc 100644
+--- a/hostapd/mxl_ctrl_iface_proprietary.c
++++ b/hostapd/mxl_ctrl_iface_proprietary.c
+@@ -1,6 +1,10 @@
+ /******************************************************************************
+ 
+-         Copyright (c) 2024, MaxLinear, Inc.
++         Copyright (c) 2020 - 2025, MaxLinear, Inc.
++         Copyright 2016 - 2020 Intel Corporation
++         Copyright 2015 - 2016 Lantiq Beteiligungs-GmbH & Co. KG
++         Copyright 2009 - 2014 Lantiq Deutschland GmbH
++         Copyright 2007 - 2008 Infineon Technologies AG
+ 
+   For licensing information, see the file 'LICENSE' in the root folder of
+   this software module.
+diff --git a/hostapd/mxl_hostapd_cli.h b/hostapd/mxl_hostapd_cli.h
+index 545af7ffc..bb64108a0 100644
+--- a/hostapd/mxl_hostapd_cli.h
++++ b/hostapd/mxl_hostapd_cli.h
+@@ -109,7 +109,6 @@ int mxl_wpa_ctrl_command(struct wpa_ctrl *ctrl, const char *cmd);
+ 	{ "bss_reconf", mxl_hostapd_cli_cmd_bss_reconf, NULL, \
+ 	  " = do reconf on all changed bss in radio"}, \
+ 
+-
+ #ifdef CONFIG_ACS
+ #define MXL_CLI_COMMANDS_ACS \
+ 	{ "reset_acs_state", mxl_hostapd_cli_cmd_reset_acs_state, NULL,           \
+diff --git a/hostapd/mxl_hostapd_cli_proprietary.c b/hostapd/mxl_hostapd_cli_proprietary.c
+index 8c433d7e8..1d9ecb989 100644
+--- a/hostapd/mxl_hostapd_cli_proprietary.c
++++ b/hostapd/mxl_hostapd_cli_proprietary.c
+@@ -1,6 +1,10 @@
+ /******************************************************************************
+ 
+-         Copyright (c) 2024, MaxLinear, Inc.
++         Copyright (c) 2020 - 2025, MaxLinear, Inc.
++         Copyright 2016 - 2020 Intel Corporation
++         Copyright 2015 - 2016 Lantiq Beteiligungs-GmbH & Co. KG
++         Copyright 2009 - 2014 Lantiq Deutschland GmbH
++         Copyright 2007 - 2008 Infineon Technologies AG
+ 
+   For licensing information, see the file 'LICENSE' in the root folder of
+   this software module.
+diff --git a/src/ap/mxl_acs.c b/src/ap/mxl_acs.c
+index 8507a1c8d..655d704c7 100644
+--- a/src/ap/mxl_acs.c
++++ b/src/ap/mxl_acs.c
+@@ -1,6 +1,6 @@
+ /******************************************************************************
+ 
+-         Copyright (c) 2023 - 2024, MaxLinear, Inc.
++         Copyright (c) 2020 - 2025, MaxLinear, Inc.
+          Copyright 2016 - 2020 Intel Corporation
+          Copyright 2015 - 2016 Lantiq Beteiligungs-GmbH & Co. KG
+          Copyright 2009 - 2014 Lantiq Deutschland GmbH
+diff --git a/src/ap/mxl_acs.h b/src/ap/mxl_acs.h
+index db8f8e526..e9d591606 100644
+--- a/src/ap/mxl_acs.h
++++ b/src/ap/mxl_acs.h
+@@ -1,6 +1,6 @@
+ /******************************************************************************
+ 
+-         Copyright (c) 2023 - 2024, MaxLinear, Inc.
++         Copyright (c) 2020 - 2025, MaxLinear, Inc.
+          Copyright 2016 - 2020 Intel Corporation
+          Copyright 2015 - 2016 Lantiq Beteiligungs-GmbH & Co. KG
+          Copyright 2009 - 2014 Lantiq Deutschland GmbH
+diff --git a/src/ap/mxl_common_proprietary.c b/src/ap/mxl_common_proprietary.c
+index 8fd34c301..9a7c84057 100644
+--- a/src/ap/mxl_common_proprietary.c
++++ b/src/ap/mxl_common_proprietary.c
+@@ -1,6 +1,10 @@
+ /******************************************************************************
+ 
+-         Copyright (c) 2024, MaxLinear, Inc.
++         Copyright (c) 2020 - 2025, MaxLinear, Inc.
++         Copyright 2016 - 2020 Intel Corporation
++         Copyright 2015 - 2016 Lantiq Beteiligungs-GmbH & Co. KG
++         Copyright 2009 - 2014 Lantiq Deutschland GmbH
++         Copyright 2007 - 2008 Infineon Technologies AG
+ 
+   For licensing information, see the file 'LICENSE' in the root folder of
+   this software module.
+diff --git a/src/ap/mxl_dfs_debug.c b/src/ap/mxl_dfs_debug.c
+index 346e40f72..593746fbe 100644
+--- a/src/ap/mxl_dfs_debug.c
++++ b/src/ap/mxl_dfs_debug.c
+@@ -1,6 +1,6 @@
+ /******************************************************************************
+ 
+-         Copyright (c) 2023 - 2024, MaxLinear, Inc.
++         Copyright (c) 2020 - 2025, MaxLinear, Inc.
+          Copyright 2016 - 2020 Intel Corporation
+          Copyright 2015 - 2016 Lantiq Beteiligungs-GmbH & Co. KG
+          Copyright 2009 - 2014 Lantiq Deutschland GmbH
+diff --git a/src/ap/mxl_dfs_debug.h b/src/ap/mxl_dfs_debug.h
+index 2068b1f6b..320582f53 100644
+--- a/src/ap/mxl_dfs_debug.h
++++ b/src/ap/mxl_dfs_debug.h
+@@ -1,6 +1,6 @@
+ /******************************************************************************
+ 
+-         Copyright (c) 2023 - 2024, MaxLinear, Inc.
++         Copyright (c) 2020 - 2025, MaxLinear, Inc.
+          Copyright 2016 - 2020 Intel Corporation
+          Copyright 2015 - 2016 Lantiq Beteiligungs-GmbH & Co. KG
+          Copyright 2009 - 2014 Lantiq Deutschland GmbH
+diff --git a/src/ap/mxl_hostapd.h b/src/ap/mxl_hostapd.h
+index a6a34b89f..ce66c7dfd 100644
+--- a/src/ap/mxl_hostapd.h
++++ b/src/ap/mxl_hostapd.h
+@@ -97,7 +97,7 @@ struct hostapd_failsafe_freq_params {
+ 
+ struct mxl_hostapd_iface {
+ 	u32 sta_aid_link[MXL_AID_WORDS];
+-  s8 stas_free_reason; /* the reason for all stations remove */
++	s8 stas_free_reason; /* the reason for all stations remove */
+ #ifdef CONFIG_VENDOR_MXL_PROPRIETARY
+ 	unsigned int acs_update_in_progress:1;
+ 	unsigned int cac_required:1;
+diff --git a/src/ap/mxl_hostapd_proprietary.c b/src/ap/mxl_hostapd_proprietary.c
+index f44e13d90..0a9d83a3a 100644
+--- a/src/ap/mxl_hostapd_proprietary.c
++++ b/src/ap/mxl_hostapd_proprietary.c
+@@ -1,6 +1,10 @@
+ /******************************************************************************
+ 
+-         Copyright (c) 2024, MaxLinear, Inc.
++         Copyright (c) 2020 - 2025, MaxLinear, Inc.
++         Copyright 2016 - 2020 Intel Corporation
++         Copyright 2015 - 2016 Lantiq Beteiligungs-GmbH & Co. KG
++         Copyright 2009 - 2014 Lantiq Deutschland GmbH
++         Copyright 2007 - 2008 Infineon Technologies AG
+ 
+   For licensing information, see the file 'LICENSE' in the root folder of
+   this software module.
+-- 
+2.43.0
+

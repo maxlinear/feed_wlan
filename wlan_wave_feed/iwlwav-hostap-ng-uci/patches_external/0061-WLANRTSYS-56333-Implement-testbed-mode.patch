@@ -1,4 +1,4 @@
-From dd1f2f6255ec6c75b435752cb71dc89ad29ceae3 Mon Sep 17 00:00:00 2001
+From da3539bd80b4794f7774f85ad2d6f01b7dedd3aa Mon Sep 17 00:00:00 2001
 From: Dmitrijs Martinovs <dmartinovs@maxlinear.com>
 Date: Tue, 20 Jun 2023 14:54:56 +0200
 Subject: [PATCH] WLANRTSYS-56333: Implement testbed mode
@@ -11,10 +11,10 @@ Subject: [PATCH] WLANRTSYS-56333: Implement testbed mode
  4 files changed, 22 insertions(+), 8 deletions(-)
 
 diff --git a/hostapd/config_file.c b/hostapd/config_file.c
-index ad079fff9..5bc817634 100644
+index 18126c836..22459d7f6 100644
 --- a/hostapd/config_file.c
 +++ b/hostapd/config_file.c
-@@ -2888,6 +2888,14 @@ static int hostapd_config_fill(struct hostapd_config *conf,
+@@ -2829,6 +2829,14 @@ static int hostapd_config_fill(struct hostapd_config *conf,
  		}
  		bss->eapol_version = eapol_version;
  		wpa_printf(MSG_DEBUG, "eapol_version=%d", bss->eapol_version);
@@ -29,7 +29,7 @@ index ad079fff9..5bc817634 100644
  #ifdef EAP_SERVER
  	} else if (os_strcmp(buf, "eap_authenticator") == 0) {
  		bss->eap_server = atoi(pos);
-@@ -5679,8 +5687,6 @@ static int hostapd_config_fill(struct hostapd_config *conf,
+@@ -5825,8 +5833,6 @@ static int hostapd_config_fill(struct hostapd_config *conf,
  		}
  		conf->owl = val;
  	} else if (os_strcmp(buf, "wpa_ie_required_for_mbss") == 0) {
@@ -38,7 +38,7 @@ index ad079fff9..5bc817634 100644
  		/* This is valid for Non-transmit BSS (MultiBSS scenario).
  		 * if this is set, Non transmit BSS will always carry Security IE (RSN/RSNX/WPA) etc.
  		 * irrespective of Security method is same as it's Transmit BSS or not.
-@@ -5693,7 +5699,6 @@ static int hostapd_config_fill(struct hostapd_config *conf,
+@@ -5839,7 +5845,6 @@ static int hostapd_config_fill(struct hostapd_config *conf,
  				return 1;
  		}
  		bss->wpa_ie_required_for_mbss = val;
@@ -47,10 +47,10 @@ index ad079fff9..5bc817634 100644
  	} else if (os_strcmp(buf, "btwt_config_enable") == 0) {
  		int val = atoi(pos);
 diff --git a/src/ap/ap_config.c b/src/ap/ap_config.c
-index f230ed2c2..f4aa074de 100644
+index e443cbc16..23acba7fe 100644
 --- a/src/ap/ap_config.c
 +++ b/src/ap/ap_config.c
-@@ -1418,7 +1418,7 @@ static int hostapd_config_check_bss(struct hostapd_bss_config *bss,
+@@ -1442,7 +1442,7 @@ static int hostapd_config_check_bss(struct hostapd_bss_config *bss,
  #endif /* CONFIG_IEEE80211R_AP */
  
  	if (full_config && conf->ieee80211n &&
@@ -59,7 +59,7 @@ index f230ed2c2..f4aa074de 100644
  		bss->disable_11n = true;
  		wpa_printf(MSG_ERROR, "HT (IEEE 802.11n) in 11b mode is not "
  			   "allowed, disabling HT capabilities");
-@@ -1426,7 +1426,7 @@ static int hostapd_config_check_bss(struct hostapd_bss_config *bss,
+@@ -1450,7 +1450,7 @@ static int hostapd_config_check_bss(struct hostapd_bss_config *bss,
  
  #ifdef CONFIG_WEP
  	if (full_config && conf->ieee80211n &&
@@ -68,7 +68,7 @@ index f230ed2c2..f4aa074de 100644
  		bss->disable_11n = true;
  		wpa_printf(MSG_ERROR, "HT (IEEE 802.11n) with WEP is not "
  			   "allowed, disabling HT capabilities");
-@@ -1436,7 +1436,7 @@ static int hostapd_config_check_bss(struct hostapd_bss_config *bss,
+@@ -1460,7 +1460,7 @@ static int hostapd_config_check_bss(struct hostapd_bss_config *bss,
  	if (full_config && conf->ieee80211n && bss->wpa &&
  	    !(bss->wpa_pairwise & WPA_CIPHER_CCMP) &&
  	    !(bss->rsn_pairwise & (WPA_CIPHER_CCMP | WPA_CIPHER_GCMP |
@@ -77,7 +77,7 @@ index f230ed2c2..f4aa074de 100644
  	{
  		bss->disable_11n = true;
  		wpa_printf(MSG_ERROR, "HT (IEEE 802.11n) with WPA/WPA2 "
-@@ -1447,7 +1447,7 @@ static int hostapd_config_check_bss(struct hostapd_bss_config *bss,
+@@ -1471,7 +1471,7 @@ static int hostapd_config_check_bss(struct hostapd_bss_config *bss,
  #ifdef CONFIG_IEEE80211AC
  #ifdef CONFIG_WEP
  	if (full_config && (conf->ieee80211ac || bss->vendor_vht) &&
@@ -86,7 +86,7 @@ index f230ed2c2..f4aa074de 100644
  		bss->disable_11ac = true;
  		wpa_printf(MSG_ERROR,
  			   "VHT (IEEE 802.11ac) with WEP is not allowed, disabling VHT capabilities");
-@@ -1467,7 +1467,7 @@ static int hostapd_config_check_bss(struct hostapd_bss_config *bss,
+@@ -1491,7 +1491,7 @@ static int hostapd_config_check_bss(struct hostapd_bss_config *bss,
  
  #ifdef CONFIG_IEEE80211AX
  #ifdef CONFIG_WEP
@@ -96,10 +96,10 @@ index f230ed2c2..f4aa074de 100644
  		bss->disable_11ax = true;
  		wpa_printf(MSG_ERROR,
 diff --git a/src/ap/ap_config.h b/src/ap/ap_config.h
-index 1f7bd033b..77f311500 100644
+index 71f63abb5..1255d2177 100644
 --- a/src/ap/ap_config.h
 +++ b/src/ap/ap_config.h
-@@ -1366,6 +1366,8 @@ struct hostapd_config {
+@@ -1411,6 +1411,8 @@ struct hostapd_config {
  #define CH_SWITCH_VHT_DISABLED BIT(1)
  	unsigned int ch_switch_vht_config;
  
@@ -109,10 +109,10 @@ index 1f7bd033b..77f311500 100644
  #define CH_SWITCH_HE_ENABLED BIT(0)
  #define CH_SWITCH_HE_DISABLED BIT(1)
 diff --git a/src/ap/hostapd.c b/src/ap/hostapd.c
-index 8576d46e9..f290e1933 100644
+index 9201a67fe..6ae8498c9 100644
 --- a/src/ap/hostapd.c
 +++ b/src/ap/hostapd.c
-@@ -5225,6 +5225,13 @@ int hostapd_switch_channel(struct hostapd_data *hapd,
+@@ -5764,6 +5764,13 @@ int hostapd_switch_channel(struct hostapd_data *hapd,
  		return 0;
  	}
  

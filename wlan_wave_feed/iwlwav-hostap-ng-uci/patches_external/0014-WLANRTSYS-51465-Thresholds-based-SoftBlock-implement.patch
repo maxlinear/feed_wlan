@@ -1,4 +1,4 @@
-From 452a01bf4e3902b49f88c72add5de7cadfd23c55 Mon Sep 17 00:00:00 2001
+From a27e7dae4186bbbe5ebd502d8cd070e79a2dedcb Mon Sep 17 00:00:00 2001
 From: Jurijs Soloveckis <jsoloveckis@maxlinear.com>
 Date: Tue, 10 Jan 2023 16:22:25 +0100
 Subject: [PATCH] WLANRTSYS-51465: Thresholds based SoftBlock implementation
@@ -402,10 +402,10 @@ index bf5c243ad..8db2056c0 100644
  
  #endif /* MXL_HOSTAPD_CLI_H */
 diff --git a/src/ap/beacon.c b/src/ap/beacon.c
-index 50bb2ed3e..1fe965b93 100644
+index c690b8332..883c95ca5 100644
 --- a/src/ap/beacon.c
 +++ b/src/ap/beacon.c
-@@ -1304,6 +1304,10 @@ void handle_probe_req(struct hostapd_data *hapd,
+@@ -1398,6 +1398,10 @@ void handle_probe_req(struct hostapd_data *hapd,
  		      const struct ieee80211_mgmt *mgmt, size_t len,
  		      int ssi_signal)
  {
@@ -416,7 +416,7 @@ index 50bb2ed3e..1fe965b93 100644
  	struct ieee802_11_elems elems;
  	const u8 *ie;
  	size_t ie_len;
-@@ -1326,6 +1330,13 @@ void handle_probe_req(struct hostapd_data *hapd,
+@@ -1421,6 +1425,13 @@ void handle_probe_req(struct hostapd_data *hapd,
  
  	if (len < IEEE80211_HDRLEN)
  		return;
@@ -430,7 +430,7 @@ index 50bb2ed3e..1fe965b93 100644
  	ie = ((const u8 *) mgmt) + IEEE80211_HDRLEN;
  	if (hapd->iconf->track_sta_max_num)
  		sta_track_add(hapd->iface, mgmt->sa, ssi_signal);
-@@ -1606,6 +1617,10 @@ void handle_probe_req(struct hostapd_data *hapd,
+@@ -1712,6 +1723,10 @@ void handle_probe_req(struct hostapd_data *hapd,
  
  	if (ret < 0)
  		wpa_printf(MSG_INFO, "handle_probe_req: send failed");
@@ -442,20 +442,20 @@ index 50bb2ed3e..1fe965b93 100644
  	os_free(params.resp);
  
 diff --git a/src/ap/drv_callbacks.c b/src/ap/drv_callbacks.c
-index abf29ab0a..04c0ee0e5 100644
+index a51d85b42..be3472600 100644
 --- a/src/ap/drv_callbacks.c
 +++ b/src/ap/drv_callbacks.c
-@@ -2463,6 +2463,9 @@ void wpa_supplicant_event(void *ctx, enum wpa_event_type event,
- 		break;
- 	case EVENT_INTERFACE_DISABLED:
- 		hostapd_free_stas(hapd);
+@@ -2803,6 +2803,9 @@ void wpa_supplicant_event(void *ctx, enum wpa_event_type event,
+ 		}
+ #endif /* CONFIG_IEEE80211BE */
+ 		hostapd_iface_disable(hapd);
 +#ifdef CONFIG_VENDOR_MXL
 +		mxl_hostapd_free_cached_events(hapd);
 +#endif /* CONFIG_VENDOR_MXL */
- 		wpa_msg(hapd->msg_ctx, MSG_INFO, INTERFACE_DISABLED);
- 		hapd->disabled = 1;
  		break;
-@@ -2547,6 +2550,8 @@ void wpa_supplicant_event_global(void *ctx, enum wpa_event_type event,
+ #ifdef CONFIG_ACS
+ 	case EVENT_ACS_CHANNEL_SELECTED:
+@@ -2898,6 +2901,8 @@ void wpa_supplicant_event_global(void *ctx, enum wpa_event_type event,
  #ifdef CONFIG_VENDOR_MXL
  /* wrapper to access static functions from MXL code */
  struct hostapd_channel_data * mxl_hostapd_get_mode_channel(struct hostapd_iface *iface, unsigned int freq) { return hostapd_get_mode_channel(iface, freq); }
@@ -465,10 +465,10 @@ index abf29ab0a..04c0ee0e5 100644
  
  #endif /* HOSTAPD */
 diff --git a/src/ap/hostapd.c b/src/ap/hostapd.c
-index 0cf5c8be2..4448af2eb 100644
+index aee2b3a50..dae7f297f 100644
 --- a/src/ap/hostapd.c
 +++ b/src/ap/hostapd.c
-@@ -763,6 +763,9 @@ static int hostapd_flush_old_stations(struct hostapd_data *hapd, u16 reason)
+@@ -839,6 +839,9 @@ static int hostapd_flush_old_stations(struct hostapd_data *hapd, u16 reason)
  void hostapd_bss_deinit_no_free(struct hostapd_data *hapd)
  {
  	hostapd_free_stas(hapd);
@@ -478,9 +478,9 @@ index 0cf5c8be2..4448af2eb 100644
  	hostapd_flush_old_stations(hapd, WLAN_REASON_DEAUTH_LEAVING);
  #ifdef CONFIG_WEP
  	hostapd_clear_wep(hapd);
-@@ -2773,6 +2776,10 @@ hostapd_alloc_bss_data(struct hostapd_iface *hapd_iface,
- 	dl_list_init(&hapd->sae_commit_queue);
+@@ -2989,6 +2992,10 @@ hostapd_alloc_bss_data(struct hostapd_iface *hapd_iface,
  #endif /* CONFIG_SAE */
+ 	dl_list_init(&hapd->erp_keys);
  
 +#ifdef CONFIG_VENDOR_MXL
 +	mxl_hostapd_alloc_bss_data(hapd);
@@ -490,10 +490,10 @@ index 0cf5c8be2..4448af2eb 100644
  }
  
 diff --git a/src/ap/hostapd.h b/src/ap/hostapd.h
-index 727de97ce..dc0d74883 100644
+index 26557a295..dcd9b8b18 100644
 --- a/src/ap/hostapd.h
 +++ b/src/ap/hostapd.h
-@@ -161,6 +161,9 @@ struct hostapd_neighbor_entry {
+@@ -168,6 +168,9 @@ struct hostapd_neighbor_entry {
  struct hostapd_sae_commit_queue {
  	struct dl_list list;
  	int rssi;
@@ -504,10 +504,10 @@ index 727de97ce..dc0d74883 100644
  	u8 msg[];
  };
 diff --git a/src/ap/ieee802_11.c b/src/ap/ieee802_11.c
-index eb647ea11..39f08fcbf 100644
+index 5e64accb8..447f4a54c 100644
 --- a/src/ap/ieee802_11.c
 +++ b/src/ap/ieee802_11.c
-@@ -1626,6 +1626,9 @@ void auth_sae_process_commit(void *eloop_ctx, void *user_ctx)
+@@ -1870,6 +1870,9 @@ void auth_sae_process_commit(void *eloop_ctx, void *user_ctx)
  	wpa_printf(MSG_DEBUG,
  		   "SAE: Process next available message from queue");
  	dl_list_del(&q->list);
@@ -517,7 +517,7 @@ index eb647ea11..39f08fcbf 100644
  	handle_auth(hapd, (const struct ieee80211_mgmt *) q->msg, q->len,
  		    q->rssi, 1);
  	os_free(q);
-@@ -1661,6 +1664,9 @@ static void auth_sae_queue(struct hostapd_data *hapd,
+@@ -1905,6 +1908,9 @@ static void auth_sae_queue(struct hostapd_data *hapd,
  	if (!q)
  		return;
  	q->rssi = rssi;
@@ -527,7 +527,7 @@ index eb647ea11..39f08fcbf 100644
  	q->len = len;
  	os_memcpy(q->msg, mgmt, len);
  
-@@ -2794,6 +2800,11 @@ static void handle_auth(struct hostapd_data *hapd,
+@@ -3092,6 +3098,11 @@ static void handle_auth(struct hostapd_data *hapd,
  			const struct ieee80211_mgmt *mgmt, size_t len,
  			int rssi, int from_queue)
  {
@@ -539,7 +539,7 @@ index eb647ea11..39f08fcbf 100644
  	u16 auth_alg, auth_transaction, status_code;
  	u16 resp = WLAN_STATUS_SUCCESS;
  	struct sta_info *sta = NULL;
-@@ -2996,6 +3007,19 @@ static void handle_auth(struct hostapd_data *hapd,
+@@ -3301,6 +3312,19 @@ static void handle_auth(struct hostapd_data *hapd,
  			goto fail;
  		/* continue if SOFT_BLOCK_ACL_ALLOW */
  	}
@@ -559,7 +559,7 @@ index eb647ea11..39f08fcbf 100644
  #endif /* CONFIG_VENDOR_MXL */
  
  	res = ieee802_11_allowed_address(hapd, sa, (const u8 *) mgmt, len,
-@@ -3268,6 +3292,14 @@ static void handle_auth(struct hostapd_data *hapd,
+@@ -3562,6 +3586,14 @@ static void handle_auth(struct hostapd_data *hapd,
  				    resp, resp_ies, resp_ies_len,
  				    "handle-auth");
  
@@ -574,9 +574,9 @@ index eb647ea11..39f08fcbf 100644
  	if (sta && sta->added_unassoc && (resp != WLAN_STATUS_SUCCESS ||
  					  reply_res != WLAN_STATUS_SUCCESS)) {
  		hostapd_drv_sta_remove(hapd, sta->addr);
-@@ -5486,6 +5518,11 @@ static void handle_assoc(struct hostapd_data *hapd,
- 		goto fail;
- 	omit_rsnxe = !get_ie(pos, left, WLAN_EID_RSNX);
+@@ -5872,6 +5904,11 @@ static void handle_assoc(struct hostapd_data *hapd,
+ 	if (hapd->conf->rsn_override_omit_rsnxe)
+ 		omit_rsnxe = 1;
  
 +#ifdef CONFIG_VENDOR_MXL
 +	if (!mxl_hostapd_check_softblock_connect(hapd, mgmt->sa, &resp))
@@ -1490,7 +1490,7 @@ index 833f80c0f..1fedfb07b 100644
 +
  #endif /* _VENDOR_CMDS_H_ */
 diff --git a/src/drivers/driver_nl80211_event.c b/src/drivers/driver_nl80211_event.c
-index d450efd28..e67027e60 100644
+index fa9459b27..4065abd1f 100644
 --- a/src/drivers/driver_nl80211_event.c
 +++ b/src/drivers/driver_nl80211_event.c
 @@ -24,6 +24,7 @@
@@ -1501,7 +1501,7 @@ index d450efd28..e67027e60 100644
  #endif /* CONFIG_VENDOR_MXL */
  
  
-@@ -3249,6 +3250,16 @@ static void mxl_nl80211_handle_coc(struct wpa_driver_nl80211_data *drv, const u8
+@@ -3387,6 +3388,16 @@ static void mxl_nl80211_handle_coc(struct wpa_driver_nl80211_data *drv, const u8
  	mxl_drv_event_coc(drv->ctx, data, len);
  }
  
@@ -1518,7 +1518,7 @@ index d450efd28..e67027e60 100644
  #endif /* CONFIG_DRIVER_NL80211_MXL */
  
  static void nl80211_vendor_event_mxl(struct wpa_driver_nl80211_data *drv,
-@@ -3261,6 +3272,9 @@ static void nl80211_vendor_event_mxl(struct wpa_driver_nl80211_data *drv,
+@@ -3399,6 +3410,9 @@ static void nl80211_vendor_event_mxl(struct wpa_driver_nl80211_data *drv,
  		case LTQ_NL80211_VENDOR_EVENT_RADAR_DETECTED:
  			mxl_nl80211_handle_radar(drv, data, len);
  			break;
@@ -1528,7 +1528,7 @@ index d450efd28..e67027e60 100644
  		case LTQ_NL80211_VENDOR_EVENT_COC_BEACON_UPDATE:
  			mxl_nl80211_handle_coc(drv, data, len);
  			break;
-@@ -4239,6 +4253,13 @@ int process_bss_event(struct nl_msg *msg, void *arg)
+@@ -4441,6 +4455,13 @@ int process_bss_event(struct nl_msg *msg, void *arg)
  
  	switch (gnlh->cmd) {
  	case NL80211_CMD_FRAME:

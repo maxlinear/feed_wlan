@@ -1,4 +1,4 @@
-From a94f8a67d0d2510dce7a7ccdae2a2d230e1ee7c3 Mon Sep 17 00:00:00 2001
+From 0d478d76476c03f3ee3fb63b9517ec2d715bc44f Mon Sep 17 00:00:00 2001
 From: mvulsx <mvuls@maxlinear.com>
 Date: Mon, 3 Jul 2023 11:14:38 +0000
 Subject: [PATCH] WLANRTSYS-56651: Implement CoC Power saving
@@ -6,19 +6,19 @@ Subject: [PATCH] WLANRTSYS-56651: Implement CoC Power saving
 Signed-off-by: mvulsx <mvuls@maxlinear.com>
 ---
  src/ap/ap_config.h                 |  8 ++++
- src/ap/beacon.c                    | 14 ++++++
+ src/ap/beacon.c                    | 16 +++++++
  src/ap/hostapd.h                   |  2 +
  src/ap/ieee802_11.h                |  3 ++
  src/ap/ieee802_11_ht.c             |  1 -
  src/ap/mxl_hostapd.c               | 71 +++++++++++++++++++++++++++++-
  src/drivers/driver_nl80211_event.c |  1 +
- 7 files changed, 97 insertions(+), 3 deletions(-)
+ 7 files changed, 99 insertions(+), 3 deletions(-)
 
 diff --git a/src/ap/ap_config.h b/src/ap/ap_config.h
-index 6dd9e3e4b..f7606a79c 100644
+index a1491e478..9e58f9dcd 100644
 --- a/src/ap/ap_config.h
 +++ b/src/ap/ap_config.h
-@@ -1098,6 +1098,14 @@ struct spatial_reuse {
+@@ -1129,6 +1129,14 @@ struct spatial_reuse {
  	u8 srg_partial_bssid_bitmap[8];
  };
  
@@ -34,18 +34,20 @@ index 6dd9e3e4b..f7606a79c 100644
  {
  	UNII4_DISABLED,
 diff --git a/src/ap/beacon.c b/src/ap/beacon.c
-index 1ddefe72e..4e129450d 100644
+index f5ef5aac8..5aba7d7ab 100644
 --- a/src/ap/beacon.c
 +++ b/src/ap/beacon.c
-@@ -2760,6 +2760,7 @@ static int __ieee802_11_set_beacon(struct hostapd_data *hapd)
- 	struct hostapd_config *iconf = iface->conf;
+@@ -2890,6 +2890,9 @@ static int __ieee802_11_set_beacon(struct hostapd_data *hapd)
  	struct hostapd_hw_modes *cmode = iface->current_mode;
  	struct wpabuf *beacon, *proberesp, *assocresp;
+ 	bool twt_he_responder = false;
++#ifdef CONFIG_VENDOR_MXL
 +	struct csa_settings csa_settings;
++#endif /* CONFIG_VENDOR_MXL */
  	int res, ret = -1, i;
  	struct hostapd_hw_modes *mode;
  
-@@ -2858,6 +2859,19 @@ static int __ieee802_11_set_beacon(struct hostapd_data *hapd)
+@@ -2997,6 +3000,19 @@ static int __ieee802_11_set_beacon(struct hostapd_data *hapd)
  						 true, &params.allowed_freqs);
  	}
  
@@ -66,10 +68,10 @@ index 1ddefe72e..4e129450d 100644
  	hostapd_free_ap_extra_ies(hapd, beacon, proberesp, assocresp);
  	if (res)
 diff --git a/src/ap/hostapd.h b/src/ap/hostapd.h
-index b8743a16a..f8faaa8e7 100644
+index 2a448a57b..4af6883c5 100644
 --- a/src/ap/hostapd.h
 +++ b/src/ap/hostapd.h
-@@ -726,6 +726,8 @@ struct hostapd_iface {
+@@ -802,6 +802,8 @@ struct hostapd_iface {
  #endif /* CONFIG_IEEE80211AX */
  
  	int set_freq_done;
@@ -79,7 +81,7 @@ index b8743a16a..f8faaa8e7 100644
  
  	bool whm_if_fail;
 diff --git a/src/ap/ieee802_11.h b/src/ap/ieee802_11.h
-index dadd8e030..1da08514e 100644
+index 9367c63b0..838bd9888 100644
 --- a/src/ap/ieee802_11.h
 +++ b/src/ap/ieee802_11.h
 @@ -9,6 +9,9 @@
@@ -93,10 +95,10 @@ index dadd8e030..1da08514e 100644
  struct hostapd_data;
  struct sta_info;
 diff --git a/src/ap/ieee802_11_ht.c b/src/ap/ieee802_11_ht.c
-index 0eeeae37b..c2a390c39 100644
+index 11b321791..a9dd21a8a 100644
 --- a/src/ap/ieee802_11_ht.c
 +++ b/src/ap/ieee802_11_ht.c
-@@ -373,7 +373,6 @@ void hostapd_2040_coex_action(struct hostapd_data *hapd,
+@@ -411,7 +411,6 @@ void hostapd_2040_coex_action(struct hostapd_data *hapd,
  	}
  }
  
@@ -201,10 +203,10 @@ index 983377a6d..8b78ebefb 100644
  	eloop_cancel_timeout(mxl_ap_max_nss_omn_elem_timeout, iface, NULL);
  
 diff --git a/src/drivers/driver_nl80211_event.c b/src/drivers/driver_nl80211_event.c
-index 72399dd8f..a30aef5a6 100644
+index cc9874407..bda776d04 100644
 --- a/src/drivers/driver_nl80211_event.c
 +++ b/src/drivers/driver_nl80211_event.c
-@@ -3260,6 +3260,7 @@ static void mxl_nl80211_handle_softblock_drop(struct wpa_driver_nl80211_data *dr
+@@ -3398,6 +3398,7 @@ static void mxl_nl80211_handle_softblock_drop(struct wpa_driver_nl80211_data *dr
  	mxl_drv_event_softblock_drop(drv->ctx, data, len);
  }
  

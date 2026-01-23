@@ -1,20 +1,20 @@
-From 44ad30802b571172ff98b749a7fc850708334d71 Mon Sep 17 00:00:00 2001
+From 0e24e4b5e8400261433d71f623ef3c708f88567f Mon Sep 17 00:00:00 2001
 From: Jurijs Soloveckis <jsoloveckis@maxlinear.com>
 Date: Thu, 25 May 2023 09:18:47 +0200
 Subject: [PATCH] WLANRTSYS-55538: Reconf implementation
 
 ---
- hostapd/ctrl_iface.c  |  46 +++++++++
+ hostapd/ctrl_iface.c  |  48 +++++++++
  hostapd/hostapd_cli.c |  32 ++++++
  src/ap/hostapd.c      | 231 ++++++++++++++++++++++++++++++++++++++++++
  src/ap/hostapd.h      |   1 +
- 4 files changed, 310 insertions(+)
+ 4 files changed, 312 insertions(+)
 
 diff --git a/hostapd/ctrl_iface.c b/hostapd/ctrl_iface.c
-index 0f5a1d74b..fb175bce4 100644
+index 3366c4195..fe388edb1 100644
 --- a/hostapd/ctrl_iface.c
 +++ b/hostapd/ctrl_iface.c
-@@ -1400,6 +1400,49 @@ static int hostapd_ctrl_iface_reload(struct hostapd_iface *iface)
+@@ -1380,6 +1380,49 @@ static int hostapd_ctrl_iface_reload(struct hostapd_iface *iface)
  	return 0;
  }
  
@@ -64,21 +64,23 @@ index 0f5a1d74b..fb175bce4 100644
  
  static int hostapd_ctrl_iface_reload_bss(struct hostapd_data *bss)
  {
-@@ -5201,6 +5244,9 @@ static int hostapd_ctrl_iface_receive_process(struct hostapd_data *hapd,
- 	} else if (os_strncmp(buf, "RELOAD", 6) == 0) {
- 		if (hostapd_ctrl_iface_reload(hapd->iface))
+@@ -5853,6 +5896,11 @@ static int hostapd_ctrl_iface_receive_process(struct hostapd_data *hapd,
+ 	} else if (os_strcmp(buf, "DISABLE") == 0) {
+ 		if (hostapd_ctrl_iface_disable(hapd->iface))
  			reply_len = -1;
++#ifdef CONFIG_VENDOR_MXL
 +	} else if (os_strncmp(buf, "RECONF", 6) == 0) {
 +		if (hostapd_ctrl_iface_reconf(hapd->iface, buf + 6))
 +			reply_len = -1;
- 	} else if (os_strncmp(buf, "DISABLE", 7) == 0) {
- 		if (hostapd_ctrl_iface_disable(hapd->iface))
- 			reply_len = -1;
++#endif /* CONFIG_VENDOR_MXL */
+ 	} else if (os_strcmp(buf, "UPDATE_BEACON") == 0) {
+ #ifndef CONFIG_VENDOR_MXL
+ 		if (ieee802_11_set_beacon(hapd))
 diff --git a/hostapd/hostapd_cli.c b/hostapd/hostapd_cli.c
-index cca0c4dce..f5a27e888 100644
+index 2bc1fc7c8..8dcb713b5 100644
 --- a/hostapd/hostapd_cli.c
 +++ b/hostapd/hostapd_cli.c
-@@ -2104,6 +2104,33 @@ static int hostapd_cli_cmd_set_bss_load(struct wpa_ctrl *ctrl, int argc,
+@@ -2174,6 +2174,33 @@ static int hostapd_cli_cmd_set_bss_load(struct wpa_ctrl *ctrl, int argc,
  	return -1;
  }
  
@@ -112,7 +114,7 @@ index cca0c4dce..f5a27e888 100644
  struct hostapd_cli_cmd {
  	const char *cmd;
  	int (*handler)(struct wpa_ctrl *ctrl, int argc, char *argv[]);
-@@ -2372,6 +2399,11 @@ static const struct hostapd_cli_cmd hostapd_cli_commands[] = {
+@@ -2463,6 +2490,11 @@ static const struct hostapd_cli_cmd hostapd_cli_commands[] = {
  #endif /* CONFIG_IEEE80211AX */
  	{ "set_bss_load", hostapd_cli_cmd_set_bss_load, NULL,
  	  "<BSS name> <1/0> = set BSS Load IE in beacon and probe resp" },
@@ -125,10 +127,10 @@ index cca0c4dce..f5a27e888 100644
  };
  
 diff --git a/src/ap/hostapd.c b/src/ap/hostapd.c
-index b4aeb8884..48f35dd2e 100644
+index 33cfd6f4d..cc439114f 100644
 --- a/src/ap/hostapd.c
 +++ b/src/ap/hostapd.c
-@@ -1856,6 +1856,8 @@ static int hostapd_setup_bss(struct hostapd_data *hapd, int first,
+@@ -2025,6 +2025,8 @@ setup_mld:
  	if (hapd->wpa_auth && wpa_init_keys(hapd->wpa_auth) < 0)
  		return -1;
  
@@ -137,7 +139,7 @@ index b4aeb8884..48f35dd2e 100644
  	if (hapd->iface->conf->autonomous_color_change) {
  		u8 current_color, color_disabled;
  		current_color = hapd->iface->conf->he_op.he_bss_color;
-@@ -3768,6 +3770,229 @@ int hostapd_enable_iface(struct hostapd_iface *hapd_iface)
+@@ -4257,6 +4259,229 @@ int hostapd_enable_iface(struct hostapd_iface *hapd_iface)
  	return 0;
  }
  
@@ -367,7 +369,7 @@ index b4aeb8884..48f35dd2e 100644
  
  int hostapd_reload_iface(struct hostapd_iface *hapd_iface)
  {
-@@ -4089,6 +4314,12 @@ int hostapd_add_iface(struct hapd_interfaces *interfaces, char *buf)
+@@ -4582,6 +4807,12 @@ int hostapd_add_iface(struct hapd_interfaces *interfaces, char *buf)
  		if (conf && conf->bss)
  			os_strlcpy(conf->bss[0]->iface, buf,
  				   sizeof(conf->bss[0]->iface));
@@ -381,10 +383,10 @@ index b4aeb8884..48f35dd2e 100644
  		char *driver = os_strchr(ptr, ' ');
  
 diff --git a/src/ap/hostapd.h b/src/ap/hostapd.h
-index 4c7d444ff..67dbcfe1a 100644
+index 3ba713bd0..5ed571743 100644
 --- a/src/ap/hostapd.h
 +++ b/src/ap/hostapd.h
-@@ -747,6 +747,7 @@ void hostapd_new_assoc_sta(struct hostapd_data *hapd, struct sta_info *sta,
+@@ -826,6 +826,7 @@ void hostapd_new_assoc_sta(struct hostapd_data *hapd, struct sta_info *sta,
  			   int reassoc);
  void hostapd_interface_deinit_free(struct hostapd_iface *iface);
  int hostapd_enable_iface(struct hostapd_iface *hapd_iface);

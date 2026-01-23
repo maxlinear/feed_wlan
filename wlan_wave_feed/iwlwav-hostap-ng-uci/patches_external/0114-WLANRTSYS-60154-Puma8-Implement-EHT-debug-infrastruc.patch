@@ -1,4 +1,4 @@
-From 4dfdb32c3a2eeac60883c4bce45a4caab06f8fad Mon Sep 17 00:00:00 2001
+From 125c5bd99805b22146434a5f826855b4a7a4dde1 Mon Sep 17 00:00:00 2001
 From: Jurijs Soloveckis <jsoloveckis@maxlinear.com>
 Date: Fri, 24 Nov 2023 10:14:07 +0200
 Subject: [PATCH] WLANRTSYS-60154: Puma8: Implement EHT debug infrastructure
@@ -9,12 +9,12 @@ Subject: [PATCH] WLANRTSYS-60154: Puma8: Implement EHT debug infrastructure
 Signed-off-by: Jurijs Soloveckis <jsoloveckis@maxlinear.com>
 ---
  hostapd/mxl_config.c             | 542 ++++++++++++++++++++++++++++
- src/ap/ieee802_11_eht.c          |  29 ++
+ src/ap/ieee802_11_eht.c          |  28 ++
  src/ap/mxl_config.h              | 122 +++++++
  src/ap/mxl_hostapd.c             | 582 ++++++++++++++++++++++++++++++-
  src/common/mxl_ieee802_11_defs.h | 207 +++++++++++
  src/common/vendor_cmds_copy.h    |  10 +
- 6 files changed, 1491 insertions(+), 1 deletion(-)
+ 6 files changed, 1490 insertions(+), 1 deletion(-)
 
 diff --git a/hostapd/mxl_config.c b/hostapd/mxl_config.c
 index 70d4d3791..dbf14e554 100644
@@ -584,7 +584,7 @@ index 70d4d3791..dbf14e554 100644
  
  void mxl_hostapd_config_free_bss(struct hostapd_bss_config *bss)
 diff --git a/src/ap/ieee802_11_eht.c b/src/ap/ieee802_11_eht.c
-index e62ae776b..008f701c9 100644
+index 8e0a7d3d1..aaa7b82e5 100644
 --- a/src/ap/ieee802_11_eht.c
 +++ b/src/ap/ieee802_11_eht.c
 @@ -13,6 +13,9 @@
@@ -597,7 +597,7 @@ index e62ae776b..008f701c9 100644
  
  
  static u16 ieee80211_eht_ppet_size(u16 ppe_thres_hdr, const u8 *phy_cap_info)
-@@ -156,6 +159,9 @@ u8 * hostapd_eid_eht_capab(struct hostapd_data *hapd, u8 *eid,
+@@ -161,6 +164,9 @@ u8 * hostapd_eid_eht_capab(struct hostapd_data *hapd, u8 *eid,
  	if (!is_6ghz_op_class(hapd->iconf->op_class))
  		cap->phy_cap[EHT_PHYCAP_320MHZ_IN_6GHZ_SUPPORT_IDX] &=
  			~EHT_PHYCAP_320MHZ_IN_6GHZ_SUPPORT_MASK;
@@ -607,7 +607,7 @@ index e62ae776b..008f701c9 100644
  	if (!hapd->iface->conf->eht_phy_capab.su_beamformer)
  		cap->phy_cap[EHT_PHYCAP_SU_BEAMFORMER_IDX] &=
  			~EHT_PHYCAP_SU_BEAMFORMER;
-@@ -167,6 +173,7 @@ u8 * hostapd_eid_eht_capab(struct hostapd_data *hapd, u8 *eid,
+@@ -172,6 +178,7 @@ u8 * hostapd_eid_eht_capab(struct hostapd_data *hapd, u8 *eid,
  	if (!hapd->iface->conf->eht_phy_capab.mu_beamformer)
  		cap->phy_cap[EHT_PHYCAP_MU_BEAMFORMER_IDX] &=
  			~EHT_PHYCAP_MU_BEAMFORMER_MASK;
@@ -615,7 +615,7 @@ index e62ae776b..008f701c9 100644
  
  	pos = cap->optional;
  
-@@ -226,6 +233,26 @@ u8 * hostapd_eid_eht_operation(struct hostapd_data *hapd, u8 *eid)
+@@ -232,6 +239,26 @@ u8 * hostapd_eid_eht_operation(struct hostapd_data *hapd, u8 *eid)
  	oper = (struct ieee80211_eht_operation *) pos;
  	oper->oper_params = 0;
  
@@ -638,16 +638,15 @@ index e62ae776b..008f701c9 100644
 +		return pos + elen;
 +
 +	oper->oper_params |= EHT_OPER_INFO_PRESENT;
-+#else
- 	/* TODO: Fill in appropriate EHT-MCS max Nss information */
- 	oper->basic_eht_mcs_nss_set[0] = 0x11;
- 	oper->basic_eht_mcs_nss_set[1] = 0x00;
-@@ -236,6 +263,8 @@ u8 * hostapd_eid_eht_operation(struct hostapd_data *hapd, u8 *eid)
++#else /* CONFIG_VENDOR_MXL */
+ 	if (hapd->iconf->eht_default_pe_duration)
+ 		oper->oper_params |= EHT_OPER_DEFAULT_PE_DURATION;
+ 
+@@ -245,6 +272,7 @@ u8 * hostapd_eid_eht_operation(struct hostapd_data *hapd, u8 *eid)
  		return pos + elen;
  
- 	oper->oper_params = EHT_OPER_INFO_PRESENT;
+ 	oper->oper_params |= EHT_OPER_INFO_PRESENT;
 +#endif /* CONFIG_VENDOR_MXL */
-+
  	seg0 = hostapd_get_oper_centr_freq_seg0_idx(conf);
  
  	switch (chwidth) {

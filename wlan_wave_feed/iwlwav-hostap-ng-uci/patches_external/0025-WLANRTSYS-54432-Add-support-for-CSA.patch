@@ -1,30 +1,30 @@
-From 32b813a910fa5d9bcaa2593a5809e010ed862583 Mon Sep 17 00:00:00 2001
+From 09e1c48ccd1921d04cbba14c10818041667e46f6 Mon Sep 17 00:00:00 2001
 From: mvuls <mvuls@maxlinear.com>
 Date: Wed, 1 Nov 2023 14:39:32 +0200
 Subject: [PATCH] WLANRTSYS-54432: Add support for CSA
 
 ---
- hostapd/ctrl_iface.c              |  81 +++++++++++
+ hostapd/ctrl_iface.c              |  82 +++++++++++
  src/ap/dfs.c                      |   5 +
- src/ap/drv_callbacks.c            |  55 ++++----
- src/ap/hostapd.c                  | 124 +++++++++++++++++
+ src/ap/drv_callbacks.c            |  53 ++++---
+ src/ap/hostapd.c                  | 124 ++++++++++++++++
  src/ap/hostapd.h                  |   3 +
  src/ap/mxl_hostapd.c              |  32 ++++-
  src/ap/mxl_hostapd.h              |   1 +
  src/ap/mxl_sub_band_dfs.c         |   3 +
  src/ap/mxl_zwdfs.c                |   2 +
- src/ap/wpa_auth.c                 | 223 ++++++++++++++++++++++++++++++
+ src/ap/wpa_auth.c                 | 225 ++++++++++++++++++++++++++++++
  src/ap/wpa_auth.h                 |  11 ++
  src/ap/wpa_auth_i.h               |   5 +
  src/common/vendor_cmds_copy.h     |  19 +++
  src/drivers/driver_nl80211_capa.c |   1 -
- 14 files changed, 539 insertions(+), 26 deletions(-)
+ 14 files changed, 541 insertions(+), 25 deletions(-)
 
 diff --git a/hostapd/ctrl_iface.c b/hostapd/ctrl_iface.c
-index ad467dc2a..5d358733b 100644
+index 4151b8f2a..1e7a4c025 100644
 --- a/hostapd/ctrl_iface.c
 +++ b/hostapd/ctrl_iface.c
-@@ -2409,6 +2409,10 @@ static int hostapd_ctrl_check_freq_params(struct hostapd_freq_params *params,
+@@ -2502,6 +2502,10 @@ static int hostapd_ctrl_check_freq_params(struct hostapd_freq_params *params,
  		}
  	}
  
@@ -35,16 +35,17 @@ index ad467dc2a..5d358733b 100644
  	switch (params->bandwidth) {
  	case 0:
  		/* bandwidth not specified: use 20 MHz by default */
-@@ -2703,6 +2707,8 @@ static int hostapd_ctrl_iface_chan_switch(struct hostapd_iface *iface,
- 		return 0;
+@@ -2824,6 +2828,9 @@ static int hostapd_ctrl_iface_chan_switch(struct hostapd_iface *iface,
+ 			   "CAC is in progress - switching channel without CSA");
+ 		return hostapd_force_channel_switch(iface, &settings);
  	}
- 
++#ifdef CONFIG_VENDOR_MXL
 +	hostapd_prepare_and_send_csa_deauth_cfg_to_driver(iface->bss[0]);
-+
++#endif /* CONFIG_VENDOR_MXL */
+ 
  	for (i = 0; i < iface->num_bss; i++) {
  
- 		/* Save CHAN_SWITCH VHT, HE, and EHT config */
-@@ -4769,6 +4775,75 @@ static int hostapd_ctrl_iface_is_transmitted_bssid(struct hostapd_data *hapd, ch
+@@ -5409,6 +5416,75 @@ static int hostapd_ctrl_iface_is_transmitted_bssid(struct hostapd_data *hapd, ch
  	return ret;
  }
  
@@ -120,7 +121,7 @@ index ad467dc2a..5d358733b 100644
  static int hostapd_ctrl_iface_get_hidden_mode(struct hostapd_data *hapd, char *reply, size_t reply_size)
  {
  	int ret = 0;
-@@ -5398,6 +5473,12 @@ static int hostapd_ctrl_iface_receive_process(struct hostapd_data *hapd,
+@@ -6083,6 +6159,12 @@ static int hostapd_ctrl_iface_receive_process(struct hostapd_data *hapd,
  		reply_len = hostapd_ctrl_iface_is_transmitted_bssid(hapd,reply,reply_size);
  	} else if (os_strncmp(buf, "GET_HIDDEN_MODE", 15) == 0) {
  		reply_len = hostapd_ctrl_iface_get_hidden_mode(hapd,reply,reply_size);
@@ -134,10 +135,10 @@ index ad467dc2a..5d358733b 100644
  		os_memcpy(reply, "UNKNOWN COMMAND\n", 16);
  		reply_len = 16;
 diff --git a/src/ap/dfs.c b/src/ap/dfs.c
-index 716b4c3e4..25982214d 100644
+index 1cc7ed1b9..52ce4c552 100644
 --- a/src/ap/dfs.c
 +++ b/src/ap/dfs.c
-@@ -1031,6 +1031,10 @@ static int hostapd_dfs_request_channel_switch(struct hostapd_iface *iface,
+@@ -1048,6 +1048,10 @@ static int hostapd_dfs_request_channel_switch(struct hostapd_iface *iface,
  #ifdef CONFIG_VENDOR_MXL
  	(void)mxl_hostapd_drv_set_antenna(iface, 0, 0);
  #endif /* CONFIG_VENDOR_MXL */
@@ -148,7 +149,7 @@ index 716b4c3e4..25982214d 100644
  	for (i = 0; i < iface->num_bss; i++) {
  		err = hostapd_switch_channel(iface->bss[i], &csa_settings);
  		if (err)
-@@ -1330,6 +1334,7 @@ static int hostapd_dfs_start_channel_switch_cac(struct hostapd_iface *iface)
+@@ -1356,6 +1360,7 @@ static int hostapd_dfs_start_channel_switch_cac(struct hostapd_iface *iface)
  					     oper_centr_freq_seg1_idx);
  	err = 0;
  
@@ -157,10 +158,10 @@ index 716b4c3e4..25982214d 100644
  	return err;
  }
 diff --git a/src/ap/drv_callbacks.c b/src/ap/drv_callbacks.c
-index 497bcb501..768c375ab 100644
+index 3d59b46d3..0fca4a9ec 100644
 --- a/src/ap/drv_callbacks.c
 +++ b/src/ap/drv_callbacks.c
-@@ -1020,6 +1020,23 @@ void hostapd_event_sta_opmode_changed(struct hostapd_data *hapd, const u8 *addr,
+@@ -1180,6 +1180,23 @@ void hostapd_event_sta_opmode_changed(struct hostapd_data *hapd, const u8 *addr,
  	}
  }
  
@@ -184,7 +185,7 @@ index 497bcb501..768c375ab 100644
  
  void hostapd_event_ch_switch(struct hostapd_data *hapd, int freq, int ht,
  			     int offset, int width, int cf1, int cf2,
-@@ -1194,30 +1211,20 @@ void hostapd_event_ch_switch(struct hostapd_data *hapd, int freq, int ht,
+@@ -1356,30 +1373,20 @@ void hostapd_event_ch_switch(struct hostapd_data *hapd, int freq, int ht,
  	if (!finished)
  		return;
  
@@ -192,7 +193,9 @@ index 497bcb501..768c375ab 100644
 -	    freq == hapd->cs_freq_params.freq) {
 -		hostapd_cleanup_cs_params(hapd);
 -		ieee802_11_set_beacon(hapd);
--
++	if ((hapd->csa_in_progress && freq == hapd->cs_freq_params.freq) ||
++		(hapd->iface->drv_flags & WPA_DRIVER_FLAGS_DFS_OFFLOAD)) {
+ 
 -		wpa_msg(hapd->msg_ctx, MSG_INFO, AP_CSA_FINISHED
 -			"freq=%d dfs=%d", freq, is_dfs);
 -	} else if (hapd->iface->drv_flags & WPA_DRIVER_FLAGS_DFS_OFFLOAD) {
@@ -212,9 +215,6 @@ index 497bcb501..768c375ab 100644
 -		   !hapd->iface->cac_started) {
 -		hostapd_disable_iface(hapd->iface);
 -		hostapd_enable_iface(hapd->iface);
-+	if ((hapd->csa_in_progress && freq == hapd->cs_freq_params.freq) ||
-+		(hapd->iface->drv_flags & WPA_DRIVER_FLAGS_DFS_OFFLOAD)) {
-+
 +		if (hapd->csa_in_progress && freq == hapd->cs_freq_params.freq)
 +			hostapd_cleanup_cs_params(hapd);
 +
@@ -230,10 +230,10 @@ index 497bcb501..768c375ab 100644
  
  	for (i = 0; i < hapd->iface->num_bss; i++)
 diff --git a/src/ap/hostapd.c b/src/ap/hostapd.c
-index 30bc7302d..c3776de12 100644
+index 4feb49b4b..8f40beea0 100644
 --- a/src/ap/hostapd.c
 +++ b/src/ap/hostapd.c
-@@ -59,6 +59,7 @@
+@@ -60,6 +60,7 @@
  #ifdef CONFIG_VENDOR_MXL
  #include "mxl_hostapd.h"
  #endif /* CONFIG_VENDOR_MXL */
@@ -241,7 +241,7 @@ index 30bc7302d..c3776de12 100644
  
  
  static int hostapd_flush_old_stations(struct hostapd_data *hapd, u16 reason);
-@@ -2140,6 +2141,9 @@ static int configured_fixed_chan_to_freq(struct hostapd_iface *iface)
+@@ -2351,6 +2352,9 @@ static int configured_fixed_chan_to_freq(struct hostapd_iface *iface)
  
  	if (!iface->conf->channel)
  		return 0;
@@ -251,7 +251,7 @@ index 30bc7302d..c3776de12 100644
  	if (iface->conf->op_class) {
  		freq = ieee80211_chan_to_freq(NULL, iface->conf->op_class,
  					      iface->conf->channel);
-@@ -2527,6 +2531,109 @@ static void hostapd_interface_setup_failure_handler(void *eloop_ctx,
+@@ -2739,6 +2743,109 @@ static void hostapd_interface_setup_failure_handler(void *eloop_ctx,
  }
  
  
@@ -361,7 +361,7 @@ index 30bc7302d..c3776de12 100644
  static int hostapd_setup_interface_complete_sync(struct hostapd_iface *iface,
  						 int err)
  {
-@@ -2649,6 +2756,7 @@ static int hostapd_setup_interface_complete_sync(struct hostapd_iface *iface,
+@@ -2867,6 +2974,7 @@ static int hostapd_setup_interface_complete_sync(struct hostapd_iface *iface,
  			}
  
  			settings.cs_count = mxl_hostapd_get_cs_count(iface);
@@ -369,7 +369,7 @@ index 30bc7302d..c3776de12 100644
  
  			for (j = 0; j < iface->num_bss; j++) {
  				hapd = iface->bss[j];
-@@ -4342,12 +4450,28 @@ int hostapd_switch_channel(struct hostapd_data *hapd,
+@@ -4877,12 +4985,28 @@ int hostapd_switch_channel(struct hostapd_data *hapd,
  			   struct csa_settings *settings)
  {
  	int ret;
@@ -399,10 +399,10 @@ index 30bc7302d..c3776de12 100644
  	if (ret)
  		return ret;
 diff --git a/src/ap/hostapd.h b/src/ap/hostapd.h
-index 02a79f7af..62f48972b 100644
+index 0428a5e46..4684a6731 100644
 --- a/src/ap/hostapd.h
 +++ b/src/ap/hostapd.h
-@@ -489,6 +489,8 @@ struct hostapd_data {
+@@ -528,6 +528,8 @@ struct hostapd_data {
  #ifdef CONFIG_VENDOR_MXL
  	struct mxl_hostapd_data mxl_data;
  #endif /* CONFIG_VENDOR_MXL */
@@ -411,7 +411,7 @@ index 02a79f7af..62f48972b 100644
  };
  
  
-@@ -728,6 +730,7 @@ void hostapd_channel_list_updated(struct hostapd_iface *iface, int initiator);
+@@ -805,6 +807,7 @@ void hostapd_channel_list_updated(struct hostapd_iface *iface, int initiator);
  void hostapd_set_state(struct hostapd_iface *iface, enum hostapd_iface_state s);
  const char * hostapd_state_text(enum hostapd_iface_state s);
  int hostapd_csa_in_progress(struct hostapd_iface *iface);
@@ -509,14 +509,15 @@ index cf33fdd4b..ae7746f07 100644
  		hostapd_chan_switch_config(csa_iface->bss[i], &csa_settings->freq_params);
  		ret = hostapd_switch_channel(csa_iface->bss[i], csa_settings);
 diff --git a/src/ap/wpa_auth.c b/src/ap/wpa_auth.c
-index bffbc64d9..5ee89c61c 100644
+index ffb88a03f..b14d6a04d 100644
 --- a/src/ap/wpa_auth.c
 +++ b/src/ap/wpa_auth.c
-@@ -6703,3 +6703,226 @@ void wpa_auth_set_ml_info(struct wpa_state_machine *sm, const u8 *mld_addr,
- 	}
- #endif /* CONFIG_IEEE80211BE */
+@@ -7656,3 +7656,228 @@ bool wpa_auth_sm_known_sta_identification(struct wpa_state_machine *sm,
+ 
+ 	return true;
  }
 +
++#ifdef CONFIG_VENDOR_MXL
 +/* Group keys set to GTK by default and used as per generic 11W feature design.
 + * So the same is being used to generate MMIE IE here.
 + */
@@ -739,8 +740,9 @@ index bffbc64d9..5ee89c61c 100644
 +	return prot;
 +}
 +#endif /* AES_GMAC_AVAILABLE */
++#endif /* CONFIG_VENDOR_MXL */
 diff --git a/src/ap/wpa_auth.h b/src/ap/wpa_auth.h
-index 7e3dcbf39..46fd315c7 100644
+index 140eeac79..2f5ddae0d 100644
 --- a/src/ap/wpa_auth.h
 +++ b/src/ap/wpa_auth.h
 @@ -138,6 +138,17 @@ struct ft_rrb_seq {
@@ -762,10 +764,10 @@ index 7e3dcbf39..46fd315c7 100644
  /* per STA state machine data */
  
 diff --git a/src/ap/wpa_auth_i.h b/src/ap/wpa_auth_i.h
-index b2fa78912..8c9cb71c6 100644
+index 0aa25b903..0379c6b5b 100644
 --- a/src/ap/wpa_auth_i.h
 +++ b/src/ap/wpa_auth_i.h
-@@ -342,4 +342,9 @@ int wpa_ft_store_pmk_fils(struct wpa_state_machine *sm, const u8 *pmk_r0,
+@@ -352,4 +352,9 @@ int wpa_ft_store_pmk_fils(struct wpa_state_machine *sm, const u8 *pmk_r0,
  			  const u8 *pmk_r0_name);
  #endif /* CONFIG_IEEE80211R_AP */
  
@@ -813,10 +815,10 @@ index c21761d22..4a9ceb153 100644
  *                           Event structures                                   *
  *******************************************************************************/
 diff --git a/src/drivers/driver_nl80211_capa.c b/src/drivers/driver_nl80211_capa.c
-index 102d3064a..55985aded 100644
+index 094d054d0..ec5b58cb7 100644
 --- a/src/drivers/driver_nl80211_capa.c
 +++ b/src/drivers/driver_nl80211_capa.c
-@@ -936,7 +936,6 @@ static void wiphy_info_mbssid(struct wpa_driver_capa *cap, struct nlattr *attr)
+@@ -940,7 +940,6 @@ static void wiphy_info_mbssid(struct wpa_driver_capa *cap, struct nlattr *attr)
  		   cap->mbssid_max_interfaces, cap->ema_max_periodicity);
  }
  

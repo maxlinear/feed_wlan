@@ -1,4 +1,4 @@
-From 91c1d995069d9c1e693d5948bab04a25693026ef Mon Sep 17 00:00:00 2001
+From 7a082abd18ba5d24791dd6da947c0d7c3c20c0b0 Mon Sep 17 00:00:00 2001
 From: Jurijs Soloveckis <jsoloveckis@maxlinear.com>
 Date: Wed, 17 May 2023 15:52:54 +0200
 Subject: [PATCH] WLANRTSYS-55314: Align HT capabilities
@@ -20,10 +20,10 @@ Subject: [PATCH] WLANRTSYS-55314: Align HT capabilities
  12 files changed, 387 insertions(+), 7 deletions(-)
 
 diff --git a/hostapd/config_file.c b/hostapd/config_file.c
-index 70b5d62b3..c462fb4d3 100644
+index e3e56d3c8..504121b0f 100644
 --- a/hostapd/config_file.c
 +++ b/hostapd/config_file.c
-@@ -1081,6 +1081,188 @@ static int hostapd_config_ht_capab(struct hostapd_config *conf,
+@@ -1149,6 +1149,188 @@ static int hostapd_config_ht_capab(struct hostapd_config *conf,
  	return 0;
  }
  
@@ -212,7 +212,7 @@ index 70b5d62b3..c462fb4d3 100644
  
  #ifdef CONFIG_IEEE80211AC
  static int hostapd_config_vht_capab(struct hostapd_config *conf,
-@@ -3471,6 +3653,14 @@ static int hostapd_config_fill(struct hostapd_config *conf,
+@@ -3535,6 +3717,14 @@ static int hostapd_config_fill(struct hostapd_config *conf,
  				   line);
  			return 1;
  		}
@@ -226,12 +226,12 @@ index 70b5d62b3..c462fb4d3 100644
 +		}
  	} else if (os_strcmp(buf, "require_ht") == 0) {
  		conf->require_ht = atoi(pos);
- 	} else if (os_strcmp(buf, "obss_interval") == 0) {
+ 	} else if (os_strcmp(buf, "ht_vht_twt_responder") == 0) {
 diff --git a/src/ap/ap_config.c b/src/ap/ap_config.c
-index 4ed508aee..37b3b66fa 100644
+index 4bb1ed134..7a58a1be9 100644
 --- a/src/ap/ap_config.c
 +++ b/src/ap/ap_config.c
-@@ -262,6 +262,8 @@ struct hostapd_config * hostapd_config_defaults(void)
+@@ -267,6 +267,8 @@ struct hostapd_config * hostapd_config_defaults(void)
  	conf->tx_queue[3] = txq_bk;
  
  	conf->ht_capab = HT_CAP_INFO_SMPS_DISABLED;
@@ -241,10 +241,10 @@ index 4ed508aee..37b3b66fa 100644
  	conf->ap_table_max_size = 255;
  	conf->ap_table_expiration_time = 60;
 diff --git a/src/ap/ap_config.h b/src/ap/ap_config.h
-index 1b4929234..66b0ab3f5 100644
+index a497987ca..6a0e04196 100644
 --- a/src/ap/ap_config.h
 +++ b/src/ap/ap_config.h
-@@ -1161,6 +1161,8 @@ struct hostapd_config {
+@@ -1190,6 +1190,8 @@ struct hostapd_config {
  
  	int ht_op_mode_fixed;
  	u16 ht_capab;
@@ -254,12 +254,12 @@ index 1b4929234..66b0ab3f5 100644
  	int secondary_channel;
  	int no_pri_sec_switch;
 diff --git a/src/ap/hostapd.c b/src/ap/hostapd.c
-index 127ebf783..503e76fc1 100644
+index 42814b262..7b120d0c0 100644
 --- a/src/ap/hostapd.c
 +++ b/src/ap/hostapd.c
-@@ -307,6 +307,14 @@ int hostapd_reload_config(struct hostapd_iface *iface)
+@@ -313,6 +313,14 @@ int hostapd_reload_config(struct hostapd_iface *iface)
+ 		return res;
  	}
- 	iface->conf = newconf;
  
 +#ifdef CONFIG_VENDOR_MXL
 +	if (mxl_hostapd_prepare_reload_config(iface) < 0) {
@@ -272,7 +272,7 @@ index 127ebf783..503e76fc1 100644
  	for (j = 0; j < iface->num_bss; j++) {
  		hapd = iface->bss[j];
  		if (!hapd->conf->config_id || !newconf->bss[j]->config_id ||
-@@ -320,6 +328,7 @@ int hostapd_reload_config(struct hostapd_iface *iface)
+@@ -326,6 +334,7 @@ int hostapd_reload_config(struct hostapd_iface *iface)
  		hapd->iconf->ieee80211n = oldconf->ieee80211n;
  		hapd->iconf->ieee80211ac = oldconf->ieee80211ac;
  		hapd->iconf->ht_capab = oldconf->ht_capab;
@@ -281,10 +281,10 @@ index 127ebf783..503e76fc1 100644
  		hostapd_set_oper_chwidth(hapd->iconf,
  					 hostapd_get_oper_chwidth(oldconf));
 diff --git a/src/ap/hw_features.c b/src/ap/hw_features.c
-index 17c8ff1fa..21039486c 100644
+index 62b6fced5..77ff20d12 100644
 --- a/src/ap/hw_features.c
 +++ b/src/ap/hw_features.c
-@@ -689,6 +689,86 @@ static int ieee80211n_supported_ht_capab(struct hostapd_iface *iface)
+@@ -711,6 +711,86 @@ static int ieee80211n_supported_ht_capab(struct hostapd_iface *iface)
  	return 1;
  }
  
@@ -371,7 +371,7 @@ index 17c8ff1fa..21039486c 100644
  
  #ifdef CONFIG_IEEE80211AC
  static int ieee80211ac_supported_vht_capab(struct hostapd_iface *iface)
-@@ -750,6 +830,8 @@ int hostapd_check_ht_capab(struct hostapd_iface *iface)
+@@ -772,6 +852,8 @@ int hostapd_check_ht_capab(struct hostapd_iface *iface)
  
  	if (!ieee80211n_supported_ht_capab(iface))
  		return -1;
@@ -381,7 +381,7 @@ index 17c8ff1fa..21039486c 100644
  	if (iface->conf->ieee80211ax &&
  	    !ieee80211ax_supported_he_capab(iface))
 diff --git a/src/ap/ieee802_11_ht.c b/src/ap/ieee802_11_ht.c
-index 25007d7ef..6739b7d5f 100644
+index 1894a82eb..8f053f0b9 100644
 --- a/src/ap/ieee802_11_ht.c
 +++ b/src/ap/ieee802_11_ht.c
 @@ -42,9 +42,9 @@ u8 * hostapd_eid_ht_capabilities(struct hostapd_data *hapd, u8 *eid)
@@ -448,10 +448,10 @@ index 17760b206..f8e641c6c 100644
  void mxl_hostapd_cleanup_iface(struct hostapd_iface *iface);
  void mxl_hostapd_update_coc(struct hostapd_iface *iface, const u8 *data, size_t data_len);
 diff --git a/src/common/ieee802_11_defs.h b/src/common/ieee802_11_defs.h
-index 79a83d88b..8ba020ca7 100644
+index b0d017ab7..8f837a876 100644
 --- a/src/common/ieee802_11_defs.h
 +++ b/src/common/ieee802_11_defs.h
-@@ -1263,19 +1263,26 @@ struct ieee80211_ampe_ie {
+@@ -1315,19 +1315,26 @@ struct ieee80211_ampe_ie {
  #define TX_BF_CAP_RX_NDP_CAP ((u32) BIT(3))
  #define TX_BF_CAP_TX_NDP_CAP ((u32) BIT(4))
  #define TX_BF_CAP_IMPLICIT_TX_BF_CAP ((u32) BIT(5))
@@ -499,10 +499,10 @@ index 4a9ceb153..2d30b6d69 100644
  *                           Event structures                                   *
  *******************************************************************************/
 diff --git a/src/drivers/driver.h b/src/drivers/driver.h
-index 910bd1054..7c716700f 100644
+index 4208d9b8f..2f94c2552 100644
 --- a/src/drivers/driver.h
 +++ b/src/drivers/driver.h
-@@ -299,6 +299,11 @@ struct hostapd_hw_modes {
+@@ -311,6 +311,11 @@ struct hostapd_hw_modes {
  	 */
  	u8 vht_mcs_set[8];
  
@@ -515,10 +515,10 @@ index 910bd1054..7c716700f 100644
  
  	/**
 diff --git a/src/drivers/driver_nl80211_capa.c b/src/drivers/driver_nl80211_capa.c
-index 55985aded..9afea394b 100644
+index ec5b58cb7..1e886de0f 100644
 --- a/src/drivers/driver_nl80211_capa.c
 +++ b/src/drivers/driver_nl80211_capa.c
-@@ -1452,6 +1452,51 @@ static void qca_nl80211_get_features(struct wpa_driver_nl80211_data *drv)
+@@ -1480,6 +1480,51 @@ static void qca_nl80211_get_features(struct wpa_driver_nl80211_data *drv)
  
  #endif /* CONFIG_DRIVER_NL80211_QCA */
  
@@ -570,7 +570,7 @@ index 55985aded..9afea394b 100644
  
  int wpa_driver_nl80211_capa(struct wpa_driver_nl80211_data *drv)
  {
-@@ -2629,6 +2674,7 @@ nl80211_get_hw_feature_data(void *priv, u16 *num_modes, u16 *flags,
+@@ -2724,6 +2769,7 @@ nl80211_get_hw_feature_data(void *priv, u16 *num_modes, u16 *flags,
  		.failed = 0,
  		.dfs_domain = 0,
  	};
@@ -578,9 +578,9 @@ index 55985aded..9afea394b 100644
  
  	*num_modes = 0;
  	*flags = 0;
-@@ -2646,10 +2692,10 @@ nl80211_get_hw_feature_data(void *priv, u16 *num_modes, u16 *flags,
- 	if (send_and_recv_msgs(drv, msg, phy_info_handler, &result,
- 			       NULL, NULL, NULL) == 0) {
+@@ -2740,10 +2786,10 @@ nl80211_get_hw_feature_data(void *priv, u16 *num_modes, u16 *flags,
+ 
+ 	if (send_and_recv_resp(drv, msg, phy_info_handler, &result) == 0) {
  		struct hostapd_hw_modes *modes;
 +		int i;
  
@@ -590,7 +590,7 @@ index 55985aded..9afea394b 100644
  
  			for (i = 0; result.modes && i < *num_modes; i++) {
  				os_free(result.modes[i].channels);
-@@ -2660,6 +2706,11 @@ nl80211_get_hw_feature_data(void *priv, u16 *num_modes, u16 *flags,
+@@ -2754,6 +2800,11 @@ nl80211_get_hw_feature_data(void *priv, u16 *num_modes, u16 *flags,
  			return NULL;
  		}
  

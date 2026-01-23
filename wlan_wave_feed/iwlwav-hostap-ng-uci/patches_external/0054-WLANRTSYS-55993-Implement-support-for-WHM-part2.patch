@@ -1,16 +1,16 @@
-From 220a021ca1a0a7566a18b8c5a357f2e064d4850b Mon Sep 17 00:00:00 2001
+From d144e7e012ffa81170d3b44e5e73d963ffd5e43d Mon Sep 17 00:00:00 2001
 From: Jurijs Soloveckis <jsoloveckis@maxlinear.com>
 Date: Mon, 12 Jun 2023 08:06:15 +0200
 Subject: [PATCH] WLANRTSYS-55993: Implement support for WHM: part2
 
 ---
- hostapd/config_file.c         | 143 +++++++++++++++++++++++++++++++++-
+ hostapd/config_file.c         | 144 +++++++++++++++++++++++++++++++++-
  src/ap/ap_config.c            |   1 +
  src/ap/ap_config.h            |   9 ++-
- src/ap/ap_drv_ops.h           |  13 ++++
+ src/ap/ap_drv_ops.h           |  13 +++
  src/ap/dfs.c                  |  25 ++++++
  src/ap/hostapd.c              |  20 +++++
- src/ap/hostapd.h              |   4 +
+ src/ap/hostapd.h              |   3 +
  src/ap/mxl_zwdfs.c            |   1 +
  src/common/vendor_cmds_copy.h |  30 +++++++
  src/drivers/driver.h          |   8 ++
@@ -18,13 +18,14 @@ Subject: [PATCH] WLANRTSYS-55993: Implement support for WHM: part2
  11 files changed, 269 insertions(+), 2 deletions(-)
 
 diff --git a/hostapd/config_file.c b/hostapd/config_file.c
-index 2348715c3..1022a6a7a 100644
+index af63da701..f90a6e3eb 100644
 --- a/hostapd/config_file.c
 +++ b/hostapd/config_file.c
-@@ -2538,6 +2538,142 @@ static int get_hex_config(u8 *buf, size_t max_len, int line,
+@@ -2431,6 +2431,143 @@ static int get_u16(const char *pos, int line, u16 *ret_val)
  }
+ #endif /* CONFIG_IEEE80211BE */
  
- 
++#ifdef CONFIG_VENDOR_MXL
 +/* Find a token in the given character string. Besides the characters recognized as
 + * spaces by isspace (including '\t' and '\n'), additional delimiters are passed
 + * by 'delimiters' argument.
@@ -160,11 +161,11 @@ index 2348715c3..1022a6a7a 100644
 +	wpa_printf(MSG_ERROR, "WHM: Syntax error in config file '%s', line %d.", fname, line);
 +	return -1;
 +}
-+
- static int hostapd_config_fill(struct hostapd_config *conf,
- 			       struct hostapd_bss_config *bss,
- 			       const char *buf, char *pos, int line)
-@@ -5561,7 +5697,12 @@ static int hostapd_config_fill(struct hostapd_config *conf,
++#endif /* CONFIG_VENDOR_MXL */
+ 
+ #ifdef CONFIG_TESTING_OPTIONS
+ static bool get_hexstream(const char *val, struct wpabuf **var,
+@@ -5706,7 +5843,12 @@ static int hostapd_config_fill(struct hostapd_config *conf,
  	} else if (os_strcmp(buf, "greylist_file") == 0) {
  			wpa_printf(MSG_WARNING, "Line %d: greylist_file: greylist feature is not implemented yet", line);
  	} else if (os_strcmp(buf, "whm_config_file") == 0) {
@@ -179,22 +180,22 @@ index 2348715c3..1022a6a7a 100644
  	} else if (mxl_hostapd_config_fill(conf, bss, buf, pos, line)) {
  #endif /* CONFIG_VENDOR_MXL */
 diff --git a/src/ap/ap_config.c b/src/ap/ap_config.c
-index 96b544f70..1383efe4e 100644
+index 117c531a0..c228ce9b8 100644
 --- a/src/ap/ap_config.c
 +++ b/src/ap/ap_config.c
-@@ -376,6 +376,7 @@ struct hostapd_config * hostapd_config_defaults(void)
+@@ -391,6 +391,7 @@ struct hostapd_config * hostapd_config_defaults(void)
  	conf->mbssid_aid_offset = NON_MULTIBSS_AID_OFFSET;
  	conf->ext_cap_max_num_msdus_in_amsdu = EXT_CAP_MAX_NUM_MSDU_IN_AMSDU_DEFAULT;
  	conf->sFilsBeaconFlag = 1; /* By Default we should receive/process the incoming Fils frame on 6G */
 +	conf->whm_cfg_flag = DEFAULT_WHM;
- #ifdef CONFIG_VENDOR_MXL
  	mxl_hostapd_config_defaults(conf);
  #endif /* CONFIG_VENDOR_MXL */
+ 	return conf;
 diff --git a/src/ap/ap_config.h b/src/ap/ap_config.h
-index 4ac40579a..b14765dd3 100644
+index 79252ab20..1a40785c6 100644
 --- a/src/ap/ap_config.h
 +++ b/src/ap/ap_config.h
-@@ -1384,7 +1384,6 @@ struct hostapd_config {
+@@ -1438,7 +1438,6 @@ struct hostapd_config {
  #define DEFAULT_MU_OPERATION	1
  	int sMuOperation;
  	int override_6g_mbssid_default_mode;
@@ -202,7 +203,7 @@ index 4ac40579a..b14765dd3 100644
  	unsigned adv_proto_query_resp_len;	/* Advertisement protocol IE */
  
  	u8 owl; /* Forwarding incoming probe reqests to upper layers */
-@@ -1395,6 +1394,14 @@ struct hostapd_config {
+@@ -1449,6 +1448,14 @@ struct hostapd_config {
  	/* Extended Capabilities: Max Number of MSDUs in A-MSDU */
  	u8 ext_cap_max_num_msdus_in_amsdu;
  	u8 psd_20mhz;
@@ -214,14 +215,14 @@ index 4ac40579a..b14765dd3 100644
 +#define WHM_PHY_WARN     (4)
 +	char *whm_config_file;      /* WHM configuration filename */
 +	int whm_cfg_flag;           /* WHM configuration bitfields */
- #ifdef CONFIG_VENDOR_MXL
  	struct mxl_hostapd_config mxl_conf;
  #endif /* CONFIG_VENDOR_MXL */
+ };
 diff --git a/src/ap/ap_drv_ops.h b/src/ap/ap_drv_ops.h
-index e34ff6879..4393d482f 100644
+index b46c4c845..4e30497b6 100644
 --- a/src/ap/ap_drv_ops.h
 +++ b/src/ap/ap_drv_ops.h
-@@ -494,6 +494,19 @@ static inline int hostapd_drv_set_whm_config(struct hostapd_data *hapd, int whm_
+@@ -527,6 +527,19 @@ static inline int hostapd_drv_set_whm_config(struct hostapd_data *hapd, int whm_
  	return hapd->driver->set_whm_config(hapd->drv_priv, whm_cfg_flag);
  }
  
@@ -242,10 +243,10 @@ index e34ff6879..4393d482f 100644
  	const u8 mbssid_num_vaps_in_group)
  {
 diff --git a/src/ap/dfs.c b/src/ap/dfs.c
-index 25982214d..46b31ef6e 100644
+index 52ce4c552..919883e68 100644
 --- a/src/ap/dfs.c
 +++ b/src/ap/dfs.c
-@@ -973,6 +973,20 @@ int hostapd_is_dfs_chan_available(struct hostapd_iface *iface)
+@@ -983,6 +983,20 @@ int hostapd_is_dfs_chan_available(struct hostapd_iface *iface)
  }
  
  
@@ -266,7 +267,7 @@ index 25982214d..46b31ef6e 100644
  static int hostapd_dfs_request_channel_switch(struct hostapd_iface *iface,
  					      int channel, int freq,
  					      int secondary_channel,
-@@ -994,6 +1008,11 @@ static int hostapd_dfs_request_channel_switch(struct hostapd_iface *iface,
+@@ -1005,6 +1019,11 @@ static int hostapd_dfs_request_channel_switch(struct hostapd_iface *iface,
  	new_vht_oper_chwidth = hostapd_get_oper_chwidth(iface->conf);
  	hostapd_set_oper_chwidth(iface->conf, current_vht_oper_chwidth);
  
@@ -278,7 +279,7 @@ index 25982214d..46b31ef6e 100644
  	/* Setup CSA request */
  	os_memset(&csa_settings, 0, sizeof(csa_settings));
  	csa_settings.cs_count = 5;
-@@ -1336,6 +1355,12 @@ static int hostapd_dfs_start_channel_switch_cac(struct hostapd_iface *iface)
+@@ -1362,6 +1381,12 @@ static int hostapd_dfs_start_channel_switch_cac(struct hostapd_iface *iface)
  
  	mxl_hostapd_channel_switch_reason_set(iface, HAPD_CHAN_SWITCH_RADAR_DETECTED);
  	hostapd_setup_interface_complete(iface, err);
@@ -292,10 +293,10 @@ index 25982214d..46b31ef6e 100644
  }
  
 diff --git a/src/ap/hostapd.c b/src/ap/hostapd.c
-index 757f8c543..31ccdd46d 100644
+index 8ff742239..0f16ee1b3 100644
 --- a/src/ap/hostapd.c
 +++ b/src/ap/hostapd.c
-@@ -2187,6 +2187,12 @@ static int setup_interface(struct hostapd_iface *iface)
+@@ -2398,6 +2398,12 @@ static int setup_interface(struct hostapd_iface *iface)
  	 */
  	iface->driver_ap_teardown = 0;
  
@@ -308,7 +309,7 @@ index 757f8c543..31ccdd46d 100644
  	if (!iface->phy[0]) {
  		const char *phy = hostapd_drv_get_radio_name(hapd);
  		if (phy) {
-@@ -4064,6 +4070,15 @@ int hostapd_disable_iface(struct hostapd_iface *hapd_iface)
+@@ -4551,6 +4557,15 @@ int hostapd_disable_iface(struct hostapd_iface *hapd_iface)
  		return -1;
  	}
  
@@ -322,9 +323,9 @@ index 757f8c543..31ccdd46d 100644
 +	hapd_iface->whm_if_fail = true;
 +
  	wpa_msg(hapd_iface->bss[0]->msg_ctx, MSG_INFO, AP_EVENT_DISABLED);
- 	driver = hapd_iface->bss[0]->driver;
- 	drv_priv = hapd_iface->bss[0]->drv_priv;
-@@ -5454,3 +5469,8 @@ int hostapd_get_psd_val(struct hostapd_iface *iface, u8 *val)
+ 
+ 	hapd_iface->driver_ap_teardown =
+@@ -6236,3 +6251,8 @@ int hostapd_get_psd_val(struct hostapd_iface *iface, u8 *val)
  	*val = (u8) psd;
  	return 0;
  }
@@ -334,24 +335,24 @@ index 757f8c543..31ccdd46d 100644
 +	hostapd_drv_set_whm_trigger(iface->bss[0], WHM_HOSTAP_ACS_FAILURE);
 +}
 diff --git a/src/ap/hostapd.h b/src/ap/hostapd.h
-index aaf458616..e4487be78 100644
+index b23f3db18..d4ec16f86 100644
 --- a/src/ap/hostapd.h
 +++ b/src/ap/hostapd.h
-@@ -724,6 +724,8 @@ struct hostapd_iface {
+@@ -800,6 +800,8 @@ struct hostapd_iface {
  
  	int set_freq_done;
  	int block_tx; /* Is TX block on or off */
 +
 +	bool whm_if_fail;
+ #endif /* CONFIG_VENDOR_MXL */
  };
  
- /* hostapd.c */
-@@ -864,4 +866,6 @@ int hostapd_link_remove(struct hostapd_data *hapd, u32 count);
- #endif /* CONFIG_IEEE80211BE */
+@@ -969,5 +971,6 @@ static inline bool ap_pmf_enabled(struct hostapd_bss_config *conf)
  
+ #ifdef CONFIG_VENDOR_MXL
  void hostapd_tx_queue_params(struct hostapd_data *hapd);
 +void hostapd_handle_acs_whm_warning (struct hostapd_iface *iface);
-+
+ #endif /* CONFIG_VENDOR_MXL */
  #endif /* HOSTAPD_H */
 diff --git a/src/ap/mxl_zwdfs.c b/src/ap/mxl_zwdfs.c
 index ae7746f07..a79124858 100644
@@ -405,10 +406,10 @@ index 2d30b6d69..27f027d06 100644
 +
  #endif /* _VENDOR_CMDS_H_ */
 diff --git a/src/drivers/driver.h b/src/drivers/driver.h
-index 0db388182..a0795b588 100644
+index 539a9a3cb..d42ce99fe 100644
 --- a/src/drivers/driver.h
 +++ b/src/drivers/driver.h
-@@ -5274,6 +5274,14 @@ struct wpa_driver_ops {
+@@ -5571,6 +5571,14 @@ struct wpa_driver_ops {
  	 */
  	int (*set_whm_config)(void *priv, int whm_cfg_flag);
  
@@ -424,10 +425,10 @@ index 0db388182..a0795b588 100644
  	 * get_tx_power_20mhz - get tx power for 20mhz bandwidth
  	 * @priv: Private driver interface data
 diff --git a/src/drivers/driver_nl80211.c b/src/drivers/driver_nl80211.c
-index fc4dc9618..00ff6e5e5 100644
+index ff5f4357b..88ad63ad3 100644
 --- a/src/drivers/driver_nl80211.c
 +++ b/src/drivers/driver_nl80211.c
-@@ -14211,6 +14211,22 @@ int nl80211_set_whm_config(void *priv, int whm_cfg_flag)
+@@ -15053,6 +15053,22 @@ int nl80211_set_whm_config(void *priv, int whm_cfg_flag)
  	return ret;
  }
  
@@ -450,14 +451,14 @@ index fc4dc9618..00ff6e5e5 100644
  static int nl80211_unconnected_sta(void *priv, struct intel_vendor_unconnected_sta_req_cfg *req)
  {
  	int res = 0;
-@@ -14469,6 +14485,7 @@ const struct wpa_driver_ops wpa_driver_nl80211_ops = {
- 	.get_sta_mlo_info = nl80211_get_sta_mlo_info,
- 	.link_add = nl80211_link_add,
+@@ -15329,6 +15345,7 @@ const struct wpa_driver_ops wpa_driver_nl80211_ops = {
+ #endif /* CONFIG_IEEE80211BE */
+ #ifdef CONFIG_VENDOR_MXL
  	.set_whm_config = nl80211_set_whm_config,
 +	.set_whm_trigger = nl80211_set_whm_trigger,
+ #endif /* CONFIG_VENDOR_MXL */
  #ifdef CONFIG_TESTING_OPTIONS
  	.register_frame = testing_nl80211_register_frame,
- 	.radio_disable = testing_nl80211_radio_disable,
 -- 
 2.43.0
 

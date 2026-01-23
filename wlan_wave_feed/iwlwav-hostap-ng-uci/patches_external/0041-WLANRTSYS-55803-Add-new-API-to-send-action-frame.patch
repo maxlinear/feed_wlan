@@ -1,4 +1,4 @@
-From 481e12c822b22f9370efdc76b8d1927ec2e79c1f Mon Sep 17 00:00:00 2001
+From 541d5a7d759beb042e4c801d4528fd3384419707 Mon Sep 17 00:00:00 2001
 From: Jurijs Soloveckis <jsoloveckis@maxlinear.com>
 Date: Fri, 2 Jun 2023 08:15:52 +0200
 Subject: [PATCH] WLANRTSYS-55803: Add new API to send action frame
@@ -9,10 +9,10 @@ Subject: [PATCH] WLANRTSYS-55803: Add new API to send action frame
  2 files changed, 77 insertions(+)
 
 diff --git a/hostapd/ctrl_iface.c b/hostapd/ctrl_iface.c
-index d90b5f66d..2e42d26bb 100644
+index 35b9fafbe..e1f3194b2 100644
 --- a/hostapd/ctrl_iface.c
 +++ b/hostapd/ctrl_iface.c
-@@ -5109,6 +5109,73 @@ static int hostapd_ctrl_iface_get_sta_wpa_psk(struct hostapd_data *hapd, char *c
+@@ -5750,6 +5750,73 @@ static int hostapd_ctrl_iface_get_sta_wpa_psk(struct hostapd_data *hapd, char *c
  			 key_id, wpa_passphrase);
  }
  
@@ -86,7 +86,7 @@ index d90b5f66d..2e42d26bb 100644
  static int hostapd_ctrl_iface_receive_process(struct hostapd_data *hapd,
  					      char *buf, char *reply,
  					      int reply_size,
-@@ -5750,6 +5817,9 @@ static int hostapd_ctrl_iface_receive_process(struct hostapd_data *hapd,
+@@ -6438,6 +6505,9 @@ static int hostapd_ctrl_iface_receive_process(struct hostapd_data *hapd,
  #endif /* CONFIG_IEEE80211AX */
  	} else if (os_strncmp(buf, "GET_STA_WPA_PSK ", 16) == 0) {
  		reply_len = hostapd_ctrl_iface_get_sta_wpa_psk(hapd, buf + 16, reply, reply_size);
@@ -97,10 +97,10 @@ index d90b5f66d..2e42d26bb 100644
  		os_memcpy(reply, "UNKNOWN COMMAND\n", 16);
  		reply_len = 16;
 diff --git a/hostapd/hostapd_cli.c b/hostapd/hostapd_cli.c
-index 1bf6b5056..367b282a4 100644
+index b55cfd158..af5a817c4 100644
 --- a/hostapd/hostapd_cli.c
 +++ b/hostapd/hostapd_cli.c
-@@ -2152,6 +2152,11 @@ static int hostapd_cli_cmd_get_sta_wpa_psk(struct wpa_ctrl *ctrl, int argc,
+@@ -2222,6 +2222,11 @@ static int hostapd_cli_cmd_get_sta_wpa_psk(struct wpa_ctrl *ctrl, int argc,
  	return wpa_ctrl_command(ctrl, cmd);
  }
  
@@ -112,7 +112,7 @@ index 1bf6b5056..367b282a4 100644
  struct hostapd_cli_cmd {
  	const char *cmd;
  	int (*handler)(struct wpa_ctrl *ctrl, int argc, char *argv[]);
-@@ -2427,6 +2432,8 @@ static const struct hostapd_cli_cmd hostapd_cli_commands[] = {
+@@ -2518,6 +2523,8 @@ static const struct hostapd_cli_cmd hostapd_cli_commands[] = {
  	  "supported)" },
  	{ "get_sta_wpa_psk", hostapd_cli_cmd_get_sta_wpa_psk, NULL,
  	  "= get STAs key ID and passphrase if set in wpa_psk_file" },

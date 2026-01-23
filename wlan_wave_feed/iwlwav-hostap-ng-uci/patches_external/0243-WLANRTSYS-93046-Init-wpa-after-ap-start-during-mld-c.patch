@@ -1,0 +1,71 @@
+From ade9c38ca092ac42de16099a78e5678f4f43d73b Mon Sep 17 00:00:00 2001
+From: nchernikov <nchernikov@maxlinear.com>
+Date: Sat, 16 Aug 2025 20:11:41 +0300
+Subject: [PATCH] WLANRTSYS-93046 Init wpa after ap start during mld creation
+
+Issue:
+Group and beacon keys are not set during MLD VAP creation, causing station to not connect properly.
+
+Root Cause:
+For regular VAP during hostapd_setup_bss ap is started before initializing wpa keys.
+For MLD VAP we are skipping ap start in hostapd_start_beacon but try to init the keys,
+this is not correct as SET_KEY should not happen before ADD_VAP.
+
+Fix:
+Skip wpa_init_keys during setup_bss when MLO is enabled and do it later in mxl_setup_link
+
+Fix up:
+WLANRTSYS-60843 MLO changes: AP MLD configuration
+
+Signed-off-by: nchernikov <nchernikov@maxlinear.com>
+---
+ src/ap/hostapd.c |  7 +++++++
+ src/ap/mxl_mld.c | 10 ++++++++++
+ 2 files changed, 17 insertions(+)
+
+diff --git a/src/ap/hostapd.c b/src/ap/hostapd.c
+index 607730198..cfdcebf89 100644
+--- a/src/ap/hostapd.c
++++ b/src/ap/hostapd.c
+@@ -2276,6 +2276,13 @@ setup_mld:
+ 	if (start_beacon && hostapd_start_beacon(hapd, flush_old_stations) < 0)
+ 		return -1;
+ 
++#ifdef CONFIG_IEEE80211BE_MXL_MLO
++	/*
++		For non-MLD VAP we can init wpa keys since VAP already started
++		For MLD VAP - skip wpa init now and do it during link setup
++	*/
++	if (!mxl_is_mlo_enabled(conf))
++#endif /* CONFIG_IEEE80211BE_MXL_MLO */
+ 	if (hapd->wpa_auth && wpa_init_keys(hapd->wpa_auth) < 0)
+ 		return -1;
+ 
+diff --git a/src/ap/mxl_mld.c b/src/ap/mxl_mld.c
+index 0c549c736..7a795e8d5 100644
+--- a/src/ap/mxl_mld.c
++++ b/src/ap/mxl_mld.c
+@@ -372,10 +372,20 @@ static int mxl_setup_link(struct p_ap_mld *mld)
+ 	if (ret < 0)
+ 		goto err;
+ 
++	if (link1->wpa_auth && wpa_init_keys(link1->wpa_auth) < 0) {
++		wpa_printf(MSG_ERROR, "wpa init failed for link1");
++		return -1;
++	}
++
+ 	ret = ieee802_11_set_beacon(link2);
+ 	if (ret < 0)
+ 		goto err;
+ 
++	if (link2->wpa_auth && wpa_init_keys(link2->wpa_auth) < 0) {
++		wpa_printf(MSG_ERROR, "wpa init failed for link2");
++		return -1;
++	}
++
+ 	if (link1->iconf->multibss_enable && (MULTIBSS_REFERENCE_BSS_IDX != link1->conf->bss_idx)) {
+ 		link1_tx_bss_idx = mxl_hostapd_get_mbssid_tx_bss_idx(link1->iface);
+ 		hapd = link1->iface->bss[link1_tx_bss_idx];
+-- 
+2.43.0
+

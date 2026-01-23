@@ -1,4 +1,4 @@
-From 117810215fd25c4c70ca1969fba0de0695d80a1f Mon Sep 17 00:00:00 2001
+From a3261fdfd163a4e094c3b5b778928842e6a2e997 Mon Sep 17 00:00:00 2001
 From: Jurijs Soloveckis <jsoloveckis@maxlinear.com>
 Date: Wed, 8 Nov 2023 10:34:59 +0200
 Subject: [PATCH] WLANRTSYS-60035: Puma8: Align nl80211.h to latest from
@@ -66,10 +66,10 @@ index 56dc68748..b9ae0c502 100644
  /*
   * @NL80211_RADAR_CAC_PAUSED: Channel Availability Check has been paused.
 diff --git a/src/drivers/nl80211_copy.h b/src/drivers/nl80211_copy.h
-index 8c410c33f..35446abfc 100644
+index 2cb54389c..67b06c30a 100644
 --- a/src/drivers/nl80211_copy.h
 +++ b/src/drivers/nl80211_copy.h
-@@ -1571,9 +1571,6 @@ enum nl80211_commands {
+@@ -1584,9 +1584,6 @@ enum nl80211_commands {
  	NL80211_CMD_SET_FILS_AAD,
  
  	NL80211_CMD_ASSOC_COMEBACK,
@@ -79,9 +79,9 @@ index 8c410c33f..35446abfc 100644
  
  	NL80211_CMD_ADD_LINK,
  	NL80211_CMD_REMOVE_LINK,
-@@ -1586,6 +1583,9 @@ enum nl80211_commands {
- 
- 	NL80211_CMD_LINKS_REMOVED,
+@@ -1604,6 +1601,9 @@ enum nl80211_commands {
+ 	NL80211_CMD_ASSOC_MLO_RECONF,
+ 	NL80211_CMD_EPCS_CFG,
  
 +#ifdef CONFIG_VENDOR_MXL
 +	MXL_NL80211_CMDS
@@ -89,7 +89,7 @@ index 8c410c33f..35446abfc 100644
  	/* add new commands above here */
  
  	/* used to define NL80211_CMD_MAX below */
-@@ -3906,6 +3906,9 @@ enum nl80211_sta_info {
+@@ -3992,6 +3992,9 @@ enum nl80211_sta_info {
  	NL80211_STA_INFO_AIRTIME_LINK_METRIC,
  	NL80211_STA_INFO_ASSOC_AT_BOOTTIME,
  	NL80211_STA_INFO_CONNECTED_TO_AS,
@@ -99,7 +99,7 @@ index 8c410c33f..35446abfc 100644
  
  	/* keep last */
  	__NL80211_STA_INFO_AFTER_LAST,
-@@ -4137,6 +4140,10 @@ enum nl80211_band_attr {
+@@ -4223,6 +4226,10 @@ enum nl80211_band_attr {
  	NL80211_BAND_ATTR_S1G_MCS_NSS_SET,
  	NL80211_BAND_ATTR_S1G_CAPA,
  
@@ -110,10 +110,10 @@ index 8c410c33f..35446abfc 100644
  	/* keep last */
  	__NL80211_BAND_ATTR_AFTER_LAST,
  	NL80211_BAND_ATTR_MAX = __NL80211_BAND_ATTR_AFTER_LAST - 1
-@@ -5118,6 +5125,9 @@ enum nl80211_bss {
- 	NL80211_BSS_FREQUENCY_OFFSET,
- 	NL80211_BSS_MLO_LINK_ID,
+@@ -5277,6 +5284,9 @@ enum nl80211_bss {
  	NL80211_BSS_MLD_ADDR,
+ 	NL80211_BSS_USE_FOR,
+ 	NL80211_BSS_CANNOT_USE_REASONS,
 +#ifdef CONFIG_VENDOR_MXL
 +	MXL_NL80211_BSS
 +#endif /* CONFIG_VENDOR_MXL */

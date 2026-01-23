@@ -1,4 +1,4 @@
-From 382a9d91e64ec6488fe9900474b26f52e0a0d2c5 Mon Sep 17 00:00:00 2001
+From 9a0a7d52c7f140c83b2f591fe98725148ccbe761 Mon Sep 17 00:00:00 2001
 From: Jurijs Soloveckis <jsoloveckis@maxlinear.com>
 Date: Wed, 16 Aug 2023 13:25:12 +0200
 Subject: [PATCH] WLANRTSYS-57940: Implement HE vendor extension:
@@ -14,10 +14,10 @@ Subject: [PATCH] WLANRTSYS-57940: Implement HE vendor extension:
  6 files changed, 42 insertions(+)
 
 diff --git a/hostapd/config_file.c b/hostapd/config_file.c
-index 881897e5f..44a809f70 100644
+index 26fd66285..9573c0d9d 100644
 --- a/hostapd/config_file.c
 +++ b/hostapd/config_file.c
-@@ -6014,6 +6014,14 @@ static int hostapd_config_fill(struct hostapd_config *conf,
+@@ -6162,6 +6162,14 @@ static int hostapd_config_fill(struct hostapd_config *conf,
  			return 1;
  		}
  #endif /* CONFIG_WIFI_CERTIFICATION */
@@ -33,25 +33,26 @@ index 881897e5f..44a809f70 100644
  	} else if (mxl_hostapd_config_fill(conf, bss, buf, pos, line)) {
  #endif /* CONFIG_VENDOR_MXL */
 diff --git a/src/ap/ap_config.h b/src/ap/ap_config.h
-index 3b4a4bb0b..cbd12fb14 100644
+index 3c181e38e..1d9b435a3 100644
 --- a/src/ap/ap_config.h
 +++ b/src/ap/ap_config.h
-@@ -1474,6 +1474,7 @@ struct hostapd_config {
+@@ -1531,6 +1531,7 @@ struct hostapd_config {
  #define WHM_PHY_WARN     (4)
  	char *whm_config_file;      /* WHM configuration filename */
  	int whm_cfg_flag;           /* WHM configuration bitfields */
 +	int he_beacon;
- #ifdef CONFIG_VENDOR_MXL
  	struct mxl_hostapd_config mxl_conf;
  #endif /* CONFIG_VENDOR_MXL */
+ };
 diff --git a/src/ap/ap_drv_ops.h b/src/ap/ap_drv_ops.h
-index e6ec52c6e..390ddf72c 100644
+index d5c0156e0..eda549a31 100644
 --- a/src/ap/ap_drv_ops.h
 +++ b/src/ap/ap_drv_ops.h
-@@ -621,4 +621,13 @@ static inline int hostapd_drv_set_pn_reset(struct hostapd_data *hapd,
+@@ -670,6 +670,15 @@ static inline int hostapd_drv_set_pn_reset(struct hostapd_data *hapd,
+ 	return hapd->driver->set_pn_reset(hapd->drv_priv, enable);
  }
  #endif /* CONFIG_WIFI_CERTIFICATION */
- 
++
 +static inline int hostapd_drv_set_he_beacon(struct hostapd_data *hapd,
 +						int enable)
 +{
@@ -60,13 +61,14 @@ index e6ec52c6e..390ddf72c 100644
 +
 +	return hapd->driver->set_he_beacon(hapd->drv_priv, enable);
 +}
-+
- #endif /* AP_DRV_OPS */
+ #endif /* CONFIG_VENDOR_MXL */
+ 
+ int hostapd_drv_add_pmkid(struct hostapd_data *hapd,
 diff --git a/src/ap/hostapd.c b/src/ap/hostapd.c
-index bbf2842a9..d990c7d2b 100644
+index 1991b493a..2d94d1dcf 100644
 --- a/src/ap/hostapd.c
 +++ b/src/ap/hostapd.c
-@@ -1315,6 +1315,9 @@ static int hostapd_pre_up_vendor_vap_cmd(struct hostapd_data *hapd)
+@@ -1393,6 +1393,9 @@ static int hostapd_pre_up_vendor_vap_cmd(struct hostapd_data *hapd)
  	/* Send vendor command before BSS setup is completed */
  	/* Multiple BSSID Set for 6GHz band*/
  	if (is_6ghz_op_class(hapd->iconf->op_class)) {
@@ -77,10 +79,10 @@ index bbf2842a9..d990c7d2b 100644
  		if ((hapd->iconf->num_bss >= MIN_NUM_BSS_IN_MBSSID_SET) && (!hapd->iconf->override_6g_mbssid_default_mode)) {
  			hapd->iconf->multibss_enable = 1;
 diff --git a/src/drivers/driver.h b/src/drivers/driver.h
-index a16401f82..34f091918 100644
+index d5dafbedc..f83dad548 100644
 --- a/src/drivers/driver.h
 +++ b/src/drivers/driver.h
-@@ -5352,6 +5352,14 @@ struct wpa_driver_ops {
+@@ -5666,6 +5666,14 @@ struct wpa_driver_ops {
  	 */
  	int (*set_pn_reset)(void *priv, int enable);
  #endif /* CONFIG_WIFI_CERTIFICATION */
@@ -92,14 +94,14 @@ index a16401f82..34f091918 100644
 +	 * Returns: 0 on success, -1 on failure
 +	 */
 +	int (*set_he_beacon)(void *priv, int enable);
+ #endif /* CONFIG_VENDOR_MXL */
  };
  
- /**
 diff --git a/src/drivers/driver_nl80211.c b/src/drivers/driver_nl80211.c
-index 076ee19b1..38fbae4f1 100644
+index 1b7b66b71..055a8d237 100644
 --- a/src/drivers/driver_nl80211.c
 +++ b/src/drivers/driver_nl80211.c
-@@ -14571,6 +14571,18 @@ int nl80211_set_pn_reset(void *priv, int enable)
+@@ -15426,6 +15426,18 @@ int nl80211_set_pn_reset(void *priv, int enable)
  }
  #endif /* CONFIG_WIFI_CERTIFICATION */
  
@@ -118,11 +120,12 @@ index 076ee19b1..38fbae4f1 100644
  const struct wpa_driver_ops wpa_driver_nl80211_ops = {
  	.name = "nl80211",
  	.desc = "Linux nl80211/cfg80211",
-@@ -14750,4 +14762,5 @@ const struct wpa_driver_ops wpa_driver_nl80211_ops = {
+@@ -15625,5 +15637,6 @@ const struct wpa_driver_ops wpa_driver_nl80211_ops = {
  	.set_unprotected_deauth = nl80211_set_unprotected_deauth,
  	.set_pn_reset = nl80211_set_pn_reset,
  #endif /* CONFIG_WIFI_CERTIFICATION */
 +	.set_he_beacon = nl80211_set_he_beacon,
+ #endif /* CONFIG_VENDOR_MXL */
  };
 -- 
 2.43.0

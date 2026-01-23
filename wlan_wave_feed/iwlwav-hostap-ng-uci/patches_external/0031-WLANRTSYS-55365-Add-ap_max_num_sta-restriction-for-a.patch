@@ -1,21 +1,21 @@
-From aa840435929c00b4c49f5c4c85ff903683fbc5f4 Mon Sep 17 00:00:00 2001
+From 8033fb97ea143ef0581c499f6bec3658ea38c377 Mon Sep 17 00:00:00 2001
 From: Jurijs Soloveckis <jsoloveckis@maxlinear.com>
 Date: Fri, 19 May 2023 14:41:17 +0200
 Subject: [PATCH] WLANRTSYS-55365: Add ap_max_num_sta restriction for all VAPs
 
 ---
- hostapd/config_file.c | 15 +++++++++++++
+ hostapd/config_file.c | 15 ++++++++++++
  hostapd/main.c        |  4 ++++
- src/ap/ap_config.c    | 20 +++++++++++++++++
+ src/ap/ap_config.c    | 20 ++++++++++++++++
  src/ap/ap_config.h    |  2 ++
- src/ap/sta_info.c     | 52 +++++++++++++++++++++++++++++++++++++++----
- 5 files changed, 89 insertions(+), 4 deletions(-)
+ src/ap/sta_info.c     | 53 +++++++++++++++++++++++++++++++++++++++----
+ 5 files changed, 90 insertions(+), 4 deletions(-)
 
 diff --git a/hostapd/config_file.c b/hostapd/config_file.c
-index 564866752..920dcfc5c 100644
+index 0c49e35bf..513bb680f 100644
 --- a/hostapd/config_file.c
 +++ b/hostapd/config_file.c
-@@ -3037,6 +3037,21 @@ static int hostapd_config_fill(struct hostapd_config *conf,
+@@ -3040,6 +3040,21 @@ static int hostapd_config_fill(struct hostapd_config *conf,
  				   line, bss->max_num_sta, MAX_STA_COUNT);
  			return 1;
  		}
@@ -38,10 +38,10 @@ index 564866752..920dcfc5c 100644
  		bss->wpa = atoi(pos);
  	} else if (os_strcmp(buf, "extended_key_id") == 0) {
 diff --git a/hostapd/main.c b/hostapd/main.c
-index 76a369c5a..72fc583c5 100644
+index 85795f14b..dec42ae9b 100644
 --- a/hostapd/main.c
 +++ b/hostapd/main.c
-@@ -316,6 +316,10 @@ setup_mld:
+@@ -342,6 +342,10 @@ setup_mld:
  #endif /* CONFIG_VENDOR_MXL */
  
  		iface->probe_resp_offloads = capa.probe_resp_offloads;
@@ -53,7 +53,7 @@ index 76a369c5a..72fc583c5 100644
  		 * Use default extended capa values from per-radio information
  		 */
 diff --git a/src/ap/ap_config.c b/src/ap/ap_config.c
-index ac4827bc9..63cb6841d 100644
+index 594bafeeb..d2f994c78 100644
 --- a/src/ap/ap_config.c
 +++ b/src/ap/ap_config.c
 @@ -87,6 +87,7 @@ void hostapd_config_defaults_bss(struct hostapd_bss_config *bss)
@@ -64,7 +64,7 @@ index ac4827bc9..63cb6841d 100644
  
  	bss->dtim_period = 2;
  
-@@ -251,6 +252,8 @@ struct hostapd_config * hostapd_config_defaults(void)
+@@ -256,6 +257,8 @@ struct hostapd_config * hostapd_config_defaults(void)
  	/* Set to invalid value means do not add Power Constraint IE */
  	conf->local_pwr_constraint = -1;
  
@@ -73,7 +73,7 @@ index ac4827bc9..63cb6841d 100644
  	conf->wmm_ac_params[0] = ac_be;
  	conf->wmm_ac_params[1] = ac_bk;
  	conf->wmm_ac_params[2] = ac_vi;
-@@ -1538,6 +1541,7 @@ static int hostapd_config_check_cw(struct hostapd_config *conf, int queue)
+@@ -1574,6 +1577,7 @@ static int hostapd_config_check_cw(struct hostapd_config *conf, int queue)
  int hostapd_config_check(struct hostapd_config *conf, int full_config)
  {
  	size_t i;
@@ -81,7 +81,7 @@ index ac4827bc9..63cb6841d 100644
  
  	if (full_config && is_6ghz_op_class(conf->op_class) &&
  	    !conf->hw_mode_set) {
-@@ -1611,6 +1615,22 @@ int hostapd_config_check(struct hostapd_config *conf, int full_config)
+@@ -1651,6 +1655,22 @@ int hostapd_config_check(struct hostapd_config *conf, int full_config)
  				conf->mbssid_aid_offset = MULTIBSS_AID_OFFSET;
  	}
  
@@ -105,10 +105,10 @@ index ac4827bc9..63cb6841d 100644
  }
  
 diff --git a/src/ap/ap_config.h b/src/ap/ap_config.h
-index 4c3bb772a..1f7ae595c 100644
+index 5bcd10a24..97cdaa66a 100644
 --- a/src/ap/ap_config.h
 +++ b/src/ap/ap_config.h
-@@ -332,6 +332,7 @@ struct hostapd_bss_config {
+@@ -334,6 +334,7 @@ struct hostapd_bss_config {
  	unsigned int logger_stdout; /* module bitfield */
  
  	int max_num_sta; /* maximum number of STAs in station table */
@@ -116,7 +116,7 @@ index 4c3bb772a..1f7ae595c 100644
  
  	int dtim_period;
  	unsigned int bss_load_update_period;
-@@ -1096,6 +1097,7 @@ struct hostapd_config {
+@@ -1125,6 +1126,7 @@ struct hostapd_config {
  	int enable_edmg;
  	u8 edmg_channel;
  	u8 acs;
@@ -125,10 +125,10 @@ index 4c3bb772a..1f7ae595c 100644
  	struct wpa_freq_range_list acs_freq_list;
  	u8 acs_freq_list_present;
 diff --git a/src/ap/sta_info.c b/src/ap/sta_info.c
-index 5ee17f319..729cdf46c 100644
+index 7a4dfa108..39a1330a1 100644
 --- a/src/ap/sta_info.c
 +++ b/src/ap/sta_info.c
-@@ -736,21 +736,65 @@ void ap_sta_session_warning_timeout(struct hostapd_data *hapd,
+@@ -810,6 +810,31 @@ void ap_sta_session_warning_timeout(struct hostapd_data *hapd,
  			       hapd, sta);
  }
  
@@ -158,13 +158,16 @@ index 5ee17f319..729cdf46c 100644
 +	return num_res_sta;
 +}
  
- struct sta_info * ap_sta_add(struct hostapd_data *hapd, const u8 *addr)
+ static void ap_sta_assoc_timeout(void *eloop_ctx, void *timeout_ctx)
  {
+@@ -835,16 +860,36 @@ struct sta_info * ap_sta_add(struct hostapd_data *hapd, const u8 *addr)
  	struct sta_info *sta;
  	int i;
+ 	int max_inactivity = hapd->conf->ap_max_inactivity;
++#ifdef CONFIG_VENDOR_MXL
 +	int num_sta_total = num_sta_get_total(hapd);
 +	int num_res_sta_total = num_res_sta_get_total(hapd);
-+
++#endif /* CONFIG_VENDOR_MXL */
  
  	sta = ap_get_sta(hapd, addr);
  	if (sta)

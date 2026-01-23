@@ -1,4 +1,4 @@
-From f7bfe3c4f3500c106b3e3936df43f880defe56f7 Mon Sep 17 00:00:00 2001
+From db447c7d62a0cb6552b12ff8bad2ba561fb6034e Mon Sep 17 00:00:00 2001
 From: fromans <fromans@maxlinear.com>
 Date: Wed, 6 Sep 2023 14:46:04 +0300
 Subject: [PATCH] WLANRTSYS-57484: Reconf: Add ubus and reload patches
@@ -21,11 +21,11 @@ so made "hostapd_iface_conf_changed" ignore order when comparing.
  src/ap/ap_config.c                |    1 +
  src/ap/ap_config.h                |    1 +
  src/ap/beacon.c                   |   16 +
- src/ap/dfs.c                      |    4 +
- src/ap/drv_callbacks.c            |   13 +
+ src/ap/dfs.c                      |    5 +
+ src/ap/drv_callbacks.c            |   15 +
  src/ap/hostapd.c                  |  264 +++-
  src/ap/hostapd.h                  |   11 +
- src/ap/ieee802_11.c               |   43 +
+ src/ap/ieee802_11.c               |   45 +
  src/ap/sta_info.c                 |    9 +
  src/ap/ubus.c                     | 2100 +++++++++++++++++++++++++++++
  src/ap/ubus.h                     |  145 ++
@@ -37,17 +37,17 @@ so made "hostapd_iface_conf_changed" ignore order when comparing.
  wpa_supplicant/wpa_supplicant.c   |   14 +
  wpa_supplicant/wpa_supplicant_i.h |   10 +
  wpa_supplicant/wps_supplicant.c   |    6 +
- 22 files changed, 3101 insertions(+), 65 deletions(-)
+ 22 files changed, 3106 insertions(+), 65 deletions(-)
  create mode 100644 src/ap/ubus.c
  create mode 100644 src/ap/ubus.h
  create mode 100644 wpa_supplicant/ubus.c
  create mode 100644 wpa_supplicant/ubus.h
 
 diff --git a/hostapd/Makefile b/hostapd/Makefile
-index 4eeec0381..9ebee8eaf 100644
+index 581095003..cea011293 100644
 --- a/hostapd/Makefile
 +++ b/hostapd/Makefile
-@@ -170,6 +170,11 @@ OBJS += ../src/common/hw_features_common.o
+@@ -171,6 +171,11 @@ OBJS += ../src/common/hw_features_common.o
  
  OBJS += ../src/eapol_auth/eapol_auth_sm.o
  
@@ -58,12 +58,12 @@ index 4eeec0381..9ebee8eaf 100644
 +endif
  
  ifdef CONFIG_CODE_COVERAGE
- CFLAGS += -O0 -fprofile-arcs -ftest-coverage
+ CFLAGS += -O0 -fprofile-arcs -ftest-coverage -U_FORTIFY_SOURCE
 diff --git a/hostapd/config_file.c b/hostapd/config_file.c
-index 002d0cc67..c191e0ed8 100644
+index f0bf8fdad..99c50639e 100644
 --- a/hostapd/config_file.c
 +++ b/hostapd/config_file.c
-@@ -3719,6 +3719,8 @@ static int hostapd_config_fill(struct hostapd_config *conf,
+@@ -3778,6 +3778,8 @@ static int hostapd_config_fill(struct hostapd_config *conf,
  		}
  	} else if (os_strcmp(buf, "acs_exclude_dfs") == 0) {
  		conf->acs_exclude_dfs = atoi(pos);
@@ -73,10 +73,10 @@ index 002d0cc67..c191e0ed8 100644
  		conf->sFilsBeaconFlag = atoi(pos);
  	} else if (os_strcmp(buf, "op_class") == 0) {
 diff --git a/hostapd/main.c b/hostapd/main.c
-index 93cb68c78..f82fdffcf 100644
+index a80d9e721..1d37ac975 100644
 --- a/hostapd/main.c
 +++ b/hostapd/main.c
-@@ -1022,6 +1022,10 @@ int main(int argc, char *argv[])
+@@ -1082,6 +1082,10 @@ int main(int argc, char *argv[])
  
  	hostapd_global_ctrl_iface_init(&interfaces);
  
@@ -87,7 +87,7 @@ index 93cb68c78..f82fdffcf 100644
  #ifdef CONFIG_RADIUS_GREYLIST
  	greylist_load(&interfaces);
  #endif /* CONFIG_RADIUS_GREYLIST */
-@@ -1034,6 +1038,10 @@ int main(int argc, char *argv[])
+@@ -1094,6 +1098,10 @@ int main(int argc, char *argv[])
  	ret = 0;
  
   out:
@@ -99,10 +99,10 @@ index 93cb68c78..f82fdffcf 100644
  	/* Deinitialize all interfaces */
  	for (i = 0; i < interfaces.count; i++) {
 diff --git a/src/ap/ap_config.c b/src/ap/ap_config.c
-index 1f9d2e13a..74a4a5394 100644
+index cea715e85..95773663f 100644
 --- a/src/ap/ap_config.c
 +++ b/src/ap/ap_config.c
-@@ -1148,6 +1148,7 @@ void hostapd_config_free(struct hostapd_config *conf)
+@@ -1173,6 +1173,7 @@ void hostapd_config_free(struct hostapd_config *conf)
  
  	for (i = 0; i < conf->num_bss; i++)
  		hostapd_config_free_bss(conf->bss[i]);
@@ -111,10 +111,10 @@ index 1f9d2e13a..74a4a5394 100644
  	os_free(conf->supported_rates);
  	os_free(conf->basic_rates);
 diff --git a/src/ap/ap_config.h b/src/ap/ap_config.h
-index 73df6b86b..31b61c9b8 100644
+index 8c46e208b..abd205a50 100644
 --- a/src/ap/ap_config.h
 +++ b/src/ap/ap_config.h
-@@ -1194,6 +1194,7 @@ struct eht_phy_capabilities_info {
+@@ -1228,6 +1228,7 @@ struct eht_phy_capabilities_info {
  struct hostapd_config {
  	struct hostapd_bss_config **bss, *last_bss;
  	size_t num_bss;
@@ -123,10 +123,10 @@ index 73df6b86b..31b61c9b8 100644
  	u16 beacon_int;
  	int rts_threshold;
 diff --git a/src/ap/beacon.c b/src/ap/beacon.c
-index a2d77d2f1..df3ca022c 100644
+index fd859b5ff..3a0e88292 100644
 --- a/src/ap/beacon.c
 +++ b/src/ap/beacon.c
-@@ -1467,6 +1467,15 @@ void handle_probe_req(struct hostapd_data *hapd,
+@@ -1576,6 +1576,15 @@ void handle_probe_req(struct hostapd_data *hapd,
  	u16 links;
  #endif /* CONFIG_IEEE80211BE */
  
@@ -142,7 +142,7 @@ index a2d77d2f1..df3ca022c 100644
  	if (hapd->iconf->rssi_ignore_probe_request && ssi_signal &&
  	    ssi_signal < hapd->iconf->rssi_ignore_probe_request)
  		return;
-@@ -1670,6 +1679,13 @@ void handle_probe_req(struct hostapd_data *hapd,
+@@ -1779,6 +1788,13 @@ void handle_probe_req(struct hostapd_data *hapd,
  	}
  #endif /* CONFIG_P2P */
  
@@ -157,38 +157,41 @@ index a2d77d2f1..df3ca022c 100644
  	 * with AP configuration */
  
 diff --git a/src/ap/dfs.c b/src/ap/dfs.c
-index 2387c5256..cb33c76a9 100644
+index a755c25ee..c5c735321 100644
 --- a/src/ap/dfs.c
 +++ b/src/ap/dfs.c
-@@ -1551,6 +1551,10 @@ int hostapd_dfs_radar_detected(struct hostapd_iface *iface, int freq,
- 		freq, ht_enabled, chan_offset, chan_width, cf1, cf2);
+@@ -1578,6 +1578,11 @@ int hostapd_dfs_radar_detected(struct hostapd_iface *iface, int freq,
  #endif
  
+ 	iface->radar_detected = true;
++#ifdef CONFIG_VENDOR_MXL
 +#ifdef UBUS_SUPPORT
 +	hostapd_ubus_notify_radar_detected(iface, freq, chan_width, cf1, cf2);
 +#endif /* UBUS_SUPPORT */
-+
++#endif /* CONFIG_VENDOR_MXL */
+ 
  	/* Proceed only if DFS is not offloaded to the driver */
  	if (iface->drv_flags & WPA_DRIVER_FLAGS_DFS_OFFLOAD)
- 		return 0;
 diff --git a/src/ap/drv_callbacks.c b/src/ap/drv_callbacks.c
-index 799808ad8..aa0cf239c 100644
+index a5f1093d0..7858251ba 100644
 --- a/src/ap/drv_callbacks.c
 +++ b/src/ap/drv_callbacks.c
-@@ -264,6 +264,12 @@ int hostapd_notif_assoc(struct hostapd_data *hapd, const u8 *addr,
- #ifdef CONFIG_OWE
+@@ -320,6 +320,14 @@ int hostapd_notif_assoc(struct hostapd_data *hapd, const u8 *addr,
  	struct hostapd_iface *iface = hapd->iface;
  #endif /* CONFIG_OWE */
+ 	bool updated = false;
++#ifdef CONFIG_VENDOR_MXL
 +#ifdef UBUS_SUPPORT
 +	struct hostapd_ubus_request req = {
 +		.type = HOSTAPD_UBUS_ASSOC_REQ,
 +		.addr = addr,
 +	};
 +#endif /* UBUS_SUPPORT */
++#endif /* CONFIG_VENDOR_MXL */
  
  	if (addr == NULL) {
  		/*
-@@ -408,6 +414,13 @@ int hostapd_notif_assoc(struct hostapd_data *hapd, const u8 *addr,
+@@ -458,6 +466,13 @@ int hostapd_notif_assoc(struct hostapd_data *hapd, const u8 *addr,
  		goto fail;
  	}
  
@@ -203,10 +206,10 @@ index 799808ad8..aa0cf239c 100644
  	if (elems.p2p) {
  		wpabuf_free(sta->p2p_ie);
 diff --git a/src/ap/hostapd.c b/src/ap/hostapd.c
-index 8da170096..729ec689f 100644
+index f7b1cc987..896aac3ee 100644
 --- a/src/ap/hostapd.c
 +++ b/src/ap/hostapd.c
-@@ -337,6 +337,9 @@ int hostapd_reload_config(struct hostapd_iface *iface)
+@@ -343,6 +343,9 @@ int hostapd_reload_config(struct hostapd_iface *iface)
  		hapd->iconf->ht_capab = oldconf->ht_capab;
  		hapd->iconf->ht_tx_bf_capab = oldconf->ht_tx_bf_capab;
  		hapd->iconf->vht_capab = oldconf->vht_capab;
@@ -216,7 +219,7 @@ index 8da170096..729ec689f 100644
  		hostapd_set_oper_chwidth(hapd->iconf,
  					 hostapd_get_oper_chwidth(oldconf));
  		hostapd_set_oper_centr_freq_seg0_idx(
-@@ -355,6 +358,69 @@ int hostapd_reload_config(struct hostapd_iface *iface)
+@@ -362,6 +365,69 @@ int hostapd_reload_config(struct hostapd_iface *iface)
  	return 0;
  }
  
@@ -286,7 +289,7 @@ index 8da170096..729ec689f 100644
  
  #ifdef CONFIG_WEP
  
-@@ -515,6 +581,9 @@ void hostapd_free_hapd_data(struct hostapd_data *hapd)
+@@ -504,6 +570,9 @@ void hostapd_free_hapd_data(struct hostapd_data *hapd)
  #ifdef CONFIG_WDS_WPA
  	ltq_wds_wpa_deinit(hapd);
  #endif
@@ -296,7 +299,7 @@ index 8da170096..729ec689f 100644
  	accounting_deinit(hapd);
  	hostapd_deinit_wpa(hapd);
  	vlan_deinit(hapd);
-@@ -1934,6 +2003,10 @@ static int hostapd_setup_bss(struct hostapd_data *hapd, int first,
+@@ -2107,6 +2176,10 @@ setup_mld:
  		}
  	}
  
@@ -307,7 +310,7 @@ index 8da170096..729ec689f 100644
  	hostapd_post_up_vendor_vap_cmd(hapd, conf);
  
  #ifdef CONFIG_VENDOR_MXL
-@@ -3100,6 +3173,10 @@ static int hostapd_setup_interface_complete_sync(struct hostapd_iface *iface,
+@@ -3316,6 +3389,10 @@ static int hostapd_setup_interface_complete_sync(struct hostapd_iface *iface,
  	mxl_hostapd_setup_interface_pre(iface);
  #endif /* CONFIG_VENDOR_MXL */
  
@@ -318,7 +321,7 @@ index 8da170096..729ec689f 100644
  	wpa_printf(MSG_DEBUG, "Completing interface initialization");
  	if (iface->freq) {
  #ifdef NEED_AP_MLME
-@@ -3400,6 +3477,9 @@ fail:
+@@ -3622,6 +3699,9 @@ fail:
  		return 0;
  	}
  
@@ -328,7 +331,7 @@ index 8da170096..729ec689f 100644
  	hostapd_set_state(iface, HAPD_IFACE_DISABLED);
  	wpa_msg(hapd->msg_ctx, MSG_INFO, AP_EVENT_DISABLED);
  #ifdef CONFIG_FST
-@@ -3644,6 +3724,7 @@ hostapd_alloc_bss_data(struct hostapd_iface *hapd_iface,
+@@ -3866,6 +3946,7 @@ hostapd_alloc_bss_data(struct hostapd_iface *hapd_iface,
  	hapd->iconf = conf;
  	hapd->conf = bss;
  	hapd->iface = hapd_iface;
@@ -336,7 +339,7 @@ index 8da170096..729ec689f 100644
  	if (conf)
  		hapd->driver = conf->driver;
  	hapd->ctrl_sock = -1;
-@@ -3964,6 +4045,9 @@ void hostapd_interface_deinit_free(struct hostapd_iface *iface)
+@@ -4442,6 +4523,9 @@ void hostapd_interface_deinit_free(struct hostapd_iface *iface)
  		   (unsigned int) iface->conf->num_bss);
  	driver = iface->bss[0]->driver;
  	drv_priv = iface->bss[0]->drv_priv;
@@ -346,7 +349,7 @@ index 8da170096..729ec689f 100644
  	hostapd_interface_deinit(iface);
  	wpa_printf(MSG_DEBUG, "%s: driver=%p drv_priv=%p -> hapd_deinit",
  		   __func__, driver, drv_priv);
-@@ -4065,6 +4149,30 @@ static int hostapd_config_get_missing_bss(struct hostapd_config *conf,
+@@ -4558,6 +4642,30 @@ static int hostapd_config_get_missing_bss(struct hostapd_config *conf,
  	return -1;
  }
  
@@ -377,7 +380,7 @@ index 8da170096..729ec689f 100644
  static int hostapd_remove_bss(struct hostapd_iface *iface, unsigned int idx);
  
  static int hostapd_add_bss(struct hostapd_iface *iface,
-@@ -4160,15 +4268,97 @@ fail_conf_arr_realloc:
+@@ -4653,15 +4761,97 @@ fail_conf_arr_realloc:
  	return res;
  }
  
@@ -479,7 +482,7 @@ index 8da170096..729ec689f 100644
  	wpa_printf(MSG_DEBUG, "Reconf interface %s", hapd_iface->conf->bss[0]->iface);
  	if (hapd_iface->interfaces == NULL ||
  		hapd_iface->interfaces->config_read_cb == NULL)
-@@ -4183,23 +4373,7 @@ int hostapd_reconf_iface(struct hostapd_iface *hapd_iface, int changed_idx)
+@@ -4676,23 +4866,7 @@ int hostapd_reconf_iface(struct hostapd_iface *hapd_iface, int changed_idx)
  		 * This is better because some BSS configurations must be set
  		 * to firmware before add VAP is made.
  		 */
@@ -504,7 +507,7 @@ index 8da170096..729ec689f 100644
  	}
  
  	/* Find BSS needed to be removed */
-@@ -4208,25 +4382,8 @@ int hostapd_reconf_iface(struct hostapd_iface *hapd_iface, int changed_idx)
+@@ -4701,25 +4875,8 @@ int hostapd_reconf_iface(struct hostapd_iface *hapd_iface, int changed_idx)
  		/* zero isn't a valid index because we don't support
  		 * removing master BSS */
  		found_missing_bss = idx > 0;
@@ -532,7 +535,7 @@ index 8da170096..729ec689f 100644
  	} while (found_missing_bss);
  
  	/* Find BSS needed to be added */
-@@ -4234,32 +4391,9 @@ int hostapd_reconf_iface(struct hostapd_iface *hapd_iface, int changed_idx)
+@@ -4727,32 +4884,9 @@ int hostapd_reconf_iface(struct hostapd_iface *hapd_iface, int changed_idx)
  		idx = hostapd_config_get_missing_bss(new_conf, hapd_iface->conf);
  		/* zero isn't a valid index because there must be at least 1 BSS */
  		found_missing_bss = idx > 0;
@@ -568,7 +571,7 @@ index 8da170096..729ec689f 100644
  
  	hostapd_config_free(new_conf);
 diff --git a/src/ap/hostapd.h b/src/ap/hostapd.h
-index 2a86d2d36..9aff6caa3 100644
+index 3864d852b..965c4645d 100644
 --- a/src/ap/hostapd.h
 +++ b/src/ap/hostapd.h
 @@ -21,6 +21,9 @@
@@ -581,7 +584,7 @@ index 2a86d2d36..9aff6caa3 100644
  
  #define OCE_STA_CFON_ENABLED(hapd) \
  	((hapd->conf->oce & OCE_STA_CFON) && \
-@@ -108,6 +111,9 @@ struct hapd_interfaces {
+@@ -109,6 +112,9 @@ struct hapd_interfaces {
  #endif /* CONFIG_DPP3 */
  #endif /* CONFIG_DPP */
  
@@ -591,7 +594,7 @@ index 2a86d2d36..9aff6caa3 100644
  #ifdef CONFIG_CTRL_IFACE_UDP
         unsigned char ctrl_iface_cookie[CTRL_IFACE_COOKIE_LEN];
  #endif /* CONFIG_CTRL_IFACE_UDP */
-@@ -192,6 +198,9 @@ struct hostapd_data {
+@@ -214,6 +220,9 @@ struct hostapd_data {
  	struct hostapd_iface *iface;
  	struct hostapd_config *iconf;
  	struct hostapd_bss_config *conf;
@@ -601,7 +604,7 @@ index 2a86d2d36..9aff6caa3 100644
  	int interface_added; /* virtual interface added for this BSS */
  	unsigned int started:1;
  	unsigned int disabled:1;
-@@ -738,6 +747,7 @@ int hostapd_for_each_interface(struct hapd_interfaces *interfaces,
+@@ -815,6 +824,7 @@ int hostapd_for_each_interface(struct hapd_interfaces *interfaces,
  			       int (*cb)(struct hostapd_iface *iface,
  					 void *ctx), void *ctx);
  int hostapd_reload_config(struct hostapd_iface *iface);
@@ -609,7 +612,7 @@ index 2a86d2d36..9aff6caa3 100644
  void hostapd_reconfig_encryption(struct hostapd_data *hapd);
  struct hostapd_data *
  hostapd_alloc_bss_data(struct hostapd_iface *hapd_iface,
-@@ -757,6 +767,7 @@ void hostapd_new_assoc_sta(struct hostapd_data *hapd, struct sta_info *sta,
+@@ -836,6 +846,7 @@ void hostapd_new_assoc_sta(struct hostapd_data *hapd, struct sta_info *sta,
  			   int reassoc);
  void hostapd_interface_deinit_free(struct hostapd_iface *iface);
  int hostapd_enable_iface(struct hostapd_iface *hapd_iface);
@@ -618,13 +621,14 @@ index 2a86d2d36..9aff6caa3 100644
  int hostapd_reload_iface(struct hostapd_iface *hapd_iface);
  int hostapd_reload_bss_only(struct hostapd_data *bss);
 diff --git a/src/ap/ieee802_11.c b/src/ap/ieee802_11.c
-index 248f8885b..f770db5b2 100644
+index 197a59917..97bbc2948 100644
 --- a/src/ap/ieee802_11.c
 +++ b/src/ap/ieee802_11.c
-@@ -2836,6 +2836,14 @@ static void handle_auth(struct hostapd_data *hapd,
- 	struct radius_sta rad_info;
- 	const u8 *dst, *sa, *bssid;
+@@ -3138,6 +3138,16 @@ static void handle_auth(struct hostapd_data *hapd,
+ #ifdef CONFIG_IEEE80211BE
  	bool mld_sta = false;
+ #endif /* CONFIG_IEEE80211BE */
++#ifdef CONFIG_VENDOR_MXL
 +#ifdef UBUS_SUPPORT
 +	int ubus_resp;
 +	struct hostapd_ubus_request req = {
@@ -633,10 +637,11 @@ index 248f8885b..f770db5b2 100644
 +		.ssi_signal = rssi,
 +	};
 +#endif /* UBUS_SUPPORT */
++#endif /* CONFIG_VENDOR_MXL */
  
  	if (len < IEEE80211_HDRLEN + sizeof(mgmt->u.auth)) {
  		wpa_printf(MSG_INFO, "handle_auth - too short payload (len=%lu)",
-@@ -3053,6 +3061,16 @@ static void handle_auth(struct hostapd_data *hapd,
+@@ -3360,6 +3370,16 @@ static void handle_auth(struct hostapd_data *hapd,
  	if (res == HOSTAPD_ACL_PENDING)
  		return;
  
@@ -653,7 +658,7 @@ index 248f8885b..f770db5b2 100644
  #ifdef CONFIG_SAE
  	if (auth_alg == WLAN_AUTH_SAE && !from_queue &&
  	    (auth_transaction == 1 ||
-@@ -5468,6 +5486,14 @@ static void handle_assoc(struct hostapd_data *hapd,
+@@ -5871,6 +5891,14 @@ static void handle_assoc(struct hostapd_data *hapd,
  	bool mld_addrs_not_translated = false;
  	errno_t err;
  	u8 report_event, sta_inactivity_timeout = false;
@@ -668,7 +673,7 @@ index 248f8885b..f770db5b2 100644
  
  	if (len < IEEE80211_HDRLEN + (reassoc ? sizeof(mgmt->u.reassoc_req) :
  				      sizeof(mgmt->u.assoc_req))) {
-@@ -5823,6 +5849,16 @@ static void handle_assoc(struct hostapd_data *hapd,
+@@ -6231,6 +6259,16 @@ static void handle_assoc(struct hostapd_data *hapd,
  	}
  #endif /* CONFIG_FILS */
  
@@ -683,9 +688,9 @@ index 248f8885b..f770db5b2 100644
 +#endif /* UBUS_SUPPORT */
 +
  	if (set_beacon)
- 		ieee802_11_set_beacons(hapd->iface);
+ 		ieee802_11_update_beacons(hapd->iface);
  
-@@ -6128,6 +6164,10 @@ static void handle_disassoc(struct hostapd_data *hapd,
+@@ -6481,6 +6519,10 @@ static void handle_disassoc(struct hostapd_data *hapd,
  		return;
  	}
  
@@ -696,7 +701,7 @@ index 248f8885b..f770db5b2 100644
  	sta = ap_get_sta(hapd, mgmt->sa);
  	if (!sta) {
  		wpa_msg(hapd->msg_ctx, MSG_DEBUG, "Station " MACSTR
-@@ -6158,6 +6198,9 @@ static void handle_deauth(struct hostapd_data *hapd,
+@@ -6511,6 +6553,9 @@ static void handle_deauth(struct hostapd_data *hapd,
  	/* Clear the PTKSA cache entries for PASN */
  	ptksa_cache_flush(hapd->ptksa, mgmt->sa, WPA_CIPHER_NONE);
  
@@ -707,10 +712,10 @@ index 248f8885b..f770db5b2 100644
  	if (!sta) {
  		wpa_msg(hapd->msg_ctx, MSG_DEBUG, "Station " MACSTR
 diff --git a/src/ap/sta_info.c b/src/ap/sta_info.c
-index bae3dcf6a..86eb8836c 100644
+index 16ee24235..3d14c8109 100644
 --- a/src/ap/sta_info.c
 +++ b/src/ap/sta_info.c
-@@ -509,6 +509,9 @@ void ap_handle_timer(void *eloop_ctx, void *timeout_ctx)
+@@ -585,6 +585,9 @@ void ap_handle_timer(void *eloop_ctx, void *timeout_ctx)
  		hostapd_logger(hapd, sta->addr, HOSTAPD_MODULE_IEEE80211,
  			       HOSTAPD_LEVEL_INFO, "deauthenticated due to "
  			       "local deauth request");
@@ -720,7 +725,7 @@ index bae3dcf6a..86eb8836c 100644
  		ap_free_sta(hapd, sta);
  		return;
  	}
-@@ -668,6 +671,9 @@ skip_poll:
+@@ -746,6 +749,9 @@ skip_poll:
  		mlme_deauthenticate_indication(
  			hapd, sta,
  			WLAN_REASON_PREV_AUTH_NOT_VALID);
@@ -730,7 +735,7 @@ index bae3dcf6a..86eb8836c 100644
  		ap_free_sta(hapd, sta);
  		break;
  	}
-@@ -2274,6 +2280,9 @@ void ap_sta_set_authorized(struct hostapd_data *hapd, struct sta_info *sta,
+@@ -2535,6 +2541,9 @@ void ap_sta_set_authorized_event(struct hostapd_data *hapd,
  		hostapd_logger(hapd, sta->addr, HOSTAPD_MODULE_IEEE80211,
  				HOSTAPD_LEVEL_INFO, "Generating AP_STA_DISCONNECTED event with %s%s", buf, sta_extra_cap);
  		wpa_msg(hapd->msg_ctx, MSG_INFO, AP_STA_DISCONNECTED "%s%s", buf, sta_extra_cap);
@@ -3024,10 +3029,10 @@ index 53eacfb45..9151cbe09 100644
  	return hostapd_vlan_if_remove(hapd, vlan->ifname);
  }
 diff --git a/src/ap/wpa_auth_glue.c b/src/ap/wpa_auth_glue.c
-index f2c7835fc..44d19687d 100644
+index 91cf3879e..273ef1105 100644
 --- a/src/ap/wpa_auth_glue.c
 +++ b/src/ap/wpa_auth_glue.c
-@@ -269,6 +269,9 @@ static void hostapd_wpa_auth_psk_failure_report(void *ctx, const u8 *addr)
+@@ -326,6 +326,9 @@ static void hostapd_wpa_auth_psk_failure_report(void *ctx, const u8 *addr)
  	struct hostapd_data *hapd = ctx;
  	wpa_msg(hapd->msg_ctx, MSG_INFO, AP_STA_POSSIBLE_PSK_MISMATCH MACSTR,
  		MAC2STR(addr));
@@ -3038,7 +3043,7 @@ index f2c7835fc..44d19687d 100644
  
  
 diff --git a/wpa_supplicant/Makefile b/wpa_supplicant/Makefile
-index d34dd9d4a..09826803a 100644
+index cbf95fa57..00b8fe4ab 100644
 --- a/wpa_supplicant/Makefile
 +++ b/wpa_supplicant/Makefile
 @@ -192,6 +192,12 @@ ifdef CONFIG_EAPOL_TEST
@@ -3052,9 +3057,9 @@ index d34dd9d4a..09826803a 100644
 +endif
 +
  ifdef CONFIG_CODE_COVERAGE
- CFLAGS += -O0 -fprofile-arcs -ftest-coverage
+ CFLAGS += -O0 -fprofile-arcs -ftest-coverage -U_FORTIFY_SOURCE
  LIBS += -lgcov
-@@ -1003,6 +1009,9 @@ OBJS += ../src/ap/fils_hlp.o
+@@ -1036,6 +1042,9 @@ OBJS += ../src/ap/fils_hlp.o
  endif
  ifdef CONFIG_CTRL_IFACE
  OBJS += ../src/ap/ctrl_iface_ap.o
@@ -3571,10 +3576,10 @@ index 000000000..bf92b98c0
 +
 +#endif
 diff --git a/wpa_supplicant/wpa_supplicant.c b/wpa_supplicant/wpa_supplicant.c
-index cb60c99a5..2babba1c4 100644
+index daeae358e..a3e9b7bd7 100644
 --- a/wpa_supplicant/wpa_supplicant.c
 +++ b/wpa_supplicant/wpa_supplicant.c
-@@ -7776,6 +7776,10 @@ struct wpa_supplicant * wpa_supplicant_add_iface(struct wpa_global *global,
+@@ -8290,6 +8290,10 @@ struct wpa_supplicant * wpa_supplicant_add_iface(struct wpa_global *global,
  	}
  #endif /* CONFIG_P2P */
  
@@ -3585,7 +3590,7 @@ index cb60c99a5..2babba1c4 100644
  	return wpa_s;
  }
  
-@@ -7802,6 +7806,10 @@ int wpa_supplicant_remove_iface(struct wpa_global *global,
+@@ -8316,6 +8320,10 @@ int wpa_supplicant_remove_iface(struct wpa_global *global,
  	struct wpa_supplicant *parent = wpa_s->parent;
  #endif /* CONFIG_MESH */
  
@@ -3596,7 +3601,7 @@ index cb60c99a5..2babba1c4 100644
  	/* Remove interface from the global list of interfaces */
  	prev = global->ifaces;
  	if (prev == wpa_s) {
-@@ -8146,7 +8154,13 @@ int wpa_supplicant_run(struct wpa_global *global)
+@@ -8660,7 +8668,13 @@ int wpa_supplicant_run(struct wpa_global *global)
  	eloop_register_signal_terminate(wpa_supplicant_terminate, global);
  	eloop_register_signal_reconfig(wpa_supplicant_reconfig, global);
  
@@ -3611,7 +3616,7 @@ index cb60c99a5..2babba1c4 100644
  	return 0;
  }
 diff --git a/wpa_supplicant/wpa_supplicant_i.h b/wpa_supplicant/wpa_supplicant_i.h
-index 917cd7045..7c77b679b 100644
+index ff7549638..72893b4ae 100644
 --- a/wpa_supplicant/wpa_supplicant_i.h
 +++ b/wpa_supplicant/wpa_supplicant_i.h
 @@ -21,6 +21,9 @@
@@ -3635,7 +3640,7 @@ index 917cd7045..7c77b679b 100644
  };
  
  
-@@ -706,6 +713,9 @@ struct wpa_supplicant {
+@@ -710,6 +717,9 @@ struct wpa_supplicant {
  	unsigned char own_addr[ETH_ALEN];
  	unsigned char perm_addr[ETH_ALEN];
  	char ifname[100];
@@ -3646,7 +3651,7 @@ index 917cd7045..7c77b679b 100644
  	int matched;
  #endif /* CONFIG_MATCH_IFACE */
 diff --git a/wpa_supplicant/wps_supplicant.c b/wpa_supplicant/wps_supplicant.c
-index 220a5f8b5..cc9c10fe2 100644
+index d332f000c..eb53166d2 100644
 --- a/wpa_supplicant/wps_supplicant.c
 +++ b/wpa_supplicant/wps_supplicant.c
 @@ -34,6 +34,9 @@
@@ -3659,7 +3664,7 @@ index 220a5f8b5..cc9c10fe2 100644
  
  #ifndef WPS_PIN_SCAN_IGNORE_SEL_REG
  #define WPS_PIN_SCAN_IGNORE_SEL_REG 3
-@@ -401,6 +404,9 @@ static int wpa_supplicant_wps_cred(void *ctx,
+@@ -400,6 +403,9 @@ static int wpa_supplicant_wps_cred(void *ctx,
  
  	wpa_hexdump_key(MSG_DEBUG, "WPS: Received Credential attribute",
  			cred->cred_attr, cred->cred_attr_len);

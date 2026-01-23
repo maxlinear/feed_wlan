@@ -1,4 +1,4 @@
-From fe931834c4da76af6a1dc480442e23f00f0a974a Mon Sep 17 00:00:00 2001
+From 7ff20ef69994288b2417a9f6f21d67e435fe4e48 Mon Sep 17 00:00:00 2001
 From: Jurijs Soloveckis <jsoloveckis@maxlinear.com>
 Date: Fri, 26 May 2023 09:19:57 +0200
 Subject: [PATCH] WLANRTSYS-55591: Add support for multi-psk
@@ -19,10 +19,10 @@ Subject: [PATCH] WLANRTSYS-55591: Add support for multi-psk
  10 files changed, 190 insertions(+), 3 deletions(-)
 
 diff --git a/hostapd/ctrl_iface.c b/hostapd/ctrl_iface.c
-index fb175bce4..d90b5f66d 100644
+index fe388edb1..35b9fafbe 100644
 --- a/hostapd/ctrl_iface.c
 +++ b/hostapd/ctrl_iface.c
-@@ -549,12 +549,22 @@ static const char * pbc_status_str(enum pbc_status status)
+@@ -551,12 +551,22 @@ static const char * pbc_status_str(enum pbc_status status)
  	}
  }
  
@@ -45,7 +45,7 @@ index fb175bce4..d90b5f66d 100644
  
  	pos = buf;
  	end = buf + buflen;
-@@ -566,6 +576,12 @@ static int hostapd_ctrl_iface_wps_get_status(struct hostapd_data *hapd,
+@@ -568,6 +578,12 @@ static int hostapd_ctrl_iface_wps_get_status(struct hostapd_data *hapd,
  		return pos - buf;
  	pos += ret;
  
@@ -58,7 +58,7 @@ index fb175bce4..d90b5f66d 100644
  	ret = os_snprintf(pos, end - pos, "Last WPS result: %s\n",
  			  (hapd->wps_stats.status == WPS_STATUS_SUCCESS ?
  			   "Success":
-@@ -5048,6 +5064,51 @@ static int hostapd_ctrl_iface_set_bss_load(struct hostapd_data *hapd, const char
+@@ -5689,6 +5705,51 @@ static int hostapd_ctrl_iface_set_bss_load(struct hostapd_data *hapd, const char
  	return 0;
  }
  
@@ -110,7 +110,7 @@ index fb175bce4..d90b5f66d 100644
  static int hostapd_ctrl_iface_receive_process(struct hostapd_data *hapd,
  					      char *buf, char *reply,
  					      int reply_size,
-@@ -5160,6 +5221,9 @@ static int hostapd_ctrl_iface_receive_process(struct hostapd_data *hapd,
+@@ -5801,6 +5862,9 @@ static int hostapd_ctrl_iface_receive_process(struct hostapd_data *hapd,
  	} else if (os_strncmp(buf, "WPS_CHECK_PIN ", 14) == 0) {
  		reply_len = hostapd_ctrl_iface_wps_check_pin(
  			hapd, buf + 14, reply, reply_size);
@@ -120,7 +120,7 @@ index fb175bce4..d90b5f66d 100644
  	} else if (os_strcmp(buf, "WPS_PBC") == 0) {
  		if (hostapd_wps_button_pushed(hapd, NULL))
  			reply_len = -1;
-@@ -5684,6 +5748,8 @@ static int hostapd_ctrl_iface_receive_process(struct hostapd_data *hapd,
+@@ -6372,6 +6436,8 @@ static int hostapd_ctrl_iface_receive_process(struct hostapd_data *hapd,
  		wpa_printf(MSG_EXCESSIVE, "%s; *** Received: 'SET_BSS_LOAD' (buf= '%s') ***\n", __FUNCTION__, buf);
  		reply_len = hostapd_ctrl_iface_set_bss_load(hapd, buf + 13, reply, reply_size);
  #endif /* CONFIG_IEEE80211AX */
@@ -130,10 +130,10 @@ index fb175bce4..d90b5f66d 100644
  		os_memcpy(reply, "UNKNOWN COMMAND\n", 16);
  		reply_len = 16;
 diff --git a/hostapd/hostapd_cli.c b/hostapd/hostapd_cli.c
-index f5a27e888..1bf6b5056 100644
+index 8dcb713b5..b55cfd158 100644
 --- a/hostapd/hostapd_cli.c
 +++ b/hostapd/hostapd_cli.c
-@@ -2131,6 +2131,27 @@ static int hostapd_cli_cmd_reconf(struct wpa_ctrl *ctrl, int argc,
+@@ -2201,6 +2201,27 @@ static int hostapd_cli_cmd_reconf(struct wpa_ctrl *ctrl, int argc,
  	return wpa_ctrl_command(ctrl, cmd);
  }
  
@@ -161,7 +161,7 @@ index f5a27e888..1bf6b5056 100644
  struct hostapd_cli_cmd {
  	const char *cmd;
  	int (*handler)(struct wpa_ctrl *ctrl, int argc, char *argv[]);
-@@ -2404,6 +2425,8 @@ static const struct hostapd_cli_cmd hostapd_cli_commands[] = {
+@@ -2495,6 +2516,8 @@ static const struct hostapd_cli_cmd hostapd_cli_commands[] = {
  	  "are unaffected)\n"
  	  "  if BSS name is given, that BSS will be reloaded (main BSS isn't "
  	  "supported)" },
@@ -171,10 +171,10 @@ index f5a27e888..1bf6b5056 100644
  };
  
 diff --git a/src/ap/ap_config.c b/src/ap/ap_config.c
-index fc141e103..3b5947358 100644
+index e9a39ce7d..8cefa074e 100644
 --- a/src/ap/ap_config.c
 +++ b/src/ap/ap_config.c
-@@ -491,8 +491,17 @@ static int hostapd_config_read_wpa_psk(const char *fname,
+@@ -505,8 +505,17 @@ static int hostapd_config_read_wpa_psk(const char *fname,
  			ok = 1;
  		else if (len >= 8 && len < 64 &&
  			 pbkdf2_sha1(pos, ssid->ssid, ssid->ssid_len,
@@ -194,10 +194,10 @@ index fc141e103..3b5947358 100644
  			wpa_printf(MSG_ERROR,
  				   "Invalid PSK '%s' on line %d in '%s'",
 diff --git a/src/ap/ap_config.h b/src/ap/ap_config.h
-index 0f423905b..3e9aa110e 100644
+index 326c47ae6..1a4e43078 100644
 --- a/src/ap/ap_config.h
 +++ b/src/ap/ap_config.h
-@@ -156,7 +156,6 @@ struct hostapd_vlan {
+@@ -155,7 +155,6 @@ struct hostapd_vlan {
  };
  
  #define PMK_LEN 32
@@ -205,7 +205,7 @@ index 0f423905b..3e9aa110e 100644
  #define MIN_PASSPHRASE_LEN 8
  #define MAX_PASSPHRASE_LEN 63
  struct hostapd_sta_wpa_psk_short {
-@@ -170,7 +169,8 @@ struct hostapd_sta_wpa_psk_short {
+@@ -169,7 +168,8 @@ struct hostapd_sta_wpa_psk_short {
  struct hostapd_wpa_psk {
  	struct hostapd_wpa_psk *next;
  	int group;
@@ -215,7 +215,7 @@ index 0f423905b..3e9aa110e 100644
  	int wps;
  	u8 psk[PMK_LEN];
  	u8 addr[ETH_ALEN];
-@@ -1396,6 +1396,7 @@ struct hostapd_config {
+@@ -1449,6 +1449,7 @@ struct hostapd_config {
  #define COEX_ACTIVE_TIME_MAX	0x1fffff
  #define COEX_INACTIVE_TIME_MIN	2
  #define COEX_INACTIVE_TIME_MAX	32
@@ -224,10 +224,10 @@ index 0f423905b..3e9aa110e 100644
  static inline enum oper_chan_width
  hostapd_get_oper_chwidth(struct hostapd_config *conf)
 diff --git a/src/ap/hostapd.h b/src/ap/hostapd.h
-index 67dbcfe1a..1667855c4 100644
+index 5ed571743..366639df0 100644
 --- a/src/ap/hostapd.h
 +++ b/src/ap/hostapd.h
-@@ -158,6 +158,7 @@ struct wps_stat {
+@@ -165,6 +165,7 @@ struct wps_stat {
  	enum wps_error_indication failure_reason;
  	enum pbc_status pbc_status;
  	u8 peer_addr[ETH_ALEN];
@@ -236,10 +236,10 @@ index 67dbcfe1a..1667855c4 100644
  
  struct hostapd_neighbor_entry {
 diff --git a/src/ap/sta_info.c b/src/ap/sta_info.c
-index 729cdf46c..9c795010e 100644
+index 39a1330a1..e8bf5ffad 100644
 --- a/src/ap/sta_info.c
 +++ b/src/ap/sta_info.c
-@@ -1323,6 +1323,30 @@ void ap_sta_stop_sa_query(struct hostapd_data *hapd, struct sta_info *sta)
+@@ -1567,6 +1567,30 @@ void ap_sta_stop_sa_query(struct hostapd_data *hapd, struct sta_info *sta)
  	sta->sa_query_count = 0;
  }
  
@@ -271,10 +271,10 @@ index 729cdf46c..9c795010e 100644
  const char * ap_sta_wpa_get_keyid(struct hostapd_data *hapd,
  				  struct sta_info *sta)
 diff --git a/src/ap/sta_info.h b/src/ap/sta_info.h
-index f4073e843..0cbfb3790 100644
+index 2a19afbfc..d487bf875 100644
 --- a/src/ap/sta_info.h
 +++ b/src/ap/sta_info.h
-@@ -399,6 +399,8 @@ const char * ap_sta_wpa_get_keyid(struct hostapd_data *hapd,
+@@ -389,6 +389,8 @@ const char * ap_sta_wpa_get_keyid(struct hostapd_data *hapd,
  				  struct sta_info *sta);
  const u8 * ap_sta_wpa_get_dpp_pkhash(struct hostapd_data *hapd,
  				     struct sta_info *sta);
@@ -284,7 +284,7 @@ index f4073e843..0cbfb3790 100644
  		       const u8 *addr, u16 reason);
  
 diff --git a/src/ap/wps_hostapd.c b/src/ap/wps_hostapd.c
-index aacfa3372..c4598f252 100644
+index 82d4d5fdd..dc559c552 100644
 --- a/src/ap/wps_hostapd.c
 +++ b/src/ap/wps_hostapd.c
 @@ -270,6 +270,25 @@ static void hostapd_wps_enrollee_seen_cb(void *ctx, const u8 *addr,
@@ -433,7 +433,7 @@ index 204bd820a..50ce86ad2 100644
  int hostapd_wps_get_mib_sta(struct hostapd_data *hapd, const u8 *addr,
  			    char *buf, size_t buflen);
 diff --git a/src/wps/wps.h b/src/wps/wps.h
-index fed3e2848..b10eeec1f 100644
+index b99ae9499..cba846215 100644
 --- a/src/wps/wps.h
 +++ b/src/wps/wps.h
 @@ -67,6 +67,9 @@ struct wps_credential {
@@ -446,7 +446,7 @@ index fed3e2848..b10eeec1f 100644
  /**
   * struct wps_device_data - WPS Device Data
   * @mac_addr: Device MAC address
-@@ -845,6 +848,7 @@ struct wps_context {
+@@ -850,6 +853,7 @@ struct wps_context {
  	/* Whether to send WPA2-PSK passphrase as a passphrase instead of PSK
  	 * for WPA3-Personal transition mode needs. */
  	bool use_passphrase;

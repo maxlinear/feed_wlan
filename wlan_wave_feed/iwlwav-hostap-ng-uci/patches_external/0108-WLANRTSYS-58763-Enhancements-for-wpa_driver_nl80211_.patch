@@ -1,45 +1,53 @@
-From 264df004909eae254e7aeb97ff6fb35356961853 Mon Sep 17 00:00:00 2001
+From 4f2020c938c33e194b8da6102932e4605d09b928 Mon Sep 17 00:00:00 2001
 From: fromans <fromans@maxlinear.com>
 Date: Tue, 19 Sep 2023 11:08:30 +0300
 Subject: [PATCH] WLANRTSYS-58763: Enhancements for wpa_driver_nl80211_if_add /
  wpa_driver_nl80211_if_remove
 
 ---
- src/drivers/driver_nl80211.c | 41 ++++++++++++++++++------------------
- 1 file changed, 21 insertions(+), 20 deletions(-)
+ src/drivers/driver_nl80211.c | 48 ++++++++++++++++++++++++++----------
+ 1 file changed, 35 insertions(+), 13 deletions(-)
 
 diff --git a/src/drivers/driver_nl80211.c b/src/drivers/driver_nl80211.c
-index 38fbae4f1..6cc7c9f9a 100644
+index 055a8d237..919676f1d 100644
 --- a/src/drivers/driver_nl80211.c
 +++ b/src/drivers/driver_nl80211.c
-@@ -9107,19 +9107,19 @@ static int wpa_driver_nl80211_if_add(void *priv, enum wpa_driver_if_type type,
- 		for (i = 0; i < MAX_NUM_MLD_LINKS; i++)
- 			new_bss->links[i].link_id = NL80211_DRV_LINK_ID_NA;
- 
--		if (bridge &&
--		    i802_check_bridge(drv, new_bss, bridge, ifname) < 0) {
--			wpa_printf(MSG_ERROR, "nl80211: Failed to add the new "
--				   "interface %s to a bridge %s",
--				   ifname, bridge);
-+		if (linux_set_iface_flags(drv->global->ioctl_sock, ifname, 1))
-+		{
- 			if (added)
- 				nl80211_remove_iface(drv, ifidx);
- 			os_free(new_bss);
+@@ -9251,6 +9251,26 @@ static int wpa_driver_nl80211_if_add(void *priv, enum wpa_driver_if_type type,
  			return -1;
  		}
  
--		if (linux_set_iface_flags(drv->global->ioctl_sock, ifname, 1))
--		{
-+		if (bridge &&
-+		    i802_check_bridge(drv, new_bss, bridge, ifname) < 0) {
-+			wpa_printf(MSG_ERROR, "nl80211: Failed to add the new "
-+				   "interface %s to a bridge %s",
-+				   ifname, bridge);
- 			if (added)
- 				nl80211_remove_iface(drv, ifidx);
++#ifdef CONFIG_VENDOR_MXL
++      if (linux_set_iface_flags(drv->global->ioctl_sock, ifname, 1))
++      {
++         if (added)
++            nl80211_remove_iface(drv, ifidx);
++         os_free(new_bss);
++         return -1;
++      }
++
++      if (bridge &&
++          i802_check_bridge(drv, new_bss, bridge, ifname) < 0) {
++         wpa_printf(MSG_ERROR, "nl80211: Failed to add the new "
++               "interface %s to a bridge %s",
++               ifname, bridge);
++         if (added)
++            nl80211_remove_iface(drv, ifidx);
++         os_free(new_bss);
++         return -1;
++      }
++#else /* CONFIG_VENDOR_MXL */
+ 		if (bridge &&
+ 		    i802_check_bridge(drv, new_bss, bridge, ifname) < 0) {
+ 			wpa_printf(MSG_ERROR, "nl80211: Failed to add the new "
+@@ -9269,6 +9289,7 @@ static int wpa_driver_nl80211_if_add(void *priv, enum wpa_driver_if_type type,
  			os_free(new_bss);
-@@ -9174,19 +9174,6 @@ static int wpa_driver_nl80211_if_remove(struct i802_bss *bss,
+ 			return -1;
+ 		}
++#endif /* CONFIG_VENDOR_MXL */
+ 		os_strlcpy(new_bss->ifname, ifname, IFNAMSIZ);
+ 		os_memcpy(new_bss->addr, if_addr, ETH_ALEN);
+ 		new_bss->ifindex = ifidx;
+@@ -9318,19 +9339,6 @@ static int wpa_driver_nl80211_if_remove(struct i802_bss *bss,
  
  	wpa_printf(MSG_DEBUG, "nl80211: %s(type=%d ifname=%s) ifindex=%d added_if=%d",
  		   __func__, type, ifname, ifindex, bss->added_if);
@@ -59,7 +67,7 @@ index 38fbae4f1..6cc7c9f9a 100644
  
  	if (bss->added_if_into_bridge) {
  		if (linux_br_del_if(drv->global->ioctl_sock, bss->brname,
-@@ -9202,6 +9189,20 @@ static int wpa_driver_nl80211_if_remove(struct i802_bss *bss,
+@@ -9346,6 +9354,20 @@ static int wpa_driver_nl80211_if_remove(struct i802_bss *bss,
  				   bss->brname, strerror(errno));
  	}
  

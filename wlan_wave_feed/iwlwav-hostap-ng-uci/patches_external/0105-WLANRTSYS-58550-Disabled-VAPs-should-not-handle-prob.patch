@@ -1,4 +1,4 @@
-From 6f4f9dd6bcaaff2a428bf7a38d2908899c3fe898 Mon Sep 17 00:00:00 2001
+From bf2b5bb7afebf6b97d4f93e469a58ae4ad9a5fd8 Mon Sep 17 00:00:00 2001
 From: Dmitrijs Martinovs <dmartinovs@maxlinear.com>
 Date: Wed, 13 Sep 2023 14:48:17 +0200
 Subject: [PATCH] WLANRTSYS-58550: Disabled VAPs should not handle probes
@@ -8,10 +8,10 @@ Subject: [PATCH] WLANRTSYS-58550: Disabled VAPs should not handle probes
  1 file changed, 3 insertions(+)
 
 diff --git a/src/ap/beacon.c b/src/ap/beacon.c
-index df3ca022c..8f33c2dff 100644
+index 3a0e88292..007ae1e7a 100644
 --- a/src/ap/beacon.c
 +++ b/src/ap/beacon.c
-@@ -1476,6 +1476,9 @@ void handle_probe_req(struct hostapd_data *hapd,
+@@ -1585,6 +1585,9 @@ void handle_probe_req(struct hostapd_data *hapd,
  	};
  #endif /* UBUS_SUPPORT */
  

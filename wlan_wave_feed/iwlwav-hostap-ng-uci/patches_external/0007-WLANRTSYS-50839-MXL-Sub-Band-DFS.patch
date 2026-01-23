@@ -1,4 +1,4 @@
-From 4b61a76891dd137670f1c0e73e826246b7379e33 Mon Sep 17 00:00:00 2001
+From db5a51104357f31d13ef6716170398b9677ef92d Mon Sep 17 00:00:00 2001
 From: mvuls <mvuls@maxlinear.com>
 Date: Wed, 8 Nov 2023 15:19:44 +0200
 Subject: [PATCH] WLANRTSYS-50839: MXL Sub Band DFS
@@ -27,10 +27,10 @@ Subject: [PATCH] WLANRTSYS-50839: MXL Sub Band DFS
  create mode 100644 src/ap/mxl_sub_band_dfs.h
 
 diff --git a/hostapd/Makefile b/hostapd/Makefile
-index 839cd99b8..ba7be1ac1 100644
+index 050dd833e..4c9361532 100644
 --- a/hostapd/Makefile
 +++ b/hostapd/Makefile
-@@ -367,6 +367,7 @@ OBJS += ../src/common/mxl_ieee802_11_common.o
+@@ -371,6 +371,7 @@ OBJS += ../src/common/mxl_ieee802_11_common.o
  OBJS += mxl_ctrl_iface.o
  OBJS += ../src/drivers/mxl_driver_nl80211.o
  OBJS += ../src/ap/mxl_dfs_common.o
@@ -164,10 +164,10 @@ index 3fc9dd8cc..57d868288 100644
  
  #endif /* MXL_HOSTAPD_CLI_H */
 diff --git a/src/ap/dfs.c b/src/ap/dfs.c
-index ac5af55ae..ffecc09fa 100644
+index fb6ca5295..6f783c520 100644
 --- a/src/ap/dfs.c
 +++ b/src/ap/dfs.c
-@@ -740,6 +740,11 @@ static int dfs_are_channels_overlapped(struct hostapd_iface *iface, int freq,
+@@ -750,6 +750,11 @@ static int dfs_are_channels_overlapped(struct hostapd_iface *iface, int freq,
  	u8 radar_chan;
  	int res = 0;
  
@@ -179,7 +179,7 @@ index ac5af55ae..ffecc09fa 100644
  	/* Our configuration */
  	mode = iface->current_mode;
  	start_chan_idx = dfs_get_start_chan_idx(iface, &start_chan_idx1);
-@@ -1192,6 +1197,9 @@ int hostapd_dfs_complete_cac(struct hostapd_iface *iface, int success, int freq,
+@@ -1218,6 +1223,9 @@ int hostapd_dfs_complete_cac(struct hostapd_iface *iface, int success, int freq,
  				hostapd_setup_interface_complete(iface, 0);
  				iface->cac_started = 0;
  			}
@@ -189,7 +189,7 @@ index ac5af55ae..ffecc09fa 100644
  		}
  	} else if (hostapd_dfs_is_background_event(iface, freq)) {
  		iface->radar_background.cac_started = 0;
-@@ -1453,6 +1461,9 @@ int mxl_dfs_check_chans_unavailable(struct hostapd_iface *iface, int start_chan_
+@@ -1480,6 +1488,9 @@ int mxl_dfs_check_chans_unavailable(struct hostapd_iface *iface, int start_chan_
  	{ return dfs_check_chans_unavailable(iface, start_chan_idx, n_chans); }
  int mxl_hostapd_dfs_start_channel_switch(struct hostapd_iface *iface) { return hostapd_dfs_start_channel_switch(iface); }
  int mxl_set_dfs_state_freq(struct hostapd_iface *iface, int freq, u32 state) { return set_dfs_state_freq(iface, freq, state); }
@@ -199,7 +199,7 @@ index ac5af55ae..ffecc09fa 100644
  #endif /* CONFIG_VENDOR_MXL */
  
  int hostapd_dfs_radar_detected(struct hostapd_iface *iface, int freq,
-@@ -1489,7 +1500,7 @@ int hostapd_dfs_radar_detected(struct hostapd_iface *iface, int freq,
+@@ -1518,7 +1529,7 @@ int hostapd_dfs_radar_detected(struct hostapd_iface *iface, int freq,
  	}
  
  #ifdef CONFIG_VENDOR_MXL
@@ -209,10 +209,10 @@ index ac5af55ae..ffecc09fa 100644
  #endif /* CONFIG_VENDOR_MXL */
  
 diff --git a/src/ap/drv_callbacks.c b/src/ap/drv_callbacks.c
-index b1535283a..abf29ab0a 100644
+index 9c2dede21..a51d85b42 100644
 --- a/src/ap/drv_callbacks.c
 +++ b/src/ap/drv_callbacks.c
-@@ -2544,4 +2544,9 @@ void wpa_supplicant_event_global(void *ctx, enum wpa_event_type event,
+@@ -2895,4 +2895,9 @@ void wpa_supplicant_event_global(void *ctx, enum wpa_event_type event,
  		wpa_supplicant_event(hapd, event, data);
  }
  
@@ -223,10 +223,10 @@ index b1535283a..abf29ab0a 100644
 +
  #endif /* HOSTAPD */
 diff --git a/src/ap/hostapd.c b/src/ap/hostapd.c
-index 5bb0de77f..4598218aa 100644
+index 2f831ca76..ce0a19ffd 100644
 --- a/src/ap/hostapd.c
 +++ b/src/ap/hostapd.c
-@@ -666,6 +666,9 @@ static void hostapd_cleanup_iface(struct hostapd_iface *iface)
+@@ -742,6 +742,9 @@ static void hostapd_cleanup_iface(struct hostapd_iface *iface)
  			     NULL);
  
  	hostapd_cleanup_iface_partial(iface);
@@ -236,7 +236,7 @@ index 5bb0de77f..4598218aa 100644
  	hostapd_config_free(iface->conf);
  	iface->conf = NULL;
  
-@@ -2835,7 +2838,9 @@ struct hostapd_iface * hostapd_alloc_iface(void)
+@@ -3092,7 +3095,9 @@ struct hostapd_iface * hostapd_alloc_iface(void)
  		return NULL;
  
  	dl_list_init(&hapd_iface->sta_seen);
@@ -247,7 +247,7 @@ index 5bb0de77f..4598218aa 100644
  	return hapd_iface;
  }
  
-@@ -4080,6 +4085,10 @@ int hostapd_switch_channel(struct hostapd_data *hapd,
+@@ -4616,6 +4621,10 @@ int hostapd_switch_channel(struct hostapd_data *hapd,
  		return ret;
  	}
  
@@ -1035,10 +1035,10 @@ index 000000000..e578c06a6
 +#endif /* MXL_SUB_BAND_DFS_H */
 \ No newline at end of file
 diff --git a/src/drivers/driver.h b/src/drivers/driver.h
-index 4bc6f019a..1e4b3fece 100644
+index a057ddb2f..505fadc9a 100644
 --- a/src/drivers/driver.h
 +++ b/src/drivers/driver.h
-@@ -2728,6 +2728,10 @@ struct csa_settings {
+@@ -2813,6 +2813,10 @@ struct csa_settings {
  	u16 counter_offset_beacon[2];
  	u16 counter_offset_presp[2];
  
@@ -1046,15 +1046,15 @@ index 4bc6f019a..1e4b3fece 100644
 +	struct mxl_csa_settings mxl_csa_settings;
 +#endif
 +
- 	u16 punct_bitmap;
- };
+ 	int link_id;
  
+ 	struct unsol_bcast_probe_resp ubpr;
 diff --git a/src/drivers/driver_nl80211.c b/src/drivers/driver_nl80211.c
-index c359ef02c..31ad8fb28 100644
+index 0ee68fa41..b27edfa1d 100644
 --- a/src/drivers/driver_nl80211.c
 +++ b/src/drivers/driver_nl80211.c
-@@ -11194,6 +11194,11 @@ static int nl80211_switch_channel(void *priv, struct csa_settings *settings)
- 			 settings->punct_bitmap)))
+@@ -11538,6 +11538,11 @@ static int nl80211_switch_channel(void *priv, struct csa_settings *settings)
+ 	     nla_put_u8(msg, NL80211_ATTR_MLO_LINK_ID, settings->link_id)))
  		goto error;
  
 +#ifdef CONFIG_VENDOR_MXL
@@ -1065,7 +1065,7 @@ index c359ef02c..31ad8fb28 100644
  	/* beacon_after params */
  	ret = set_beacon_data(msg, &settings->beacon_after);
  	if (ret)
-@@ -11223,6 +11228,12 @@ static int nl80211_switch_channel(void *priv, struct csa_settings *settings)
+@@ -11574,6 +11579,12 @@ static int nl80211_switch_channel(void *priv, struct csa_settings *settings)
  		wpa_printf(MSG_DEBUG, "nl80211: switch_channel failed err=%d (%s)",
  			   ret, strerror(-ret));
  	}

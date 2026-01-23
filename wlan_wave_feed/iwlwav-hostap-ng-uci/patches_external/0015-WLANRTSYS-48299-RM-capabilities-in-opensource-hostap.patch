@@ -1,4 +1,4 @@
-From 49bc1b2cda745957bff19d448c3c1673a7943b8e Mon Sep 17 00:00:00 2001
+From 9198b8547c866e5f537ccdc7dc9875b2bc5d8d02 Mon Sep 17 00:00:00 2001
 From: Jurijs Soloveckis <jsoloveckis@maxlinear.com>
 Date: Mon, 23 Jan 2023 16:19:20 +0100
 Subject: [PATCH] WLANRTSYS-48299: RM capabilities in opensource hostapd: only
@@ -58,10 +58,10 @@ index d0a0862d6..46579e1f7 100644
  
  void mxl_hostapd_config_defaults(struct hostapd_config *conf)
 diff --git a/src/ap/gas_serv.c b/src/ap/gas_serv.c
-index 4642e4927..9bf2473ea 100644
+index 13cf766c5..c3ea17e63 100644
 --- a/src/ap/gas_serv.c
 +++ b/src/ap/gas_serv.c
-@@ -283,7 +283,12 @@ static void anqp_add_capab_list(struct hostapd_data *hapd,
+@@ -275,7 +275,12 @@ static void anqp_add_capab_list(struct hostapd_data *hapd,
  		wpabuf_put_le16(buf, ANQP_TDLS_CAPABILITY);
  	if (get_anqp_elem(hapd, ANQP_EMERGENCY_NAI))
  		wpabuf_put_le16(buf, ANQP_EMERGENCY_NAI);
@@ -88,10 +88,10 @@ index 4cb52f268..94417505e 100644
  
  struct hostapd_config;
 diff --git a/src/common/ieee802_11_defs.h b/src/common/ieee802_11_defs.h
-index 247ba283c..f27a901cc 100644
+index 5ad667539..a07512d63 100644
 --- a/src/common/ieee802_11_defs.h
 +++ b/src/common/ieee802_11_defs.h
-@@ -773,6 +773,9 @@
+@@ -808,6 +808,9 @@
  #define WLAN_RRM_CAPS_BEACON_REPORT_ACTIVE BIT(5)
  #define WLAN_RRM_CAPS_BEACON_REPORT_TABLE BIT(6)
  /* byte 2 (out of 5) */

@@ -1,4 +1,4 @@
-From 96463abf9cf563f07695df75e3d210cb7bd0cf93 Mon Sep 17 00:00:00 2001
+From 511068741d3363df602b4634f5e3bfe32affcaa2 Mon Sep 17 00:00:00 2001
 From: Jurijs Soloveckis <jsoloveckis@maxlinear.com>
 Date: Mon, 28 Aug 2023 13:36:34 +0200
 Subject: [PATCH] WLANRTSYS-57925: Configuration for MCS NSS
@@ -10,10 +10,10 @@ Subject: [PATCH] WLANRTSYS-57925: Configuration for MCS NSS
  3 files changed, 57 insertions(+), 8 deletions(-)
 
 diff --git a/hostapd/config_file.c b/hostapd/config_file.c
-index 54da6b4d0..5836dc6f1 100644
+index ad7b4f307..831db5b96 100644
 --- a/hostapd/config_file.c
 +++ b/hostapd/config_file.c
-@@ -4156,6 +4156,14 @@ static int hostapd_config_fill(struct hostapd_config *conf,
+@@ -4223,6 +4223,14 @@ static int hostapd_config_fill(struct hostapd_config *conf,
  		conf->ht_cap_ampdu_parameters &= ~HT_CAP_AMPDU_MINIMUM_MPDU_START_SPACING;
  		conf->ht_cap_ampdu_parameters |= (atoi(pos) << 2) & HT_CAP_AMPDU_MINIMUM_MPDU_START_SPACING;
  		conf->ht_cap_ampdu_parameters_override_mask |= 0x2;
@@ -28,7 +28,7 @@ index 54da6b4d0..5836dc6f1 100644
  	} else if (os_strcmp(buf, "ieee80211n_acax_compat") == 0) {
  		int val = atoi(pos);
  		if (!IS_VALID_BOOL_RANGE(val)) {
-@@ -4188,6 +4196,10 @@ static int hostapd_config_fill(struct hostapd_config *conf,
+@@ -4255,6 +4263,10 @@ static int hostapd_config_fill(struct hostapd_config *conf,
  		bss->vendor_vht = atoi(pos);
  	} else if (os_strcmp(buf, "use_sta_nsts") == 0) {
  		bss->use_sta_nsts = atoi(pos);
@@ -39,7 +39,7 @@ index 54da6b4d0..5836dc6f1 100644
  #endif /* CONFIG_IEEE80211AC */
  #ifdef CONFIG_IEEE80211AX
  	} else if (os_strcmp(buf, "ieee80211ax") == 0) {
-@@ -4520,21 +4532,37 @@ static int hostapd_config_fill(struct hostapd_config *conf,
+@@ -4606,21 +4618,37 @@ static int hostapd_config_fill(struct hostapd_config *conf,
  	} else if (os_strcmp(buf, "he_operation_cohosted_bss") == 0) {
  		conf->he_oper_cohosted_bss = atoi(pos);
  	} else if (os_strcmp(buf, "he_operation_max_mcs_for_1ss") == 0) {
@@ -86,10 +86,10 @@ index 54da6b4d0..5836dc6f1 100644
  		wpa_printf(MSG_WARNING, "Line %d: he_operation_vht_channel_width is not supported", line);
  	} else if (os_strcmp(buf, "he_operation_vht_channel_center_segment0") == 0) {
 diff --git a/src/ap/ap_config.h b/src/ap/ap_config.h
-index 791ddb7a6..e86e62fbf 100644
+index d996aa9a5..3555bcde6 100644
 --- a/src/ap/ap_config.h
 +++ b/src/ap/ap_config.h
-@@ -1280,6 +1280,7 @@ struct hostapd_config {
+@@ -1314,6 +1314,7 @@ struct hostapd_config {
  	u32 ht_tx_bf_capab;
  	u8  ht_cap_ampdu_parameters;
  	u8  ht_cap_ampdu_parameters_override_mask;
@@ -97,7 +97,7 @@ index 791ddb7a6..e86e62fbf 100644
  	int ieee80211n;
  	int ieee80211n_acax_compat;
  	int secondary_channel;
-@@ -1295,6 +1296,7 @@ struct hostapd_config {
+@@ -1329,6 +1330,7 @@ struct hostapd_config {
  	u8 vht_oper_centr_freq_seg0_idx;
  	u8 vht_oper_centr_freq_seg1_idx;
  	u8 ht40_plus_minus_allowed;
@@ -106,10 +106,10 @@ index 791ddb7a6..e86e62fbf 100644
  
  	/* Use driver-generated interface addresses when adding multiple BSSs */
 diff --git a/src/ap/hw_features.c b/src/ap/hw_features.c
-index b1d47cdad..76d40b149 100644
+index 169fe125c..8d8bd3581 100644
 --- a/src/ap/hw_features.c
 +++ b/src/ap/hw_features.c
-@@ -813,7 +813,25 @@ static int ieee80211ax_supported_he_capab(struct hostapd_iface *iface)
+@@ -835,7 +835,25 @@ static int ieee80211ax_supported_he_capab(struct hostapd_iface *iface)
  #ifdef CONFIG_VENDOR_MXL
  static int hostapd_override_capab_vendor_mxl(struct hostapd_iface *iface)
  {
@@ -135,7 +135,7 @@ index b1d47cdad..76d40b149 100644
  	/* If VHT Capabs explicitly not set for 2.4GHz, take from HW capabilities for vendor_vht usecase */
  	if (!iface->conf->mxl_conf.vht_capab_set && (iface->current_mode->mode == HOSTAPD_MODE_IEEE80211G))
  		iface->conf->vht_capab = iface->current_mode->vht_capab;
-@@ -864,6 +882,7 @@ int hostapd_check_ht_capab(struct hostapd_iface *iface)
+@@ -886,6 +904,7 @@ int hostapd_check_ht_capab(struct hostapd_iface *iface)
  	ret = ieee80211n_check_40mhz(iface);
  	if (ret)
  		return ret;

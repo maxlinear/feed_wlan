@@ -1,4 +1,4 @@
-From 3d371a771e992fe097ce91723bc148b133967148 Mon Sep 17 00:00:00 2001
+From 57b519759ea2db7ae04b58ae22cec7bb46c1e381 Mon Sep 17 00:00:00 2001
 From: Jurijs Soloveckis <jsoloveckis@maxlinear.com>
 Date: Fri, 9 Jun 2023 09:04:57 +0200
 Subject: [PATCH] WLANRTSYS-55941: Add support for he_phy_channel_width_set
@@ -10,10 +10,10 @@ Subject: [PATCH] WLANRTSYS-55941: Add support for he_phy_channel_width_set
  3 files changed, 125 insertions(+)
 
 diff --git a/hostapd/config_file.c b/hostapd/config_file.c
-index 0749f8d03..09fa1fd24 100644
+index f8e0f461c..5c8b128b3 100644
 --- a/hostapd/config_file.c
 +++ b/hostapd/config_file.c
-@@ -5532,6 +5532,8 @@ static int hostapd_config_fill(struct hostapd_config *conf,
+@@ -5677,6 +5677,8 @@ static int hostapd_config_fill(struct hostapd_config *conf,
  			return 1;
  		}
  		conf->ext_cap_max_num_msdus_in_amsdu = (u8)val;
@@ -23,10 +23,10 @@ index 0749f8d03..09fa1fd24 100644
  	} else if (mxl_hostapd_config_fill(conf, bss, buf, pos, line)) {
  #endif /* CONFIG_VENDOR_MXL */
 diff --git a/hostapd/ctrl_iface.c b/hostapd/ctrl_iface.c
-index 581de4a5d..2b50ecdfe 100644
+index afdcc4494..bd36f7a7e 100644
 --- a/hostapd/ctrl_iface.c
 +++ b/hostapd/ctrl_iface.c
-@@ -5371,6 +5371,104 @@ static int hostapd_ctrl_iface_cellular_pref_set(struct hostapd_data *hapd, char
+@@ -6003,6 +6003,104 @@ static int hostapd_ctrl_iface_cellular_pref_set(struct hostapd_data *hapd, char
  
  #endif /* CONFIG_MBO */
  
@@ -131,7 +131,7 @@ index 581de4a5d..2b50ecdfe 100644
  static int hostapd_ctrl_iface_receive_process(struct hostapd_data *hapd,
  					      char *buf, char *reply,
  					      int reply_size,
-@@ -6026,6 +6124,9 @@ static int hostapd_ctrl_iface_receive_process(struct hostapd_data *hapd,
+@@ -6705,6 +6803,9 @@ static int hostapd_ctrl_iface_receive_process(struct hostapd_data *hapd,
  		if (hostapd_ctrl_iface_cellular_pref_set(hapd, buf + 18))
  			reply_len = -1;
  #endif /* CONFIG_MBO */
@@ -142,10 +142,10 @@ index 581de4a5d..2b50ecdfe 100644
  		os_memcpy(reply, "UNKNOWN COMMAND\n", 16);
  		reply_len = 16;
 diff --git a/hostapd/hostapd_cli.c b/hostapd/hostapd_cli.c
-index e4968223c..9ab0ccdca 100644
+index 8660ecffd..c46fb9a82 100644
 --- a/hostapd/hostapd_cli.c
 +++ b/hostapd/hostapd_cli.c
-@@ -2216,6 +2216,26 @@ static int hostapd_cli_cmd_cellular_pref_set(struct wpa_ctrl *ctrl, int argc, ch
+@@ -2286,6 +2286,26 @@ static int hostapd_cli_cmd_cellular_pref_set(struct wpa_ctrl *ctrl, int argc, ch
  }
  #endif /* CONFIG_MBO */
  
@@ -172,7 +172,7 @@ index e4968223c..9ab0ccdca 100644
  struct hostapd_cli_cmd {
  	const char *cmd;
  	int (*handler)(struct wpa_ctrl *ctrl, int argc, char *argv[]);
-@@ -2501,6 +2521,8 @@ static const struct hostapd_cli_cmd hostapd_cli_commands[] = {
+@@ -2592,6 +2612,8 @@ static const struct hostapd_cli_cmd hostapd_cli_commands[] = {
  	{ "cellular_pref_set", hostapd_cli_cmd_cellular_pref_set, NULL,
  	  " = set cellular preference"},
  #endif /* CONFIG_MBO */

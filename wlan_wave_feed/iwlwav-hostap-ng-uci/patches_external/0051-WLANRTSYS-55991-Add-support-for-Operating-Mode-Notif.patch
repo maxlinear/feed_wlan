@@ -1,4 +1,4 @@
-From 50d0df9b7e8a6541496f4decf09b5fafc41ccc72 Mon Sep 17 00:00:00 2001
+From 5e799b6c2a28a56d61090afc93743b2892d97cf2 Mon Sep 17 00:00:00 2001
 From: Jurijs Soloveckis <jsoloveckis@maxlinear.com>
 Date: Fri, 9 Jun 2023 09:15:06 +0200
 Subject: [PATCH] WLANRTSYS-55991: Add support for Operating Mode Notification
@@ -11,10 +11,10 @@ Subject: [PATCH] WLANRTSYS-55991: Add support for Operating Mode Notification
  4 files changed, 31 insertions(+)
 
 diff --git a/hostapd/config_file.c b/hostapd/config_file.c
-index d847d9215..7929a2e3d 100644
+index 5522452f8..ca405c3e7 100644
 --- a/hostapd/config_file.c
 +++ b/hostapd/config_file.c
-@@ -5542,6 +5542,14 @@ static int hostapd_config_fill(struct hostapd_config *conf,
+@@ -5687,6 +5687,14 @@ static int hostapd_config_fill(struct hostapd_config *conf,
  			return 1;
  		}
  		bss->enable_hairpin = val;
@@ -30,22 +30,22 @@ index d847d9215..7929a2e3d 100644
  	} else if (mxl_hostapd_config_fill(conf, bss, buf, pos, line)) {
  #endif /* CONFIG_VENDOR_MXL */
 diff --git a/src/ap/ap_config.h b/src/ap/ap_config.h
-index 2e098bae7..4ac40579a 100644
+index 25ef337ab..79252ab20 100644
 --- a/src/ap/ap_config.h
 +++ b/src/ap/ap_config.h
-@@ -1037,6 +1037,7 @@ struct hostapd_bss_config {
+@@ -1069,6 +1069,7 @@ struct hostapd_bss_config {
  #endif
  	int intra_vap_mcast;
  	int mgmt_frame_power_control;
 +	int opmode_notif;
- #ifdef CONFIG_VENDOR_MXL
  	struct mxl_hostapd_bss_config mxl_bss_conf;
  #endif /* CONFIG_VENDOR_MXL */
+ };
 diff --git a/src/ap/ieee802_11_shared.c b/src/ap/ieee802_11_shared.c
-index 4edfb187b..e97255614 100644
+index 73135f1e9..08391d218 100644
 --- a/src/ap/ieee802_11_shared.c
 +++ b/src/ap/ieee802_11_shared.c
-@@ -352,11 +352,27 @@ void ieee802_11_sa_query_action(struct hostapd_data *hapd,
+@@ -363,11 +363,27 @@ void ieee802_11_sa_query_action(struct hostapd_data *hapd,
  	ap_sta_stop_sa_query(hapd, sta);
  }
  
@@ -73,7 +73,7 @@ index 4edfb187b..e97255614 100644
  
  	switch (idx) {
  	case 0: /* Bits 0-7 */
-@@ -417,6 +433,10 @@ static void hostapd_ext_capab_byte(struct hostapd_data *hapd, u8 *pos, int idx,
+@@ -428,6 +444,10 @@ static void hostapd_ext_capab_byte(struct hostapd_data *hapd, u8 *pos, int idx,
  			*pos |= 0x01; /* Bit 48 - UTF-8 SSID */
  		break;
  	case 7: /* Bits 56-63 */
@@ -85,12 +85,12 @@ index 4edfb187b..e97255614 100644
  			*pos |= 0x80;	/* Bit 63 - LSB of Max Number of MSDUs in A-MSDU */
  		break;
 diff --git a/src/common/ieee802_11_defs.h b/src/common/ieee802_11_defs.h
-index 3fd701ce5..91b9f280e 100644
+index 9f7422fd3..79f13a852 100644
 --- a/src/common/ieee802_11_defs.h
 +++ b/src/common/ieee802_11_defs.h
-@@ -601,6 +601,8 @@
- #define WLAN_EXT_CAPAB_MSCS 85
+@@ -618,6 +618,8 @@
  #define WLAN_EXT_CAPAB_SAE_PK_EXCLUSIVELY 88
+ #define WLAN_EXT_CAPAB_KNOWN_STA_IDENTIFICATION 102
  
 +#define WLAN_EXT_CAPAB_OP_MODE_NOTIF_MASK BIT(6)
 +

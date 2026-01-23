@@ -1,4 +1,4 @@
-From ce470e30ad82048943baabd23916fd836ce5d491 Mon Sep 17 00:00:00 2001
+From 517338741c92f956ac24635362d52821cf1953b5 Mon Sep 17 00:00:00 2001
 From: Jurijs Soloveckis <jsoloveckis@maxlinear.com>
 Date: Wed, 2 Aug 2023 16:07:59 +0200
 Subject: [PATCH] WLANRTSYS-57523: Implement CONFIG_WIFI_CERTIFICATION
@@ -9,24 +9,24 @@ Subject: [PATCH] WLANRTSYS-57523: Implement CONFIG_WIFI_CERTIFICATION
  hostapd/ctrl_iface.c         | 145 +++++++++++++++++++++++++++++++++++
  hostapd/hostapd_cli.c        |  79 +++++++++++++++++++
  src/ap/ap_config.h           |   4 +
- src/ap/ap_drv_ops.h          |  20 +++++
+ src/ap/ap_drv_ops.h          |  21 +++++
  src/ap/pmksa_cache_auth.c    |  44 +++++++++++
- src/ap/pmksa_cache_auth.h    |   3 +
+ src/ap/pmksa_cache_auth.h    |   5 ++
  src/ap/sta_info.h            |   4 +-
  src/ap/wpa_auth.c            |   9 +++
  src/ap/wpa_auth.h            |   4 +
- src/ap/wpa_auth_glue.c       |   6 +-
+ src/ap/wpa_auth_glue.c       |  48 ++++++++++++
  src/ap/wpa_auth_ie.c         |  28 +++++++
- src/drivers/driver.h         |  18 +++++
- src/drivers/driver_nl80211.c |  34 ++++++++
+ src/drivers/driver.h         |  20 +++++
+ src/drivers/driver_nl80211.c |  36 +++++++++
  src/utils/common.h           |   8 ++
- 16 files changed, 540 insertions(+), 2 deletions(-)
+ 16 files changed, 590 insertions(+), 1 deletion(-)
 
 diff --git a/hostapd/Makefile b/hostapd/Makefile
-index a04956b55..4eeec0381 100644
+index 1b7442c16..581095003 100644
 --- a/hostapd/Makefile
 +++ b/hostapd/Makefile
-@@ -1328,6 +1328,10 @@ OBJS += ../src/rsn_supp/pmksa_cache.o
+@@ -1355,6 +1355,10 @@ OBJS += ../src/rsn_supp/pmksa_cache.o
  OBJS += ../src/rsn_supp/wpa_ie.o
  endif
  
@@ -38,10 +38,10 @@ index a04956b55..4eeec0381 100644
  	install -D $(<) $(@)
  
 diff --git a/hostapd/config_file.c b/hostapd/config_file.c
-index 47254b9a8..881897e5f 100644
+index 1e9c65ca2..26fd66285 100644
 --- a/hostapd/config_file.c
 +++ b/hostapd/config_file.c
-@@ -2575,6 +2575,120 @@ void read_token (char **p, char** token_start, int* token_len, char* delimiters)
+@@ -2469,6 +2469,120 @@ void read_token (char **p, char** token_start, int* token_len, char* delimiters)
  }
  
  
@@ -162,7 +162,7 @@ index 47254b9a8..881897e5f 100644
  /**
   * Read WHM configuration from whm.conf file
   * Syntax of whm.conf file
-@@ -2900,6 +3014,10 @@ static int hostapd_config_fill(struct hostapd_config *conf,
+@@ -2841,6 +2955,10 @@ static int hostapd_config_fill(struct hostapd_config *conf,
  			return 1;
  		}
  		conf->testbed_mode = val;
@@ -173,7 +173,7 @@ index 47254b9a8..881897e5f 100644
  #ifdef EAP_SERVER
  	} else if (os_strcmp(buf, "eap_authenticator") == 0) {
  		bss->eap_server = atoi(pos);
-@@ -5882,6 +6000,20 @@ static int hostapd_config_fill(struct hostapd_config *conf,
+@@ -6030,6 +6148,20 @@ static int hostapd_config_fill(struct hostapd_config *conf,
  			return 1;
  		}
  #endif /* CONFIG_WDS_WPA */
@@ -195,10 +195,10 @@ index 47254b9a8..881897e5f 100644
  	} else if (mxl_hostapd_config_fill(conf, bss, buf, pos, line)) {
  #endif /* CONFIG_VENDOR_MXL */
 diff --git a/hostapd/ctrl_iface.c b/hostapd/ctrl_iface.c
-index 19f6ea03a..ef0bb76a1 100644
+index 99dbd79a2..a3f77728e 100644
 --- a/hostapd/ctrl_iface.c
 +++ b/hostapd/ctrl_iface.c
-@@ -68,6 +68,7 @@
+@@ -70,6 +70,7 @@
  #include "fst/fst_ctrl_iface.h"
  #include "config_file.h"
  #include "ctrl_iface.h"
@@ -206,7 +206,7 @@ index 19f6ea03a..ef0bb76a1 100644
  #include "ap/bss_load.h"
  #ifdef CONFIG_VENDOR_MXL
  #include "mxl_ctrl_iface.h"
-@@ -1719,6 +1720,127 @@ static int hostapd_ctrl_iface_reload_wpa_psk(struct hostapd_data *hapd)
+@@ -1690,6 +1691,127 @@ static int hostapd_ctrl_iface_reload_wpa_psk(struct hostapd_data *hapd)
  	return 0;
  }
  
@@ -332,9 +332,9 @@ index 19f6ea03a..ef0bb76a1 100644
 +}
 +#endif /* CONFIG_WIFI_CERTIFICATION */
  
- #ifdef CONFIG_TESTING_OPTIONS
+ #ifdef CONFIG_IEEE80211R_AP
  
-@@ -6571,6 +6693,29 @@ static int hostapd_ctrl_iface_receive_process(struct hostapd_data *hapd,
+@@ -7250,6 +7372,29 @@ static int hostapd_ctrl_iface_receive_process(struct hostapd_data *hapd,
  	} else if (os_strncmp(buf, "UPDATE_RELOAD ", 14) == 0) {
  		if (hostapd_ctrl_iface_update_reload(hapd, buf + 14))
  			reply_len = -1;
@@ -365,10 +365,10 @@ index 19f6ea03a..ef0bb76a1 100644
  		os_memcpy(reply, "UNKNOWN COMMAND\n", 16);
  		reply_len = 16;
 diff --git a/hostapd/hostapd_cli.c b/hostapd/hostapd_cli.c
-index 19b7c3150..987a9f874 100644
+index a81fe9c2f..0eed79c53 100644
 --- a/hostapd/hostapd_cli.c
 +++ b/hostapd/hostapd_cli.c
-@@ -2266,6 +2266,69 @@ static int hostapd_cli_cmd_get_he_phy_channel_width_set (struct wpa_ctrl *ctrl,
+@@ -2336,6 +2336,69 @@ static int hostapd_cli_cmd_get_he_phy_channel_width_set (struct wpa_ctrl *ctrl,
  	return wpa_ctrl_command(ctrl, cmd);
  }
  
@@ -438,7 +438,7 @@ index 19b7c3150..987a9f874 100644
  struct hostapd_cli_cmd {
  	const char *cmd;
  	int (*handler)(struct wpa_ctrl *ctrl, int argc, char *argv[]);
-@@ -2561,6 +2624,22 @@ static const struct hostapd_cli_cmd hostapd_cli_commands[] = {
+@@ -2652,6 +2715,22 @@ static const struct hostapd_cli_cmd hostapd_cli_commands[] = {
  	  "<MAC addr> = get HE PHY Channel Width Set field for specified STA" },
  	{ "stop_ap", hostapd_cli_cmd_stop_ap, NULL,
  	  "= stop hostapd AP on current interface" },
@@ -462,10 +462,10 @@ index 19b7c3150..987a9f874 100644
  };
  
 diff --git a/src/ap/ap_config.h b/src/ap/ap_config.h
-index bbb0c79e0..3b4a4bb0b 100644
+index c24bf9fec..3c181e38e 100644
 --- a/src/ap/ap_config.h
 +++ b/src/ap/ap_config.h
-@@ -1489,6 +1489,10 @@ struct hostapd_config {
+@@ -1545,6 +1545,10 @@ struct hostapd_config {
  #define COEX_INACTIVE_TIME_MIN	2
  #define COEX_INACTIVE_TIME_MAX	32
  #define AP_MAX_VALID_CHAR		255
@@ -477,13 +477,14 @@ index bbb0c79e0..3b4a4bb0b 100644
  static inline enum oper_chan_width
  hostapd_get_oper_chwidth(struct hostapd_config *conf)
 diff --git a/src/ap/ap_drv_ops.h b/src/ap/ap_drv_ops.h
-index 828842a14..e6ec52c6e 100644
+index ba8e0c7e0..d5c0156e0 100644
 --- a/src/ap/ap_drv_ops.h
 +++ b/src/ap/ap_drv_ops.h
-@@ -601,4 +601,24 @@ static inline int hostapd_drv_link_add(struct hostapd_data *hapd,
- }
- #endif /* CONFIG_IEEE80211BE */
- 
+@@ -650,6 +650,27 @@ static inline int hostapd_drv_link_sta_remove(struct hostapd_data *hapd,
+ struct hostapd_multi_hw_info *
+ hostapd_get_multi_hw_info(struct hostapd_data *hapd,
+ 			  unsigned int *num_multi_hws);
++#ifdef CONFIG_VENDOR_MXL
 +#ifdef CONFIG_WIFI_CERTIFICATION
 +static inline int hostapd_drv_set_unprotected_deauth(struct hostapd_data *hapd,
 +						int enable)
@@ -503,13 +504,15 @@ index 828842a14..e6ec52c6e 100644
 +	return hapd->driver->set_pn_reset(hapd->drv_priv, enable);
 +}
 +#endif /* CONFIG_WIFI_CERTIFICATION */
-+
- #endif /* AP_DRV_OPS */
++#endif /* CONFIG_VENDOR_MXL */
+ 
+ int hostapd_drv_add_pmkid(struct hostapd_data *hapd,
+ 			  struct wpa_pmkid_params *params);
 diff --git a/src/ap/pmksa_cache_auth.c b/src/ap/pmksa_cache_auth.c
-index ee4232fd7..f30b604cd 100644
+index 07155402f..c9eeed751 100644
 --- a/src/ap/pmksa_cache_auth.c
 +++ b/src/ap/pmksa_cache_auth.c
-@@ -683,6 +683,50 @@ int pmksa_cache_auth_list(struct rsn_pmksa_cache *pmksa, char *buf, size_t len)
+@@ -680,6 +680,50 @@ int pmksa_cache_auth_list(struct rsn_pmksa_cache *pmksa, char *buf, size_t len,
  	return pos - buf;
  }
  
@@ -561,24 +564,26 @@ index ee4232fd7..f30b604cd 100644
  #ifdef CONFIG_PMKSA_CACHE_EXTERNAL
  #ifdef CONFIG_MESH
 diff --git a/src/ap/pmksa_cache_auth.h b/src/ap/pmksa_cache_auth.h
-index e38e7eca6..dc1536f13 100644
+index ade1c4989..d3596db62 100644
 --- a/src/ap/pmksa_cache_auth.h
 +++ b/src/ap/pmksa_cache_auth.h
-@@ -76,6 +76,9 @@ void pmksa_cache_free_entry(struct rsn_pmksa_cache *pmksa,
- int pmksa_cache_auth_radius_das_disconnect(struct rsn_pmksa_cache *pmksa,
+@@ -77,6 +77,11 @@ int pmksa_cache_auth_radius_das_disconnect(struct rsn_pmksa_cache *pmksa,
  					   struct radius_das_attrs *attr);
- int pmksa_cache_auth_list(struct rsn_pmksa_cache *pmksa, char *buf, size_t len);
+ int pmksa_cache_auth_list(struct rsn_pmksa_cache *pmksa, char *buf, size_t len,
+ 			  int *index);
++#ifdef CONFIG_VENDOR_MXL
 +#ifdef CONFIG_WIFI_CERTIFICATION
 +int pmk_cache_auth_list(struct rsn_pmksa_cache *pmksa, char *buf, size_t len);
 +#endif /* CONFIG_WIFI_CERTIFICATION */
++#endif /* CONFIG_VENDOR_MXL */
  void pmksa_cache_auth_flush(struct rsn_pmksa_cache *pmksa);
  int pmksa_cache_auth_list_mesh(struct rsn_pmksa_cache *pmksa, const u8 *addr,
  			       char *buf, size_t len);
 diff --git a/src/ap/sta_info.h b/src/ap/sta_info.h
-index 10281562f..e9a4c2bb2 100644
+index ff11bf6c9..285e84cfa 100644
 --- a/src/ap/sta_info.h
 +++ b/src/ap/sta_info.h
-@@ -337,14 +337,16 @@ struct sta_info {
+@@ -323,14 +323,16 @@ struct sta_info {
  	struct dpp_pfs *dpp_pfs;
  #endif /* CONFIG_DPP2 */
  
@@ -597,11 +602,11 @@ index 10281562f..e9a4c2bb2 100644
  	unsigned int airtime_weight;
  	struct os_reltime backlogged_until;
 diff --git a/src/ap/wpa_auth.c b/src/ap/wpa_auth.c
-index 206e0a580..17de29fac 100644
+index fa1f88268..44ef8639d 100644
 --- a/src/ap/wpa_auth.c
 +++ b/src/ap/wpa_auth.c
-@@ -5790,6 +5790,15 @@ int wpa_auth_pmksa_list(struct wpa_authenticator *wpa_auth, char *buf,
- 	return pmksa_cache_auth_list(wpa_auth->pmksa, buf, len);
+@@ -6656,6 +6656,15 @@ int wpa_auth_pmksa_list(struct wpa_authenticator *wpa_auth, char *buf,
+ 	return pos - buf;
  }
  
 +#ifdef CONFIG_WIFI_CERTIFICATION
@@ -617,10 +622,10 @@ index 206e0a580..17de29fac 100644
  void wpa_auth_pmksa_flush(struct wpa_authenticator *wpa_auth)
  {
 diff --git a/src/ap/wpa_auth.h b/src/ap/wpa_auth.h
-index 46fd315c7..b7806ea5d 100644
+index 2f5ddae0d..68ea4171b 100644
 --- a/src/ap/wpa_auth.h
 +++ b/src/ap/wpa_auth.h
-@@ -498,6 +498,10 @@ void wpa_auth_pmksa_remove(struct wpa_authenticator *wpa_auth,
+@@ -532,6 +532,10 @@ void wpa_auth_pmksa_remove(struct wpa_authenticator *wpa_auth,
  			   const u8 *sta_addr);
  int wpa_auth_pmksa_list(struct wpa_authenticator *wpa_auth, char *buf,
  			size_t len);
@@ -632,39 +637,73 @@ index 46fd315c7..b7806ea5d 100644
  int wpa_auth_pmksa_list_mesh(struct wpa_authenticator *wpa_auth, const u8 *addr,
  			     char *buf, size_t len);
 diff --git a/src/ap/wpa_auth_glue.c b/src/ap/wpa_auth_glue.c
-index 419271ebd..f2c7835fc 100644
+index 8f35d8555..91cf3879e 100644
 --- a/src/ap/wpa_auth_glue.c
 +++ b/src/ap/wpa_auth_glue.c
-@@ -461,7 +461,7 @@ static int hostapd_wpa_auth_set_key(void *ctx, int vlan_id, enum wpa_alg alg,
+@@ -519,6 +519,53 @@ static int hostapd_wpa_auth_set_key(void *ctx, int vlan_id, enum wpa_alg alg,
  		}
  	}
  
--#ifdef CONFIG_TESTING_OPTIONS
++#ifdef CONFIG_VENDOR_MXL
 +#if defined(CONFIG_TESTING_OPTIONS) || defined(CONFIG_WIFI_CERTIFICATION)
- 	if (key_flag & KEY_FLAG_MODIFY) {
- 		/* We are updating an already installed key. Don't overwrite
- 		 * the already stored key information with zeros.
-@@ -477,6 +477,7 @@ static int hostapd_wpa_auth_set_key(void *ctx, int vlan_id, enum wpa_alg alg,
- 				os_memcpy(sta->last_tk, key, key_len);
- 			sta->last_tk_len = key_len;
- 		}
++	if (key_flag & KEY_FLAG_MODIFY) {
++		/* We are updating an already installed key. Don't overwrite
++		 * the already stored key information with zeros.
++		 */
++	} else if (addr && !is_broadcast_ether_addr(addr)) {
++		struct sta_info *sta;
++
++		sta = ap_get_sta(hapd, addr);
++		if (sta) {
++			sta->last_tk_alg = alg;
++			sta->last_tk_key_idx = idx;
++			if (key)
++				os_memcpy(sta->last_tk, key, key_len);
++			sta->last_tk_len = key_len;
++		}
 +#ifdef CONFIG_TESTING_OPTIONS
- 	} else if (alg == WPA_ALG_BIP_CMAC_128 ||
- 		   alg == WPA_ALG_BIP_GMAC_128 ||
- 		   alg == WPA_ALG_BIP_GMAC_256 ||
-@@ -501,7 +502,10 @@ static int hostapd_wpa_auth_set_key(void *ctx, int vlan_id, enum wpa_alg alg,
- 			os_memcpy(hapd->last_gtk, key, key_len);
- 		hapd->last_gtk_len = key_len;
- 	}
++	} else if (alg == WPA_ALG_BIP_CMAC_128 ||
++		   alg == WPA_ALG_BIP_GMAC_128 ||
++		   alg == WPA_ALG_BIP_GMAC_256 ||
++		   alg == WPA_ALG_BIP_CMAC_256) {
++		if (idx == 4 || idx == 5) {
++			hapd->last_igtk_alg = alg;
++			hapd->last_igtk_key_idx = idx;
++			if (key)
++				os_memcpy(hapd->last_igtk, key, key_len);
++			hapd->last_igtk_len = key_len;
++		} else if (idx == 6 || idx == 7) {
++			hapd->last_bigtk_alg = alg;
++			hapd->last_bigtk_key_idx = idx;
++			if (key)
++				os_memcpy(hapd->last_bigtk, key, key_len);
++			hapd->last_bigtk_len = key_len;
++		}
++	} else {
++		hapd->last_gtk_alg = alg;
++		hapd->last_gtk_key_idx = idx;
++		if (key)
++			os_memcpy(hapd->last_gtk, key, key_len);
++		hapd->last_gtk_len = key_len;
++	}
 +#else  /* CONFIG_TESTING_OPTIONS */
 +	}  /* if only CONFIG_WIFI_CERTIFICATION flag is on */
- #endif /* CONFIG_TESTING_OPTIONS */
++#endif /* CONFIG_TESTING_OPTIONS */
 +#endif /* CONFIG_TESTING_OPTIONS || CONFIG_WIFI_CERTIFICATION */
- 	return hostapd_drv_set_key(ifname, hapd, alg, addr, idx, vlan_id, 1,
- 				   NULL, 0, key, key_len, key_flag);
++#else /* CONFIG_VENDOR_MXL */
+ #ifdef CONFIG_TESTING_OPTIONS
+ 	if (key_flag & KEY_FLAG_MODIFY) {
+ 		/* We are updating an already installed key. Don't overwrite
+@@ -562,6 +609,7 @@ static int hostapd_wpa_auth_set_key(void *ctx, int vlan_id, enum wpa_alg alg,
+ #endif /* CONFIG_TESTING_OPTIONS */
+ 	return hostapd_drv_set_key(ifname, hapd, alg, addr, idx, vlan_id,
+ 				   set_tx, NULL, 0, key, key_len, key_flag);
++#endif /* CONFIG_VENDOR_MXL */
  }
+ 
+ 
 diff --git a/src/ap/wpa_auth_ie.c b/src/ap/wpa_auth_ie.c
-index 9fb09c314..92f379961 100644
+index 02aa04ecc..9765fa423 100644
 --- a/src/ap/wpa_auth_ie.c
 +++ b/src/ap/wpa_auth_ie.c
 @@ -24,6 +24,10 @@
@@ -678,7 +717,7 @@ index 9fb09c314..92f379961 100644
  
  static int wpa_write_wpa_ie(struct wpa_auth_config *conf, u8 *buf, size_t len)
  {
-@@ -354,6 +358,16 @@ int wpa_write_rsn_ie(struct wpa_auth_config *conf, u8 *buf, size_t len,
+@@ -344,6 +348,16 @@ static u8 * rsne_write_data(u8 *buf, size_t len, u8 *pos, int group,
  			pos += 2;
  		}
  
@@ -693,9 +732,9 @@ index 9fb09c314..92f379961 100644
 +#endif /* CONFIG_WIFI_CERTIFICATION */
 +
  		/* Management Group Cipher Suite */
- 		switch (conf->group_mgmt_cipher) {
+ 		switch (group_mgmt_cipher) {
  		case WPA_CIPHER_AES_128_CMAC:
-@@ -368,14 +382,28 @@ int wpa_write_rsn_ie(struct wpa_auth_config *conf, u8 *buf, size_t len,
+@@ -358,14 +372,28 @@ static u8 * rsne_write_data(u8 *buf, size_t len, u8 *pos, int group,
  		case WPA_CIPHER_BIP_CMAC_256:
  			RSN_SELECTOR_PUT(pos, RSN_CIPHER_SUITE_BIP_CMAC_256);
  			break;
@@ -704,8 +743,8 @@ index 9fb09c314..92f379961 100644
  		default:
  			wpa_printf(MSG_DEBUG,
  				   "Invalid group management cipher (0x%x)",
- 				   conf->group_mgmt_cipher);
- 			return -1;
+ 				   group_mgmt_cipher);
+ 			return NULL;
  		}
 +		if(conf->group_mgmt_cipher != WPA_CIPHER_NONE)
 +			pos += RSN_SELECTOR_LEN;
@@ -725,14 +764,15 @@ index 9fb09c314..92f379961 100644
  #ifdef CONFIG_RSN_TESTING
  	if (rsn_testing) {
 diff --git a/src/drivers/driver.h b/src/drivers/driver.h
-index acf78193e..a16401f82 100644
+index afd41790a..d5dafbedc 100644
 --- a/src/drivers/driver.h
 +++ b/src/drivers/driver.h
-@@ -5334,6 +5334,24 @@ struct wpa_driver_ops {
- 			      const u8 *match, size_t match_len,
- 			      bool multicast);
- #endif /* CONFIG_TESTING_OPTIONS */
+@@ -5647,6 +5647,26 @@ struct wpa_driver_ops {
+ 	 */
+ 	struct hostapd_multi_hw_info *
+ 	(*get_multi_hw_info)(void *priv, unsigned int *num_multi_hws);
 +
++#ifdef CONFIG_VENDOR_MXL
 +#ifdef CONFIG_WIFI_CERTIFICATION
 +	/**
 +	 * set_unprotected_deauth - Enable/Disable unprotected_deauth if supported.
@@ -750,14 +790,15 @@ index acf78193e..a16401f82 100644
 +	 */
 +	int (*set_pn_reset)(void *priv, int enable);
 +#endif /* CONFIG_WIFI_CERTIFICATION */
++#endif /* CONFIG_VENDOR_MXL */
  };
  
  /**
 diff --git a/src/drivers/driver_nl80211.c b/src/drivers/driver_nl80211.c
-index f7fecf01f..076ee19b1 100644
+index 36dd610b3..1b7b66b71 100644
 --- a/src/drivers/driver_nl80211.c
 +++ b/src/drivers/driver_nl80211.c
-@@ -14541,6 +14541,36 @@ int nl80211_set_wds_wpa_sta(void *priv, const u8 *addr, const u8 remove)
+@@ -15396,6 +15396,36 @@ int nl80211_set_wds_wpa_sta(void *priv, const u8 *addr, const u8 remove)
  }
  #endif /* CONFIG_WDS_WPA */
  
@@ -794,20 +835,22 @@ index f7fecf01f..076ee19b1 100644
  const struct wpa_driver_ops wpa_driver_nl80211_ops = {
  	.name = "nl80211",
  	.desc = "Linux nl80211/cfg80211",
-@@ -14716,4 +14746,8 @@ const struct wpa_driver_ops wpa_driver_nl80211_ops = {
- 	.register_frame = testing_nl80211_register_frame,
+@@ -15590,4 +15620,10 @@ const struct wpa_driver_ops wpa_driver_nl80211_ops = {
  	.radio_disable = testing_nl80211_radio_disable,
  #endif /* CONFIG_TESTING_OPTIONS */
+ 	.get_multi_hw_info = wpa_driver_get_multi_hw_info,
++#ifdef CONFIG_VENDOR_MXL
 +#ifdef CONFIG_WIFI_CERTIFICATION
 +	.set_unprotected_deauth = nl80211_set_unprotected_deauth,
 +	.set_pn_reset = nl80211_set_pn_reset,
 +#endif /* CONFIG_WIFI_CERTIFICATION */
++#endif /* CONFIG_VENDOR_MXL */
  };
 diff --git a/src/utils/common.h b/src/utils/common.h
-index 2cdf3fcf6..be263a500 100644
+index 425b70293..a2667394e 100644
 --- a/src/utils/common.h
 +++ b/src/utils/common.h
-@@ -621,4 +621,12 @@ void * __hide_aliasing_typecast(void *foo);
+@@ -663,4 +663,12 @@ void * __hide_aliasing_typecast(void *foo);
     #define MAX(x,y) ((x)>(y)?(x):(y))
  #endif
  

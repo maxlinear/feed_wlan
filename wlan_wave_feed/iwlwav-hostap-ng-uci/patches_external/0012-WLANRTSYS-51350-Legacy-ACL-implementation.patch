@@ -1,4 +1,4 @@
-From 0e198d1d7740a6889f7794f09794a4f0da5610f4 Mon Sep 17 00:00:00 2001
+From 236df5622a5527b0ff778d92121d8ed6abddd485 Mon Sep 17 00:00:00 2001
 From: Jurijs Soloveckis <jsoloveckis@maxlinear.com>
 Date: Fri, 23 Dec 2022 08:46:26 +0100
 Subject: [PATCH] WLANRTSYS-51350: Legacy ACL implementation
@@ -14,10 +14,10 @@ Subject: [PATCH] WLANRTSYS-51350: Legacy ACL implementation
  7 files changed, 172 insertions(+), 3 deletions(-)
 
 diff --git a/hostapd/ctrl_iface.c b/hostapd/ctrl_iface.c
-index 519df2035..218018e81 100644
+index 944e1c34f..29d4b3c88 100644
 --- a/hostapd/ctrl_iface.c
 +++ b/hostapd/ctrl_iface.c
-@@ -3741,6 +3741,7 @@ static int hostapd_ctrl_iface_receive_process(struct hostapd_data *hapd,
+@@ -4394,6 +4394,7 @@ static int hostapd_ctrl_iface_receive_process(struct hostapd_data *hapd,
  						       reply_size);
  	} else if (os_strcmp(buf, "TERMINATE") == 0) {
  		eloop_terminate();
@@ -25,7 +25,7 @@ index 519df2035..218018e81 100644
  	} else if (os_strncmp(buf, "ACCEPT_ACL ", 11) == 0) {
  		if (os_strncmp(buf + 11, "ADD_MAC ", 8) == 0) {
  			if (hostapd_ctrl_iface_acl_add_mac(
-@@ -3796,6 +3797,7 @@ static int hostapd_ctrl_iface_receive_process(struct hostapd_data *hapd,
+@@ -4449,6 +4450,7 @@ static int hostapd_ctrl_iface_receive_process(struct hostapd_data *hapd,
  		} else {
  			reply_len = -1;
  		}
@@ -34,10 +34,10 @@ index 519df2035..218018e81 100644
  	} else if (os_strncmp(buf, "DPP_QR_CODE ", 12) == 0) {
  		res = hostapd_dpp_qr_code(hapd, buf + 12);
 diff --git a/hostapd/hostapd_cli.c b/hostapd/hostapd_cli.c
-index 43a218860..6ffaf87e3 100644
+index bbeed07e1..acd5c347c 100644
 --- a/hostapd/hostapd_cli.c
 +++ b/hostapd/hostapd_cli.c
-@@ -227,6 +227,9 @@ static inline int wpa_ctrl_command(struct wpa_ctrl *ctrl, const char *cmd)
+@@ -235,6 +235,9 @@ static inline int wpa_ctrl_command(struct wpa_ctrl *ctrl, const char *cmd)
  #ifdef CONFIG_VENDOR_MXL
  /* Wrapper to access static open source functions from MXL code */
  int mxl_wpa_ctrl_command(struct wpa_ctrl *ctrl, const char *cmd) { return wpa_ctrl_command(ctrl, cmd); }
@@ -47,7 +47,7 @@ index 43a218860..6ffaf87e3 100644
  #endif /* CONFIG_VENDOR_MXL */
  
  
-@@ -1555,6 +1558,7 @@ static int hostapd_cli_cmd_dpp_push_button(struct wpa_ctrl *ctrl, int argc,
+@@ -1600,6 +1603,7 @@ static int hostapd_cli_cmd_dpp_push_button(struct wpa_ctrl *ctrl, int argc,
  #endif /* CONFIG_DPP */
  
  
@@ -55,7 +55,7 @@ index 43a218860..6ffaf87e3 100644
  static int hostapd_cli_cmd_accept_macacl(struct wpa_ctrl *ctrl, int argc,
  					 char *argv[])
  {
-@@ -1567,7 +1571,7 @@ static int hostapd_cli_cmd_deny_macacl(struct wpa_ctrl *ctrl, int argc,
+@@ -1612,7 +1616,7 @@ static int hostapd_cli_cmd_deny_macacl(struct wpa_ctrl *ctrl, int argc,
  {
  	return hostapd_cli_cmd(ctrl, "DENY_ACL", 1, argc, argv);
  }
@@ -64,7 +64,7 @@ index 43a218860..6ffaf87e3 100644
  
  static int hostapd_cli_cmd_poll_sta(struct wpa_ctrl *ctrl, int argc,
  				    char *argv[])
-@@ -1791,10 +1795,12 @@ static const struct hostapd_cli_cmd hostapd_cli_commands[] = {
+@@ -1874,10 +1878,12 @@ static const struct hostapd_cli_cmd hostapd_cli_commands[] = {
  	  "= press DPP push button" },
  #endif /* CONFIG_DPP3 */
  #endif /* CONFIG_DPP */

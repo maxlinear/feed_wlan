@@ -1,40 +1,40 @@
-From 271b3bdb4cc69f983d8b0313ce6acd967cee1201 Mon Sep 17 00:00:00 2001
+From 82751a895e00f39dd41a7a8249c84207d4188f43 Mon Sep 17 00:00:00 2001
 From: Jurijs Soloveckis <jsoloveckis@maxlinear.com>
 Date: Thu, 23 Feb 2023 13:05:20 +0100
 Subject: [PATCH] WLANRTSYS-53245: Add support for MBSSID
 
 ---
- hostapd/config_file.c          |  27 ++-
+ hostapd/config_file.c          |  29 +++-
  hostapd/ctrl_iface.c           |  56 +++++++
  hostapd/hostapd_cli.c          |  51 ++++++
- hostapd/mxl_ctrl_iface.c       |  78 +++++++++
+ hostapd/mxl_ctrl_iface.c       |  81 +++++++++
  hostapd/mxl_ctrl_iface.h       |   2 +
  src/ap/ap_config.c             |  12 ++
  src/ap/ap_config.h             |  21 +++
  src/ap/ap_drv_ops.h            |  19 +++
- src/ap/beacon.c                | 110 ++++++++++++-
+ src/ap/beacon.c                | 112 ++++++++++++-
  src/ap/hostapd.c               |  90 ++++++++++
  src/ap/ieee802_11.h            |   5 +
- src/ap/ieee802_11_shared.c     | 292 ++++++++++++++++++++++++++++++++-
+ src/ap/ieee802_11_shared.c     | 293 ++++++++++++++++++++++++++++++++-
  src/ap/mxl_hostapd.c           |   2 +
- src/ap/wpa_auth_glue.c         |   2 +-
+ src/ap/wpa_auth_glue.c         |   6 +
  src/ap/wpa_auth_glue.h         |   3 +
  src/ap/wpa_auth_ie.c           |  48 ++++++
  src/ap/wpa_auth_ie.h           |   1 +
- src/common/defs.h              |  11 ++
- src/common/ieee802_11_common.c |   3 +
- src/common/ieee802_11_common.h |   1 +
+ src/common/defs.h              |  13 ++
+ src/common/ieee802_11_common.c |   4 +
+ src/common/ieee802_11_common.h |   3 +
  src/common/ieee802_11_defs.h   |   3 +
  src/common/wpa_common.h        |   4 +
  src/drivers/driver.h           |  16 ++
  src/drivers/driver_nl80211.c   |  30 ++++
- 24 files changed, 879 insertions(+), 8 deletions(-)
+ 24 files changed, 901 insertions(+), 3 deletions(-)
 
 diff --git a/hostapd/config_file.c b/hostapd/config_file.c
-index c38065225..eef4d0d03 100644
+index 713f6d8e9..0a9178cce 100644
 --- a/hostapd/config_file.c
 +++ b/hostapd/config_file.c
-@@ -902,6 +902,7 @@ static int hostapd_config_bss(struct hostapd_config *conf, const char *ifname)
+@@ -898,6 +898,7 @@ static int hostapd_config_bss(struct hostapd_config *conf, const char *ifname)
  		return -1;
  	}
  
@@ -42,7 +42,7 @@ index c38065225..eef4d0d03 100644
  	conf->bss[conf->num_bss++] = bss;
  	conf->last_bss = bss;
  
-@@ -3332,7 +3333,13 @@ static int hostapd_config_fill(struct hostapd_config *conf,
+@@ -3390,7 +3391,13 @@ static int hostapd_config_fill(struct hostapd_config *conf,
  		else
  			conf->preamble = LONG_PREAMBLE;
  	} else if (os_strcmp(buf, "ignore_broadcast_ssid") == 0) {
@@ -57,16 +57,18 @@ index c38065225..eef4d0d03 100644
  	} else if (os_strcmp(buf, "no_probe_resp_if_max_sta") == 0) {
  		bss->no_probe_resp_if_max_sta = atoi(pos);
  #ifdef CONFIG_WEP
-@@ -3660,6 +3667,8 @@ static int hostapd_config_fill(struct hostapd_config *conf,
- 			return 1;
- 		}
- 		conf->mbssid = mbssid;
+@@ -3742,6 +3749,10 @@ static int hostapd_config_fill(struct hostapd_config *conf,
+ 		bss->mbssid_index = atoi(pos);
+ 	} else if (os_strcmp(buf, "mbssid_max") == 0) {
+ 		conf->mbssid_max = atoi(pos);
++#ifdef CONFIG_VENDOR_MXL
 +	} else if (os_strcmp(buf, "multibss_enable") == 0) {
 +		conf->multibss_enable = atoi(pos);
++#endif /* CONFIG_VENDOR_MXL */
  #endif /* CONFIG_IEEE80211AX */
  	} else if (os_strcmp(buf, "max_listen_interval") == 0) {
  		bss->max_listen_interval = atoi(pos);
-@@ -4800,6 +4809,22 @@ static int hostapd_config_fill(struct hostapd_config *conf,
+@@ -4941,6 +4952,22 @@ static int hostapd_config_fill(struct hostapd_config *conf,
  			return 1;
  		}
  		conf->owl = val;
@@ -90,10 +92,10 @@ index c38065225..eef4d0d03 100644
  	} else if (mxl_hostapd_config_fill(conf, bss, buf, pos, line)) {
  #endif /* CONFIG_VENDOR_MXL */
 diff --git a/hostapd/ctrl_iface.c b/hostapd/ctrl_iface.c
-index 9aeadbd24..2fb934099 100644
+index d76a8146a..38d6d090e 100644
 --- a/hostapd/ctrl_iface.c
 +++ b/hostapd/ctrl_iface.c
-@@ -4578,6 +4578,52 @@ static int hostapd_ctrl_iface_get_last_assoc_req (struct hostapd_data *hapd, con
+@@ -5218,6 +5218,52 @@ static int hostapd_ctrl_iface_get_last_assoc_req (struct hostapd_data *hapd, con
  	return len;
  }
  
@@ -146,7 +148,7 @@ index 9aeadbd24..2fb934099 100644
  static int hostapd_ctrl_iface_receive_process(struct hostapd_data *hapd,
  					      char *buf, char *reply,
  					      int reply_size,
-@@ -4778,7 +4824,11 @@ static int hostapd_ctrl_iface_receive_process(struct hostapd_data *hapd,
+@@ -5426,7 +5472,11 @@ static int hostapd_ctrl_iface_receive_process(struct hostapd_data *hapd,
  		if (hostapd_ctrl_iface_disable(hapd->iface))
  			reply_len = -1;
  	} else if (os_strcmp(buf, "UPDATE_BEACON") == 0) {
@@ -158,7 +160,7 @@ index 9aeadbd24..2fb934099 100644
  			reply_len = -1;
  #ifdef CONFIG_TESTING_OPTIONS
  	} else if (os_strncmp(buf, "RADAR ", 6) == 0) {
-@@ -5176,6 +5226,12 @@ static int hostapd_ctrl_iface_receive_process(struct hostapd_data *hapd,
+@@ -5861,6 +5911,12 @@ static int hostapd_ctrl_iface_receive_process(struct hostapd_data *hapd,
  	} else if (os_strncmp(buf, "GET_LAST_ASSOC_REQ ", sizeof("GET_LAST_ASSOC_REQ ") - 1) == 0) {
  		reply_len = hostapd_ctrl_iface_get_last_assoc_req(hapd,
  				buf + sizeof("GET_LAST_ASSOC_REQ ") - 1, reply, reply_size);
@@ -172,10 +174,10 @@ index 9aeadbd24..2fb934099 100644
  		os_memcpy(reply, "UNKNOWN COMMAND\n", 16);
  		reply_len = 16;
 diff --git a/hostapd/hostapd_cli.c b/hostapd/hostapd_cli.c
-index c9c9e295e..14041f6d0 100644
+index 069e2f142..b7a9cabcf 100644
 --- a/hostapd/hostapd_cli.c
 +++ b/hostapd/hostapd_cli.c
-@@ -1942,6 +1942,51 @@ static int hostapd_cli_cmd_get_last_assoc_req (struct wpa_ctrl *ctrl, int argc,
+@@ -2012,6 +2012,51 @@ static int hostapd_cli_cmd_get_last_assoc_req (struct wpa_ctrl *ctrl, int argc,
  	return wpa_ctrl_command(ctrl, cmd);
  }
  
@@ -227,7 +229,7 @@ index c9c9e295e..14041f6d0 100644
  struct hostapd_cli_cmd {
  	const char *cmd;
  	int (*handler)(struct wpa_ctrl *ctrl, int argc, char *argv[]);
-@@ -2189,6 +2234,12 @@ static const struct hostapd_cli_cmd hostapd_cli_commands[] = {
+@@ -2280,6 +2325,12 @@ static const struct hostapd_cli_cmd hostapd_cli_commands[] = {
  	  " get list of restricted channels" },
  	{ "get_last_assoc_req", hostapd_cli_cmd_get_last_assoc_req, NULL,
  	  "<MAC addr> = get last association request frame for specified STA" },
@@ -241,13 +243,15 @@ index c9c9e295e..14041f6d0 100644
  };
  
 diff --git a/hostapd/mxl_ctrl_iface.c b/hostapd/mxl_ctrl_iface.c
-index 6e42295dc..e6a3a2f33 100644
+index 6e42295dc..a4b60b157 100644
 --- a/hostapd/mxl_ctrl_iface.c
 +++ b/hostapd/mxl_ctrl_iface.c
-@@ -2687,6 +2687,84 @@ exit:
+@@ -2687,6 +2687,87 @@ exit:
  			rep_reason_p);
  }
  
++<<<<<<< HEAD
++=======
 +#ifdef CONFIG_IEEE80211BE_MXL_MLO
 +static int mxl_hostapd_ctrl_iface_send_t2lm_teardown_frame(struct hostapd_data *hapd,
 +		const char *cmd)
@@ -326,6 +330,7 @@ index 6e42295dc..e6a3a2f33 100644
 +	return 0;
 +}
 +
++>>>>>>> 7b6c24cfb2 (WLANRTSYS-86232 6g ssid config is not getting applied)
  int mxl_hostapd_ctrl_iface_receive_process(struct hostapd_data *hapd,
  					      char *buf, char *reply,
  					      int reply_size,
@@ -343,10 +348,10 @@ index 41a8284c4..e8e7d5f63 100644
  int mxl_hostapd_ctrl_iface_req_beacon(struct hostapd_data *hapd, char *cmd, char *reply, size_t reply_size);
  
 diff --git a/src/ap/ap_config.c b/src/ap/ap_config.c
-index c5e3fc37a..46ddcd891 100644
+index fcc1bb392..8562ddbe2 100644
 --- a/src/ap/ap_config.c
 +++ b/src/ap/ap_config.c
-@@ -175,6 +175,8 @@ void hostapd_config_defaults_bss(struct hostapd_bss_config *bss)
+@@ -180,6 +180,8 @@ void hostapd_config_defaults_bss(struct hostapd_bss_config *bss)
  	bss->pasn_comeback_after = 10;
  	bss->pasn_noauth = 1;
  #endif /* CONFIG_PASN */
@@ -355,15 +360,15 @@ index c5e3fc37a..46ddcd891 100644
  #ifdef CONFIG_VENDOR_MXL
  	mxl_hostapd_config_defaults_bss(bss);
  #endif /* CONFIG_VENDOR_MXL */
-@@ -301,6 +303,7 @@ struct hostapd_config * hostapd_config_defaults(void)
- 	conf->airtime_update_interval = AIRTIME_DEFAULT_UPDATE_INTERVAL;
- #endif /* CONFIG_AIRTIME_POLICY */
+@@ -312,6 +314,7 @@ struct hostapd_config * hostapd_config_defaults(void)
  
-+	conf->mbssid_aid_offset = NON_MULTIBSS_AID_OFFSET;
+ 	hostapd_set_and_check_bw320_offset(conf, 0);
  #ifdef CONFIG_VENDOR_MXL
++	conf->mbssid_aid_offset = NON_MULTIBSS_AID_OFFSET;
  	mxl_hostapd_config_defaults(conf);
  #endif /* CONFIG_VENDOR_MXL */
-@@ -1581,6 +1584,15 @@ int hostapd_config_check(struct hostapd_config *conf, int full_config)
+ 	return conf;
+@@ -1619,6 +1622,15 @@ int hostapd_config_check(struct hostapd_config *conf, int full_config)
  			return -1;
  	}
  
@@ -380,19 +385,19 @@ index c5e3fc37a..46ddcd891 100644
  }
  
 diff --git a/src/ap/ap_config.h b/src/ap/ap_config.h
-index 1d78bb24f..74bc77783 100644
+index 7ad85c0d6..a89285738 100644
 --- a/src/ap/ap_config.h
 +++ b/src/ap/ap_config.h
-@@ -952,6 +952,8 @@ struct hostapd_bss_config {
- 	/* The AP's MLD MAC address within the AP MLD */
- 	u8 mld_addr[ETH_ALEN];
- #endif /* CONFIG_IEEE80211BE */
+@@ -982,6 +982,8 @@ struct hostapd_bss_config {
+ 
+ 	bool spp_amsdu;
+ #ifdef CONFIG_VENDOR_MXL
 +	int bss_idx;
 +	int wpa_ie_required_for_mbss;
- #ifdef CONFIG_VENDOR_MXL
  	struct mxl_hostapd_bss_config mxl_bss_conf;
  #endif /* CONFIG_VENDOR_MXL */
-@@ -993,6 +995,11 @@ struct spatial_reuse {
+ };
+@@ -1022,6 +1024,11 @@ struct spatial_reuse {
  	u8 srg_partial_bssid_bitmap[8];
  };
  
@@ -404,7 +409,7 @@ index 1d78bb24f..74bc77783 100644
  /**
   * struct eht_phy_capabilities_info - EHT PHY capabilities
   */
-@@ -1130,6 +1137,8 @@ struct hostapd_config {
+@@ -1160,6 +1167,8 @@ struct hostapd_config {
  	int stationary_ap;
  
  	int ieee80211ax;
@@ -413,7 +418,7 @@ index 1d78bb24f..74bc77783 100644
  #ifdef CONFIG_IEEE80211AX
  	struct he_phy_capabilities_info he_phy_capab;
  	struct he_operation he_op;
-@@ -1319,4 +1328,16 @@ int hostapd_add_acl_maclist(struct mac_acl_entry **acl, int *num,
+@@ -1410,4 +1419,16 @@ int hostapd_add_acl_maclist(struct mac_acl_entry **acl, int *num,
  void hostapd_remove_acl_mac(struct mac_acl_entry **acl, int *num,
  			    const u8 *addr);
  
@@ -431,10 +436,10 @@ index 1d78bb24f..74bc77783 100644
 +
  #endif /* HOSTAPD_CONFIG_H */
 diff --git a/src/ap/ap_drv_ops.h b/src/ap/ap_drv_ops.h
-index a120169ce..54733c762 100644
+index 538741ab1..de1796f7b 100644
 --- a/src/ap/ap_drv_ops.h
 +++ b/src/ap/ap_drv_ops.h
-@@ -458,6 +458,25 @@ static inline int hostapd_drv_get_capa(struct hostapd_data *hapd,
+@@ -491,6 +491,25 @@ static inline int hostapd_drv_get_capa(struct hostapd_data *hapd,
  	return hapd->driver->get_capa(hapd->drv_priv, capa);
  }
  
@@ -461,10 +466,10 @@ index a120169ce..54733c762 100644
  static inline int hostapd_drv_driver_cmd(struct hostapd_data *hapd,
  					 char *cmd, char *buf, size_t buf_len)
 diff --git a/src/ap/beacon.c b/src/ap/beacon.c
-index e058de068..0245e94a6 100644
+index 00e9b3092..6922ef925 100644
 --- a/src/ap/beacon.c
 +++ b/src/ap/beacon.c
-@@ -591,6 +591,16 @@ static size_t hostapd_probe_resp_elems_len(struct hostapd_data *hapd,
+@@ -734,6 +734,16 @@ static size_t hostapd_probe_resp_elems_len(struct hostapd_data *hapd,
  {
  	size_t buflen = 0;
  
@@ -481,10 +486,17 @@ index e058de068..0245e94a6 100644
  #ifdef CONFIG_WPS
  	if (hapd->wps_probe_resp_ie)
  		buflen += wpabuf_len(hapd->wps_probe_resp_ie);
-@@ -667,12 +677,39 @@ static u8 * hostapd_probe_resp_fill_elems(struct hostapd_data *hapd,
+@@ -804,11 +814,48 @@ static u8 * hostapd_probe_resp_fill_elems(struct hostapd_data *hapd,
  
  	epos = pos + len;
  
++#ifndef CONFIG_VENDOR_MXL
+ 	*pos++ = WLAN_EID_SSID;
+ 	*pos++ = hapd->conf->ssid.ssid_len;
+ 	os_memcpy(pos, hapd->conf->ssid.ssid,
+ 		  hapd->conf->ssid.ssid_len);
+ 	pos += hapd->conf->ssid.ssid_len;
++#else /* CONFIG_VENDOR_MXL */
 +	bool is_req_non_transmit_vap = false;
 +	int multiple_bssid_ie_len = -1;
 +	/* if multibss is enabled, probe response is always sent from transmit bss */
@@ -498,12 +510,8 @@ index e058de068..0245e94a6 100644
 +		}
 +	}
 +
- 	if (!params->is_ml_sta_info) {
- 		*pos++ = WLAN_EID_SSID;
--		*pos++ = hapd->conf->ssid.ssid_len;
--		os_memcpy(pos, hapd->conf->ssid.ssid,
--			  hapd->conf->ssid.ssid_len);
--		pos += hapd->conf->ssid.ssid_len;
++	if (!params->is_ml_sta_info) {
++		*pos++ = WLAN_EID_SSID;
 +		/* For multibss case, if the transmitted VAP is hidden, it must not reveal its own ssid
 +		 * while transmiting probe resp frame on behalf of a non-transmited vap
 +		 */
@@ -522,10 +530,12 @@ index e058de068..0245e94a6 100644
 +			os_memcpy(pos, hapd->conf->ssid.ssid, hapd->conf->ssid.ssid_len);
 +			pos += hapd->conf->ssid.ssid_len;
 +		}
- 	}
++	}
++#endif /* CONFIG_VENDOR_MXL */
  
  	/* Supported rates */
-@@ -711,6 +748,21 @@ static u8 * hostapd_probe_resp_fill_elems(struct hostapd_data *hapd,
+ 	pos = hostapd_eid_supp_rates(hapd, pos);
+@@ -841,6 +888,21 @@ static u8 * hostapd_probe_resp_fill_elems(struct hostapd_data *hapd,
  				 NULL, params->known_bss, params->known_bss_len,
  				 NULL, NULL, NULL, 0);
  	pos = hostapd_eid_rm_enabled_capab(hapd, pos, epos - pos);
@@ -546,8 +556,8 @@ index e058de068..0245e94a6 100644
 +
  	pos = hostapd_get_mde(hapd, pos, epos - pos);
  
- 	/*
-@@ -869,6 +921,19 @@ void hostapd_gen_probe_resp(struct hostapd_data *hapd,
+ 	/* eCSA element */
+@@ -1008,6 +1070,19 @@ static void hostapd_gen_probe_resp(struct hostapd_data *hapd,
  
  	hapd = hostapd_mbssid_get_tx_bss(hapd);
  
@@ -567,7 +577,7 @@ index e058de068..0245e94a6 100644
  #define MAX_PROBERESP_LEN 768
  	buflen = MAX_PROBERESP_LEN;
  	buflen += hostapd_probe_resp_elems_len(hapd, params);
-@@ -904,6 +969,11 @@ void hostapd_gen_probe_resp(struct hostapd_data *hapd,
+@@ -1043,6 +1118,11 @@ static void hostapd_gen_probe_resp(struct hostapd_data *hapd,
  	pos = hostapd_probe_resp_fill_elems(hapd, params,
  					    params->resp->u.probe_resp.variable,
  					    buflen);
@@ -579,7 +589,7 @@ index e058de068..0245e94a6 100644
  
  	params->resp_len = pos - (u8 *) params->resp;
  }
-@@ -1639,7 +1709,8 @@ void handle_probe_req(struct hostapd_data *hapd,
+@@ -1745,7 +1825,8 @@ void handle_probe_req(struct hostapd_data *hapd,
  				params.ecsa_pos - (u8 *) params.resp;
  	}
  
@@ -589,7 +599,7 @@ index e058de068..0245e94a6 100644
  				    csa_offs_len ? csa_offs : NULL,
  				    csa_offs_len, 0);
  
-@@ -2101,6 +2172,7 @@ int ieee802_11_build_ap_params(struct hostapd_data *hapd,
+@@ -2213,6 +2294,7 @@ int ieee802_11_build_ap_params(struct hostapd_data *hapd,
  	size_t head_len = 0, tail_len = 0;
  	u8 *resp = NULL;
  	size_t resp_len = 0;
@@ -597,9 +607,9 @@ index e058de068..0245e94a6 100644
  #ifdef NEED_AP_MLME
  	u16 capab_info;
  	u8 *pos, *tailpos, *tailend, *csa_pos;
-@@ -2179,6 +2251,13 @@ int ieee802_11_build_ap_params(struct hostapd_data *hapd,
- 	tail_len += hostapd_eid_owe_trans_len(hapd);
- 	tail_len += hostapd_eid_dpp_cc_len(hapd);
+@@ -2283,6 +2365,13 @@ int ieee802_11_build_ap_params(struct hostapd_data *hapd,
+ 	tail_len += hostapd_get_rsne_override_2_len(hapd);
+ 	tail_len += hostapd_get_rsnxe_override_len(hapd);
  
 +	if (hapd->iconf->multibss_enable && (MULTIBSS_REFERENCE_BSS_IDX == hapd->conf->bss_idx)) {
 +		multiple_bssid_ie_len = multiple_bssid_ie_get_len(hapd, true);
@@ -611,7 +621,7 @@ index e058de068..0245e94a6 100644
  	tailpos = tail = os_malloc(tail_len);
  	if (head == NULL || tail == NULL) {
  		wpa_printf(MSG_ERROR, "Failed to set beacon data");
-@@ -2248,6 +2327,21 @@ int ieee802_11_build_ap_params(struct hostapd_data *hapd,
+@@ -2352,6 +2441,21 @@ int ieee802_11_build_ap_params(struct hostapd_data *hapd,
  	tailpos = hostapd_eid_bss_load(hapd, tailpos, tailend - tailpos);
  	tailpos = hostapd_eid_rm_enabled_capab(hapd, tailpos,
  					       tailend - tailpos);
@@ -633,7 +643,7 @@ index e058de068..0245e94a6 100644
  	tailpos = hostapd_get_mde(hapd, tailpos, tailend - tailpos);
  
  	/* eCSA IE */
-@@ -2546,6 +2640,12 @@ int ieee802_11_build_ap_params(struct hostapd_data *hapd,
+@@ -2660,6 +2764,12 @@ int ieee802_11_build_ap_params(struct hostapd_data *hapd,
  #endif /* CONFIG_IEEE80211BE */
  
  	return 0;
@@ -647,10 +657,10 @@ index e058de068..0245e94a6 100644
  
  
 diff --git a/src/ap/hostapd.c b/src/ap/hostapd.c
-index 696e8cf3f..6e99f4564 100644
+index 455490c64..23c7e83e2 100644
 --- a/src/ap/hostapd.c
 +++ b/src/ap/hostapd.c
-@@ -1229,6 +1229,90 @@ static int db_table_create_radius_attributes(sqlite3 *db)
+@@ -1307,6 +1307,90 @@ static int db_table_create_radius_attributes(sqlite3 *db)
  
  #endif /* CONFIG_NO_RADIUS */
  
@@ -741,17 +751,17 @@ index 696e8cf3f..6e99f4564 100644
  
  static int hostapd_start_beacon(struct hostapd_data *hapd,
  				bool flush_old_stations)
-@@ -1348,6 +1432,9 @@ static int hostapd_setup_bss(struct hostapd_data *hapd, int first,
- 			os_memcpy(hapd->own_addr, if_addr, ETH_ALEN);
+@@ -1525,6 +1609,9 @@ setup_mld:
  	}
- 
+ #endif /* CONFIG_IEEE80211BE */
+ #ifdef CONFIG_VENDOR_MXL
 +	if (hostapd_pre_up_vendor_vap_cmd(hapd))
 +		return -1;
 +
- #ifdef CONFIG_VENDOR_MXL
  	if (mxl_hostapd_setup_bss_pre(hapd))
  		return -1;
-@@ -1918,6 +2005,9 @@ static int setup_interface(struct hostapd_iface *iface)
+ #endif /* CONFIG_VENDOR_MXL */
+@@ -2128,6 +2215,9 @@ static int setup_interface(struct hostapd_iface *iface)
  	if (start_ctrl_iface(iface))
  		return -1;
  
@@ -762,12 +772,12 @@ index 696e8cf3f..6e99f4564 100644
  		char country[4], previous_country[4];
  
 diff --git a/src/ap/ieee802_11.h b/src/ap/ieee802_11.h
-index 3f89874e2..05bc6152c 100644
+index 2bcc29eb1..d1abe1baa 100644
 --- a/src/ap/ieee802_11.h
 +++ b/src/ap/ieee802_11.h
-@@ -256,4 +256,9 @@ const char * sae_get_password(struct hostapd_data *hapd,
- 			      struct sae_password_entry **pw_entry,
- 			      struct sae_pt **s_pt, const struct sae_pk **s_pk);
+@@ -266,4 +266,9 @@ int hostapd_process_assoc_ml_info(struct hostapd_data *hapd,
+ 				  bool reassoc, int tx_link_status,
+ 				  bool offload);
  
 +u8 round_pow2_up(u8 x);
 +int multiple_bssid_ie_get_len(struct hostapd_data *hapd, bool is_beacon);
@@ -776,7 +786,7 @@ index 3f89874e2..05bc6152c 100644
 +
  #endif /* IEEE802_11_H */
 diff --git a/src/ap/ieee802_11_shared.c b/src/ap/ieee802_11_shared.c
-index eaeeba43e..277baf44d 100644
+index 986b7b81e..a8deff472 100644
 --- a/src/ap/ieee802_11_shared.c
 +++ b/src/ap/ieee802_11_shared.c
 @@ -18,6 +18,8 @@
@@ -788,7 +798,7 @@ index eaeeba43e..277baf44d 100644
  #include "ieee802_11.h"
  
  
-@@ -378,6 +380,8 @@ static void hostapd_ext_capab_byte(struct hostapd_data *hapd, u8 *pos, int idx,
+@@ -389,6 +391,8 @@ static void hostapd_ext_capab_byte(struct hostapd_data *hapd, u8 *pos, int idx,
  			*pos |= 0x08; /* Bit 19 - BSS Transition */
  		if (hapd->iconf->mbssid)
  			*pos |= 0x40; /* Bit 22 - Multiple BSSID */
@@ -797,8 +807,8 @@ index eaeeba43e..277baf44d 100644
  		break;
  	case 3: /* Bits 24-31 */
  #ifdef CONFIG_WNM_AP
-@@ -432,6 +436,8 @@ static void hostapd_ext_capab_byte(struct hostapd_data *hapd, u8 *pos, int idx,
- #endif /* CONFIG_IEEE80211AX */
+@@ -445,6 +449,8 @@ static void hostapd_ext_capab_byte(struct hostapd_data *hapd, u8 *pos, int idx,
+ 			*pos |= 0x40; /* Bit 78 - TWT responder */
  		break;
  	case 10: /* Bits 80-87 */
 +		if (hapd->iconf->multibss_enable)
@@ -806,7 +816,7 @@ index eaeeba43e..277baf44d 100644
  #ifdef CONFIG_SAE
  		if (hapd->conf->wpa &&
  		    wpa_key_mgmt_sae(hapd->conf->wpa_key_mgmt)) {
-@@ -495,7 +501,7 @@ u8 * hostapd_eid_ext_capab(struct hostapd_data *hapd, u8 *eid,
+@@ -519,7 +525,7 @@ u8 * hostapd_eid_ext_capab(struct hostapd_data *hapd, u8 *eid,
  		 * otherwise association fails with some clients */
  		if (i == 10 && hapd->iconf->mbssid < ENHANCED_MBSSID_ENABLED)
  			*pos &= ~0x08;
@@ -815,11 +825,11 @@ index eaeeba43e..277baf44d 100644
  			*pos &= ~0x40;
  	}
  
-@@ -1148,3 +1154,287 @@ u16 check_ext_capab(struct hostapd_data *hapd, struct sta_info *sta,
- 
- 	return WLAN_STATUS_SUCCESS;
+@@ -1285,3 +1291,288 @@ void hostapd_wfa_capab(struct hostapd_data *hapd, struct sta_info *sta,
+ 	if (gen_capa)
+ 		hostapd_wfa_gen_capab(hapd, sta, gen_capa + 2, gen_capa[1]);
  }
-+
++#ifdef CONFIG_VENDOR_MXL
 +u8 round_pow2_up(u8 x)
 +{
 +	int i;
@@ -1103,6 +1113,7 @@ index eaeeba43e..277baf44d 100644
 +
 +	return eid;
 +}
++#endif /* CONFIG_VENDOR_MXL */
 diff --git a/src/ap/mxl_hostapd.c b/src/ap/mxl_hostapd.c
 index 55182610e..a34c837dd 100644
 --- a/src/ap/mxl_hostapd.c
@@ -1124,18 +1135,26 @@ index 55182610e..a34c837dd 100644
  	}
  
 diff --git a/src/ap/wpa_auth_glue.c b/src/ap/wpa_auth_glue.c
-index 742f6d419..419271ebd 100644
+index d30e9ef3b..8f35d8555 100644
 --- a/src/ap/wpa_auth_glue.c
 +++ b/src/ap/wpa_auth_glue.c
-@@ -35,7 +35,7 @@
+@@ -35,10 +35,16 @@
  #include "wpa_auth_glue.h"
  
  
--static void hostapd_wpa_auth_conf(struct hostapd_bss_config *conf,
-+void hostapd_wpa_auth_conf(struct hostapd_bss_config *conf,
++#ifndef CONFIG_VENDOR_MXL
+ static void hostapd_wpa_auth_conf(struct hostapd_iface *iface,
+ 				  struct hostapd_bss_config *conf,
  				  struct hostapd_config *iconf,
  				  struct wpa_auth_config *wconf)
++#else /* CONFIG_VENDOR_MXL */
++void hostapd_wpa_auth_conf(struct hostapd_bss_config *conf,
++				  struct hostapd_config *iconf,
++				  struct wpa_auth_config *wconf)
++#endif /* CONFIG_VENDOR_MXL */
  {
+ 	int sae_pw_id;
+ 
 diff --git a/src/ap/wpa_auth_glue.h b/src/ap/wpa_auth_glue.h
 index 1b13ae7be..806527f57 100644
 --- a/src/ap/wpa_auth_glue.h
@@ -1150,10 +1169,10 @@ index 1b13ae7be..806527f57 100644
  
  #endif /* WPA_AUTH_GLUE_H */
 diff --git a/src/ap/wpa_auth_ie.c b/src/ap/wpa_auth_ie.c
-index a5f2861c9..8593e00ae 100644
+index d56eeaa05..e49f4a3d6 100644
 --- a/src/ap/wpa_auth_ie.c
 +++ b/src/ap/wpa_auth_ie.c
-@@ -1280,3 +1280,51 @@ bool wpa_auth_write_fd_rsn_info(struct wpa_authenticator *wpa_auth,
+@@ -1535,3 +1535,51 @@ bool wpa_auth_write_fd_rsn_info(struct wpa_authenticator *wpa_auth,
  }
  
  #endif /* CONFIG_FILS */
@@ -1217,13 +1236,14 @@ index dd44b9efe..527f92c3c 100644
  
  #endif /* WPA_AUTH_IE_H */
 diff --git a/src/common/defs.h b/src/common/defs.h
-index d437d3b0a..def69b020 100644
+index 0a4d1a4ea..f47f7d386 100644
 --- a/src/common/defs.h
 +++ b/src/common/defs.h
-@@ -536,4 +536,15 @@ enum sae_pwe {
- 	SAE_PWE_NOT_SET = 4,
- };
+@@ -555,4 +555,17 @@ enum wpa_p2p_mode {
+ #define USEC_TO_TU(m) ((m) / USEC_80211_TU)
+ #define TU_TO_USEC(m) ((m) * USEC_80211_TU)
  
++#ifdef CONFIG_VENDOR_MXL
 +#define MASTER_VAP_BSS_IDX			0
 +#define MULTIBSS_REFERENCE_BSS_IDX	1
 +#define SIX_GHZ_CAPABILITY_INVALID	0
@@ -1234,39 +1254,43 @@ index d437d3b0a..def69b020 100644
 +	MULTIBSS_TRANSMITTED_VAP_MODE,
 +	MULTIBSS_NON_TRANSMITTED_VAP_MODE,
 +};
++#endif /* CONFIG_VENDOR_MXL */
 +
  #endif /* DEFS_H */
 diff --git a/src/common/ieee802_11_common.c b/src/common/ieee802_11_common.c
-index 06f82ce30..227cd9fcf 100644
+index 1d28437fe..6d09c1d9d 100644
 --- a/src/common/ieee802_11_common.c
 +++ b/src/common/ieee802_11_common.c
-@@ -607,6 +607,9 @@ static ParseRes __ieee802_11_parse_elems(const u8 *start, size_t len,
- 			elems->rrm_enabled = pos;
- 			elems->rrm_enabled_len = elen;
- 			break;
+@@ -641,6 +641,10 @@ static ParseRes __ieee802_11_parse_elems(const u8 *start, size_t len,
+ 				break;
+ 			elems->mbssid = pos;
+ 			elems->mbssid_len = elen;
++#ifdef CONFIG_VENDOR_MXL
 +		case WLAN_EID_MULTIPLE_BSSID_INDEX:
 +			elems->multiple_bssid_index = pos;
-+			break;
++#endif /* CONFIG_VENDOR_MXL */
+ 			break;
  		case WLAN_EID_CAG_NUMBER:
  			elems->cag_number = pos;
- 			elems->cag_number_len = elen;
 diff --git a/src/common/ieee802_11_common.h b/src/common/ieee802_11_common.h
-index a7d407b65..5c4a9ec5e 100644
+index 0edd34c65..ae8b2559e 100644
 --- a/src/common/ieee802_11_common.h
 +++ b/src/common/ieee802_11_common.h
-@@ -109,6 +109,7 @@ struct ieee802_11_elems {
- 	const u8 *tdls_mle;
- 	const u8 *prior_access_mle;
- 	const u8 *mbssid_known_bss;
+@@ -122,6 +122,9 @@ struct ieee802_11_elems {
+ 	const u8 *rsnxe_override;
+ 	const u8 *rsn_selection;
+ 	const u8 *wfa_capab;
++#ifdef CONFIG_VENDOR_MXL
 +	const u8 *multiple_bssid_index;
++#endif /* CONFIG_VENDOR_MXL */
  
  	u8 ssid_len;
  	u8 supp_rates_len;
 diff --git a/src/common/ieee802_11_defs.h b/src/common/ieee802_11_defs.h
-index 58f5073cb..0e655dec9 100644
+index a07512d63..76c48356d 100644
 --- a/src/common/ieee802_11_defs.h
 +++ b/src/common/ieee802_11_defs.h
-@@ -473,6 +473,9 @@
+@@ -485,6 +485,9 @@
  #define WLAN_EID_RSNX 244
  #define WLAN_EID_EXTENSION 255
  
@@ -1277,10 +1301,10 @@ index 58f5073cb..0e655dec9 100644
  #define WLAN_EID_EXT_ASSOC_DELAY_INFO 1
  #define WLAN_EID_EXT_FILS_REQ_PARAMS 2
 diff --git a/src/common/wpa_common.h b/src/common/wpa_common.h
-index 1269bf95d..13beb552f 100644
+index d2c326c43..fc1fc85cc 100644
 --- a/src/common/wpa_common.h
 +++ b/src/common/wpa_common.h
-@@ -25,6 +25,10 @@
+@@ -28,6 +28,10 @@
  
  #define OWE_DH_GROUP 19
  
@@ -1292,12 +1316,12 @@ index 1269bf95d..13beb552f 100644
  #define WPA_ALLOWED_PAIRWISE_CIPHERS \
  (WPA_CIPHER_CCMP | WPA_CIPHER_GCMP | WPA_CIPHER_NONE | \
 diff --git a/src/drivers/driver.h b/src/drivers/driver.h
-index e2f3c6b63..11edc16fc 100644
+index 894a97a94..fe9591551 100644
 --- a/src/drivers/driver.h
 +++ b/src/drivers/driver.h
-@@ -5214,6 +5214,22 @@ struct wpa_driver_ops {
- 	 */
+@@ -5511,6 +5511,22 @@ struct wpa_driver_ops {
  	int (*unconnected_sta)(void *priv, struct intel_vendor_unconnected_sta_req_cfg *req);
+ #endif /* CONFIG_VENDOR_MXL */
  
 +	/**
 +	 * set_mbssid_vap_mode - Set MBSSID mode on VAP
@@ -1319,12 +1343,12 @@ index e2f3c6b63..11edc16fc 100644
  	int (*register_frame)(void *priv, u16 type,
  			      const u8 *match, size_t match_len,
 diff --git a/src/drivers/driver_nl80211.c b/src/drivers/driver_nl80211.c
-index 4106c2aec..162ca9317 100644
+index f4de9c0ea..8b3bd035d 100644
 --- a/src/drivers/driver_nl80211.c
 +++ b/src/drivers/driver_nl80211.c
-@@ -14083,6 +14083,34 @@ static int nl80211_unconnected_sta(void *priv, struct intel_vendor_unconnected_s
- 	return res;
+@@ -14926,6 +14926,34 @@ static int nl80211_unconnected_sta(void *priv, struct intel_vendor_unconnected_s
  }
+ #endif /* CONFIG_VENDOR_MXL */
  
 +int nl80211_set_mbssid_vap(void *priv, const u8 mbssid_vap)
 +{
@@ -1357,7 +1381,7 @@ index 4106c2aec..162ca9317 100644
  const struct wpa_driver_ops wpa_driver_nl80211_ops = {
  	.name = "nl80211",
  	.desc = "Linux nl80211/cfg80211",
-@@ -14236,6 +14264,8 @@ const struct wpa_driver_ops wpa_driver_nl80211_ops = {
+@@ -15089,6 +15117,8 @@ const struct wpa_driver_ops wpa_driver_nl80211_ops = {
  	.sta_steer = nl80211_sta_steer,
  	.sta_allow = nl80211_sta_allow,
  	.unconnected_sta = nl80211_unconnected_sta,

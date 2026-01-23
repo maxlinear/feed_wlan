@@ -1,4 +1,4 @@
-From 38d8cbe92bf3483c2bdebe4f56557a93a3228dac Mon Sep 17 00:00:00 2001
+From 1728860de256948ab9cf2bb82831127b9222c3ab Mon Sep 17 00:00:00 2001
 From: Jurijs Soloveckis <jsoloveckis@maxlinear.com>
 Date: Fri, 2 Sep 2022 16:37:19 +0300
 Subject: [PATCH] WLANRTSYS-45977: OneWiFi - Open source hostapd integration
@@ -6,29 +6,29 @@ Subject: [PATCH] WLANRTSYS-45977: OneWiFi - Open source hostapd integration
 - support for get/free AID
 ---
  hostapd/Makefile              |   5 +
- src/ap/hostapd.h              |   8 +
+ src/ap/hostapd.h              |   6 +
  src/ap/ieee802_11.c           |   7 +
  src/ap/mxl_hostapd.c          | 201 ++++++++++++++++
  src/ap/mxl_hostapd.h          |  46 ++++
- src/ap/sta_info.c             |  12 +
+ src/ap/sta_info.c             |  13 +
  src/common/vendor_cmds_copy.h | 434 ++++++++++++++++++++++++++++++++++
- src/drivers/driver.h          |  25 ++
- src/drivers/driver_nl80211.c  |  94 ++++++++
+ src/drivers/driver.h          |  27 +++
+ src/drivers/driver_nl80211.c  |  95 ++++++++
  src/drivers/drivers.mak       |   3 +
  src/utils/includes.h          |   9 +
  src/utils/mxl_common.h        |  24 ++
  wpa_supplicant/Makefile       |   4 +
- 13 files changed, 872 insertions(+)
+ 13 files changed, 874 insertions(+)
  create mode 100644 src/ap/mxl_hostapd.c
  create mode 100644 src/ap/mxl_hostapd.h
  create mode 100644 src/common/vendor_cmds_copy.h
  create mode 100644 src/utils/mxl_common.h
 
 diff --git a/hostapd/Makefile b/hostapd/Makefile
-index 51702439c..f52090167 100644
+index 93a11dd86..da5d19443 100644
 --- a/hostapd/Makefile
 +++ b/hostapd/Makefile
-@@ -356,6 +356,11 @@ CFLAGS += -DCONFIG_MBO
+@@ -360,6 +360,11 @@ CFLAGS += -DCONFIG_MBO
  OBJS += ../src/ap/mbo_ap.o
  endif
  
@@ -41,7 +41,7 @@ index 51702439c..f52090167 100644
  OBJS += $(DRV_AP_OBJS)
  CFLAGS += $(DRV_AP_CFLAGS)
 diff --git a/src/ap/hostapd.h b/src/ap/hostapd.h
-index 3dba121c6..e3e464e11 100644
+index c96db5065..72804cdb8 100644
 --- a/src/ap/hostapd.h
 +++ b/src/ap/hostapd.h
 @@ -18,6 +18,9 @@
@@ -54,25 +54,23 @@ index 3dba121c6..e3e464e11 100644
  
  #define OCE_STA_CFON_ENABLED(hapd) \
  	((hapd->conf->oce & OCE_STA_CFON) && \
-@@ -670,6 +673,11 @@ struct hostapd_iface {
- 
- 	/* Configured freq of interface is NO_IR */
- 	bool is_no_ir;
-+
+@@ -744,6 +747,9 @@ struct hostapd_iface {
+ 	struct hostapd_multi_hw_info *multi_hw_info;
+ 	unsigned int num_multi_hws;
+ 	struct hostapd_multi_hw_info *current_hw_info;
 +#ifdef CONFIG_VENDOR_MXL
 +	struct mxl_hostapd_iface mxl_iface;
 +#endif /* CONFIG_VENDOR_MXL */
-+
  };
  
  /* hostapd.c */
 diff --git a/src/ap/ieee802_11.c b/src/ap/ieee802_11.c
-index 701acaffd..51035f4ba 100644
+index 523e0a322..d8807cbef 100644
 --- a/src/ap/ieee802_11.c
 +++ b/src/ap/ieee802_11.c
-@@ -57,6 +57,9 @@
- #include "gas_query_ap.h"
+@@ -59,6 +59,9 @@
  #include "comeback_token.h"
+ #include "nan_usd_ap.h"
  #include "pasn/pasn_common.h"
 +#ifdef CONFIG_VENDOR_MXL
 +#include "mxl_hostapd.h"
@@ -80,7 +78,7 @@ index 701acaffd..51035f4ba 100644
  
  
  #ifdef CONFIG_FILS
-@@ -3319,6 +3322,10 @@ int hostapd_get_aid(struct hostapd_data *hapd, struct sta_info *sta)
+@@ -3616,6 +3619,10 @@ int hostapd_get_aid(struct hostapd_data *hapd, struct sta_info *sta)
  {
  	int i, j = 32, aid;
  
@@ -351,7 +349,7 @@ index 000000000..26fb39a81
 +
 +#endif /* MXL_HOSTAPD_H */
 diff --git a/src/ap/sta_info.c b/src/ap/sta_info.c
-index 4f84839e3..67e6774e3 100644
+index b2fd51b31..0ca189222 100644
 --- a/src/ap/sta_info.c
 +++ b/src/ap/sta_info.c
 @@ -39,6 +39,9 @@
@@ -364,20 +362,21 @@ index 4f84839e3..67e6774e3 100644
  
  static void ap_sta_remove_in_other_bss(struct hostapd_data *hapd,
  				       struct sta_info *sta);
-@@ -207,8 +210,12 @@ void ap_free_sta(struct hostapd_data *hapd, struct sta_info *sta)
+@@ -243,19 +246,29 @@ void ap_free_sta(struct hostapd_data *hapd, struct sta_info *sta)
  		hostapd_drv_br_delete_ip_neigh(hapd, 4, (u8 *) &sta->ipaddr);
  	ap_sta_ip6addr_del(hapd, sta);
  
 +#if 0
  	if (!hapd->iface->driver_ap_teardown &&
  	    !(sta->flags & WLAN_STA_PREAUTH)) {
+ 		__ap_free_sta(hapd, sta);
 +#else
 +	if (!(sta->flags & WLAN_STA_PREAUTH)) {
 +#endif
- 		hostapd_drv_sta_remove(hapd, sta->addr);
++		hostapd_drv_sta_remove(hapd, sta->addr);
  		sta->added_unassoc = 0;
  	}
-@@ -216,10 +223,15 @@ void ap_free_sta(struct hostapd_data *hapd, struct sta_info *sta)
+ 
  	ap_sta_hash_del(hapd, sta);
  	ap_sta_list_del(hapd, sta);
  
@@ -834,18 +833,20 @@ index 000000000..2e5949488
 +
 +#endif /* _VENDOR_CMDS_H_ */
 diff --git a/src/drivers/driver.h b/src/drivers/driver.h
-index 9e4df1d78..5c2b932d1 100644
+index 1830019ee..089b4e8f8 100644
 --- a/src/drivers/driver.h
 +++ b/src/drivers/driver.h
-@@ -22,6 +22,7 @@
- #include "common/defs.h"
+@@ -23,6 +23,9 @@
  #include "common/ieee802_11_defs.h"
  #include "common/wpa_common.h"
+ #include "common/nan.h"
++#ifdef CONFIG_VENDOR_MXL
 +#include "common/vendor_cmds_copy.h"
++#endif /* CONFIG_VENDOR_MXL */
  #ifdef CONFIG_MACSEC
  #include "pae/ieee802_1x_kay.h"
  #endif /* CONFIG_MACSEC */
-@@ -4580,6 +4581,30 @@ struct wpa_driver_ops {
+@@ -4742,6 +4745,30 @@ struct wpa_driver_ops {
  	 */
  	int (*status)(void *priv, char *buf, size_t buflen);
  
@@ -877,10 +878,10 @@ index 9e4df1d78..5c2b932d1 100644
  	 * roaming - Set roaming policy for driver-based BSS selection
  	 * @priv: Private driver interface data
 diff --git a/src/drivers/driver_nl80211.c b/src/drivers/driver_nl80211.c
-index 03d54222b..db9208124 100644
+index 56a412732..75a07d0da 100644
 --- a/src/drivers/driver_nl80211.c
 +++ b/src/drivers/driver_nl80211.c
-@@ -11389,6 +11389,34 @@ static int cmd_reply_handler(struct nl_msg *msg, void *arg)
+@@ -11756,6 +11756,34 @@ static int cmd_reply_handler(struct nl_msg *msg, void *arg)
  }
  #endif /* CONFIG_TESTING_OPTIONS */
  
@@ -915,21 +916,22 @@ index 03d54222b..db9208124 100644
  
  static int vendor_reply_handler(struct nl_msg *msg, void *arg)
  {
-@@ -11491,6 +11519,13 @@ static int nl80211_vendor_cmd(void *priv, unsigned int vendor_id,
+@@ -11856,6 +11884,14 @@ static int nl80211_vendor_cmd(void *priv, unsigned int vendor_id,
  		     data_len, data)))
  		goto fail;
  
++#ifdef CONFIG_VENDOR_MXL
 +#ifdef CONFIG_DRIVER_NL80211_MXL
 +	if (OUI_LTQ == vendor_id)
 +		ret = send_and_recv_msgs(drv, msg, vendor_mxl_reply_handler, buf,
 +					 NULL, NULL, NULL);
 +	else
 +#endif /* CONFIG_DRIVER_NL80211_MXL */
-+
- 	ret = send_and_recv_msgs(drv, msg, vendor_reply_handler, buf,
- 				 NULL, NULL, NULL);
++#endif /* CONFIG_VENDOR_MXL */
+ 	ret = send_and_recv_resp(drv, msg, vendor_reply_handler, buf);
  	if (ret)
-@@ -13870,6 +13905,59 @@ static int testing_nl80211_radio_disable(void *priv, int disabled)
+ 		wpa_printf(MSG_DEBUG, "nl80211: vendor command failed err=%d",
+@@ -14696,6 +14732,59 @@ static int testing_nl80211_radio_disable(void *priv, int disabled)
  
  #endif /* CONFIG_TESTING_OPTIONS */
  
@@ -987,9 +989,9 @@ index 03d54222b..db9208124 100644
 +}
 +#endif /* CONFIG_DRIVER_NL80211_MXL */
  
- const struct wpa_driver_ops wpa_driver_nl80211_ops = {
- 	.name = "nl80211",
-@@ -13944,6 +14032,12 @@ const struct wpa_driver_ops wpa_driver_nl80211_ops = {
+ static struct hostapd_multi_hw_info *
+ wpa_driver_get_multi_hw_info(void *priv, unsigned int *num_multi_hws)
+@@ -14779,6 +14868,12 @@ const struct wpa_driver_ops wpa_driver_nl80211_ops = {
  	.set_p2p_powersave = nl80211_set_p2p_powersave,
  	.start_dfs_cac = nl80211_start_radar_detection,
  	.stop_ap = wpa_driver_nl80211_stop_ap,
@@ -1065,10 +1067,10 @@ index 000000000..dadbd8ee6
 +
 +#endif /* MXL_COMMON_H */
 diff --git a/wpa_supplicant/Makefile b/wpa_supplicant/Makefile
-index 8adbc3b41..43b5cb34d 100644
+index fd7d7a0bd..d56ce9cbb 100644
 --- a/wpa_supplicant/Makefile
 +++ b/wpa_supplicant/Makefile
-@@ -1951,6 +1951,10 @@ ifdef CONFIG_NO_TKIP
+@@ -1998,6 +1998,10 @@ ifdef CONFIG_NO_TKIP
  CFLAGS += -DCONFIG_NO_TKIP
  endif
  

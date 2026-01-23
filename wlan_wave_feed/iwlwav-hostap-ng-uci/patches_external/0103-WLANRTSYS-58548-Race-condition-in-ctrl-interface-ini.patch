@@ -1,4 +1,4 @@
-From 6613dc77bd800d073d98c87c68063e6d1a6b8349 Mon Sep 17 00:00:00 2001
+From efe1353518defcd3dd548d9381f5dda3c80abcf2 Mon Sep 17 00:00:00 2001
 From: Dmitrijs Martinovs <dmartinovs@maxlinear.com>
 Date: Wed, 13 Sep 2023 11:49:25 +0200
 Subject: [PATCH] WLANRTSYS-58548: Race condition in ctrl interface init
@@ -8,10 +8,10 @@ Subject: [PATCH] WLANRTSYS-58548: Race condition in ctrl interface init
  1 file changed, 8 insertions(+), 4 deletions(-)
 
 diff --git a/hostapd/ctrl_iface.c b/hostapd/ctrl_iface.c
-index 30b056297..4e256f20f 100644
+index a492b2de8..e41e35842 100644
 --- a/hostapd/ctrl_iface.c
 +++ b/hostapd/ctrl_iface.c
-@@ -7251,10 +7251,12 @@ fail:
+@@ -8273,10 +8273,12 @@ fail:
  				   " allow connections - assuming it was left"
  				   "over from forced program termination");
  			if (unlink(fname) < 0) {
@@ -26,7 +26,7 @@ index 30b056297..4e256f20f 100644
  			}
  			if (bind(s, (struct sockaddr *) &addr, sizeof(addr)) <
  			    0) {
-@@ -8020,10 +8022,12 @@ fail:
+@@ -9043,10 +9045,12 @@ fail:
  				   " allow connections - assuming it was left"
  				   "over from forced program termination");
  			if (unlink(fname) < 0) {

@@ -1,0 +1,35 @@
+From f4f5e44e0a31b46f15b429cac8215c04ac50182e Mon Sep 17 00:00:00 2001
+From: Jouni Malinen <quic_jouni@quicinc.com>
+Date: Mon, 29 Jul 2024 15:41:59 +0300
+Subject: [PATCH] RSNO: Use the RSN Selection element to indicate which variant
+ was used
+
+This replaces the use of the RSNE Override and RSNE Override 2 elements
+with empty payload to indicate which RSNE variant was used.
+
+In addition, this adds stricter validation of the RSNE in
+(Re)Association Request frame to allow only the pairwise cipher suites
+and AKMs listed in the indicated RSNE variant to be used.
+
+Signed-off-by: Jouni Malinen <quic_jouni@quicinc.com>
+---
+ src/ap/ieee802_11.c | 3 ---
+ 1 file changed, 3 deletions(-)
+
+diff --git a/src/ap/ieee802_11.c b/src/ap/ieee802_11.c
+index d4992249b..674396bbb 100644
+--- a/src/ap/ieee802_11.c
++++ b/src/ap/ieee802_11.c
+@@ -2207,9 +2207,6 @@ void handle_auth_fils(struct hostapd_data *hapd, struct sta_info *sta,
+ 	if (resp != WLAN_STATUS_SUCCESS)
+ 		goto fail;
+ 
+-	wpa_auth_set_rsn_override(sta->wpa_sm, elems.rsne_override != NULL);
+-	wpa_auth_set_rsn_override_2(sta->wpa_sm, elems.rsne_override_2 != NULL);
+-
+ 	if (!elems.fils_nonce) {
+ 		wpa_printf(MSG_DEBUG, "FILS: No FILS Nonce field");
+ 		resp = WLAN_STATUS_UNSPECIFIED_FAILURE;
+-- 
+2.43.0
+

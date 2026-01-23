@@ -1,4 +1,4 @@
-From 51c4696be0788463ee09481dd7c27c9ad4d21c50 Mon Sep 17 00:00:00 2001
+From 268d605548d5e7e0ff1c3bc341a6bfaf994819ed Mon Sep 17 00:00:00 2001
 From: Jurijs Soloveckis <jsoloveckis@maxlinear.com>
 Date: Fri, 21 Jul 2023 12:38:22 +0200
 Subject: [PATCH] WLANRTSYS-57048: Integrate WDS commits
@@ -8,7 +8,7 @@ Subject: [PATCH] WLANRTSYS-57048: Integrate WDS commits
  hostapd/Makefile              |  44 +++
  hostapd/config_file.c         |   9 +
  src/ap/ap_config.c            |   5 +
- src/ap/ap_config.h            |   5 +-
+ src/ap/ap_config.h            |   6 +
  src/ap/ap_drv_ops.h           |  11 +
  src/ap/drv_callbacks.c        |  26 ++
  src/ap/hostapd.c              |  13 +
@@ -28,15 +28,15 @@ Subject: [PATCH] WLANRTSYS-57048: Integrate WDS commits
  src/drivers/driver.h          |  11 +
  src/drivers/driver_nl80211.c  |  31 ++
  wpa_supplicant/Makefile       |  36 +++
- 23 files changed, 998 insertions(+), 5 deletions(-)
+ 23 files changed, 1000 insertions(+), 4 deletions(-)
  create mode 100644 src/ap/wds_wpa.c
  create mode 100644 src/ap/wds_wpa.h
 
 diff --git a/hostapd/Makefile b/hostapd/Makefile
-index af82e8fcd..a04956b55 100644
+index 7a73470e9..1b7442c16 100644
 --- a/hostapd/Makefile
 +++ b/hostapd/Makefile
-@@ -284,6 +284,9 @@ endif
+@@ -287,6 +287,9 @@ NEED_AES_UNWRAP=y
  ifdef CONFIG_IEEE80211R
  CFLAGS += -DCONFIG_IEEE80211R -DCONFIG_IEEE80211R_AP
  OBJS += ../src/ap/wpa_auth_ft.o
@@ -46,7 +46,7 @@ index af82e8fcd..a04956b55 100644
  NEED_AES_UNWRAP=y
  NEED_AES_SIV=y
  NEED_ETH_P_OUI=y
-@@ -1316,11 +1319,52 @@ ifdef CONFIG_NO_TKIP
+@@ -1343,11 +1346,52 @@ ifdef CONFIG_NO_TKIP
  CFLAGS += -DCONFIG_NO_TKIP
  endif
  
@@ -100,10 +100,10 @@ index af82e8fcd..a04956b55 100644
  include ../src/objs.mk
  
 diff --git a/hostapd/config_file.c b/hostapd/config_file.c
-index c4e0407ad..47254b9a8 100644
+index 1f68906dc..1e9c65ca2 100644
 --- a/hostapd/config_file.c
 +++ b/hostapd/config_file.c
-@@ -5873,6 +5873,15 @@ static int hostapd_config_fill(struct hostapd_config *conf,
+@@ -6021,6 +6021,15 @@ static int hostapd_config_fill(struct hostapd_config *conf,
  			wpa_printf(MSG_ERROR, "Error Reading whm config file");
  	} else if (os_strcmp(buf, "assoc_rsp_rx_mcs_mask") == 0) {
  		conf->assoc_rsp_rx_mcs_mask = atoi(pos);
@@ -120,10 +120,10 @@ index c4e0407ad..47254b9a8 100644
  	} else if (mxl_hostapd_config_fill(conf, bss, buf, pos, line)) {
  #endif /* CONFIG_VENDOR_MXL */
 diff --git a/src/ap/ap_config.c b/src/ap/ap_config.c
-index 4f8e93bf6..9f95c206f 100644
+index 3a35b83d7..0c4e85792 100644
 --- a/src/ap/ap_config.c
 +++ b/src/ap/ap_config.c
-@@ -1087,6 +1087,11 @@ void hostapd_config_free_bss(struct hostapd_bss_config *conf)
+@@ -1112,6 +1112,11 @@ void hostapd_config_free_bss(struct hostapd_bss_config *conf)
  #ifdef CONFIG_PASN
  	os_free(conf->pasn_groups);
  #endif /* CONFIG_PASN */
@@ -136,26 +136,27 @@ index 4f8e93bf6..9f95c206f 100644
  	mxl_hostapd_config_free_bss(conf);
  #endif /* CONFIG_VENDOR_MXL */
 diff --git a/src/ap/ap_config.h b/src/ap/ap_config.h
-index d57f6613b..bbb0c79e0 100644
+index 155238df9..c24bf9fec 100644
 --- a/src/ap/ap_config.h
 +++ b/src/ap/ap_config.h
-@@ -884,7 +884,10 @@ struct hostapd_bss_config {
- #define BACKHAUL_BSS 1
- #define FRONTHAUL_BSS 2
- 	int multi_ap; /* bitmap of BACKHAUL_BSS, FRONTHAUL_BSS */
--
+@@ -895,6 +895,12 @@ struct hostapd_bss_config {
+ 	/* Primary VLAN ID to use in Multi-AP */
+ 	int multi_ap_vlanid;
+ 
++#ifdef CONFIG_VENDOR_MXL
 +#ifdef CONFIG_WDS_WPA
 +	struct mac_acl_entry *wds_wpa_sta;
 +	int num_wds_wpa_sta;
 +#endif
++#endif /* CONFIG_VENDOR_MXL */
  	int *sAggrConfig; /*amsdu_mode ba_mode window_size*/
  	int sAggrConfigSize;
  	int s11nProtection;
 diff --git a/src/ap/ap_drv_ops.h b/src/ap/ap_drv_ops.h
-index d642801ef..828842a14 100644
+index d23d947c0..ba8e0c7e0 100644
 --- a/src/ap/ap_drv_ops.h
 +++ b/src/ap/ap_drv_ops.h
-@@ -555,6 +555,17 @@ static inline int hostapd_drv_br_port_set_hairpin(struct hostapd_data *hapd,
+@@ -588,6 +588,17 @@ static inline int hostapd_drv_br_port_set_hairpin(struct hostapd_data *hapd,
  	return hapd->driver->br_port_set_hairpin(hapd->drv_priv, val);
  }
  
@@ -174,10 +175,10 @@ index d642801ef..828842a14 100644
  static inline int hostapd_drv_driver_cmd(struct hostapd_data *hapd,
  					 char *cmd, char *buf, size_t buf_len)
 diff --git a/src/ap/drv_callbacks.c b/src/ap/drv_callbacks.c
-index ff8503827..958f8ba78 100644
+index c0175eeb7..5f0a44abc 100644
 --- a/src/ap/drv_callbacks.c
 +++ b/src/ap/drv_callbacks.c
-@@ -1738,7 +1738,33 @@ static int hostapd_mgmt_rx(struct hostapd_data *hapd, struct rx_mgmt *rx_mgmt)
+@@ -1987,7 +1987,33 @@ static int hostapd_mgmt_rx(struct hostapd_data *hapd, struct rx_mgmt *rx_mgmt)
  		    WLAN_FC_GET_STYPE(fc) == WLAN_FC_STYPE_BEACON)
  			hapd = iface->bss[0];
  		else
@@ -212,10 +213,10 @@ index ff8503827..958f8ba78 100644
  
  	os_memset(&fi, 0, sizeof(fi));
 diff --git a/src/ap/hostapd.c b/src/ap/hostapd.c
-index f3146756e..bbf2842a9 100644
+index 2f2abd4d8..1991b493a 100644
 --- a/src/ap/hostapd.c
 +++ b/src/ap/hostapd.c
-@@ -64,6 +64,9 @@
+@@ -65,6 +65,9 @@
  #include "drivers/driver_nl80211.h"
  #include "drivers/mxl_driver_nl80211.h"
  #include "limits.h"
@@ -225,7 +226,7 @@ index f3146756e..bbf2842a9 100644
  
  
  static int hostapd_flush_old_stations(struct hostapd_data *hapd, u16 reason);
-@@ -506,6 +509,9 @@ void hostapd_free_hapd_data(struct hostapd_data *hapd)
+@@ -495,6 +498,9 @@ void hostapd_free_hapd_data(struct hostapd_data *hapd)
  	hapd->beacon_set_done = 0;
  
  	wpa_printf(MSG_DEBUG, "%s(%s)", __func__, hapd->conf->iface);
@@ -235,7 +236,7 @@ index f3146756e..bbf2842a9 100644
  	accounting_deinit(hapd);
  	hostapd_deinit_wpa(hapd);
  	vlan_deinit(hapd);
-@@ -1895,6 +1901,13 @@ static int hostapd_setup_bss(struct hostapd_data *hapd, int first,
+@@ -2068,6 +2074,13 @@ setup_mld:
  	if (hapd->wpa_auth && wpa_init_keys(hapd->wpa_auth) < 0)
  		return -1;
  
@@ -250,10 +251,10 @@ index f3146756e..bbf2842a9 100644
  
  	if (hapd->iface->conf->autonomous_color_change) {
 diff --git a/src/ap/ieee802_11.c b/src/ap/ieee802_11.c
-index dd916c72c..248f8885b 100644
+index b01303b77..197a59917 100644
 --- a/src/ap/ieee802_11.c
 +++ b/src/ap/ieee802_11.c
-@@ -60,7 +60,11 @@
+@@ -62,7 +62,11 @@
  #ifdef CONFIG_VENDOR_MXL
  #include "mxl_hostapd.h"
  #include "mxl_coexistence.h"
@@ -265,7 +266,7 @@ index dd916c72c..248f8885b 100644
  
  
  #ifdef CONFIG_FILS
-@@ -3527,6 +3531,37 @@ static u16 check_multi_ap(struct hostapd_data *hapd, struct sta_info *sta,
+@@ -3847,6 +3851,37 @@ static u16 check_multi_ap(struct hostapd_data *hapd, struct sta_info *sta,
  	return WLAN_STATUS_SUCCESS;
  }
  
@@ -303,7 +304,7 @@ index dd916c72c..248f8885b 100644
  
  static u16 copy_supp_rates(struct hostapd_data *hapd, struct sta_info *sta,
  			   struct ieee802_11_elems *elems)
-@@ -3974,6 +4009,12 @@ static int __check_assoc_ies(struct hostapd_data *hapd, struct sta_info *sta,
+@@ -4351,6 +4386,12 @@ static int __check_assoc_ies(struct hostapd_data *hapd, struct sta_info *sta,
  	resp = check_ssid(hapd, sta, elems->ssid, elems->ssid_len);
  	if (resp != WLAN_STATUS_SUCCESS)
  		return resp;
@@ -316,7 +317,7 @@ index dd916c72c..248f8885b 100644
  	resp = check_wmm(hapd, sta, elems->wmm, elems->wmm_len);
  	if (resp != WLAN_STATUS_SUCCESS)
  		return resp;
-@@ -4472,7 +4513,7 @@ static int __check_assoc_ies(struct hostapd_data *hapd, struct sta_info *sta,
+@@ -4864,7 +4905,7 @@ static int __check_assoc_ies(struct hostapd_data *hapd, struct sta_info *sta,
  }
  
  
@@ -325,7 +326,7 @@ index dd916c72c..248f8885b 100644
  			   const u8 *ies, size_t ies_len, int reassoc)
  {
  	struct ieee802_11_elems elems;
-@@ -7280,11 +7321,18 @@ void ieee802_11_rx_from_unknown(struct hostapd_data *hapd, const u8 *src,
+@@ -7692,11 +7733,18 @@ void ieee802_11_rx_from_unknown(struct hostapd_data *hapd, const u8 *src,
  		return;
  	}
  
@@ -346,7 +347,7 @@ index dd916c72c..248f8885b 100644
  			hapd, src,
  			WLAN_REASON_CLASS3_FRAME_FROM_NONASSOC_STA);
 diff --git a/src/ap/ieee802_1x.c b/src/ap/ieee802_1x.c
-index a7579a443..d777be7c8 100644
+index 9cfc213fc..9c3de167c 100644
 --- a/src/ap/ieee802_1x.c
 +++ b/src/ap/ieee802_1x.c
 @@ -38,7 +38,9 @@
@@ -360,7 +361,7 @@ index a7579a443..d777be7c8 100644
  #ifdef CONFIG_RADIUS_GREYLIST
  #include "ap/greylist.h"
  #endif /* CONFIG_RADIUS_GREYLIST */
-@@ -1226,6 +1228,11 @@ void ieee802_1x_receive(struct hostapd_data *hapd, const u8 *sa, const u8 *buf,
+@@ -1230,6 +1232,11 @@ void ieee802_1x_receive(struct hostapd_data *hapd, const u8 *sa, const u8 *buf,
  	    hdr->type == IEEE802_1X_TYPE_EAPOL_KEY &&
  	    (key->type == EAPOL_KEY_TYPE_WPA ||
  	     key->type == EAPOL_KEY_TYPE_RSN)) {
@@ -398,7 +399,7 @@ index cdd82120e..77de95d19 100644
  #endif /* MXL_WDS_H */
 \ No newline at end of file
 diff --git a/src/ap/sta_info.c b/src/ap/sta_info.c
-index 21c0a7e75..067e1a982 100644
+index 675a6068d..9ffb474ed 100644
 --- a/src/ap/sta_info.c
 +++ b/src/ap/sta_info.c
 @@ -42,6 +42,10 @@
@@ -412,7 +413,7 @@ index 21c0a7e75..067e1a982 100644
  
  #define UPPER_24G_FREQ_VALUE	2500
  
-@@ -334,6 +338,9 @@ void ap_free_sta(struct hostapd_data *hapd, struct sta_info *sta)
+@@ -380,6 +384,9 @@ void ap_free_sta(struct hostapd_data *hapd, struct sta_info *sta)
  	wpa_auth_sta_deinit(sta->wpa_sm);
  #endif /* CONFIG_IEEE80211BE */
  
@@ -423,10 +424,10 @@ index 21c0a7e75..067e1a982 100644
  #ifndef CONFIG_NO_RADIUS
  	if (hapd->radius)
 diff --git a/src/ap/sta_info.h b/src/ap/sta_info.h
-index afdef6021..10281562f 100644
+index 1840c1445..ff11bf6c9 100644
 --- a/src/ap/sta_info.h
 +++ b/src/ap/sta_info.h
-@@ -210,6 +210,7 @@ struct sta_info {
+@@ -198,6 +198,7 @@ struct sta_info {
  	u8 *challenge; /* IEEE 802.11 Shared Key Authentication Challenge */
  
  	struct wpa_state_machine *wpa_sm;
@@ -1041,10 +1042,10 @@ index 000000000..a19872339
 +
 +#endif /* WDS_WPA_H */
 diff --git a/src/ap/wpa_auth_ie.c b/src/ap/wpa_auth_ie.c
-index 8593e00ae..9fb09c314 100644
+index e49f4a3d6..02aa04ecc 100644
 --- a/src/ap/wpa_auth_ie.c
 +++ b/src/ap/wpa_auth_ie.c
-@@ -1328,3 +1328,26 @@ int wpa_auth_conf_gen_multibss_wpa_ie(struct wpa_auth_config *conf, u8 **wpa_ie,
+@@ -1583,3 +1583,26 @@ int wpa_auth_conf_gen_multibss_wpa_ie(struct wpa_auth_config *conf, u8 **wpa_ie,
  	}
  	return -1;
  }
@@ -1100,10 +1101,10 @@ index 82854f8d1..5e0478d1e 100644
  /*******************************************************************************
  *                           Event structures                                   *
 diff --git a/src/common/wpa_common.c b/src/common/wpa_common.c
-index e4930a291..45d0e447e 100644
+index 613ea7fde..9a3e873f3 100644
 --- a/src/common/wpa_common.c
 +++ b/src/common/wpa_common.c
-@@ -2164,6 +2164,111 @@ int wpa_default_rsn_cipher(int freq)
+@@ -2166,6 +2166,111 @@ int wpa_default_rsn_cipher(int freq)
  	return WPA_CIPHER_CCMP;
  }
  
@@ -1215,7 +1216,7 @@ index e4930a291..45d0e447e 100644
  
  #ifdef CONFIG_IEEE80211R
  
-@@ -2889,6 +2994,14 @@ int wpa_compare_rsn_ie(int ft_initial_assoc,
+@@ -2887,6 +2992,14 @@ int wpa_compare_rsn_ie(int ft_initial_assoc,
  	}
  #endif /* CONFIG_IEEE80211R */
  
@@ -1231,10 +1232,10 @@ index e4930a291..45d0e447e 100644
  }
  
 diff --git a/src/common/wpa_common.h b/src/common/wpa_common.h
-index 13beb552f..30b57b5e2 100644
+index fc1fc85cc..e58c94430 100644
 --- a/src/common/wpa_common.h
 +++ b/src/common/wpa_common.h
-@@ -744,6 +744,9 @@ int wpa_use_akm_defined(int akmp);
+@@ -770,6 +770,9 @@ int wpa_use_akm_defined(int akmp);
  int wpa_use_cmac(int akmp);
  int wpa_use_aes_key_wrap(int akmp);
  int fils_domain_name_hash(const char *domain, u8 *hash);
@@ -1245,10 +1246,10 @@ index 13beb552f..30b57b5e2 100644
  bool pasn_use_sha384(int akmp, int cipher);
  int pasn_pmk_to_ptk(const u8 *pmk, size_t pmk_len,
 diff --git a/src/drivers/driver.h b/src/drivers/driver.h
-index 61293f211..acf78193e 100644
+index 547406763..afd41790a 100644
 --- a/src/drivers/driver.h
 +++ b/src/drivers/driver.h
-@@ -5318,6 +5318,17 @@ struct wpa_driver_ops {
+@@ -5619,6 +5619,17 @@ struct wpa_driver_ops {
  	 */
  	int(*set_bss_load)(void *priv, const u8 enable);
  
@@ -1267,10 +1268,10 @@ index 61293f211..acf78193e 100644
  	int (*register_frame)(void *priv, u16 type,
  			      const u8 *match, size_t match_len,
 diff --git a/src/drivers/driver_nl80211.c b/src/drivers/driver_nl80211.c
-index fa4278bc4..f7fecf01f 100644
+index 9ed1adf9d..36dd610b3 100644
 --- a/src/drivers/driver_nl80211.c
 +++ b/src/drivers/driver_nl80211.c
-@@ -14513,6 +14513,34 @@ static int nl80211_set_bss_load(void *priv, const u8 is_enable)
+@@ -15368,6 +15368,34 @@ static int nl80211_set_bss_load(void *priv, const u8 is_enable)
  	return ret;
  }
  
@@ -1305,7 +1306,7 @@ index fa4278bc4..f7fecf01f 100644
  const struct wpa_driver_ops wpa_driver_nl80211_ops = {
  	.name = "nl80211",
  	.desc = "Linux nl80211/cfg80211",
-@@ -14674,6 +14702,9 @@ const struct wpa_driver_ops wpa_driver_nl80211_ops = {
+@@ -15539,6 +15567,9 @@ const struct wpa_driver_ops wpa_driver_nl80211_ops = {
  	.get_tx_power_20mhz = nl80211_get_tx_power_20mhz,
  	.set_bss_load = nl80211_set_bss_load,
  	.set_dynamic_mc_mode_rate = nl80211_set_dynamic_mc_mode_rate,
@@ -1316,10 +1317,10 @@ index fa4278bc4..f7fecf01f 100644
  	.dpp_listen = nl80211_dpp_listen,
  #endif /* CONFIG_DPP */
 diff --git a/wpa_supplicant/Makefile b/wpa_supplicant/Makefile
-index b4a3f38eb..d34dd9d4a 100644
+index 08fcd2e45..cbf95fa57 100644
 --- a/wpa_supplicant/Makefile
 +++ b/wpa_supplicant/Makefile
-@@ -1944,6 +1944,10 @@ OBJS_t2 += $(FST_OBJS)
+@@ -1992,6 +1992,10 @@ OBJS_t2 += $(FST_OBJS)
  OBJS_nfc += $(FST_OBJS)
  endif
  
@@ -1330,7 +1331,7 @@ index b4a3f38eb..d34dd9d4a 100644
  ifdef CONFIG_WEP
  CFLAGS += -DCONFIG_WEP
  endif
-@@ -1962,6 +1966,38 @@ endif
+@@ -2010,6 +2014,38 @@ endif
  
  dynamic_eap_methods: $(EAPDYN)
  

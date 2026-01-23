@@ -1,4 +1,4 @@
-From b135ad9a259fd4140e7f095d62ea6a047f24f451 Mon Sep 17 00:00:00 2001
+From c5cbb2b6938734595364e2fafaabc0d397ef668c Mon Sep 17 00:00:00 2001
 From: Dmitrijs Martinovs <dmartinovs@maxlinear.com>
 Date: Mon, 4 Sep 2023 14:21:39 +0200
 Subject: [PATCH] WLANRTSYS-58356: Implement Multicast to Unicast conversion
@@ -12,10 +12,10 @@ Subject: [PATCH] WLANRTSYS-58356: Implement Multicast to Unicast conversion
  4 files changed, 18 insertions(+)
 
 diff --git a/hostapd/config_file.c b/hostapd/config_file.c
-index 5836dc6f1..002d0cc67 100644
+index 831db5b96..f0bf8fdad 100644
 --- a/hostapd/config_file.c
 +++ b/hostapd/config_file.c
-@@ -5925,6 +5925,14 @@ static int hostapd_config_fill(struct hostapd_config *conf,
+@@ -6073,6 +6073,14 @@ static int hostapd_config_fill(struct hostapd_config *conf,
  			return 1;
  		}
  		conf->adv_proto_query_resp_len = (unsigned)val;
@@ -31,10 +31,10 @@ index 5836dc6f1..002d0cc67 100644
  		os_strlcpy(conf->start_after, pos, IFNAMSIZ);
  	} else if (os_strcmp(buf, "start_after_delay") == 0) {
 diff --git a/src/ap/ap_config.c b/src/ap/ap_config.c
-index 380fd3c62..1f9d2e13a 100644
+index ca10c21c6..cea715e85 100644
 --- a/src/ap/ap_config.c
 +++ b/src/ap/ap_config.c
-@@ -190,6 +190,8 @@ void hostapd_config_defaults_bss(struct hostapd_bss_config *bss)
+@@ -197,6 +197,8 @@ void hostapd_config_defaults_bss(struct hostapd_bss_config *bss)
  	bss->pasn_comeback_after = 10;
  	bss->pasn_noauth = 1;
  #endif /* CONFIG_PASN */
@@ -44,10 +44,10 @@ index 380fd3c62..1f9d2e13a 100644
  	bss->roaming_anqp_ois_count = 0;
  	bss->roaming_anqp_ois_count_set = 0;
 diff --git a/src/ap/ap_config.h b/src/ap/ap_config.h
-index e86e62fbf..73df6b86b 100644
+index 3555bcde6..8c46e208b 100644
 --- a/src/ap/ap_config.h
 +++ b/src/ap/ap_config.h
-@@ -891,6 +891,7 @@ struct hostapd_bss_config {
+@@ -904,6 +904,7 @@ struct hostapd_bss_config {
  	int *sAggrConfig; /*amsdu_mode ba_mode window_size*/
  	int sAggrConfigSize;
  	int s11nProtection;
@@ -56,10 +56,10 @@ index e86e62fbf..73df6b86b 100644
  #ifdef CONFIG_AIRTIME_POLICY
  	unsigned int airtime_weight;
 diff --git a/src/ap/hostapd.c b/src/ap/hostapd.c
-index d990c7d2b..5fd048e2a 100644
+index 2d94d1dcf..e1c8a6bec 100644
 --- a/src/ap/hostapd.c
 +++ b/src/ap/hostapd.c
-@@ -1656,6 +1656,13 @@ static int hostapd_setup_bss(struct hostapd_data *hapd, int first,
+@@ -1841,6 +1841,13 @@ setup_mld:
  	}
  
  

@@ -1,0 +1,114 @@
+From efa37a0b6821670a7936109ce3abc162f62b83b6 Mon Sep 17 00:00:00 2001
+From: Balaji <bmanoharan@maxlinear.com>
+Date: Fri, 27 Jun 2025 17:45:37 +0800
+Subject: [PATCH] WLANRTSYS-89762 - [Airties] - Identify Traffic Separation is
+ allowed in EM Profile 1
+
+RCA:
+From Section 12.1 of EM R6 spec,
+"If a Multi-AP Agent sets the Profile-1 bSTA Disallowed bit to one on the
+backhaul BSS, and receives an Association Request frame on that backhaul BSS
+from a backhaul STA that does not include a Multi-AP Profile subelement,
+then the Multi-AP Agent shall reject the association request (see section 18)
+on that backhaul BSS."
+
+From above statement,
+If the agent does not include a Multi-AP profile subelement in assoc request,
+then we can assume it is working in Profile-1 mode. If it sends Multi-AP profile
+sublement and in which Multi-AP Profile value is updated as 1, then we can
+assume it is working in "Profile-1 as of Release 4". Airties agent does the latter.
+So, as per the Table 128. Profile Section Applicability Informative Summary of
+EasyMesh R6 specification, Traffic separation feature is conditional mandatory for
+"Profile-1 as of Release 4" agents.
+
+Fix:
+To support above statement, respective changes are made in hostapd.
+
+Fix up:
+WLANRTSYS-62198 Multi-AP: Enhance hostapd with proprietary MXL support
+---
+ src/ap/ieee802_11.c            |  6 +++++-
+ src/common/ieee802_11_common.c | 16 ++++++++++++++++
+ src/common/ieee802_11_defs.h   |  3 +++
+ 3 files changed, 24 insertions(+), 1 deletion(-)
+
+diff --git a/src/ap/ieee802_11.c b/src/ap/ieee802_11.c
+index 674396bbb..384281604 100644
+--- a/src/ap/ieee802_11.c
++++ b/src/ap/ieee802_11.c
+@@ -3937,7 +3937,11 @@ skip_multi_ap_ie:
+ 			       "Multi-AP IE with unexpected value 0x%02x",
+ 			       multi_ap.capability);
+ 
++#ifdef CONFIG_VENDOR_MXL
++	if (multi_ap.profile == NO_MULTI_AP_PROFILE_SUB_ELEM &&
++#else
+ 	if (multi_ap.profile == MULTI_AP_PROFILE_1 &&
++#endif /* CONFIG_VENDOR_MXL */
+ 	    (hapd->conf->multi_ap_client_disallow &
+ 	     PROFILE1_CLIENT_ASSOC_DISALLOW)) {
+ 		hostapd_logger(hapd, sta->addr,
+@@ -3974,7 +3978,7 @@ skip_multi_ap_ie:
+ 			       "Backhaul STA tries to associate with fronthaul-only BSS");
+ 
+ #ifdef CONFIG_VENDOR_MXL
+-	sta->mxl_sta_info.multi_ap_profile = multi_ap.profile;
++	sta->mxl_sta_info.multi_ap_profile = multi_ap.profile ? multi_ap.profile : 1;
+ #endif /* CONFIG_VENDOR_MXL */
+ 
+ 	sta->flags |= WLAN_STA_MULTI_AP;
+diff --git a/src/common/ieee802_11_common.c b/src/common/ieee802_11_common.c
+index 4a8f374e8..51aa7db74 100644
+--- a/src/common/ieee802_11_common.c
++++ b/src/common/ieee802_11_common.c
+@@ -2793,9 +2793,20 @@ u16 check_multi_ap_ie(const u8 *multi_ap_ie, size_t multi_ap_len,
+ 
+ 	os_memset(multi_ap, 0, sizeof(*multi_ap));
+ 
++#ifdef CONFIG_VENDOR_MXL
++	/* There are two profile-1 categories.
++	 * Profile-1 and Profile-1 as of Release 4.
++	 * If there is no Multi-AP profile subelement, then it is assumed as
++	 * Profile-1 device.
++	 * If a device has Multi-AP profile sublement and identifies itself as
++	 * Profile-1, then it is assumed as Profile-1 as of Release 4 device
++	 */
++	multi_ap->profile = NO_MULTI_AP_PROFILE_SUB_ELEM;
++#else
+ 	/* Default profile is 1, when Multi-AP profile subelement is not
+ 	 * present in the element. */
+ 	multi_ap->profile = 1;
++#endif /* CONFIG_VENDOR_MXL */
+ 
+ 	for_each_element(elem, multi_ap_ie, multi_ap_len) {
+ 		u8 id = elem->id, elen = elem->datalen;
+@@ -2828,7 +2839,12 @@ u16 check_multi_ap_ie(const u8 *multi_ap_ie, size_t multi_ap_len,
+ 			}
+ 			break;
+ 		case MULTI_AP_VLAN_SUB_ELEM_TYPE:
++
++#ifdef CONFIG_VENDOR_MXL
++			if (multi_ap->profile < MULTI_AP_PROFILE_1) {
++#else
+ 			if (multi_ap->profile < MULTI_AP_PROFILE_2) {
++#endif /* CONFIG_VENDOR_MXL */
+ 				wpa_printf(MSG_DEBUG,
+ 					   "Multi-AP IE invalid profile to read VLAN IE");
+ 				return WLAN_STATUS_INVALID_IE;
+diff --git a/src/common/ieee802_11_defs.h b/src/common/ieee802_11_defs.h
+index 2cc650669..3c0e1f8fc 100644
+--- a/src/common/ieee802_11_defs.h
++++ b/src/common/ieee802_11_defs.h
+@@ -1583,6 +1583,9 @@ struct auth_fail_list {
+ #define MULTI_AP_BACKHAUL_BSS BIT(6)
+ #define MULTI_AP_BACKHAUL_STA BIT(7)
+ 
++#ifdef CONFIG_VENDOR_MXL
++#define NO_MULTI_AP_PROFILE_SUB_ELEM 0
++#endif /* CONFIG_VENDOR_MXL */
+ #define MULTI_AP_PROFILE_1	1
+ #define MULTI_AP_PROFILE_2	2
+ #define MULTI_AP_PROFILE_MAX	6
+-- 
+2.43.0
+

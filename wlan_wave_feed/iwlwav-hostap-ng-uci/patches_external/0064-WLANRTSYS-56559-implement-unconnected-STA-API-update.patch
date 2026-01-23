@@ -1,4 +1,4 @@
-From ce1ea69d45281e5a6592f9fbb0263659188db922 Mon Sep 17 00:00:00 2001
+From ee353746c1e56a84f7debab925b32aa215be3025 Mon Sep 17 00:00:00 2001
 From: mvulsx <mvuls@maxlinear.com>
 Date: Wed, 28 Jun 2023 14:02:27 +0000
 Subject: [PATCH] WLANRTSYS-56559: implement unconnected STA API updates
@@ -12,10 +12,10 @@ Signed-off-by: mvulsx <mvuls@maxlinear.com>
  4 files changed, 90 insertions(+), 14 deletions(-)
 
 diff --git a/hostapd/ctrl_iface.c b/hostapd/ctrl_iface.c
-index 8513c45b6..cd7fcdd96 100644
+index 56e1016e7..3dd84c241 100644
 --- a/hostapd/ctrl_iface.c
 +++ b/hostapd/ctrl_iface.c
-@@ -4704,21 +4704,65 @@ static int hostapd_ctrl_iface_unconnected_sta(struct hostapd_data *hapd, const c
+@@ -5335,21 +5335,65 @@ static int hostapd_ctrl_iface_unconnected_sta(struct hostapd_data *hapd, const c
  	char *pos;
  	unsigned int bandwidth;
  	struct sta_info *sta;
@@ -87,7 +87,7 @@ index 8513c45b6..cd7fcdd96 100644
  
  	pos = os_strstr(cmd, " ");
  	if (pos) {
-@@ -4726,11 +4770,11 @@ static int hostapd_ctrl_iface_unconnected_sta(struct hostapd_data *hapd, const c
+@@ -5357,11 +5401,11 @@ static int hostapd_ctrl_iface_unconnected_sta(struct hostapd_data *hapd, const c
  		req.freq = atoi(pos);
  		if (!hostapd_is_chandef_valid(hapd->iface, req.freq, 20)) {
  			wpa_printf(MSG_ERROR, "unconnected_sta: invalid freq provided");
@@ -101,7 +101,7 @@ index 8513c45b6..cd7fcdd96 100644
  	}
  
  	pos = os_strstr(cmd, "center_freq1=");
-@@ -4739,7 +4783,7 @@ static int hostapd_ctrl_iface_unconnected_sta(struct hostapd_data *hapd, const c
+@@ -5370,7 +5414,7 @@ static int hostapd_ctrl_iface_unconnected_sta(struct hostapd_data *hapd, const c
  		req.center_freq1 = atoi(pos);
  	} else {
  		wpa_printf(MSG_ERROR, "unconnected_sta: center_freq1 not specified");
@@ -110,7 +110,7 @@ index 8513c45b6..cd7fcdd96 100644
  	}
  
  	pos = os_strstr(cmd, "center_freq2=");
-@@ -4754,7 +4798,7 @@ static int hostapd_ctrl_iface_unconnected_sta(struct hostapd_data *hapd, const c
+@@ -5385,7 +5429,7 @@ static int hostapd_ctrl_iface_unconnected_sta(struct hostapd_data *hapd, const c
  		bandwidth = atoi(pos);
  	} else {
  		wpa_printf(MSG_ERROR, "unconnected_sta: bandwidth not specified");
@@ -119,7 +119,7 @@ index 8513c45b6..cd7fcdd96 100644
  	}
  
  	switch (bandwidth) {
-@@ -4775,28 +4819,37 @@ static int hostapd_ctrl_iface_unconnected_sta(struct hostapd_data *hapd, const c
+@@ -5406,28 +5450,37 @@ static int hostapd_ctrl_iface_unconnected_sta(struct hostapd_data *hapd, const c
  			break;
  		default:
  			wpa_printf(MSG_ERROR, "unconnected_sta: invalid bandwidth provided");
@@ -162,10 +162,10 @@ index 8513c45b6..cd7fcdd96 100644
  
  /* checks weather channel exists */
 diff --git a/src/ap/drv_callbacks.c b/src/ap/drv_callbacks.c
-index 9b040b695..dc91adca2 100644
+index 9674d377b..42a7f24a9 100644
 --- a/src/ap/drv_callbacks.c
 +++ b/src/ap/drv_callbacks.c
-@@ -2236,6 +2236,11 @@ static void hostapd_event_ltq_unconnected_sta_rx(struct hostapd_data *hapd,
+@@ -2562,6 +2562,11 @@ static void hostapd_event_ltq_unconnected_sta_rx(struct hostapd_data *hapd,
  		wpa_printf(MSG_ERROR, "%s: sprintf_s error %d", __func__, ret);
  		return;
  	}
@@ -178,10 +178,10 @@ index 9b040b695..dc91adca2 100644
  		UNCONNECTED_STA_RSSI "%s rx_bytes=%llu rx_packets=%u "
  		"rssi=%d %d %d %d SNR=%d %d %d %d rate=%d",
 diff --git a/src/ap/hostapd.c b/src/ap/hostapd.c
-index 5f067ee65..25c01ce40 100644
+index 9463a372b..64a820f8a 100644
 --- a/src/ap/hostapd.c
 +++ b/src/ap/hostapd.c
-@@ -5423,6 +5423,7 @@ hostapd_color_switch_trigger(struct hostapd_data *hapd, u8 new_color)
+@@ -6026,6 +6026,7 @@ hostapd_color_switch_trigger(struct hostapd_data *hapd, u8 new_color)
  {
  	int ret, switch_time, b;
  	struct cca_settings settings;
@@ -189,7 +189,7 @@ index 5f067ee65..25c01ce40 100644
  
  	if (hapd->cca_in_progress || hapd->csa_in_progress)
  		return;
-@@ -5432,6 +5433,11 @@ hostapd_color_switch_trigger(struct hostapd_data *hapd, u8 new_color)
+@@ -6035,6 +6036,11 @@ hostapd_color_switch_trigger(struct hostapd_data *hapd, u8 new_color)
  		return;
  	}
  
@@ -201,7 +201,7 @@ index 5f067ee65..25c01ce40 100644
  	switch_time = hapd->switch_time ? hapd->switch_time :
  				hostapd_cca_calc_switch_time(hapd->iface);
  
-@@ -5723,3 +5729,13 @@ bool hostapd_is_unii4_freq (int freq)
+@@ -6509,3 +6515,13 @@ bool hostapd_is_unii4_freq (int freq)
  {
  	return (freq == 5845) || (freq == 5865) || (freq == 5885);
  }
@@ -216,23 +216,23 @@ index 5f067ee65..25c01ce40 100644
 +	hapd->iface->in_unconnected_sta_scan = 0;
 +}
 diff --git a/src/ap/hostapd.h b/src/ap/hostapd.h
-index 3e70198da..79ebb8be7 100644
+index 9c72e2933..0032062ed 100644
 --- a/src/ap/hostapd.h
 +++ b/src/ap/hostapd.h
-@@ -685,6 +685,7 @@ struct hostapd_iface {
+@@ -756,6 +756,7 @@ struct hostapd_iface {
  	 * used while juggling between HT20 and HT40 modes. */
  	int secondary_ch;
  
 +	int in_unconnected_sta_scan;
  #ifdef CONFIG_ACS
  	unsigned int acs_num_completed_scans;
- #endif /* CONFIG_ACS */
-@@ -870,5 +871,6 @@ int hostapd_link_remove(struct hostapd_data *hapd, u32 count);
+ 	unsigned int acs_num_retries;
+@@ -975,5 +976,6 @@ static inline bool ap_pmf_enabled(struct hostapd_bss_config *conf)
  void hostapd_tx_queue_params(struct hostapd_data *hapd);
  void hostapd_handle_acs_whm_warning (struct hostapd_iface *iface);
  bool hostapd_is_unii4_freq (int freq);
 +void hostapd_unconnected_sta_scan_fail_handle_cb (void *eloop_ctx, void *timeout_ctx);
- 
+ #endif /* CONFIG_VENDOR_MXL */
  #endif /* HOSTAPD_H */
 -- 
 2.43.0

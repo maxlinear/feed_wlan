@@ -1,4 +1,4 @@
-From 3da36f7d53d5d1432ae17286ed2a877dc7d3276e Mon Sep 17 00:00:00 2001
+From 17b1404707886fb73fa1b776b5c92e2a9cd43884 Mon Sep 17 00:00:00 2001
 From: Jurijs Soloveckis <jsoloveckis@maxlinear.com>
 Date: Wed, 5 Jul 2023 15:21:13 +0200
 Subject: [PATCH] WLANRTSYS-56718: IOP fixes implementation
@@ -20,10 +20,10 @@ Subject: [PATCH] WLANRTSYS-56718: IOP fixes implementation
  9 files changed, 114 insertions(+), 9 deletions(-)
 
 diff --git a/hostapd/config_file.c b/hostapd/config_file.c
-index ad85f9bd7..d4b3c9e26 100644
+index facc890db..9ce800524 100644
 --- a/hostapd/config_file.c
 +++ b/hostapd/config_file.c
-@@ -5851,6 +5851,8 @@ static int hostapd_config_fill(struct hostapd_config *conf,
+@@ -5999,6 +5999,8 @@ static int hostapd_config_fill(struct hostapd_config *conf,
  			hostapd_whm_read_config(&conf->whm_cfg_flag, conf->whm_config_file);
  		else
  			wpa_printf(MSG_ERROR, "Error Reading whm config file");
@@ -33,10 +33,10 @@ index ad85f9bd7..d4b3c9e26 100644
  	} else if (mxl_hostapd_config_fill(conf, bss, buf, pos, line)) {
  #endif /* CONFIG_VENDOR_MXL */
 diff --git a/src/ap/ap_config.c b/src/ap/ap_config.c
-index f29cd1d9f..90c90a472 100644
+index d2dc5e3d4..3189a1c4c 100644
 --- a/src/ap/ap_config.c
 +++ b/src/ap/ap_config.c
-@@ -296,6 +296,7 @@ struct hostapd_config * hostapd_config_defaults(void)
+@@ -303,6 +303,7 @@ struct hostapd_config * hostapd_config_defaults(void)
  	conf->ap_table_max_size = 255;
  	conf->ap_table_expiration_time = 60;
  	conf->track_sta_max_age = 180;
@@ -45,10 +45,10 @@ index f29cd1d9f..90c90a472 100644
  	conf->sInterferDetThresh = INTERFERENCE_DET_THRESH_DEFAULT;
  	conf->sDynamicMuTypeDownLink = 3;
 diff --git a/src/ap/ap_config.h b/src/ap/ap_config.h
-index 1c5ad2434..0ddcf54d9 100644
+index 98d976761..057950fad 100644
 --- a/src/ap/ap_config.h
 +++ b/src/ap/ap_config.h
-@@ -1282,6 +1282,7 @@ struct hostapd_config {
+@@ -1313,6 +1313,7 @@ struct hostapd_config {
  	u8 vht_oper_centr_freq_seg0_idx;
  	u8 vht_oper_centr_freq_seg1_idx;
  	u8 ht40_plus_minus_allowed;
@@ -57,11 +57,11 @@ index 1c5ad2434..0ddcf54d9 100644
  	/* Use driver-generated interface addresses when adding multiple BSSs */
  	u8 use_driver_iface_addr;
 diff --git a/src/ap/beacon.c b/src/ap/beacon.c
-index cc01a055e..a85a0f83c 100644
+index 5533dec31..062a049d1 100644
 --- a/src/ap/beacon.c
 +++ b/src/ap/beacon.c
-@@ -810,7 +810,7 @@ static u8 * hostapd_probe_resp_fill_elems(struct hostapd_data *hapd,
- 	}
+@@ -949,7 +949,7 @@ static u8 * hostapd_probe_resp_fill_elems(struct hostapd_data *hapd,
+ 	pos = csa_pos;
  
  	pos = hostapd_eid_supported_op_classes(hapd, pos);
 -	pos = hostapd_eid_ht_capabilities(hapd, pos);
@@ -69,7 +69,7 @@ index cc01a055e..a85a0f83c 100644
  	pos = hostapd_eid_ht_operation(hapd, pos);
  
  	/* Probe Response frames always include all non-TX profiles except
-@@ -2406,7 +2406,7 @@ int ieee802_11_build_ap_params(struct hostapd_data *hapd,
+@@ -2525,7 +2525,7 @@ int ieee802_11_build_ap_params(struct hostapd_data *hapd,
  	tailpos = csa_pos;
  
  	tailpos = hostapd_eid_supported_op_classes(hapd, tailpos);
@@ -79,10 +79,10 @@ index cc01a055e..a85a0f83c 100644
  
  	if (hapd->iconf->mbssid && hapd->iconf->num_bss > 1) {
 diff --git a/src/ap/ieee802_11.c b/src/ap/ieee802_11.c
-index 34457c53e..79663695e 100644
+index 5cd2e79c7..cbb9e0f94 100644
 --- a/src/ap/ieee802_11.c
 +++ b/src/ap/ieee802_11.c
-@@ -4442,7 +4442,7 @@ static size_t ieee80211_ml_build_assoc_resp(struct hostapd_data *hapd,
+@@ -4835,7 +4835,7 @@ static void ieee80211_ml_build_assoc_resp(struct hostapd_data *hapd,
  	p = hostapd_eid_supp_rates(hapd, p);
  	p = hostapd_eid_ext_supp_rates(hapd, p);
  	p = hostapd_eid_rm_enabled_capab(hapd, p, buf + buflen - p);
@@ -91,7 +91,7 @@ index 34457c53e..79663695e 100644
  	p = hostapd_eid_ht_operation(hapd, p);
  
  	if (hapd->iconf->ieee80211ac && !hapd->conf->disable_11ac) {
-@@ -4947,7 +4947,7 @@ static u16 send_assoc_resp(struct hostapd_data *hapd, struct sta_info *sta,
+@@ -5345,7 +5345,7 @@ static u16 send_assoc_resp(struct hostapd_data *hapd, struct sta_info *sta,
  	if (sta && status_code == WLAN_STATUS_ASSOC_REJECTED_TEMPORARILY)
  		p = hostapd_eid_assoc_comeback_time(hapd, sta, p);
  
@@ -101,7 +101,7 @@ index 34457c53e..79663695e 100644
  
  #ifdef CONFIG_IEEE80211AC
 diff --git a/src/ap/ieee802_11.h b/src/ap/ieee802_11.h
-index 1da08514e..b06b93b4a 100644
+index 838bd9888..34a511295 100644
 --- a/src/ap/ieee802_11.h
 +++ b/src/ap/ieee802_11.h
 @@ -61,7 +61,7 @@ u8 * hostapd_eid_supp_rates(struct hostapd_data *hapd, u8 *eid);
@@ -114,7 +114,7 @@ index 1da08514e..b06b93b4a 100644
  u8 * hostapd_eid_vht_capabilities(struct hostapd_data *hapd, u8 *eid, u32 nsts);
  u8 * hostapd_eid_vht_operation(struct hostapd_data *hapd, u8 *eid);
 diff --git a/src/ap/ieee802_11_ht.c b/src/ap/ieee802_11_ht.c
-index c2a390c39..b3e1738ac 100644
+index a9dd21a8a..e4dba3093 100644
 --- a/src/ap/ieee802_11_ht.c
 +++ b/src/ap/ieee802_11_ht.c
 @@ -24,10 +24,11 @@
@@ -152,7 +152,7 @@ index c2a390c39..b3e1738ac 100644
  	/* tx_bf_capability_info */
  	cap->tx_bf_capability_info = host_to_le32(hapd->iconf->ht_tx_bf_capab);
  	/* TODO: ht_extended_capabilities (now fully disabled) */
-@@ -529,6 +541,7 @@ void hostapd_get_ht_capab(struct hostapd_data *hapd,
+@@ -568,6 +580,7 @@ void hostapd_get_ht_capab(struct hostapd_data *hapd,
  			  struct ieee80211_ht_capabilities *neg_ht_cap)
  {
  	u16 cap;
@@ -160,7 +160,7 @@ index c2a390c39..b3e1738ac 100644
  
  	if (ht_cap == NULL)
  		return;
-@@ -553,7 +566,16 @@ void hostapd_get_ht_capab(struct hostapd_data *hapd,
+@@ -592,7 +605,16 @@ void hostapd_get_ht_capab(struct hostapd_data *hapd,
  	if (!(hapd->iconf->ht_capab & HT_CAP_INFO_TX_STBC))
  		cap &= ~HT_CAP_INFO_RX_STBC_MASK;
  
@@ -178,10 +178,10 @@ index c2a390c39..b3e1738ac 100644
  
  
 diff --git a/src/ap/ieee802_11_vht.c b/src/ap/ieee802_11_vht.c
-index e61e136c4..607209529 100644
+index d59aa7503..4519d802e 100644
 --- a/src/ap/ieee802_11_vht.c
 +++ b/src/ap/ieee802_11_vht.c
-@@ -334,6 +334,39 @@ u16 set_sta_vht_opmode(struct hostapd_data *hapd, struct sta_info *sta,
+@@ -338,6 +338,39 @@ u16 set_sta_vht_opmode(struct hostapd_data *hapd, struct sta_info *sta,
  }
  
  
@@ -221,7 +221,7 @@ index e61e136c4..607209529 100644
  void hostapd_get_vht_capab(struct hostapd_data *hapd,
  			   struct ieee80211_vht_capabilities *vht_cap,
  			   struct ieee80211_vht_capabilities *neg_vht_cap)
-@@ -393,5 +426,51 @@ void hostapd_get_vht_capab(struct hostapd_data *hapd,
+@@ -397,5 +430,51 @@ void hostapd_get_vht_capab(struct hostapd_data *hapd,
  	if (!(own_cap & VHT_CAP_TXSTBC))
  		cap &= ~VHT_CAP_RXSTBC_MASK;
  
@@ -274,7 +274,7 @@ index e61e136c4..607209529 100644
 +	}
  }
 diff --git a/wpa_supplicant/mesh_mpm.c b/wpa_supplicant/mesh_mpm.c
-index 138c01399..a8c6352af 100644
+index b2fc1271e..785085d15 100644
 --- a/wpa_supplicant/mesh_mpm.c
 +++ b/wpa_supplicant/mesh_mpm.c
 @@ -367,7 +367,7 @@ static void mesh_mpm_send_plink_action(struct wpa_supplicant *wpa_s,

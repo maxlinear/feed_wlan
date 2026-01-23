@@ -1,0 +1,105 @@
+From 1a5822df603360d439596f7629470f2257b85ff5 Mon Sep 17 00:00:00 2001
+From: hmgokhale <hmgokhale@maxlinear.com>
+Date: Thu, 5 Jun 2025 12:19:44 +0530
+Subject: [PATCH] WLANRTSYS-84629 Add MLO link KDE for all the links in EAPOL
+ M3
+
+Add MLO link KDE for all the links in EAPOL M3 irrespective of
+single link for multilink ML connection
+
+Signed-off-by: hmgokhale <hmgokhale@maxlinear.com>
+---
+ src/ap/mxl_wpa_auth.c | 42 +++++++++++++++++++++++++++---------------
+ 1 file changed, 27 insertions(+), 15 deletions(-)
+
+diff --git a/src/ap/mxl_wpa_auth.c b/src/ap/mxl_wpa_auth.c
+index 404f1c0be..e0127e517 100644
+--- a/src/ap/mxl_wpa_auth.c
++++ b/src/ap/mxl_wpa_auth.c
+@@ -44,17 +44,33 @@
+ #ifdef CONFIG_IEEE80211BE_MXL_MLO
+ #define PN_LENGTH 6
+ 
+-static int wpa_auth_ml_kdes_len(struct wpa_state_machine *sm, struct wpa_authenticator *wpa_auth, u8 *wpa_ie,
++static int wpa_auth_ml_group_kdes_len(struct wpa_state_machine *sm, struct wpa_authenticator *wpa_auth, u8 *wpa_ie,
+ 				int wpa_ie_len, size_t gtk_len)
+ {
+ 	int kde_len = 0;
+-	const u8 *rsne = get_ie(wpa_ie, wpa_ie_len, WLAN_EID_RSN);
+-	const u8 *rsnxe = get_ie(wpa_ie, wpa_ie_len, WLAN_EID_RSNX);
+ 	size_t len;
+ 
+ 	/* GTK = IE_HDR_LEN(2) + RSN_SELECTOR_LEN(4) + GTK_HDR_LEN(1) + PN_LENGTH(6) */
+ 	kde_len += (2 + RSN_SELECTOR_LEN + 1 + PN_LENGTH + gtk_len);
+ 
++	/* IGTK = IE_HDR_LEN(2) + RSN_SELECTOR_LEN(4) + IGTK_HDR_LEN(2) + PN_LENGTH(6) + LINK_INFO_LEN(1) + len */
++	len = wpa_cipher_key_len(wpa_auth->conf.group_mgmt_cipher);
++	kde_len += (2 + RSN_SELECTOR_LEN + 2 + PN_LENGTH + 1 + len);
++
++	/* BIGTK */
++	if (wpa_auth->conf.beacon_prot)
++		kde_len += mxl_ieee80211w_kde_len(sm) + mxl_ocv_oci_len(sm) + 1 /*LINK_INFO_LEN(1)*/;
++
++	return kde_len;
++}
++
++static int wpa_auth_ml_link_kde_len(struct wpa_state_machine *sm, struct wpa_authenticator *wpa_auth, u8 *wpa_ie,
++				int wpa_ie_len)
++{
++	int kde_len = 0;
++	const u8 *rsne = get_ie(wpa_ie, wpa_ie_len, WLAN_EID_RSN);
++	const u8 *rsnxe = get_ie(wpa_ie, wpa_ie_len, WLAN_EID_RSNX);
++
+ 	/* RSN/RSNX = IE_HDR_LEN(2) + RSN_SELECTOR_LEN(4) + LINK_INFO_LEN(1) + ETH_ALEN(6) */
+ 	kde_len += (2 + RSN_SELECTOR_LEN + 1 + ETH_ALEN);
+ 
+@@ -66,14 +82,6 @@ static int wpa_auth_ml_kdes_len(struct wpa_state_machine *sm, struct wpa_authent
+ 	if (rsnxe)
+ 		kde_len += (rsnxe[1] + 2);
+ 
+-	/* IGTK = IE_HDR_LEN(2) + RSN_SELECTOR_LEN(4) + IGTK_HDR_LEN(2) + PN_LENGTH(6) + LINK_INFO_LEN(1) + len */
+-	len = wpa_cipher_key_len(wpa_auth->conf.group_mgmt_cipher);
+-	kde_len += (2 + RSN_SELECTOR_LEN + 2 + PN_LENGTH + 1 + len);
+-
+-	/* BIGTK */
+-	if (wpa_auth->conf.beacon_prot)
+-		kde_len += mxl_ieee80211w_kde_len(sm) + mxl_ocv_oci_len(sm) + 1 /*LINK_INFO_LEN(1)*/;
+-
+ 	return kde_len;
+ }
+ 
+@@ -367,15 +375,19 @@ void mxl_ml_wpa_ptkinitnegotiating(struct wpa_state_machine *sm)
+ 		/* For the MAC address KDE */
+ 		kde_len += (2 + RSN_SELECTOR_LEN + ETH_ALEN);
+ 		/* MLO link 1 KDE len */
+-		kde_len += wpa_auth_ml_kdes_len(sm, sm->wpa_auth, wpa_ie, wpa_ie_len, gtk_len);
++		kde_len += wpa_auth_ml_link_kde_len(sm, sm->wpa_auth, wpa_ie, wpa_ie_len);
++		kde_len += wpa_auth_ml_group_kdes_len(sm, sm->wpa_auth, wpa_ie, wpa_ie_len, gtk_len);
+ 		if (sibling_wpa_auth) {
+ 			sib_wpa_ie = sibling_wpa_auth->wpa_ie;
+ 			sib_wpa_ie_len = sibling_wpa_auth->wpa_ie_len;
+ 
+ 		}
+ 		/* MLO link 2 KDE len */
+-		if (sibling_wpa_auth && !sm->mxl_sm.is_single_link_ml_sta)
+-			kde_len += wpa_auth_ml_kdes_len(sm, sibling_wpa_auth, sib_wpa_ie, sib_wpa_ie_len, gtk_len1);
++		if (sibling_wpa_auth) {
++			kde_len += wpa_auth_ml_link_kde_len(sm, sibling_wpa_auth, sib_wpa_ie, sib_wpa_ie_len);
++			if (!sm->mxl_sm.is_single_link_ml_sta)
++				kde_len += wpa_auth_ml_group_kdes_len(sm, sibling_wpa_auth, sib_wpa_ie, sib_wpa_ie_len, gtk_len1);
++		}
+ 	}
+ 	kde = os_malloc(kde_len);
+ 	if (kde == NULL)
+@@ -484,7 +496,7 @@ void mxl_ml_wpa_ptkinitnegotiating(struct wpa_state_machine *sm)
+ 			goto done;
+ 		}
+ 
+-		if (sibling_wpa_auth && !sm->mxl_sm.is_single_link_ml_sta) {
++		if (sibling_wpa_auth) {
+ 			/* MLO link 2 RSN/RSNX KDE */
+ 			pos = wpa_auth_ml_kdes(pos, sibling_wpa_auth, sib_wpa_ie, sib_wpa_ie_len);
+ 			if (!pos) {
+-- 
+2.43.0
+

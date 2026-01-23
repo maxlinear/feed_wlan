@@ -1,4 +1,4 @@
-From 9dd9a33725c05e611aba8b56336357a7c4120806 Mon Sep 17 00:00:00 2001
+From fe7a430b73ef031141c4c84e05d25ece266cae33 Mon Sep 17 00:00:00 2001
 From: Gal Savion <gsavion@maxlinear.com>
 Date: Wed, 12 Jul 2023 18:26:40 +0300
 Subject: [PATCH] WLANRTSYS-54118: Client connection disruption when
@@ -13,10 +13,10 @@ Subject: [PATCH] WLANRTSYS-54118: Client connection disruption when
  5 files changed, 23 insertions(+), 1 deletion(-)
 
 diff --git a/hostapd/Android.mk b/hostapd/Android.mk
-index 3a243d13b..d2c4b58fe 100644
+index d097971f2..6699b98b0 100644
 --- a/hostapd/Android.mk
 +++ b/hostapd/Android.mk
-@@ -609,6 +609,13 @@ LIBS += -ldl
+@@ -618,6 +618,13 @@ LIBS += -ldl
  endif
  endif
  
@@ -31,10 +31,10 @@ index 3a243d13b..d2c4b58fe 100644
  OBJS += eap_register.c
  OBJS += src/eap_server/eap_server.c
 diff --git a/hostapd/Makefile b/hostapd/Makefile
-index e726cac00..14a1b73f9 100644
+index fe07ab0ae..753921e58 100644
 --- a/hostapd/Makefile
 +++ b/hostapd/Makefile
-@@ -668,6 +668,13 @@ OBJS += ../src/pae/ieee802_1x_key.o
+@@ -677,6 +677,13 @@ OBJS += ../src/pae/ieee802_1x_key.o
  OBJS += ../src/pae/ieee802_1x_secy_ops.o
  endif
  
@@ -49,10 +49,10 @@ index e726cac00..14a1b73f9 100644
  OBJS += eap_register.o
  OBJS += ../src/eap_server/eap_server.o
 diff --git a/src/ap/ieee802_1x.c b/src/ap/ieee802_1x.c
-index 4cc339973..a7579a443 100644
+index be8d4ba60..9cfc213fc 100644
 --- a/src/ap/ieee802_1x.c
 +++ b/src/ap/ieee802_1x.c
-@@ -1313,6 +1313,13 @@ void ieee802_1x_receive(struct hostapd_data *hapd, const u8 *sa, const u8 *buf,
+@@ -1340,6 +1340,13 @@ void ieee802_1x_receive(struct hostapd_data *hapd, const u8 *sa, const u8 *buf,
  		break;
  
  	case IEEE802_1X_TYPE_EAPOL_LOGOFF:
@@ -80,7 +80,7 @@ index 557958286..772bafad3 100644
  	switch (s) {
  	case AUTH_PAE_INITIALIZE: return "INITIALIZE";
 diff --git a/src/eapol_auth/eapol_auth_sm.h b/src/eapol_auth/eapol_auth_sm.h
-index 716762f44..222698819 100644
+index 3dfb3f151..49517b011 100644
 --- a/src/eapol_auth/eapol_auth_sm.h
 +++ b/src/eapol_auth/eapol_auth_sm.h
 @@ -86,5 +86,6 @@ int eapol_auth_eap_pending_cb(struct eapol_state_machine *sm, void *ctx);

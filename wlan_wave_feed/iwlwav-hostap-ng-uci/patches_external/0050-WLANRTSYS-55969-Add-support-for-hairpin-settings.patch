@@ -1,4 +1,4 @@
-From c538bdf5b98423e1a5c490c71cea3ea744dcca33 Mon Sep 17 00:00:00 2001
+From dc646308bb7c975604c2f9b4450cf8293e34b56d Mon Sep 17 00:00:00 2001
 From: Jurijs Soloveckis <jsoloveckis@maxlinear.com>
 Date: Fri, 9 Jun 2023 09:10:11 +0200
 Subject: [PATCH] WLANRTSYS-55969: Add support for hairpin settings
@@ -17,10 +17,10 @@ Subject: [PATCH] WLANRTSYS-55969: Add support for hairpin settings
  10 files changed, 143 insertions(+), 3 deletions(-)
 
 diff --git a/hostapd/config_file.c b/hostapd/config_file.c
-index 09fa1fd24..d847d9215 100644
+index 5c8b128b3..5522452f8 100644
 --- a/hostapd/config_file.c
 +++ b/hostapd/config_file.c
-@@ -5534,6 +5534,14 @@ static int hostapd_config_fill(struct hostapd_config *conf,
+@@ -5679,6 +5679,14 @@ static int hostapd_config_fill(struct hostapd_config *conf,
  		conf->ext_cap_max_num_msdus_in_amsdu = (u8)val;
  	} else if (os_strcmp(buf, "he_phy_channel_width_set") == 0) {
  		wpa_printf(MSG_WARNING, "Line %d: he_phy_channel_width_set is deprecated and will be removed soon", line);
@@ -36,10 +36,10 @@ index 09fa1fd24..d847d9215 100644
  	} else if (mxl_hostapd_config_fill(conf, bss, buf, pos, line)) {
  #endif /* CONFIG_VENDOR_MXL */
 diff --git a/src/ap/ap_config.h b/src/ap/ap_config.h
-index 4360b337a..2e098bae7 100644
+index 0a1e37e22..25ef337ab 100644
 --- a/src/ap/ap_config.h
 +++ b/src/ap/ap_config.h
-@@ -406,6 +406,7 @@ struct hostapd_bss_config {
+@@ -409,6 +409,7 @@ struct hostapd_bss_config {
  	int wds_sta;
  	int isolate;
  	int start_disabled;
@@ -48,10 +48,10 @@ index 4360b337a..2e098bae7 100644
  	int auth_algs; /* bitfield of allowed IEEE 802.11 authentication
  			* algorithms, WPA_AUTH_ALG_{OPEN,SHARED,LEAP} */
 diff --git a/src/ap/ap_drv_ops.h b/src/ap/ap_drv_ops.h
-index e634b81ad..e34ff6879 100644
+index 04cd95f4d..b46c4c845 100644
 --- a/src/ap/ap_drv_ops.h
 +++ b/src/ap/ap_drv_ops.h
-@@ -521,6 +521,16 @@ static inline int hostapd_drv_set_bss_load(struct hostapd_data *hapd,
+@@ -554,6 +554,16 @@ static inline int hostapd_drv_set_bss_load(struct hostapd_data *hapd,
  	return hapd->driver->set_bss_load(hapd->drv_priv, is_enable);
  }
  
@@ -69,12 +69,12 @@ index e634b81ad..e34ff6879 100644
  static inline int hostapd_drv_driver_cmd(struct hostapd_data *hapd,
  					 char *cmd, char *buf, size_t buf_len)
 diff --git a/src/ap/hostapd.c b/src/ap/hostapd.c
-index 44d305155..757f8c543 100644
+index 7c2849f36..8ff742239 100644
 --- a/src/ap/hostapd.c
 +++ b/src/ap/hostapd.c
-@@ -1528,6 +1528,15 @@ static void hostapd_post_up_vendor_vap_cmd(struct hostapd_data *hapd, struct hos
- #endif
+@@ -1660,6 +1660,15 @@ static void hostapd_post_up_vendor_vap_cmd(struct hostapd_data *hapd, struct hos
  }
+ #endif /* CONFIG_VENDOR_MXL */
  
 +static void hostapd_handle_hairpin_mode (struct hostapd_data *hapd)
 +{
@@ -88,7 +88,7 @@ index 44d305155..757f8c543 100644
  /**
   * hostapd_setup_bss - Per-BSS setup (initialization)
   * @hapd: Pointer to BSS data
-@@ -1882,6 +1891,8 @@ static int hostapd_setup_bss(struct hostapd_data *hapd, int first,
+@@ -2051,6 +2060,8 @@ setup_mld:
  		return -1;
  #endif /* CONFIG_VENDOR_MXL */
  
@@ -120,10 +120,10 @@ index 029f4de23..414d8f011 100644
  	hapd->x_snoop_initialized = false;
  }
 diff --git a/src/common/wpa_ctrl.h b/src/common/wpa_ctrl.h
-index b63a7eb2d..0c537d31c 100644
+index ae343936c..908916172 100644
 --- a/src/common/wpa_ctrl.h
 +++ b/src/common/wpa_ctrl.h
-@@ -449,6 +449,8 @@ extern "C" {
+@@ -474,6 +474,8 @@ extern "C" {
  #define WPA_EVENT_CCA_ABORTED_NOTIFY "CTRL-EVENT-CCA-ABORTED-NOTIFY "
  #define WPA_EVENT_CCA_NOTIFY "CTRL-EVENT-CCA-NOTIFY "
  
@@ -133,10 +133,10 @@ index b63a7eb2d..0c537d31c 100644
  #define BIT(x) (1U << (x))
  #endif
 diff --git a/src/drivers/driver.h b/src/drivers/driver.h
-index 0400fb714..0db388182 100644
+index e25153a27..539a9a3cb 100644
 --- a/src/drivers/driver.h
 +++ b/src/drivers/driver.h
-@@ -4269,6 +4269,15 @@ struct wpa_driver_ops {
+@@ -4435,6 +4435,15 @@ struct wpa_driver_ops {
  	int (*br_port_set_attr)(void *priv, enum drv_br_port_attr attr,
  				unsigned int val);
  
@@ -153,10 +153,10 @@ index 0400fb714..0db388182 100644
  	 * br_port_set_attr - Set a bridge network parameter
  	 * @param: Bridge parameter to set
 diff --git a/src/drivers/driver_nl80211.c b/src/drivers/driver_nl80211.c
-index 90c03b73d..fc4dc9618 100644
+index ffdb760b6..ff5f4357b 100644
 --- a/src/drivers/driver_nl80211.c
 +++ b/src/drivers/driver_nl80211.c
-@@ -12386,6 +12386,95 @@ static int wpa_driver_br_port_set_attr(void *priv, enum drv_br_port_attr attr,
+@@ -12715,6 +12715,95 @@ static int wpa_driver_br_port_set_attr(void *priv, enum drv_br_port_attr attr,
  	return 0;
  }
  
@@ -252,7 +252,7 @@ index 90c03b73d..fc4dc9618 100644
  
  static const char * drv_br_net_param_str(enum drv_br_net_param param)
  {
-@@ -14332,6 +14421,7 @@ const struct wpa_driver_ops wpa_driver_nl80211_ops = {
+@@ -15175,6 +15264,7 @@ const struct wpa_driver_ops wpa_driver_nl80211_ops = {
  	.br_add_ip_neigh = wpa_driver_br_add_ip_neigh,
  	.br_delete_ip_neigh = wpa_driver_br_delete_ip_neigh,
  	.br_port_set_attr = wpa_driver_br_port_set_attr,

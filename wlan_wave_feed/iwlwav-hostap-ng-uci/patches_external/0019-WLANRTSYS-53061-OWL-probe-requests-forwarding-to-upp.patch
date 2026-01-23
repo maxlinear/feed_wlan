@@ -1,4 +1,4 @@
-From 8da031a10e792ead281ba9b97b8910118c15be02 Mon Sep 17 00:00:00 2001
+From 70299bda72182333286742015a40e3dddbf06842 Mon Sep 17 00:00:00 2001
 From: Jurijs Soloveckis <jsoloveckis@maxlinear.com>
 Date: Wed, 15 Feb 2023 08:21:43 +0100
 Subject: [PATCH] WLANRTSYS-53061: OWL: probe requests forwarding to upper
@@ -12,12 +12,12 @@ Subject: [PATCH] WLANRTSYS-53061: OWL: probe requests forwarding to upper
  4 files changed, 38 insertions(+)
 
 diff --git a/hostapd/config_file.c b/hostapd/config_file.c
-index dfb34fa1d..c38065225 100644
+index 2af5e3ea2..713f6d8e9 100644
 --- a/hostapd/config_file.c
 +++ b/hostapd/config_file.c
-@@ -4792,6 +4792,14 @@ static int hostapd_config_fill(struct hostapd_config *conf,
- 			return 1;
- 		}
+@@ -4933,6 +4933,14 @@ static int hostapd_config_fill(struct hostapd_config *conf,
+ 		bss->mld_indicate_disabled = atoi(pos);
+ #endif /* CONFIG_TESTING_OPTIONS */
  #endif /* CONFIG_IEEE80211BE */
 +	} else if (os_strcmp(buf, "owl") == 0) {
 +		int val = atoi(pos);
@@ -31,22 +31,22 @@ index dfb34fa1d..c38065225 100644
  	} else if (mxl_hostapd_config_fill(conf, bss, buf, pos, line)) {
  #endif /* CONFIG_VENDOR_MXL */
 diff --git a/src/ap/ap_config.h b/src/ap/ap_config.h
-index 760d69950..1d78bb24f 100644
+index 43c971f4c..7ad85c0d6 100644
 --- a/src/ap/ap_config.h
 +++ b/src/ap/ap_config.h
-@@ -1191,6 +1191,7 @@ struct hostapd_config {
- 		MBSSID_ENABLED = 1,
- 		ENHANCED_MBSSID_ENABLED = 2,
- 	} mbssid;
-+	u8 owl; /* Forwarding incoming probe reqests to upper layers */
+@@ -1244,6 +1244,7 @@ struct hostapd_config {
+ 	bool channel_usage;
+ 	bool peer_to_peer_twt;
  #ifdef CONFIG_VENDOR_MXL
++	u8 owl; /* Forwarding incoming probe reqests to upper layers */
  	struct mxl_hostapd_config mxl_conf;
  #endif /* CONFIG_VENDOR_MXL */
+ };
 diff --git a/src/ap/beacon.c b/src/ap/beacon.c
-index 7a19c4f00..e058de068 100644
+index 2ed3c1406..00e9b3092 100644
 --- a/src/ap/beacon.c
 +++ b/src/ap/beacon.c
-@@ -1215,6 +1215,31 @@ void sta_track_claim_taxonomy_info(struct hostapd_iface *iface, const u8 *addr,
+@@ -1309,6 +1309,31 @@ void sta_track_claim_taxonomy_info(struct hostapd_iface *iface, const u8 *addr,
  }
  #endif /* CONFIG_TAXONOMY */
  
@@ -78,7 +78,7 @@ index 7a19c4f00..e058de068 100644
  
  #ifdef CONFIG_IEEE80211BE
  static bool parse_ml_probe_req(const struct ieee80211_eht_ml *ml, size_t ml_len,
-@@ -1337,6 +1362,9 @@ void handle_probe_req(struct hostapd_data *hapd,
+@@ -1432,6 +1457,9 @@ void handle_probe_req(struct hostapd_data *hapd,
  		return; /* should be harmless. no allocs done to free */
  #endif /* CONFIG_VENDOR_MXL */
  
@@ -89,17 +89,17 @@ index 7a19c4f00..e058de068 100644
  	if (hapd->iconf->track_sta_max_num)
  		sta_track_add(hapd->iface, mgmt->sa, ssi_signal);
 diff --git a/src/common/wpa_ctrl.h b/src/common/wpa_ctrl.h
-index d0650f8a0..ed4190aa3 100644
+index ebc7e6eee..9932c03e3 100644
 --- a/src/common/wpa_ctrl.h
 +++ b/src/common/wpa_ctrl.h
-@@ -438,6 +438,7 @@ extern "C" {
- 
+@@ -462,6 +462,7 @@ extern "C" {
+ #ifdef CONFIG_VENDOR_MXL
  #define HOSTAPD_DISCONNECTED "HOSTAPD-DISCONNECTED"
  #define UNCONNECTED_STA_RSSI "UNCONNECTED-STA-RSSI "
 +#define AP_PROBE_REQ_RECEIVED "AP-PROBE-REQ-RECEIVED "
+ #endif /* CONFIG_VENDOR_MXL */
  
  #ifndef BIT
- #define BIT(x) (1U << (x))
 -- 
 2.43.0
 

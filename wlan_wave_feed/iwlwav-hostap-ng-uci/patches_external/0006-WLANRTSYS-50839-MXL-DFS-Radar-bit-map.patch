@@ -1,4 +1,4 @@
-From 1d198d8786de1149d41ed6ffc962e9efe1a922be Mon Sep 17 00:00:00 2001
+From ca60a82fa82127bf08a09c1cc10f6f763009ba0d Mon Sep 17 00:00:00 2001
 From: mvuls <mvuls@maxlinear.com>
 Date: Wed, 8 Nov 2023 10:39:02 +0200
 Subject: [PATCH] WLANRTSYS-50839: MXL DFS Radar bit map
@@ -7,14 +7,14 @@ Subject: [PATCH] WLANRTSYS-50839: MXL DFS Radar bit map
  src/ap/dfs.c                       | 10 ++++++++++
  src/ap/mxl_dfs_common.c            | 23 +++++++++++++++++++++++
  src/ap/mxl_dfs_common.h            |  4 ++++
- src/drivers/driver_nl80211_event.c |  6 ++++++
- 4 files changed, 43 insertions(+)
+ src/drivers/driver_nl80211_event.c | 14 +++++++++++++-
+ 4 files changed, 50 insertions(+), 1 deletion(-)
 
 diff --git a/src/ap/dfs.c b/src/ap/dfs.c
-index 738158db8..ac5af55ae 100644
+index 051a6f272..fb6ca5295 100644
 --- a/src/ap/dfs.c
 +++ b/src/ap/dfs.c
-@@ -714,6 +714,9 @@ static int set_dfs_state(struct hostapd_iface *iface, int freq, int ht_enabled,
+@@ -724,6 +724,9 @@ static int set_dfs_state(struct hostapd_iface *iface, int freq, int ht_enabled,
  	wpa_printf(MSG_DEBUG, "DFS freq: %dMHz, n_chans: %d", frequency,
  		   n_chans);
  	for (i = 0; i < n_chans; i++) {
@@ -24,7 +24,7 @@ index 738158db8..ac5af55ae 100644
  		ret += set_dfs_state_freq(iface, frequency, state);
  		frequency = frequency + 20;
  
-@@ -1449,15 +1452,22 @@ int mxl_dfs_get_start_chan_idx(struct hostapd_iface *iface, int *seg1_start) { r
+@@ -1476,15 +1479,22 @@ int mxl_dfs_get_start_chan_idx(struct hostapd_iface *iface, int *seg1_start) { r
  int mxl_dfs_check_chans_unavailable(struct hostapd_iface *iface, int start_chan_idx, int n_chans)
  	{ return dfs_check_chans_unavailable(iface, start_chan_idx, n_chans); }
  int mxl_hostapd_dfs_start_channel_switch(struct hostapd_iface *iface) { return hostapd_dfs_start_channel_switch(iface); }
@@ -45,8 +45,8 @@ index 738158db8..ac5af55ae 100644
  		freq, ht_enabled, chan_offset, chan_width, cf1, cf2);
 +#endif
  
- 	/* Proceed only if DFS is not offloaded to the driver */
- 	if (iface->drv_flags & WPA_DRIVER_FLAGS_DFS_OFFLOAD)
+ 	iface->radar_detected = true;
+ 
 diff --git a/src/ap/mxl_dfs_common.c b/src/ap/mxl_dfs_common.c
 index 0dae4e510..81626b96e 100644
 --- a/src/ap/mxl_dfs_common.c
@@ -93,23 +93,38 @@ index b8bdb234b..d63de6e51 100644
  
  #endif /* MXL_DFS_COMMON_H */
 diff --git a/src/drivers/driver_nl80211_event.c b/src/drivers/driver_nl80211_event.c
-index ba378bf6e..8418127ae 100644
+index 589527859..fbeccc6c2 100644
 --- a/src/drivers/driver_nl80211_event.c
 +++ b/src/drivers/driver_nl80211_event.c
-@@ -2520,7 +2520,13 @@ static void nl80211_radar_event(struct wpa_driver_nl80211_data *drv,
+@@ -2536,7 +2536,19 @@ static void nl80211_process_radar_event(struct i802_bss *bss,
  
  	switch (event_type) {
  	case NL80211_RADAR_DETECTED:
++/*To-do
++ * MXL Specific Change*/
++#if 0
 +#if defined(CONFIG_VENDOR_MXL) && !defined(CONFIG_VENDOR_MXL_BUILD_FOR_SUPPLICANT)
-+		mxl_hostapd_set_rbm(drv->ctx, tb[NL80211_ATTR_RADAR_BIT_MAP] ? nla_get_u8(tb[NL80211_ATTR_RADAR_BIT_MAP]) : 0);
++		mxl_hostapd_set_rbm(bss->ctx, tb[NL80211_ATTR_RADAR_BIT_MAP] ? nla_get_u8(tb[NL80211_ATTR_RADAR_BIT_MAP]) : 0);
 +#endif /* defined(CONFIG_VENDOR_MXL) && !defined(CONFIG_VENDOR_MXL_BUILD_FOR_SUPPLICANT) */
- 		wpa_supplicant_event(drv->ctx, EVENT_DFS_RADAR_DETECTED, &data);
++#endif
+ 		wpa_supplicant_event(bss->ctx, EVENT_DFS_RADAR_DETECTED, data);
++#if 0
 +#if defined(CONFIG_VENDOR_MXL) && !defined(CONFIG_VENDOR_MXL_BUILD_FOR_SUPPLICANT)
-+		mxl_hostapd_clear_rbm(drv->ctx);
++		mxl_hostapd_clear_rbm(bss->ctx);
 +#endif /* defined(CONFIG_VENDOR_MXL) && !defined(CONFIG_VENDOR_MXL_BUILD_FOR_SUPPLICANT) */
++#endif
  		break;
  	case NL80211_RADAR_CAC_FINISHED:
- 		wpa_supplicant_event(drv->ctx, EVENT_DFS_CAC_FINISHED, &data);
+ 		wpa_supplicant_event(bss->ctx, EVENT_DFS_CAC_FINISHED, data);
+@@ -2556,7 +2568,7 @@ static void nl80211_process_radar_event(struct i802_bss *bss,
+ 		break;
+ #if defined(CONFIG_VENDOR_MXL) && !defined(CONFIG_VENDOR_MXL_BUILD_FOR_SUPPLICANT)
+ 	case NL80211_RADAR_CAC_PAUSED:
+-		mxl_hostapd_event_dfs_cac_paused(drv->ctx, &data.dfs_event);
++		mxl_hostapd_event_dfs_cac_paused(bss->ctx, data->dfs_event);
+ 		break;
+ #endif /* defined(CONFIG_VENDOR_MXL) && !defined(CONFIG_VENDOR_MXL_BUILD_FOR_SUPPLICANT) */
+ 	default:
 -- 
 2.43.0
 

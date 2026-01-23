@@ -1,4 +1,4 @@
-From 78ae30d8de60092979719f3baa05368762d12f07 Mon Sep 17 00:00:00 2001
+From eeda46f6e5ff67a465e0c21b8739848e96b2aefe Mon Sep 17 00:00:00 2001
 From: Jurijs Soloveckis <jsoloveckis@maxlinear.com>
 Date: Tue, 25 Apr 2023 15:38:28 +0200
 Subject: [PATCH] WLANRTSYS-54640: Fix Tag: Tx Power Envelope
@@ -13,10 +13,10 @@ Subject: [PATCH] WLANRTSYS-54640: Fix Tag: Tx Power Envelope
  create mode 100644 src/ap/mxl_ieee802_11.h
 
 diff --git a/hostapd/Makefile b/hostapd/Makefile
-index 944e399ae..455d3a9b9 100644
+index 4aedc0b54..f11c5c469 100644
 --- a/hostapd/Makefile
 +++ b/hostapd/Makefile
-@@ -372,6 +372,7 @@ OBJS += ../src/ap/mxl_dfs_file.o
+@@ -376,6 +376,7 @@ OBJS += ../src/ap/mxl_dfs_file.o
  OBJS += ../src/ap/mxl_zwdfs.o
  OBJS += ../src/ap/mxl_softblock.o
  OBJS += ../src/ap/mxl_rrm.o
@@ -25,7 +25,7 @@ index 944e399ae..455d3a9b9 100644
  
  include ../src/drivers/drivers.mak
 diff --git a/src/ap/beacon.c b/src/ap/beacon.c
-index b5022b07e..ce7faa33c 100644
+index e83a8533a..db7053fb8 100644
 --- a/src/ap/beacon.c
 +++ b/src/ap/beacon.c
 @@ -34,6 +34,9 @@
@@ -38,7 +38,7 @@ index b5022b07e..ce7faa33c 100644
  
  #ifdef NEED_AP_MLME
  
-@@ -825,14 +828,24 @@ static u8 * hostapd_probe_resp_fill_elems(struct hostapd_data *hapd,
+@@ -960,14 +963,24 @@ static u8 * hostapd_probe_resp_fill_elems(struct hostapd_data *hapd,
  	    !is_6ghz_op_class(hapd->iconf->op_class)) {
  		pos = hostapd_eid_vht_capabilities(hapd, pos, 0);
  		pos = hostapd_eid_vht_operation(hapd, pos);
@@ -62,8 +62,8 @@ index b5022b07e..ce7faa33c 100644
 +#endif /* CONFIG_VENDOR_MXL */
  #endif /* CONFIG_IEEE80211AX */
  
- 	pos = hostapd_eid_wb_chsw_wrapper(hapd, pos);
-@@ -2409,14 +2422,24 @@ int ieee802_11_build_ap_params(struct hostapd_data *hapd,
+ 	pos = hostapd_eid_chsw_wrapper(hapd, pos);
+@@ -2523,14 +2536,24 @@ int ieee802_11_build_ap_params(struct hostapd_data *hapd,
  	    !is_6ghz_op_class(hapd->iconf->op_class)) {
  		tailpos = hostapd_eid_vht_capabilities(hapd, tailpos, 0);
  		tailpos = hostapd_eid_vht_operation(hapd, tailpos);
@@ -87,7 +87,7 @@ index b5022b07e..ce7faa33c 100644
 +#endif /* CONFIG_VENDOR_MXL */
  #endif /* CONFIG_IEEE80211AX */
  
- 	tailpos = hostapd_eid_wb_chsw_wrapper(hapd, tailpos);
+ 	tailpos = hostapd_eid_chsw_wrapper(hapd, tailpos);
 diff --git a/src/ap/mxl_ieee802_11.c b/src/ap/mxl_ieee802_11.c
 new file mode 100644
 index 000000000..a68499db8

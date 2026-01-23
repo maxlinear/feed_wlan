@@ -1,4 +1,4 @@
-From f3d2c87011e00d9ade2318bd96184b2ac862736e Mon Sep 17 00:00:00 2001
+From b70c4b575d92eacf2b0e5fa7c89064bd38d385bf Mon Sep 17 00:00:00 2001
 From: Jurijs Soloveckis <jsoloveckis@maxlinear.com>
 Date: Thu, 13 Jul 2023 13:19:44 +0200
 Subject: [PATCH] WLANRTSYS-56882: Integrate repeater commits
@@ -45,21 +45,21 @@ Subject: [PATCH] WLANRTSYS-56882: Integrate repeater commits
  hostapd/ctrl_iface.c               |  91 +++++++++++++++++++++
  hostapd/hostapd_cli.c              |   7 ++
  src/drivers/driver.h               |   2 +
- src/drivers/driver_nl80211_event.c |   7 +-
- wpa_supplicant/Makefile            |   1 +
+ src/drivers/driver_nl80211_event.c |   8 +-
+ wpa_supplicant/Makefile            |   2 +
  wpa_supplicant/bss.c               |  10 +++
  wpa_supplicant/bss.h               |   2 +
  wpa_supplicant/events.c            |  53 +++++++++++++
  wpa_supplicant/main.c              |  11 ++-
  wpa_supplicant/wpa_supplicant.c    | 122 +++++++++++++++++++++++++++++
  wpa_supplicant/wpa_supplicant_i.h  |  17 ++++
- 11 files changed, 320 insertions(+), 3 deletions(-)
+ 11 files changed, 322 insertions(+), 3 deletions(-)
 
 diff --git a/hostapd/ctrl_iface.c b/hostapd/ctrl_iface.c
-index 503cacd26..21394c1c5 100644
+index 1861072f6..fc27b716c 100644
 --- a/hostapd/ctrl_iface.c
 +++ b/hostapd/ctrl_iface.c
-@@ -1495,6 +1495,78 @@ static int hostapd_ctrl_iface_reload(struct hostapd_iface *iface)
+@@ -1466,6 +1466,78 @@ static int hostapd_ctrl_iface_reload(struct hostapd_iface *iface)
  	return 0;
  }
  
@@ -138,7 +138,7 @@ index 503cacd26..21394c1c5 100644
  static int hostapd_ctrl_iface_reconf(struct hostapd_iface *iface,
  		char *param)
  {
-@@ -1558,6 +1630,22 @@ static int hostapd_ctrl_iface_disable(struct hostapd_iface *iface)
+@@ -1529,6 +1601,22 @@ static int hostapd_ctrl_iface_disable(struct hostapd_iface *iface)
  	return 0;
  }
  
@@ -161,7 +161,7 @@ index 503cacd26..21394c1c5 100644
  
  static int
  hostapd_ctrl_iface_kick_mismatch_psk_sta_iter(struct hostapd_data *hapd,
-@@ -6464,6 +6552,9 @@ static int hostapd_ctrl_iface_receive_process(struct hostapd_data *hapd,
+@@ -7143,6 +7231,9 @@ static int hostapd_ctrl_iface_receive_process(struct hostapd_data *hapd,
  	} else if (os_strncmp(buf, "GET_HE_PHY_CHANNEL_WIDTH_SET ", sizeof("GET_HE_PHY_CHANNEL_WIDTH_SET ") - 1) == 0) {
  		reply_len = hostapd_ctrl_iface_get_he_phy_channel_width_set(hapd,
  				buf + sizeof("GET_HE_PHY_CHANNEL_WIDTH_SET ") - 1, reply, reply_size);
@@ -172,10 +172,10 @@ index 503cacd26..21394c1c5 100644
  		os_memcpy(reply, "UNKNOWN COMMAND\n", 16);
  		reply_len = 16;
 diff --git a/hostapd/hostapd_cli.c b/hostapd/hostapd_cli.c
-index e49876ba3..19b7c3150 100644
+index 335f00257..a81fe9c2f 100644
 --- a/hostapd/hostapd_cli.c
 +++ b/hostapd/hostapd_cli.c
-@@ -1281,6 +1281,11 @@ static int hostapd_cli_cmd_disable(struct wpa_ctrl *ctrl, int argc,
+@@ -1305,6 +1305,11 @@ static int hostapd_cli_cmd_disable(struct wpa_ctrl *ctrl, int argc,
  	return wpa_ctrl_command(ctrl, "DISABLE");
  }
  
@@ -185,9 +185,9 @@ index e49876ba3..19b7c3150 100644
 +	return wpa_ctrl_command(ctrl, "STOP_AP");
 +}
  
- static int hostapd_cli_cmd_update_beacon(struct wpa_ctrl *ctrl, int argc,
+ static int hostapd_cli_cmd_enable_mld(struct wpa_ctrl *ctrl, int argc,
  				      char *argv[])
-@@ -2554,6 +2559,8 @@ static const struct hostapd_cli_cmd hostapd_cli_commands[] = {
+@@ -2645,6 +2650,8 @@ static const struct hostapd_cli_cmd hostapd_cli_commands[] = {
  #endif /* CONFIG_MBO */
  	{ "get_he_phy_channel_width_set", hostapd_cli_cmd_get_he_phy_channel_width_set, NULL,
  	  "<MAC addr> = get HE PHY Channel Width Set field for specified STA" },
@@ -197,10 +197,10 @@ index e49876ba3..19b7c3150 100644
  };
  
 diff --git a/src/drivers/driver.h b/src/drivers/driver.h
-index 2c402b36b..61293f211 100644
+index fe6e93b4a..547406763 100644
 --- a/src/drivers/driver.h
 +++ b/src/drivers/driver.h
-@@ -6685,6 +6685,7 @@ union wpa_event_data {
+@@ -7016,6 +7016,7 @@ union wpa_event_data {
  
  	/**
  	 * struct ch_switch
@@ -208,7 +208,7 @@ index 2c402b36b..61293f211 100644
  	 * @freq: Frequency of new channel in MHz
  	 * @ht_enabled: Whether this is an HT channel
  	 * @ch_offset: Secondary channel offset
-@@ -6695,6 +6696,7 @@ union wpa_event_data {
+@@ -7026,6 +7027,7 @@ union wpa_event_data {
  	 * @punct_bitmap: Puncturing bitmap
  	 */
  	struct ch_switch {
@@ -217,10 +217,10 @@ index 2c402b36b..61293f211 100644
  		int ht_enabled;
  		int ch_offset;
 diff --git a/src/drivers/driver_nl80211_event.c b/src/drivers/driver_nl80211_event.c
-index ea60f4b86..a30fe8ea5 100644
+index 495e1392f..2caaa6c33 100644
 --- a/src/drivers/driver_nl80211_event.c
 +++ b/src/drivers/driver_nl80211_event.c
-@@ -1230,7 +1230,7 @@ static void mlme_event_ch_switch(struct wpa_driver_nl80211_data *drv,
+@@ -1224,7 +1224,7 @@ static void mlme_event_ch_switch(struct wpa_driver_nl80211_data *drv,
  				 struct nlattr *ifindex, struct nlattr *link,
  				 struct nlattr *freq, struct nlattr *type,
  				 struct nlattr *bw, struct nlattr *cf1,
@@ -229,17 +229,18 @@ index ea60f4b86..a30fe8ea5 100644
  				 struct nlattr *punct_bitmap,
  				 int finished)
  {
-@@ -1296,6 +1296,9 @@ static void mlme_event_ch_switch(struct wpa_driver_nl80211_data *drv,
+@@ -1292,6 +1292,10 @@ static void mlme_event_ch_switch(struct wpa_driver_nl80211_data *drv,
  	if (cf2)
  		data.ch_switch.cf2 = nla_get_u32(cf2);
  
++#ifdef CONFIG_VENDOR_MXL
 +	if (!finished && count)
 +		data.ch_switch.count = nla_get_u32(count);
-+
- 	if (finished)
- 		bss->flink->freq = data.ch_switch.freq;
- 
-@@ -4145,6 +4148,7 @@ static void do_process_drv_event(struct i802_bss *bss, int cmd,
++#endif /* CONFIG_VENDOR_MXL */
+ 	if (link) {
+ 		data.ch_switch.link_id = nla_get_u8(link);
+ 		wpa_printf(MSG_DEBUG, "nl80211: Link ID: %d",
+@@ -4316,6 +4320,7 @@ static void do_process_drv_event(struct i802_bss *bss, int cmd,
  				     tb[NL80211_ATTR_CHANNEL_WIDTH],
  				     tb[NL80211_ATTR_CENTER_FREQ1],
  				     tb[NL80211_ATTR_CENTER_FREQ2],
@@ -247,7 +248,7 @@ index ea60f4b86..a30fe8ea5 100644
  				     tb[NL80211_ATTR_PUNCT_BITMAP],
  				     0);
  		break;
-@@ -4157,6 +4161,7 @@ static void do_process_drv_event(struct i802_bss *bss, int cmd,
+@@ -4328,6 +4333,7 @@ static void do_process_drv_event(struct i802_bss *bss, int cmd,
  				     tb[NL80211_ATTR_CHANNEL_WIDTH],
  				     tb[NL80211_ATTR_CENTER_FREQ1],
  				     tb[NL80211_ATTR_CENTER_FREQ2],
@@ -256,22 +257,23 @@ index ea60f4b86..a30fe8ea5 100644
  				     1);
  		break;
 diff --git a/wpa_supplicant/Makefile b/wpa_supplicant/Makefile
-index 0cc61c639..b4a3f38eb 100644
+index 544cf6634..08fcd2e45 100644
 --- a/wpa_supplicant/Makefile
 +++ b/wpa_supplicant/Makefile
-@@ -124,6 +124,7 @@ OBJS_c += ../src/utils/wpa_debug.o
+@@ -123,6 +123,8 @@ OBJS_c = wpa_cli.o ../src/common/wpa_ctrl.o
+ OBJS_c += ../src/utils/wpa_debug.o
  OBJS_c += ../src/utils/common.o
  OBJS_c += ../src/common/cli.o
- OBJS += wmm_ac.o
++OBJS += wmm_ac.o
 +OBJS += ../src/common/wpa_ctrl.o
  
  ifndef CONFIG_OS
  ifdef CONFIG_NATIVE_WINDOWS
 diff --git a/wpa_supplicant/bss.c b/wpa_supplicant/bss.c
-index e07061abb..022ea8556 100644
+index 0afac49e3..0d99ab2a3 100644
 --- a/wpa_supplicant/bss.c
 +++ b/wpa_supplicant/bss.c
-@@ -295,6 +295,9 @@ void calculate_update_time(const struct os_reltime *fetch_time,
+@@ -381,6 +381,9 @@ void calculate_update_time(const struct os_reltime *fetch_time,
  static void wpa_bss_copy_res(struct wpa_bss *dst, struct wpa_scan_res *src,
  			     struct os_reltime *fetch_time)
  {
@@ -281,7 +283,7 @@ index e07061abb..022ea8556 100644
  	dst->flags = src->flags;
  	os_memcpy(dst->bssid, src->bssid, ETH_ALEN);
  	dst->freq = src->freq;
-@@ -309,6 +312,13 @@ static void wpa_bss_copy_res(struct wpa_bss *dst, struct wpa_scan_res *src,
+@@ -395,6 +398,13 @@ static void wpa_bss_copy_res(struct wpa_bss *dst, struct wpa_scan_res *src,
  	dst->est_throughput = src->est_throughput;
  	dst->snr = src->snr;
  
@@ -296,10 +298,10 @@ index e07061abb..022ea8556 100644
  }
  
 diff --git a/wpa_supplicant/bss.h b/wpa_supplicant/bss.h
-index 7b13ef96b..a73c8e788 100644
+index 74ef3c858..c7921bebd 100644
 --- a/wpa_supplicant/bss.h
 +++ b/wpa_supplicant/bss.h
-@@ -94,6 +94,8 @@ struct wpa_bss {
+@@ -91,6 +91,8 @@ struct wpa_bss {
  	u8 ssid[SSID_MAX_LEN];
  	/** Length of SSID */
  	size_t ssid_len;
@@ -309,10 +311,10 @@ index 7b13ef96b..a73c8e788 100644
  	int freq;
  	/** The max channel width supported by both the AP and the STA */
 diff --git a/wpa_supplicant/events.c b/wpa_supplicant/events.c
-index 90a2f9c27..bc4d8ba96 100644
+index 4f7ea209f..def0fdc75 100644
 --- a/wpa_supplicant/events.c
 +++ b/wpa_supplicant/events.c
-@@ -5876,6 +5876,57 @@ static void wpa_supplicant_event_csa_received(struct wpa_supplicant *wpa_s,
+@@ -6130,6 +6130,57 @@ static void wpa_supplicant_event_csa_received(struct wpa_supplicant *wpa_s,
  		csa->count);
  }
  
@@ -370,7 +372,7 @@ index 90a2f9c27..bc4d8ba96 100644
  
  static const char * bitmap_to_str(u8 value, char *buf)
  {
-@@ -6308,6 +6359,8 @@ void wpa_supplicant_event(void *ctx, enum wpa_event_type event,
+@@ -6608,6 +6659,8 @@ void wpa_supplicant_event(void *ctx, enum wpa_event_type event,
  		}
  		break;
  	case EVENT_CH_SWITCH_STARTED:
@@ -423,10 +425,10 @@ index 9229eb51f..16915b936 100644
  			iface->ifname = optarg;
  			break;
 diff --git a/wpa_supplicant/wpa_supplicant.c b/wpa_supplicant/wpa_supplicant.c
-index f033f24ff..cb60c99a5 100644
+index 413ad20b7..daeae358e 100644
 --- a/wpa_supplicant/wpa_supplicant.c
 +++ b/wpa_supplicant/wpa_supplicant.c
-@@ -134,6 +134,75 @@ static void wpas_update_fils_connect_params(struct wpa_supplicant *wpa_s);
+@@ -136,6 +136,75 @@ static void wpas_update_fils_connect_params(struct wpa_supplicant *wpa_s);
  static void wpas_update_owe_connect_params(struct wpa_supplicant *wpa_s);
  #endif /* CONFIG_OWE */
  
@@ -502,7 +504,7 @@ index f033f24ff..cb60c99a5 100644
  
  #ifdef CONFIG_WEP
  /* Configure default/group WEP keys for static WEP */
-@@ -919,6 +988,29 @@ void wpa_supplicant_reinit_autoscan(struct wpa_supplicant *wpa_s)
+@@ -1034,6 +1103,29 @@ void wpa_supplicant_reinit_autoscan(struct wpa_supplicant *wpa_s)
  	}
  }
  
@@ -530,9 +532,9 @@ index f033f24ff..cb60c99a5 100644
 +	hostapd_reload(wpa_s, wpa_s->current_bss);
 +}
  
- /**
-  * wpa_supplicant_set_state - Set current connection state
-@@ -1036,6 +1128,11 @@ void wpa_supplicant_set_state(struct wpa_supplicant *wpa_s,
+ static void wpas_verify_ssid_beacon(void *eloop_ctx, void *timeout_ctx)
+ {
+@@ -1243,6 +1335,11 @@ void wpa_supplicant_set_state(struct wpa_supplicant *wpa_s,
  
  		sme_sched_obss_scan(wpa_s, 1);
  
@@ -544,8 +546,8 @@ index f033f24ff..cb60c99a5 100644
  #if defined(CONFIG_FILS) && defined(IEEE8021X_EAPOL)
  		if (!fils_hlp_sent && ssid && ssid->eap.erp)
  			update_fils_connect_params = true;
-@@ -1046,6 +1143,12 @@ void wpa_supplicant_set_state(struct wpa_supplicant *wpa_s,
- #endif /* CONFIG_OWE */
+@@ -1259,6 +1356,12 @@ void wpa_supplicant_set_state(struct wpa_supplicant *wpa_s,
+ 		}
  	} else if (state == WPA_DISCONNECTED || state == WPA_ASSOCIATING ||
  		   state == WPA_ASSOCIATED) {
 +		if (wpa_s->hostapd &&
@@ -557,7 +559,7 @@ index f033f24ff..cb60c99a5 100644
  		wpa_s->new_connection = 1;
  		wpa_drv_set_operstate(wpa_s, 0);
  #ifndef IEEE8021X_EAPOL
-@@ -2570,6 +2673,10 @@ void wpa_supplicant_associate(struct wpa_supplicant *wpa_s,
+@@ -2858,6 +2961,10 @@ void wpa_supplicant_associate(struct wpa_supplicant *wpa_s,
  			return;
  		}
  		wpa_s->current_bss = bss;
@@ -568,7 +570,7 @@ index f033f24ff..cb60c99a5 100644
  #else /* CONFIG_MESH */
  		wpa_msg(wpa_s, MSG_ERROR,
  			"mesh mode support not included in the build");
-@@ -7131,6 +7238,21 @@ static int wpa_supplicant_init_iface(struct wpa_supplicant *wpa_s,
+@@ -7637,6 +7744,21 @@ static int wpa_supplicant_init_iface(struct wpa_supplicant *wpa_s,
  			   sizeof(wpa_s->bridge_ifname));
  	}
  
@@ -591,7 +593,7 @@ index f033f24ff..cb60c99a5 100644
  	eapol_sm_notify_portEnabled(wpa_s->eapol, false);
  	eapol_sm_notify_portValid(wpa_s->eapol, false);
 diff --git a/wpa_supplicant/wpa_supplicant_i.h b/wpa_supplicant/wpa_supplicant_i.h
-index c626781d6..917cd7045 100644
+index c08fda45e..ff7549638 100644
 --- a/wpa_supplicant/wpa_supplicant_i.h
 +++ b/wpa_supplicant/wpa_supplicant_i.h
 @@ -115,6 +115,17 @@ struct wpa_interface {
@@ -612,7 +614,7 @@ index c626781d6..917cd7045 100644
  	/**
  	 * p2p_mgmt - Interface used for P2P management (P2P Device operations)
  	 *
-@@ -516,6 +527,9 @@ struct driver_signal_override {
+@@ -508,6 +519,9 @@ struct driver_signal_override {
  	int scan_level;
  };
  
@@ -622,7 +624,7 @@ index c626781d6..917cd7045 100644
  struct robust_av_data {
  	u8 dialog_token;
  	enum scs_request_type request_type;
-@@ -707,6 +721,9 @@ struct wpa_supplicant {
+@@ -711,6 +725,9 @@ struct wpa_supplicant {
  #endif /* CONFIG_CTRL_IFACE_BINDER */
  	char bridge_ifname[16];
  

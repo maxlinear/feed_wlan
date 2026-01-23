@@ -1,4 +1,4 @@
-From b09218c6afc935b4ce14c84176de1a57e6d34094 Mon Sep 17 00:00:00 2001
+From c4af8be5ea33be4abfa6e7063a44eed97ffb78bc Mon Sep 17 00:00:00 2001
 From: Jurijs Soloveckis <jsoloveckis@maxlinear.com>
 Date: Sat, 20 May 2023 12:00:52 +0200
 Subject: [PATCH] WLANRTSYS-55431: Add support for BSS Load IE
@@ -17,10 +17,10 @@ Subject: [PATCH] WLANRTSYS-55431: Add support for BSS Load IE
  10 files changed, 167 insertions(+), 1 deletion(-)
 
 diff --git a/hostapd/config_file.c b/hostapd/config_file.c
-index 380a30a84..1d1d8afa2 100644
+index 74604b5e7..94f5bb1ea 100644
 --- a/hostapd/config_file.c
 +++ b/hostapd/config_file.c
-@@ -3450,6 +3450,14 @@ static int hostapd_config_fill(struct hostapd_config *conf,
+@@ -3508,6 +3508,14 @@ static int hostapd_config_fill(struct hostapd_config *conf,
  			return 1;
  		}
  		bss->chan_util_avg_period = val;
@@ -36,10 +36,10 @@ index 380a30a84..1d1d8afa2 100644
  		conf->rts_threshold = atoi(pos);
  		if (conf->rts_threshold < -1 || conf->rts_threshold > 65535) {
 diff --git a/hostapd/ctrl_iface.c b/hostapd/ctrl_iface.c
-index e901cc545..0f5a1d74b 100644
+index 53d0db3ec..3366c4195 100644
 --- a/hostapd/ctrl_iface.c
 +++ b/hostapd/ctrl_iface.c
-@@ -68,6 +68,7 @@
+@@ -70,6 +70,7 @@
  #include "fst/fst_ctrl_iface.h"
  #include "config_file.h"
  #include "ctrl_iface.h"
@@ -47,7 +47,7 @@ index e901cc545..0f5a1d74b 100644
  #ifdef CONFIG_VENDOR_MXL
  #include "mxl_ctrl_iface.h"
  #include "common/mxl_ieee802_11_common.h"
-@@ -4960,6 +4961,50 @@ static int hostapd_ctrl_iface_get_hidden_mode(struct hostapd_data *hapd, char *r
+@@ -5601,6 +5602,50 @@ static int hostapd_ctrl_iface_get_hidden_mode(struct hostapd_data *hapd, char *r
  	return ret;
  }
  
@@ -98,7 +98,7 @@ index e901cc545..0f5a1d74b 100644
  static int hostapd_ctrl_iface_receive_process(struct hostapd_data *hapd,
  					      char *buf, char *reply,
  					      int reply_size,
-@@ -5589,6 +5634,9 @@ static int hostapd_ctrl_iface_receive_process(struct hostapd_data *hapd,
+@@ -6275,6 +6320,9 @@ static int hostapd_ctrl_iface_receive_process(struct hostapd_data *hapd,
  			reply_len = -1;
  	} else if (os_strncmp(buf, "GET_COLOR_TABLE", 15) == 0) {
  		reply_len = hostapd_ctrl_iface_get_color_table(hapd->iface, reply, reply_size);
@@ -109,10 +109,10 @@ index e901cc545..0f5a1d74b 100644
  	} else {
  		os_memcpy(reply, "UNKNOWN COMMAND\n", 16);
 diff --git a/hostapd/hostapd_cli.c b/hostapd/hostapd_cli.c
-index 84c672f39..cca0c4dce 100644
+index 43cf44b8c..2bc1fc7c8 100644
 --- a/hostapd/hostapd_cli.c
 +++ b/hostapd/hostapd_cli.c
-@@ -2063,6 +2063,47 @@ static int hostapd_cli_cmd_get_color_table(struct wpa_ctrl *ctrl, int argc,
+@@ -2133,6 +2133,47 @@ static int hostapd_cli_cmd_get_color_table(struct wpa_ctrl *ctrl, int argc,
  }
  #endif /* CONFIG_IEEE80211AX */
  
@@ -160,7 +160,7 @@ index 84c672f39..cca0c4dce 100644
  struct hostapd_cli_cmd {
  	const char *cmd;
  	int (*handler)(struct wpa_ctrl *ctrl, int argc, char *argv[]);
-@@ -2329,6 +2370,8 @@ static const struct hostapd_cli_cmd hostapd_cli_commands[] = {
+@@ -2420,6 +2461,8 @@ static const struct hostapd_cli_cmd hostapd_cli_commands[] = {
  	{ "get_color_table", hostapd_cli_cmd_get_color_table, NULL,
  	  " Get bss used color table and collision history" },
  #endif /* CONFIG_IEEE80211AX */
@@ -170,10 +170,10 @@ index 84c672f39..cca0c4dce 100644
  };
  
 diff --git a/src/ap/ap_config.h b/src/ap/ap_config.h
-index b7508a1eb..e02f578d6 100644
+index b01ddbdc1..b2fa74724 100644
 --- a/src/ap/ap_config.h
 +++ b/src/ap/ap_config.h
-@@ -337,6 +337,7 @@ struct hostapd_bss_config {
+@@ -339,6 +339,7 @@ struct hostapd_bss_config {
  	int dtim_period;
  	unsigned int bss_load_update_period;
  	unsigned int chan_util_avg_period;
@@ -182,10 +182,10 @@ index b7508a1eb..e02f578d6 100644
  	int ieee802_1x; /* use IEEE 802.1X */
  	int eapol_version;
 diff --git a/src/ap/ap_drv_ops.h b/src/ap/ap_drv_ops.h
-index f17a50d1e..fe2870fda 100644
+index e640ad6be..d7370f85f 100644
 --- a/src/ap/ap_drv_ops.h
 +++ b/src/ap/ap_drv_ops.h
-@@ -486,6 +486,15 @@ static inline int hostapd_drv_get_tx_power_20mhz(struct hostapd_data *hapd,
+@@ -519,6 +519,15 @@ static inline int hostapd_drv_get_tx_power_20mhz(struct hostapd_data *hapd,
  	return hapd->driver->get_tx_power_20mhz(hapd->drv_priv, tx_power_20mhz);
  }
  
@@ -202,7 +202,7 @@ index f17a50d1e..fe2870fda 100644
  static inline int hostapd_drv_driver_cmd(struct hostapd_data *hapd,
  					 char *cmd, char *buf, size_t buf_len)
 diff --git a/src/ap/beacon.c b/src/ap/beacon.c
-index 9897fe3af..7f27f4a5c 100644
+index 8bbf0a3e1..7a7c5ace7 100644
 --- a/src/ap/beacon.c
 +++ b/src/ap/beacon.c
 @@ -54,6 +54,7 @@ static u8 * hostapd_eid_bss_load(struct hostapd_data *hapd, u8 *eid, size_t len)
@@ -230,7 +230,7 @@ index 9897fe3af..7f27f4a5c 100644
  }
  
  
-@@ -2768,6 +2779,12 @@ static int __ieee802_11_set_beacon(struct hostapd_data *hapd)
+@@ -2894,6 +2905,12 @@ static int __ieee802_11_set_beacon(struct hostapd_data *hapd)
  
  	hapd->beacon_set_done = 1;
  
@@ -283,10 +283,10 @@ index ac3c793c9..b92c71424 100644
  
  #endif /* BSS_LOAD_UPDATE_H */
 diff --git a/src/drivers/driver.h b/src/drivers/driver.h
-index 7c716700f..dce9d4c19 100644
+index 2f94c2552..a7c53e669 100644
 --- a/src/drivers/driver.h
 +++ b/src/drivers/driver.h
-@@ -5247,6 +5247,14 @@ struct wpa_driver_ops {
+@@ -5544,6 +5544,14 @@ struct wpa_driver_ops {
  	 */
  	int (*get_tx_power_20mhz)(void *priv, int *tx_power_20mhz);
  
@@ -302,10 +302,10 @@ index 7c716700f..dce9d4c19 100644
  	int (*register_frame)(void *priv, u16 type,
  			      const u8 *match, size_t match_len,
 diff --git a/src/drivers/driver_nl80211.c b/src/drivers/driver_nl80211.c
-index 43bd676c6..23a293250 100644
+index 9803d0b16..7c1aad7c7 100644
 --- a/src/drivers/driver_nl80211.c
 +++ b/src/drivers/driver_nl80211.c
-@@ -14151,6 +14151,18 @@ out:
+@@ -14994,6 +14994,18 @@ out:
  	return ret;
  }
  
@@ -324,7 +324,7 @@ index 43bd676c6..23a293250 100644
  const struct wpa_driver_ops wpa_driver_nl80211_ops = {
  	.name = "nl80211",
  	.desc = "Linux nl80211/cfg80211",
-@@ -14307,6 +14319,7 @@ const struct wpa_driver_ops wpa_driver_nl80211_ops = {
+@@ -15160,6 +15172,7 @@ const struct wpa_driver_ops wpa_driver_nl80211_ops = {
  	.set_mbssid_vap_mode = nl80211_set_mbssid_vap,
  	.set_mbssid_num_vaps_in_group = nl80211_set_mbssid_num_vaps_in_group,
  	.get_tx_power_20mhz = nl80211_get_tx_power_20mhz,

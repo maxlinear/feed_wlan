@@ -1,4 +1,4 @@
-From 441b7d0480412eafdb2df8d459ca39bf3846f860 Mon Sep 17 00:00:00 2001
+From f91b1cfcfd4b1e05ba22e0777317f14bf7473cf1 Mon Sep 17 00:00:00 2001
 From: Dmitrijs Martinovs <dmartinovs@maxlinear.com>
 Date: Fri, 16 Jun 2023 15:42:38 +0200
 Subject: [PATCH] WLANRTSYS-56151: Dynamic country change
@@ -14,10 +14,10 @@ Subject: [PATCH] WLANRTSYS-56151: Dynamic country change
  7 files changed, 135 insertions(+), 21 deletions(-)
 
 diff --git a/hostapd/config_file.c b/hostapd/config_file.c
-index d3789dc83..ad079fff9 100644
+index 14ad47fd6..18126c836 100644
 --- a/hostapd/config_file.c
 +++ b/hostapd/config_file.c
-@@ -2820,6 +2820,13 @@ static int hostapd_config_fill(struct hostapd_config *conf,
+@@ -2761,6 +2761,13 @@ static int hostapd_config_fill(struct hostapd_config *conf,
  		os_memcpy(conf->country, pos, 2);
  	} else if (os_strcmp(buf, "country3") == 0) {
  		conf->country[2] = strtol(pos, NULL, 16);
@@ -32,10 +32,10 @@ index d3789dc83..ad079fff9 100644
  		conf->ieee80211d = atoi(pos);
  	} else if (os_strcmp(buf, "ieee80211h") == 0) {
 diff --git a/src/ap/ap_config.h b/src/ap/ap_config.h
-index 187ca23a1..1f7bd033b 100644
+index fe03c1cc9..71f63abb5 100644
 --- a/src/ap/ap_config.h
 +++ b/src/ap/ap_config.h
-@@ -1211,6 +1211,14 @@ struct hostapd_config {
+@@ -1242,6 +1242,14 @@ struct hostapd_config {
  			  *	Annex E table (0x04 = global table)
  			  */
  
@@ -51,10 +51,10 @@ index 187ca23a1..1f7bd033b 100644
  
  	int ieee80211h; /* DFS */
 diff --git a/src/ap/dfs.c b/src/ap/dfs.c
-index 46b31ef6e..128e96f70 100644
+index 919883e68..98a987484 100644
 --- a/src/ap/dfs.c
 +++ b/src/ap/dfs.c
-@@ -23,11 +23,6 @@
+@@ -24,11 +24,6 @@
  #include "mxl_zwdfs.h"
  #endif /* CONFIG_VENDOR_MXL */
  
@@ -66,7 +66,7 @@ index 46b31ef6e..128e96f70 100644
  
  static struct hostapd_channel_data *
  dfs_downgrade_bandwidth(struct hostapd_iface *iface, int *secondary_channel,
-@@ -43,7 +38,7 @@ static bool dfs_use_radar_background(struct hostapd_iface *iface)
+@@ -44,7 +39,7 @@ static bool dfs_use_radar_background(struct hostapd_iface *iface)
  }
  
  
@@ -75,7 +75,7 @@ index 46b31ef6e..128e96f70 100644
  {
  	int n_chans = 1;
  
-@@ -171,7 +166,7 @@ dfs_get_chan_data(struct hostapd_hw_modes *mode, int freq, int first_chan_idx)
+@@ -172,7 +167,7 @@ dfs_get_chan_data(struct hostapd_hw_modes *mode, int freq, int first_chan_idx)
  }
  
  
@@ -84,7 +84,7 @@ index 46b31ef6e..128e96f70 100644
  				    int first_chan_idx, int num_chans,
  				    enum dfs_channel_type type)
  {
-@@ -351,7 +346,7 @@ static void dfs_adjust_center_freq(struct hostapd_iface *iface,
+@@ -359,7 +354,7 @@ static void dfs_adjust_center_freq(struct hostapd_iface *iface,
  
  
  /* Return start channel idx we will use for mode->channels[idx] */
@@ -93,7 +93,7 @@ index 46b31ef6e..128e96f70 100644
  {
  	struct hostapd_hw_modes *mode;
  	struct hostapd_channel_data *chan;
-@@ -1412,7 +1407,7 @@ hostapd_dfs_background_start_channel_switch(struct hostapd_iface *iface,
+@@ -1438,7 +1433,7 @@ hostapd_dfs_background_start_channel_switch(struct hostapd_iface *iface,
  }
  
  
@@ -123,10 +123,10 @@ index 606c1b393..cf4b25325 100644
  
  #endif /* DFS_H */
 diff --git a/src/ap/drv_callbacks.c b/src/ap/drv_callbacks.c
-index 614c3647b..9b040b695 100644
+index 9d7853adb..9674d377b 100644
 --- a/src/ap/drv_callbacks.c
 +++ b/src/ap/drv_callbacks.c
-@@ -2543,7 +2543,7 @@ void wpa_supplicant_event(void *ctx, enum wpa_event_type event,
+@@ -2891,7 +2891,7 @@ void wpa_supplicant_event(void *ctx, enum wpa_event_type event,
  		 * too much stuff. */
  		/* hostapd_get_hw_features(hapd->iface); */
  		hostapd_channel_list_updated(
@@ -136,10 +136,10 @@ index 614c3647b..9b040b695 100644
  	case EVENT_DFS_CAC_STARTED:
  		if (!data)
 diff --git a/src/ap/hostapd.c b/src/ap/hostapd.c
-index 385db1504..396547d60 100644
+index 534d9ca61..3717f57ff 100644
 --- a/src/ap/hostapd.c
 +++ b/src/ap/hostapd.c
-@@ -2158,17 +2158,100 @@ static void channel_list_update_timeout(void *eloop_ctx, void *timeout_ctx)
+@@ -2373,17 +2373,100 @@ static void channel_list_update_timeout(void *eloop_ctx, void *timeout_ctx)
  	setup_interface2(iface);
  }
  
@@ -243,7 +243,7 @@ index 385db1504..396547d60 100644
  		return;
  
  	wpa_printf(MSG_DEBUG, "Channel list updated - continue setup");
-@@ -2235,15 +2318,26 @@ static int setup_interface(struct hostapd_iface *iface)
+@@ -2450,15 +2533,26 @@ static int setup_interface(struct hostapd_iface *iface)
  		if (hostapd_get_country(hapd, previous_country) < 0)
  			previous_country[0] = '\0';
  
@@ -278,10 +278,10 @@ index 385db1504..396547d60 100644
  		if (os_strncmp(previous_country, country, 2) != 0) {
  			wpa_printf(MSG_DEBUG, "Continue interface setup after channel list update");
 diff --git a/src/ap/hostapd.h b/src/ap/hostapd.h
-index 11536c06a..37ccdf0a0 100644
+index f2d4d00cf..fded504d4 100644
 --- a/src/ap/hostapd.h
 +++ b/src/ap/hostapd.h
-@@ -763,7 +763,7 @@ void hostapd_free_hapd_data(struct hostapd_data *hapd);
+@@ -842,7 +842,7 @@ void hostapd_free_hapd_data(struct hostapd_data *hapd);
  void hostapd_cleanup_iface_partial(struct hostapd_iface *iface);
  int hostapd_add_iface(struct hapd_interfaces *ifaces, char *buf);
  int hostapd_remove_iface(struct hapd_interfaces *ifaces, char *buf);

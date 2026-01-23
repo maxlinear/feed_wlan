@@ -1,4 +1,4 @@
-From 8cfad8737dfca56d5ad738d238c0241d6c424424 Mon Sep 17 00:00:00 2001
+From eb88a258f15f7e6906b68453a8378e1e35557b36 Mon Sep 17 00:00:00 2001
 From: Jurijs Soloveckis <jsoloveckis@maxlinear.com>
 Date: Thu, 5 Oct 2023 14:36:55 +0300
 Subject: [PATCH] WLANRTSYS-59251: Implement dynamic EDCA
@@ -15,10 +15,10 @@ Subject: [PATCH] WLANRTSYS-59251: Implement dynamic EDCA
  8 files changed, 48 insertions(+), 1 deletion(-)
 
 diff --git a/hostapd/ctrl_iface.c b/hostapd/ctrl_iface.c
-index 49799de2f..e99448e6f 100644
+index 7317f5fe7..a720d448d 100644
 --- a/hostapd/ctrl_iface.c
 +++ b/hostapd/ctrl_iface.c
-@@ -81,6 +81,10 @@
+@@ -83,6 +83,10 @@
  #ifdef CONFIG_RADIUS_GREYLIST
  #include "ap/greylist.h"
  #endif /* CONFIG_RADIUS_GREYLIST */
@@ -29,7 +29,7 @@ index 49799de2f..e99448e6f 100644
  
  #define HOSTAPD_CLI_DUP_VALUE_MAX_LEN 256
  
-@@ -1435,6 +1439,9 @@ static int hostapd_ctrl_iface_set(struct hostapd_data *hapd, char *cmd)
+@@ -1408,6 +1412,9 @@ static int hostapd_ctrl_iface_set(struct hostapd_data *hapd, char *cmd)
  		} else if (os_strcasecmp(cmd, "transition_disable") == 0) {
  			wpa_auth_set_transition_disable(hapd->wpa_auth,
  							hapd->conf->transition_disable);
@@ -58,10 +58,10 @@ index a00a1449b..70d4d3791 100644
  		return 0;
  
 diff --git a/hostapd/mxl_ctrl_iface.c b/hostapd/mxl_ctrl_iface.c
-index 8669345db..e8c17a6ce 100644
+index 65c943b33..677af30aa 100644
 --- a/hostapd/mxl_ctrl_iface.c
 +++ b/hostapd/mxl_ctrl_iface.c
-@@ -2946,6 +2946,32 @@ int mxl_hostapd_ctrl_iface_receive_process(struct hostapd_data *hapd,
+@@ -2949,6 +2949,32 @@ int mxl_hostapd_ctrl_iface_receive_process(struct hostapd_data *hapd,
  	return 1;
  }
  
@@ -106,18 +106,20 @@ index 19eb39010..060d8d5ef 100644
  
  #endif /* MXL_CTRL_IFACE_H */
 diff --git a/src/ap/drv_callbacks.c b/src/ap/drv_callbacks.c
-index aa0cf239c..9155b6048 100644
+index 7858251ba..e67455015 100644
 --- a/src/ap/drv_callbacks.c
 +++ b/src/ap/drv_callbacks.c
-@@ -43,7 +43,7 @@
- #include "fils_hlp.h"
- #include "neighbor_db.h"
+@@ -46,9 +46,9 @@
+ #include "nan_usd_ap.h"
+ #ifdef CONFIG_VENDOR_MXL
  #include "../hostapd/mxl_ctrl_iface.h"
--
 +#include "ap/mxl_config.h"
+ #endif /* CONFIG_VENDOR_MXL */
  
+-
  #ifdef CONFIG_FILS
  void hostapd_notify_assoc_fils_finish(struct hostapd_data *hapd,
+ 				      struct sta_info *sta)
 diff --git a/src/ap/mxl_config.h b/src/ap/mxl_config.h
 index 18e205d6d..01e18386c 100644
 --- a/src/ap/mxl_config.h

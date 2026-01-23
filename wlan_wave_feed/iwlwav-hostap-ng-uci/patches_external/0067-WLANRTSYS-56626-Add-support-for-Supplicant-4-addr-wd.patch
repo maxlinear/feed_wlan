@@ -1,4 +1,4 @@
-From d3f486619d3a81fd4c7021f9bd85632f36c44338 Mon Sep 17 00:00:00 2001
+From 2e57f86ca976d01bbbbe7bf7316cba21af2f0b47 Mon Sep 17 00:00:00 2001
 From: mvulsx <mvuls@maxlinear.com>
 Date: Fri, 30 Jun 2023 12:18:22 +0000
 Subject: [PATCH] WLANRTSYS-56626: Add support for Supplicant 4-addr (wds) mode
@@ -12,18 +12,18 @@ Signed-off-by: mvulsx <mvuls@maxlinear.com>
  wpa_supplicant/config.c           | 53 +++++++++++++++++++
  wpa_supplicant/config.h           | 20 +++++++
  wpa_supplicant/config_file.c      |  2 +
- wpa_supplicant/ctrl_iface.c       | 66 +-----------------------
+ wpa_supplicant/ctrl_iface.c       | 66 +----------------------
  wpa_supplicant/events.c           |  2 +
  wpa_supplicant/sme.c              |  3 ++
- wpa_supplicant/wpa_supplicant.c   | 86 +++++++++++++++++++++++++++++--
+ wpa_supplicant/wpa_supplicant.c   | 88 +++++++++++++++++++++++++++++--
  wpa_supplicant/wpa_supplicant_i.h |  4 +-
- 11 files changed, 186 insertions(+), 69 deletions(-)
+ 11 files changed, 188 insertions(+), 69 deletions(-)
 
 diff --git a/src/common/ieee802_11_defs.h b/src/common/ieee802_11_defs.h
-index ee2c92e0f..eaf6c88cf 100644
+index f040ec73f..700e9383c 100644
 --- a/src/common/ieee802_11_defs.h
 +++ b/src/common/ieee802_11_defs.h
-@@ -1888,6 +1888,13 @@ enum plink_action_field {
+@@ -1988,6 +1988,13 @@ enum plink_action_field {
  
  #define VENDOR_HT_CAPAB_OUI_TYPE 0x33 /* 00-90-4c:0x33 */
  
@@ -38,10 +38,10 @@ index ee2c92e0f..eaf6c88cf 100644
  /* IEEE 802.11v - WNM Action field values */
  enum wnm_action {
 diff --git a/src/drivers/driver.h b/src/drivers/driver.h
-index a0795b588..fda4dfa7d 100644
+index d42ce99fe..ac0394bf2 100644
 --- a/src/drivers/driver.h
 +++ b/src/drivers/driver.h
-@@ -1347,6 +1347,15 @@ struct wpa_driver_associate_params {
+@@ -1397,6 +1397,15 @@ struct wpa_driver_associate_params {
  	 */
  	size_t fils_erp_rrk_len;
  
@@ -58,11 +58,11 @@ index a0795b588..fda4dfa7d 100644
  	 * sae_pwe - SAE mechanism for PWE derivation
  	 * 0 = hunting-and-pecking loop only
 diff --git a/src/drivers/driver_nl80211.c b/src/drivers/driver_nl80211.c
-index 30522529f..86c9bcb6d 100644
+index 32b76f353..8d438ba31 100644
 --- a/src/drivers/driver_nl80211.c
 +++ b/src/drivers/driver_nl80211.c
-@@ -7204,6 +7204,9 @@ static int nl80211_connect_common(struct wpa_driver_nl80211_data *drv,
- 	     nla_put_flag(msg, NL80211_ATTR_CONTROL_PORT_NO_ENCRYPT)))
+@@ -7251,6 +7251,9 @@ static int nl80211_connect_common(struct wpa_driver_nl80211_data *drv,
+ 	    nla_put_flag(msg, NL80211_ATTR_CONTROL_PORT_NO_ENCRYPT))
  		return -1;
  
 +	if (params->wds && nla_put_u32(msg, NL80211_ATTR_VENDOR_WDS, params->wds))
@@ -72,7 +72,7 @@ index 30522529f..86c9bcb6d 100644
  		u32 drv_rrm_flags = drv->capa.rrm_flags;
  		if ((!((drv_rrm_flags &
 diff --git a/wpa_supplicant/config.c b/wpa_supplicant/config.c
-index 39d195fa7..f85f7d819 100644
+index ca4521e2c..00ab40f77 100644
 --- a/wpa_supplicant/config.c
 +++ b/wpa_supplicant/config.c
 @@ -22,6 +22,7 @@
@@ -83,7 +83,7 @@ index 39d195fa7..f85f7d819 100644
  
  #if !defined(CONFIG_CTRL_IFACE) && defined(CONFIG_NO_CONFIG_WRITE)
  #define NO_CONFIG_WRITE
-@@ -3066,6 +3067,8 @@ void wpa_config_free(struct wpa_config *config)
+@@ -3108,6 +3109,8 @@ void wpa_config_free(struct wpa_config *config)
  #ifdef CONFIG_MBO
  	os_free(config->non_pref_chan);
  #endif /* CONFIG_MBO */
@@ -92,7 +92,7 @@ index 39d195fa7..f85f7d819 100644
  	os_free(config->dpp_name);
  	os_free(config->dpp_mud_url);
  	os_free(config->dpp_extra_conf_req_name);
-@@ -5240,6 +5243,54 @@ static int wpa_config_process_ap_assocresp_elements(
+@@ -5372,6 +5375,54 @@ static int wpa_config_process_ap_assocresp_elements(
  	return 0;
  }
  
@@ -147,17 +147,17 @@ index 39d195fa7..f85f7d819 100644
  
  #ifdef CONFIG_CTRL_IFACE
  static int wpa_config_process_no_ctrl_interface(
-@@ -5538,6 +5589,8 @@ static const struct global_parse_data global_fields[] = {
+@@ -5695,6 +5746,8 @@ static const struct global_parse_data global_fields[] = {
  	{ INT_RANGE(disable_btm, 0, 1), CFG_CHANGED_DISABLE_BTM },
  	{ INT_RANGE(extended_key_id, 0, 1), 0 },
  #endif /* CONFIG_WNM */
 +	{ INT_RANGE(wds, 0, 2), 0 },
 +	{ FUNC(vendor_elems), 0 },
  	{ INT_RANGE(wowlan_disconnect_on_deinit, 0, 1), 0},
+ 	{ INT_RANGE(rsn_overriding, 0, 2), 0},
  #ifdef CONFIG_PASN
- #ifdef CONFIG_TESTING_OPTIONS
 diff --git a/wpa_supplicant/config.h b/wpa_supplicant/config.h
-index 14055bb79..71646a252 100644
+index 590d2b6a0..bb6c6672c 100644
 --- a/wpa_supplicant/config.h
 +++ b/wpa_supplicant/config.h
 @@ -53,6 +53,7 @@
@@ -168,7 +168,7 @@ index 14055bb79..71646a252 100644
  
  
  #define MAX_ROAMING_CONS 36
-@@ -1749,6 +1750,25 @@ struct wpa_config {
+@@ -1798,6 +1799,25 @@ struct wpa_config {
  	 */
  	int disable_btm;
  
@@ -195,10 +195,10 @@ index 14055bb79..71646a252 100644
  	 * extended_key_id - Extended Key ID support
  	 *
 diff --git a/wpa_supplicant/config_file.c b/wpa_supplicant/config_file.c
-index 4db85f9c0..638a0cdf8 100644
+index 0f53753fa..ec17d6eb1 100644
 --- a/wpa_supplicant/config_file.c
 +++ b/wpa_supplicant/config_file.c
-@@ -1595,6 +1595,8 @@ static void wpa_config_write_global(FILE *f, struct wpa_config *config)
+@@ -1715,6 +1715,8 @@ static void wpa_config_write_global(FILE *f, struct wpa_config *config)
  	if (config->coloc_intf_reporting)
  		fprintf(f, "coloc_intf_reporting=%d\n",
  			config->coloc_intf_reporting);
@@ -208,10 +208,10 @@ index 4db85f9c0..638a0cdf8 100644
  		fprintf(f, "p2p_device_random_mac_addr=%d\n",
  			config->p2p_device_random_mac_addr);
 diff --git a/wpa_supplicant/ctrl_iface.c b/wpa_supplicant/ctrl_iface.c
-index b716fa774..52c6a4399 100644
+index 3435c1db5..e24542638 100644
 --- a/wpa_supplicant/ctrl_iface.c
 +++ b/wpa_supplicant/ctrl_iface.c
-@@ -10367,70 +10367,6 @@ static int wpas_ctrl_iface_send_twt_teardown(struct wpa_supplicant *wpa_s,
+@@ -10598,70 +10598,6 @@ static int wpas_ctrl_iface_send_twt_teardown(struct wpa_supplicant *wpa_s,
  #endif /* CONFIG_TESTING_OPTIONS */
  
  
@@ -282,7 +282,7 @@ index b716fa774..52c6a4399 100644
  static int wpas_ctrl_vendor_elem_get(struct wpa_supplicant *wpa_s, char *cmd,
  				     char *buf, size_t buflen)
  {
-@@ -12865,7 +12801,7 @@ char * wpa_supplicant_ctrl_iface_process(struct wpa_supplicant *wpa_s,
+@@ -13575,7 +13511,7 @@ char * wpa_supplicant_ctrl_iface_process(struct wpa_supplicant *wpa_s,
  			reply_len = -1;
  #endif /* CONFIG_TESTING_OPTIONS */
  	} else if (os_strncmp(buf, "VENDOR_ELEM_ADD ", 16) == 0) {
@@ -292,10 +292,10 @@ index b716fa774..52c6a4399 100644
  	} else if (os_strncmp(buf, "VENDOR_ELEM_GET ", 16) == 0) {
  		reply_len = wpas_ctrl_vendor_elem_get(wpa_s, buf + 16, reply,
 diff --git a/wpa_supplicant/events.c b/wpa_supplicant/events.c
-index aeeba5b98..b33e5da1e 100644
+index 54991baab..282281019 100644
 --- a/wpa_supplicant/events.c
 +++ b/wpa_supplicant/events.c
-@@ -2996,6 +2996,8 @@ static void multi_ap_set_4addr_mode(struct wpa_supplicant *wpa_s)
+@@ -3120,6 +3120,8 @@ static void multi_ap_set_4addr_mode(struct wpa_supplicant *wpa_s)
  		return;
  
  	if (!wpa_s->multi_ap_ie) {
@@ -305,10 +305,10 @@ index aeeba5b98..b33e5da1e 100644
  			   "AP does not include valid Multi-AP element");
  		goto fail;
 diff --git a/wpa_supplicant/sme.c b/wpa_supplicant/sme.c
-index d5a4785ea..2a9ffa0c2 100644
+index 941d031cb..d0ae4472d 100644
 --- a/wpa_supplicant/sme.c
 +++ b/wpa_supplicant/sme.c
-@@ -1125,6 +1125,8 @@ static void sme_send_authentication(struct wpa_supplicant *wpa_s,
+@@ -1136,6 +1136,8 @@ static void sme_send_authentication(struct wpa_supplicant *wpa_s,
  no_fils:
  #endif /* CONFIG_FILS */
  
@@ -317,20 +317,20 @@ index d5a4785ea..2a9ffa0c2 100644
  	wpa_supplicant_cancel_sched_scan(wpa_s);
  	wpa_supplicant_cancel_scan(wpa_s);
  
-@@ -2526,6 +2528,7 @@ mscs_fail:
- 	params.mode = mode;
+@@ -2646,6 +2648,7 @@ mscs_fail:
  	params.mgmt_frame_protection = wpa_s->sme.mfp;
+ 	params.spp_amsdu = wpa_s->sme.spp_amsdu;
  	params.rrm_used = wpa_s->rrm.rrm_used;
 +	params.wds = wpa_s->sme.wds;
  	if (wpa_s->sme.prev_bssid_set)
  		params.prev_bssid = wpa_s->sme.prev_bssid;
  
 diff --git a/wpa_supplicant/wpa_supplicant.c b/wpa_supplicant/wpa_supplicant.c
-index 35d286946..3e86a8d0e 100644
+index f097b0050..7407661ed 100644
 --- a/wpa_supplicant/wpa_supplicant.c
 +++ b/wpa_supplicant/wpa_supplicant.c
-@@ -697,9 +697,11 @@ static void wpa_supplicant_cleanup(struct wpa_supplicant *wpa_s)
- 	hs20_deinit(wpa_s);
+@@ -802,9 +802,11 @@ static void wpa_supplicant_cleanup(struct wpa_supplicant *wpa_s)
+ 		wpa_drv_configure_frame_filters(wpa_s, 0);
  #endif /* CONFIG_HS20 */
  
 -	for (i = 0; i < NUM_VENDOR_ELEM_FRAMES; i++) {
@@ -343,8 +343,8 @@ index 35d286946..3e86a8d0e 100644
 +		}
  	}
  
- 	wmm_ac_notify_disassoc(wpa_s);
-@@ -7015,6 +7017,9 @@ static int wpa_supplicant_init_iface(struct wpa_supplicant *wpa_s,
+ #ifndef CONFIG_NO_WMM_AC
+@@ -7521,6 +7523,9 @@ static int wpa_supplicant_init_iface(struct wpa_supplicant *wpa_s,
  		   iface->ctrl_interface ? iface->ctrl_interface : "N/A",
  		   iface->bridge_ifname ? iface->bridge_ifname : "N/A");
  
@@ -354,7 +354,7 @@ index 35d286946..3e86a8d0e 100644
  	if (iface->confname) {
  #ifdef CONFIG_BACKEND_FILE
  		wpa_s->confname = os_rel2abs_path(iface->confname);
-@@ -7085,6 +7090,9 @@ static int wpa_supplicant_init_iface(struct wpa_supplicant *wpa_s,
+@@ -7591,6 +7596,9 @@ static int wpa_supplicant_init_iface(struct wpa_supplicant *wpa_s,
  		return -1;
  	}
  
@@ -364,16 +364,18 @@ index 35d286946..3e86a8d0e 100644
  	if (iface->ifname == NULL) {
  		wpa_printf(MSG_ERROR, "\nInterface name is required.");
  		return -1;
-@@ -7362,6 +7370,8 @@ static int wpa_supplicant_init_iface(struct wpa_supplicant *wpa_s,
+@@ -7877,6 +7885,10 @@ static int wpa_supplicant_init_iface(struct wpa_supplicant *wpa_s,
  
  	wpas_sched_scan_plans_set(wpa_s, wpa_s->conf->sched_scan_plans);
  
++#ifdef CONFIG_VENDOR_MXL
 +	wpa_s->vendor_elem = wpa_s->conf->vendor_elems;
++#endif /* CONFIG_VENDOR_MXL */
 +
- #ifdef CONFIG_HS20
- 	hs20_init(wpa_s);
- #endif /* CONFIG_HS20 */
-@@ -8125,6 +8135,7 @@ void wpa_supplicant_update_config(struct wpa_supplicant *wpa_s)
+ #ifdef CONFIG_MBO
+ 	if (!wpa_s->disable_mbo_oce && wpa_s->conf->oce) {
+ 		if ((wpa_s->conf->oce & OCE_STA) &&
+@@ -8641,6 +8653,7 @@ void wpa_supplicant_update_config(struct wpa_supplicant *wpa_s)
  #endif /* CONFIG_WPS */
  	wpas_p2p_update_config(wpa_s);
  	wpa_s->conf->changed_parameters = 0;
@@ -381,7 +383,7 @@ index 35d286946..3e86a8d0e 100644
  }
  
  
-@@ -8923,6 +8934,9 @@ void wpas_vendor_elem_update(struct wpa_supplicant *wpa_s)
+@@ -9487,6 +9500,9 @@ void wpas_vendor_elem_update(struct wpa_supplicant *wpa_s)
  	unsigned int i;
  	char buf[30];
  
@@ -391,7 +393,7 @@ index 35d286946..3e86a8d0e 100644
  	wpa_printf(MSG_DEBUG, "Update vendor elements");
  
  	for (i = 0; i < NUM_VENDOR_ELEM_FRAMES; i++) {
-@@ -8945,6 +8959,72 @@ void wpas_vendor_elem_update(struct wpa_supplicant *wpa_s)
+@@ -9509,6 +9525,72 @@ void wpas_vendor_elem_update(struct wpa_supplicant *wpa_s)
  #endif /* CONFIG_P2P */
  }
  
@@ -465,10 +467,10 @@ index 35d286946..3e86a8d0e 100644
  int wpas_vendor_elem_remove(struct wpa_supplicant *wpa_s, int frame,
  			    const u8 *elem, size_t len)
 diff --git a/wpa_supplicant/wpa_supplicant_i.h b/wpa_supplicant/wpa_supplicant_i.h
-index 35a9c0c9e..2668c10fa 100644
+index 7644ed9b5..b0999dbfc 100644
 --- a/wpa_supplicant/wpa_supplicant_i.h
 +++ b/wpa_supplicant/wpa_supplicant_i.h
-@@ -993,6 +993,7 @@ struct wpa_supplicant {
+@@ -1003,6 +1003,7 @@ struct wpa_supplicant {
  		u8 assoc_req_ie[1500];
  		size_t assoc_req_ie_len;
  		int mfp;
@@ -476,7 +478,7 @@ index 35a9c0c9e..2668c10fa 100644
  		int ft_used;
  		u8 mobility_domain[2];
  		u8 *ft_ies;
-@@ -1326,7 +1327,7 @@ struct wpa_supplicant {
+@@ -1334,7 +1335,7 @@ struct wpa_supplicant {
  
  	unsigned int ext_work_id;
  
@@ -485,7 +487,7 @@ index 35a9c0c9e..2668c10fa 100644
  
  #ifdef CONFIG_TESTING_OPTIONS
  	struct l2_packet_data *l2_test;
-@@ -1897,6 +1898,7 @@ void wpas_network_reenabled(void *eloop_ctx, void *timeout_ctx);
+@@ -1938,6 +1939,7 @@ void wpas_network_reenabled(void *eloop_ctx, void *timeout_ctx);
  void wpas_vendor_elem_update(struct wpa_supplicant *wpa_s);
  struct wpa_supplicant * wpas_vendor_elem(struct wpa_supplicant *wpa_s,
  					 enum wpa_vendor_elem_frame frame);

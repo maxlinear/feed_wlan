@@ -1,4 +1,4 @@
-From 9c9fede8c88e4b353f96cdb0bfa85fbbb0c18a99 Mon Sep 17 00:00:00 2001
+From d00babeb058ccbd34783f5278a5a0e7aaafffc48 Mon Sep 17 00:00:00 2001
 From: mvulsx <mvuls@maxlinear.com>
 Date: Fri, 30 Jun 2023 07:33:43 +0000
 Subject: [PATCH] WLANRTSYS-56617: Add support for new events: Multiple
@@ -6,25 +6,25 @@ Subject: [PATCH] WLANRTSYS-56617: Add support for new events: Multiple
 
 Signed-off-by: mvulsx <mvuls@maxlinear.com>
 ---
- src/ap/drv_callbacks.c       | 39 ++++++++++++++++++++++++++
+ src/ap/drv_callbacks.c       | 39 +++++++++++++++++++++++++
  src/ap/hostapd.c             |  7 +++++
  src/ap/hostapd.h             |  2 ++
- src/ap/ieee802_11.c          | 53 ++++++++++++++++++++++++++++++++++--
+ src/ap/ieee802_11.c          | 55 ++++++++++++++++++++++++++++++++++--
  src/ap/ieee802_11_auth.h     | 15 ++++++++++
- src/ap/sta_info.c            | 11 ++++++++
- src/ap/wpa_auth.c            | 17 ++++++++----
+ src/ap/sta_info.c            | 13 +++++++++
+ src/ap/wpa_auth.c            | 17 +++++++----
  src/common/wpa_ctrl.h        |  9 ++++++
- src/drivers/driver_nl80211.c | 39 ++++++++++++++++++++++++++
- 9 files changed, 183 insertions(+), 9 deletions(-)
+ src/drivers/driver_nl80211.c | 39 +++++++++++++++++++++++++
+ 9 files changed, 187 insertions(+), 9 deletions(-)
 
 diff --git a/src/ap/drv_callbacks.c b/src/ap/drv_callbacks.c
-index dc91adca2..86be7fb9d 100644
+index 42a7f24a9..190e1b0c6 100644
 --- a/src/ap/drv_callbacks.c
 +++ b/src/ap/drv_callbacks.c
-@@ -2217,6 +2217,45 @@ err:
- }
- #endif /* CONFIG_OWE */
+@@ -2543,6 +2543,45 @@ static void hostapd_mld_iface_disable(struct hostapd_data *hapd)
  
+ 
+ #ifdef CONFIG_VENDOR_MXL
 +void hostapd_event_ltq_report_event(struct hostapd_data *hapd,
 +		u8 msgtype, u8 event, u8 *macaddr, u8 fail)
 +{
@@ -68,10 +68,10 @@ index dc91adca2..86be7fb9d 100644
  	struct intel_vendor_unconnected_sta *unc_sta)
  {
 diff --git a/src/ap/hostapd.c b/src/ap/hostapd.c
-index 25c01ce40..15734d5a7 100644
+index 64a820f8a..a8a24588e 100644
 --- a/src/ap/hostapd.c
 +++ b/src/ap/hostapd.c
-@@ -779,9 +779,14 @@ static int hostapd_flush_old_stations(struct hostapd_data *hapd, u16 reason)
+@@ -857,9 +857,14 @@ static int hostapd_flush_old_stations(struct hostapd_data *hapd, u16 reason)
  	return ret;
  }
  
@@ -86,7 +86,7 @@ index 25c01ce40..15734d5a7 100644
  	hostapd_free_stas(hapd);
  #ifdef CONFIG_VENDOR_MXL
  	mxl_hostapd_free_cached_events(hapd);
-@@ -4726,6 +4731,8 @@ void hostapd_new_assoc_sta(struct hostapd_data *hapd, struct sta_info *sta,
+@@ -5256,6 +5261,8 @@ void hostapd_new_assoc_sta(struct hostapd_data *hapd, struct sta_info *sta,
  		/* The 4-way handshake offloaded case will have this handled
  		 * based on the port authorized event. */
  		wpa_auth_sta_associated(hapd->wpa_auth, sta->wpa_sm);
@@ -96,12 +96,12 @@ index 25c01ce40..15734d5a7 100644
  
  	if (hapd->iface->drv_flags & WPA_DRIVER_FLAGS_WIRED) {
 diff --git a/src/ap/hostapd.h b/src/ap/hostapd.h
-index 79ebb8be7..b8743a16a 100644
+index 0032062ed..2a448a57b 100644
 --- a/src/ap/hostapd.h
 +++ b/src/ap/hostapd.h
-@@ -869,6 +869,8 @@ int hostapd_link_remove(struct hostapd_data *hapd, u32 count);
- #endif /* CONFIG_IEEE80211BE */
+@@ -974,6 +974,8 @@ static inline bool ap_pmf_enabled(struct hostapd_bss_config *conf)
  
+ #ifdef CONFIG_VENDOR_MXL
  void hostapd_tx_queue_params(struct hostapd_data *hapd);
 +void hostapd_event_ltq_report_event(struct hostapd_data *hapd,
 +		u8 msgtype, u8 event, u8 *macaddr, u8 fail);
@@ -109,10 +109,10 @@ index 79ebb8be7..b8743a16a 100644
  bool hostapd_is_unii4_freq (int freq);
  void hostapd_unconnected_sta_scan_fail_handle_cb (void *eloop_ctx, void *timeout_ctx);
 diff --git a/src/ap/ieee802_11.c b/src/ap/ieee802_11.c
-index 431de4624..258fad965 100644
+index 0ff21f5c3..36120632e 100644
 --- a/src/ap/ieee802_11.c
 +++ b/src/ap/ieee802_11.c
-@@ -519,6 +519,11 @@ static void handle_auth_ft_finish(void *ctx, const u8 *dst, const u8 *bssid,
+@@ -457,6 +457,11 @@ static void handle_auth_ft_finish(void *ctx, const u8 *dst,
  	if (sta == NULL)
  		return;
  
@@ -124,16 +124,18 @@ index 431de4624..258fad965 100644
  	if (sta->added_unassoc && (reply_res != WLAN_STATUS_SUCCESS ||
  				   status != WLAN_STATUS_SUCCESS)) {
  		hostapd_drv_sta_remove(hapd, sta->addr);
-@@ -1444,6 +1449,8 @@ static void handle_auth_sae(struct hostapd_data *hapd, struct sta_info *sta,
+@@ -1673,6 +1678,10 @@ static void handle_auth_sae(struct hostapd_data *hapd, struct sta_info *sta,
  			sae_clear_retransmit_timer(hapd, sta);
  			sae_set_state(sta, SAE_NOTHING,
  				      "Unknown Password Identifier");
++#ifdef CONFIG_VENDOR_MXL
 +			hostapd_event_ltq_report_event(hapd, WLAN_FC_STYPE_AUTH,
 +				WLAN_STATUS_UNKNOWN_PASSWORD_IDENTIFIER, sta->addr, true);
++#endif /* CONFIG_VENDOR_MXL */
+ 			if (sta->sae->state == SAE_NOTHING)
+ 				goto reply;
  			goto remove_sta;
- 		}
- 
-@@ -1568,6 +1575,11 @@ reply:
+@@ -1812,6 +1821,11 @@ reply:
  	}
  
  remove_sta:
@@ -145,7 +147,7 @@ index 431de4624..258fad965 100644
  	if (auth_transaction == 1)
  		success_status = sae_status_success(hapd, status_code);
  	else
-@@ -2233,6 +2245,9 @@ static void handle_auth_fils_finish(struct hostapd_data *hapd,
+@@ -2480,6 +2494,9 @@ static void handle_auth_fils_finish(struct hostapd_data *hapd,
  		wpa_auth_sm_event(sta->wpa_sm, WPA_AUTH);
  		sta->auth_alg = pub ? WLAN_AUTH_FILS_SK_PFS : WLAN_AUTH_FILS_SK;
  		mlme_authenticate_indication(hapd, sta);
@@ -155,7 +157,7 @@ index 431de4624..258fad965 100644
  	}
  }
  
-@@ -3300,6 +3315,11 @@ static void handle_auth(struct hostapd_data *hapd,
+@@ -3594,6 +3611,11 @@ static void handle_auth(struct hostapd_data *hapd,
  	}
  #endif /* CONFIG_VENDOR_MXL */
  
@@ -167,7 +169,7 @@ index 431de4624..258fad965 100644
  	if (sta && sta->added_unassoc && (resp != WLAN_STATUS_SUCCESS ||
  					  reply_res != WLAN_STATUS_SUCCESS)) {
  		hostapd_drv_sta_remove(hapd, sta->addr);
-@@ -5334,6 +5354,7 @@ static void handle_assoc(struct hostapd_data *hapd,
+@@ -5735,6 +5757,7 @@ static void handle_assoc(struct hostapd_data *hapd,
  	bool set_beacon = false;
  	bool mld_addrs_not_translated = false;
  	errno_t err;
@@ -175,7 +177,7 @@ index 431de4624..258fad965 100644
  
  	if (len < IEEE80211_HDRLEN + (reassoc ? sizeof(mgmt->u.reassoc_req) :
  				      sizeof(mgmt->u.assoc_req))) {
-@@ -5653,6 +5674,11 @@ static void handle_assoc(struct hostapd_data *hapd,
+@@ -6059,6 +6082,11 @@ static void handle_assoc(struct hostapd_data *hapd,
  		 */
  	}
  
@@ -187,7 +189,7 @@ index 431de4624..258fad965 100644
  	if (sta->last_assoc_req)
  		os_free(sta->last_assoc_req);
  	sta->last_assoc_req_len = len;
-@@ -5757,6 +5783,20 @@ static void handle_assoc(struct hostapd_data *hapd,
+@@ -6165,6 +6193,20 @@ static void handle_assoc(struct hostapd_data *hapd,
  					    mgmt->sa, resp, reassoc,
  					    pos, left, rssi, omit_rsnxe,
  					    !mld_addrs_not_translated);
@@ -208,7 +210,7 @@ index 431de4624..258fad965 100644
  	os_free(tmp);
  
  	/*
-@@ -6498,6 +6538,8 @@ static void handle_auth_cb(struct hostapd_data *hapd,
+@@ -6933,6 +6975,8 @@ static void handle_auth_cb(struct hostapd_data *hapd,
  		sta->flags |= WLAN_STA_AUTH;
  		if (sta->added_unassoc)
  			hostapd_set_sta_flags(hapd, sta);
@@ -217,7 +219,7 @@ index 431de4624..258fad965 100644
  		return;
  	}
  
-@@ -6507,9 +6549,14 @@ fail:
+@@ -6942,9 +6986,14 @@ fail:
  	if (auth_alg == WLAN_AUTH_SAE && auth_transaction == 1)
  		success_status = sae_status_success(hapd, status_code);
  #endif /* CONFIG_SAE */
@@ -269,14 +271,15 @@ index 7747963ac..eee87731e 100644
  	u32 session_timeout;
  	u32 acct_interim_interval;
 diff --git a/src/ap/sta_info.c b/src/ap/sta_info.c
-index dfe4c14be..ad9f1cbce 100644
+index 99fac76d6..bc96ca78b 100644
 --- a/src/ap/sta_info.c
 +++ b/src/ap/sta_info.c
-@@ -1765,6 +1765,17 @@ void ap_sta_disconnect(struct hostapd_data *hapd, struct sta_info *sta,
- 	eloop_register_timeout(hapd->iface->drv_flags &
- 			       WPA_DRIVER_FLAGS_DEAUTH_TX_STATUS ? 2 : 0, 0,
- 			       ap_sta_deauth_cb_timeout, hapd, sta);
+@@ -2015,6 +2015,19 @@ void ap_sta_disconnect(struct hostapd_data *hapd, struct sta_info *sta,
+ 		return;
+ 
+ 	ap_sta_handle_disconnect(hapd, sta, reason);
 +
++#ifdef CONFIG_VENDOR_MXL
 +	if (reason == WLAN_REASON_IEEE_802_1X_AUTH_FAILED) {
 +		hostapd_event_ltq_report_event(hapd, WLAN_FC_STYPE_AUTH,
 +			WLAN_STATUS_UNSPECIFIED_FAILURE, sta->addr, true);
@@ -287,14 +290,15 @@ index dfe4c14be..ad9f1cbce 100644
 +		hostapd_event_ltq_report_event(hapd, WLAN_FC_STYPE_AUTH,
 +			WLAN_STATUS_UNKNOWN_PASSWORD_IDENTIFIER, sta->addr, true);
 +	}
++#endif /* CONFIG_VENDOR_MXL */
  }
  
  
 diff --git a/src/ap/wpa_auth.c b/src/ap/wpa_auth.c
-index 5ee89c61c..206e0a580 100644
+index b14d6a04d..fa1f88268 100644
 --- a/src/ap/wpa_auth.c
 +++ b/src/ap/wpa_auth.c
-@@ -3345,8 +3345,10 @@ SM_STATE(WPA_PTK, PTKCALCNEGOTIATING)
+@@ -3841,8 +3841,10 @@ SM_STATE(WPA_PTK, PTKCALCNEGOTIATING)
  		wpa_auth_logger(sm->wpa_auth, wpa_auth_get_spa(sm),
  				LOGGER_DEBUG,
  				"invalid MIC in msg 2/4 of 4-Way Handshake");
@@ -306,7 +310,7 @@ index 5ee89c61c..206e0a580 100644
  		goto out;
  	}
  
-@@ -4625,8 +4627,8 @@ SM_STEP(WPA_PTK)
+@@ -5336,8 +5338,8 @@ SM_STEP(WPA_PTK)
  					 LOGGER_DEBUG,
  					 "PTKSTART: Retry limit %u reached",
  					 conf->wpa_pairwise_update_count);
@@ -317,7 +321,7 @@ index 5ee89c61c..206e0a580 100644
  			SM_ENTER(WPA_PTK, DISCONNECT);
  		} else if (sm->TimeoutEvt)
  			SM_ENTER(WPA_PTK, PTKSTART);
-@@ -4658,8 +4660,8 @@ SM_STEP(WPA_PTK)
+@@ -5369,8 +5371,8 @@ SM_STEP(WPA_PTK)
  					 LOGGER_DEBUG,
  					 "PTKINITNEGOTIATING: Retry limit %u reached",
  					 conf->wpa_pairwise_update_count);
@@ -328,7 +332,7 @@ index 5ee89c61c..206e0a580 100644
  			SM_ENTER(WPA_PTK, DISCONNECT);
  		} else if (sm->TimeoutEvt)
  			SM_ENTER(WPA_PTK, PTKINITNEGOTIATING);
-@@ -4897,8 +4899,11 @@ SM_STEP(WPA_PTK_GROUP)
+@@ -5614,8 +5616,11 @@ SM_STEP(WPA_PTK_GROUP)
  		else if (sm->GTimeoutCtr >
  			 sm->wpa_auth->conf.wpa_group_update_count ||
  			 (sm->wpa_auth->conf.wpa_disable_eapol_key_retries &&
@@ -342,10 +346,10 @@ index 5ee89c61c..206e0a580 100644
  			SM_ENTER(WPA_PTK_GROUP, REKEYNEGOTIATING);
  		break;
 diff --git a/src/common/wpa_ctrl.h b/src/common/wpa_ctrl.h
-index 0c537d31c..5ff02dcaa 100644
+index 908916172..454b0b650 100644
 --- a/src/common/wpa_ctrl.h
 +++ b/src/common/wpa_ctrl.h
-@@ -428,6 +428,9 @@ extern "C" {
+@@ -447,6 +447,9 @@ extern "C" {
  #define WDS_STA_INTERFACE_ADDED "WDS-STA-INTERFACE-ADDED "
  #define WDS_STA_INTERFACE_REMOVED "WDS-STA-INTERFACE-REMOVED "
  
@@ -355,7 +359,7 @@ index 0c537d31c..5ff02dcaa 100644
  /* Transition mode disabled indication - followed by bitmap */
  #define TRANSITION_DISABLE "TRANSITION-DISABLE "
  
-@@ -435,9 +438,15 @@ extern "C" {
+@@ -454,6 +457,9 @@ extern "C" {
   * frame=<saqueryreq/saqueryresp> error=<error string> */
  #define OCV_FAILURE "OCV-FAILURE "
  
@@ -365,6 +369,10 @@ index 0c537d31c..5ff02dcaa 100644
  /* Event triggered for received management frame */
  #define AP_MGMT_FRAME_RECEIVED "AP-MGMT-FRAME-RECEIVED "
  
+@@ -462,6 +468,9 @@ extern "C" {
+  * Parameters: <STA addr> <Generational Capabilities Indication body> */
+ #define WFA_GEN_CAPAB_RX "WFA-GEN-CAPAB "
+ #ifdef CONFIG_VENDOR_MXL
 +/* Event to report AP goes down */
 +#define LTQ_IFACE_GO_DOWN "LTQ-IFACE-GO-DOWN"
 +
@@ -372,18 +380,18 @@ index 0c537d31c..5ff02dcaa 100644
  #define UNCONNECTED_STA_RSSI "UNCONNECTED-STA-RSSI "
  #define AP_PROBE_REQ_RECEIVED "AP-PROBE-REQ-RECEIVED "
 diff --git a/src/drivers/driver_nl80211.c b/src/drivers/driver_nl80211.c
-index f59c14c49..30522529f 100644
+index 49d5c172e..32b76f353 100644
 --- a/src/drivers/driver_nl80211.c
 +++ b/src/drivers/driver_nl80211.c
-@@ -33,6 +33,7 @@
- #include "common/wpa_common.h"
+@@ -34,6 +34,7 @@
+ #include "common/nan_de.h"
  #include "crypto/sha256.h"
  #include "crypto/sha384.h"
 +#include "common/wpa_ctrl.h"
  #include "netlink.h"
  #include "linux_defines.h"
  #include "linux_ioctl.h"
-@@ -4503,6 +4504,44 @@ send_frame_cmd:
+@@ -4589,6 +4590,44 @@ send_frame_cmd:
  	if (!res)
  		drv->send_frame_link_id = link_id;
  

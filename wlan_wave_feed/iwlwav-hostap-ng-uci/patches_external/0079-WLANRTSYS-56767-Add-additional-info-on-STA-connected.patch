@@ -1,4 +1,4 @@
-From cfa555d81914120e3e121da128360993e98413c4 Mon Sep 17 00:00:00 2001
+From 1e191e23938a3616564c1b3aaa88a569e8bd517f Mon Sep 17 00:00:00 2001
 From: mvulsx <mvuls@maxlinear.com>
 Date: Thu, 6 Jul 2023 14:46:27 +0000
 Subject: [PATCH] WLANRTSYS-56767: Add additional info on STA
@@ -8,23 +8,23 @@ Signed-off-by: mvulsx <mvuls@maxlinear.com>
 ---
  hostapd/config_file.c        |   4 +
  hostapd/ctrl_iface.c         |   6 -
- src/ap/drv_callbacks.c       |   5 +
+ src/ap/drv_callbacks.c       |   7 +
  src/ap/ieee802_11.c          |  71 ++++
  src/ap/ieee802_11.h          |   2 +
  src/ap/ieee802_11_ht.c       |  26 ++
- src/ap/ieee802_1x.c          |   5 +
- src/ap/sta_info.c            | 621 ++++++++++++++++++++++++++++++++++-
- src/ap/sta_info.h            |  19 ++
+ src/ap/ieee802_1x.c          |   7 +
+ src/ap/sta_info.c            | 619 ++++++++++++++++++++++++++++++++++-
+ src/ap/sta_info.h            |  21 ++
  src/ap/wnm_ap.c              |   1 +
- src/common/ieee802_11_defs.h |  70 ++++
+ src/common/ieee802_11_defs.h |  72 ++++
  src/utils/common.h           |   1 +
- 12 files changed, 810 insertions(+), 21 deletions(-)
+ 12 files changed, 821 insertions(+), 16 deletions(-)
 
 diff --git a/hostapd/config_file.c b/hostapd/config_file.c
-index 595661612..d82857c77 100644
+index 1e4030111..92328ae81 100644
 --- a/hostapd/config_file.c
 +++ b/hostapd/config_file.c
-@@ -1421,6 +1421,10 @@ static u8 set_he_cap(int val, u8 mask)
+@@ -1489,6 +1489,10 @@ static u8 set_he_cap(int val, u8 mask)
  	return (u8) (mask & (val << find_bit_offset(mask)));
  }
  
@@ -36,10 +36,10 @@ index 595661612..d82857c77 100644
  static int hostapd_parse_he_srg_bitmap(u8 *bitmap, char *val)
  {
 diff --git a/hostapd/ctrl_iface.c b/hostapd/ctrl_iface.c
-index 8b27cfd5d..503cacd26 100644
+index 43017fcf5..1861072f6 100644
 --- a/hostapd/ctrl_iface.c
 +++ b/hostapd/ctrl_iface.c
-@@ -5753,12 +5753,6 @@ static int hostapd_ctrl_iface_get_he_phy_channel_width_set(struct hostapd_data *
+@@ -6385,12 +6385,6 @@ static int hostapd_ctrl_iface_get_he_phy_channel_width_set(struct hostapd_data *
  		return len;
  	len += ret;
  
@@ -53,26 +53,28 @@ index 8b27cfd5d..503cacd26 100644
  			ret = sprintf_s(reply + len, reply_len - len, ",40MHz");
  			if (ret <= 0)
 diff --git a/src/ap/drv_callbacks.c b/src/ap/drv_callbacks.c
-index 86be7fb9d..6ca4f5da6 100644
+index 190e1b0c6..c637dd46b 100644
 --- a/src/ap/drv_callbacks.c
 +++ b/src/ap/drv_callbacks.c
-@@ -934,6 +934,11 @@ void hostapd_notif_disassoc(struct hostapd_data *hapd, const u8 *addr)
+@@ -1086,6 +1086,13 @@ legacy:
  		return;
  	}
  
++#ifdef CONFIG_VENDOR_MXL
 +	sta->flags &= ~WLAN_STA_BSS_TRANS_MGMT_REQ_TIMEOUT;
 +	/* until required details is made available driver,
 +	 * set reason and source values to unspecified and local respectively */
 +	sta->disassoc_reason = WLAN_REASON_UNSPECIFIED;
 +	sta->disconnect_source = DISCONNECT_SOURCE_LOCAL;
- 	ap_sta_set_authorized(hapd, sta, 0);
- 	sta->flags &= ~(WLAN_STA_AUTH | WLAN_STA_ASSOC);
- 	hostapd_set_sta_flags(hapd, sta);
++#endif /* CONFIG_VENDOR_MXL */
+ 	hostapd_remove_sta(hapd, sta);
+ }
+ 
 diff --git a/src/ap/ieee802_11.c b/src/ap/ieee802_11.c
-index c2dbde97b..4620b667c 100644
+index b00b0eaae..2f713f1c0 100644
 --- a/src/ap/ieee802_11.c
 +++ b/src/ap/ieee802_11.c
-@@ -3568,6 +3568,50 @@ static u16 copy_supp_rates(struct hostapd_data *hapd, struct sta_info *sta,
+@@ -3888,6 +3888,50 @@ static u16 copy_supp_rates(struct hostapd_data *hapd, struct sta_info *sta,
  	return WLAN_STATUS_SUCCESS;
  }
  
@@ -123,7 +125,7 @@ index c2dbde97b..4620b667c 100644
  
  #ifdef CONFIG_OWE
  
-@@ -3940,9 +3984,18 @@ static int __check_assoc_ies(struct hostapd_data *hapd, struct sta_info *sta,
+@@ -4317,9 +4361,18 @@ static int __check_assoc_ies(struct hostapd_data *hapd, struct sta_info *sta,
  	if (resp != WLAN_STATUS_SUCCESS)
  		return resp;
  
@@ -142,7 +144,7 @@ index c2dbde97b..4620b667c 100644
  	if (hapd->iconf->ieee80211n && hapd->iconf->require_ht &&
  	    !(sta->flags & WLAN_STA_HT)) {
  		hostapd_logger(hapd, sta->addr, HOSTAPD_MODULE_IEEE80211,
-@@ -3957,6 +4010,12 @@ static int __check_assoc_ies(struct hostapd_data *hapd, struct sta_info *sta,
+@@ -4334,6 +4387,12 @@ static int __check_assoc_ies(struct hostapd_data *hapd, struct sta_info *sta,
  		if (resp != WLAN_STATUS_SUCCESS)
  			return resp;
  
@@ -155,7 +157,7 @@ index c2dbde97b..4620b667c 100644
  		resp = set_sta_vht_opmode(hapd, sta, elems->opmode_notif);
  		if (resp != WLAN_STATUS_SUCCESS)
  			return resp;
-@@ -5848,6 +5907,9 @@ static void hostapd_disassoc_sta(struct hostapd_data *hapd,
+@@ -6258,6 +6317,9 @@ static void hostapd_disassoc_sta(struct hostapd_data *hapd,
  		"disassocation: STA=" MACSTR " reason_code=%d",
  		MAC2STR(mgmt->sa), le_to_host16(mgmt->u.disassoc.reason_code));
  
@@ -165,7 +167,7 @@ index c2dbde97b..4620b667c 100644
  	ap_sta_set_authorized(hapd, sta, 0);
  	sta->last_seq_ctrl = WLAN_INVALID_MGMT_SEQ;
  	sta->flags &= ~(WLAN_STA_ASSOC | WLAN_STA_ASSOC_REQ_OK);
-@@ -6057,6 +6119,10 @@ static void handle_deauth(struct hostapd_data *hapd,
+@@ -6410,6 +6472,10 @@ static void handle_deauth(struct hostapd_data *hapd,
  	if (hostapd_ml_handle_disconnect(hapd, sta, mgmt, false))
  		return;
  
@@ -176,7 +178,7 @@ index c2dbde97b..4620b667c 100644
  	hostapd_deauth_sta(hapd, sta, mgmt);
  }
  
-@@ -6765,6 +6831,11 @@ static void handle_assoc_cb(struct hostapd_data *hapd,
+@@ -7199,6 +7265,11 @@ static void handle_assoc_cb(struct hostapd_data *hapd,
  		 */
  		ap_sta_set_authorized(hapd, sta, 1);
  	}
@@ -189,7 +191,7 @@ index c2dbde97b..4620b667c 100644
  	if (reassoc)
  		mlme_reassociate_indication(hapd, sta);
 diff --git a/src/ap/ieee802_11.h b/src/ap/ieee802_11.h
-index b06b93b4a..7633bc468 100644
+index 34a511295..77dd558e4 100644
 --- a/src/ap/ieee802_11.h
 +++ b/src/ap/ieee802_11.h
 @@ -113,6 +113,8 @@ int hostapd_process_ml_assoc_req_addr(struct hostapd_data *hapd,
@@ -202,10 +204,10 @@ index b06b93b4a..7633bc468 100644
  			const u8 *ie, size_t len);
  u16 copy_sta_vendor2_vht(struct hostapd_data *hapd, struct sta_info *sta,
 diff --git a/src/ap/ieee802_11_ht.c b/src/ap/ieee802_11_ht.c
-index b3e1738ac..38805cd0a 100644
+index e4dba3093..95277a3e2 100644
 --- a/src/ap/ieee802_11_ht.c
 +++ b/src/ap/ieee802_11_ht.c
-@@ -415,6 +415,32 @@ u16 copy_sta_ht_capab(struct hostapd_data *hapd, struct sta_info *sta,
+@@ -453,6 +453,32 @@ u16 copy_sta_ht_capab(struct hostapd_data *hapd, struct sta_info *sta,
  	return WLAN_STATUS_SUCCESS;
  }
  
@@ -239,23 +241,25 @@ index b3e1738ac..38805cd0a 100644
  void ht40_intolerant_add(struct hostapd_iface *iface, struct sta_info *sta)
  {
 diff --git a/src/ap/ieee802_1x.c b/src/ap/ieee802_1x.c
-index e4002bab3..4cc339973 100644
+index 2ed1a5cb0..be8d4ba60 100644
 --- a/src/ap/ieee802_1x.c
 +++ b/src/ap/ieee802_1x.c
-@@ -121,6 +121,11 @@ static void ieee802_1x_set_authorized(struct hostapd_data *hapd,
- 	if (sta->flags & WLAN_STA_PREAUTH)
+@@ -123,6 +123,13 @@ static void ieee802_1x_set_authorized(struct hostapd_data *hapd,
  		return;
  
+ 	update = ap_sta_set_authorized_flag(hapd, sta, authorized);
++#ifdef CONFIG_VENDOR_MXL
 +	if (!authorized) {
 +		sta->flags &= ~WLAN_STA_BSS_TRANS_MGMT_REQ_TIMEOUT;
 +		sta->deauth_reason = WLAN_REASON_IEEE_802_1X_AUTH_FAILED;
 +		sta->disconnect_source = DISCONNECT_SOURCE_LOCAL;
 +	}
- 	ap_sta_set_authorized(hapd, sta, authorized);
++#endif /* CONFIG_VENDOR_MXL */
  	res = hostapd_set_authorized(hapd, sta, authorized);
- 	hostapd_logger(hapd, sta->addr, HOSTAPD_MODULE_IEEE8021X,
+ 	if (update)
+ 		ap_sta_set_authorized_event(hapd, sta, authorized);
 diff --git a/src/ap/sta_info.c b/src/ap/sta_info.c
-index ad9f1cbce..21c0a7e75 100644
+index bc96ca78b..675a6068d 100644
 --- a/src/ap/sta_info.c
 +++ b/src/ap/sta_info.c
 @@ -43,6 +43,12 @@
@@ -271,7 +275,7 @@ index ad9f1cbce..21c0a7e75 100644
  static void ap_sta_remove_in_other_bss(struct hostapd_data *hapd,
  				       struct sta_info *sta);
  static void ap_handle_session_timer(void *eloop_ctx, void *timeout_ctx);
-@@ -197,6 +203,10 @@ void ap_free_sta(struct hostapd_data *hapd, struct sta_info *sta)
+@@ -232,6 +238,10 @@ void ap_free_sta(struct hostapd_data *hapd, struct sta_info *sta)
  	accounting_sta_stop(hapd, sta);
  
  	/* just in case */
@@ -282,7 +286,7 @@ index ad9f1cbce..21c0a7e75 100644
  	ap_sta_set_authorized(hapd, sta, 0);
  	hostapd_set_sta_flags(hapd, sta);
  
-@@ -382,6 +392,7 @@ void ap_free_sta(struct hostapd_data *hapd, struct sta_info *sta)
+@@ -429,6 +439,7 @@ void ap_free_sta(struct hostapd_data *hapd, struct sta_info *sta)
  #endif /* CONFIG_FST */
  
  	os_free(sta->ht_capabilities);
@@ -290,16 +294,20 @@ index ad9f1cbce..21c0a7e75 100644
  	os_free(sta->vht_capabilities);
  	os_free(sta->vht_operation);
  	os_free(sta->he_capab);
-@@ -481,7 +492,7 @@ void ap_handle_timer(void *eloop_ctx, void *timeout_ctx)
+@@ -552,8 +563,12 @@ void ap_handle_timer(void *eloop_ctx, void *timeout_ctx)
  	struct hostapd_data *hapd = eloop_ctx;
  	struct sta_info *sta = timeout_ctx;
  	unsigned long next_time = 0;
--	int reason;
++#ifndef CONFIG_VENDOR_MXL
+ 	int reason;
+ 	int max_inactivity = hapd->conf->ap_max_inactivity;
++#else /* CONFIG_VENDOR_MXL */
 +	u16 reason;
++#endif /* CONFIG_VENDOR_MXL */
  
  	wpa_printf(MSG_DEBUG, "%s: %s: " MACSTR " flags=0x%x timeout_next=%d",
  		   hapd->conf->iface, __func__, MAC2STR(sta->addr), sta->flags,
-@@ -611,6 +622,11 @@ skip_poll:
+@@ -685,6 +700,11 @@ skip_poll:
  		break;
  	case STA_DISASSOC:
  	case STA_DISASSOC_FROM_CLI:
@@ -311,7 +319,7 @@ index ad9f1cbce..21c0a7e75 100644
  		ap_sta_set_authorized(hapd, sta, 0);
  		sta->flags &= ~WLAN_STA_ASSOC;
  		hostapd_set_sta_flags(hapd, sta);
-@@ -623,9 +639,6 @@ skip_poll:
+@@ -697,9 +717,6 @@ skip_poll:
  		hostapd_logger(hapd, sta->addr, HOSTAPD_MODULE_IEEE80211,
  			       HOSTAPD_LEVEL_INFO, "disassociated due to "
  			       "inactivity");
@@ -321,43 +329,31 @@ index ad9f1cbce..21c0a7e75 100644
  		sta->timeout_next = STA_DEAUTH;
  		wpa_printf(MSG_DEBUG, "%s: register ap_handle_timer timeout "
  			   "for " MACSTR " (%d seconds - AP_DEAUTH_DELAY)",
-@@ -925,6 +938,9 @@ void ap_sta_disassociate(struct hostapd_data *hapd, struct sta_info *sta,
- 		sta->flags &= ~(WLAN_STA_ASSOC | WLAN_STA_ASSOC_REQ_OK);
- 		sta->timeout_next = STA_DEAUTH;
- 	}
+@@ -1016,6 +1033,11 @@ static void ap_sta_disconnect_common(struct hostapd_data *hapd,
+ {
+ 	sta->last_seq_ctrl = WLAN_INVALID_MGMT_SEQ;
+ 
++#ifdef CONFIG_VENDOR_MXL
 +	sta->flags &= ~WLAN_STA_BSS_TRANS_MGMT_REQ_TIMEOUT;
 +	sta->disassoc_reason = reason;
 +	sta->disconnect_source = DISCONNECT_SOURCE_LOCAL;
++#endif /* CONFIG_VENDOR_MXL */
  	ap_sta_set_authorized(hapd, sta, 0);
  	hostapd_set_sta_flags(hapd, sta);
- 	wpa_printf(MSG_DEBUG, "%s: reschedule ap_handle_timer timeout "
-@@ -947,7 +963,6 @@ void ap_sta_disassociate(struct hostapd_data *hapd, struct sta_info *sta,
  
- 	sta->wpa_sm = NULL;
+@@ -1109,6 +1131,11 @@ static void ap_sta_handle_deauthenticate(struct hostapd_data *hapd,
  
--	sta->disassoc_reason = reason;
- 	sta->flags |= WLAN_STA_PENDING_DISASSOC_CB;
- 	eloop_cancel_timeout(ap_sta_disassoc_cb_timeout, hapd, sta);
- 	eloop_register_timeout(hapd->iface->drv_flags &
-@@ -983,6 +998,9 @@ void ap_sta_deauthenticate(struct hostapd_data *hapd, struct sta_info *sta,
- 		   hapd->conf->iface, MAC2STR(sta->addr));
- 	sta->last_seq_ctrl = WLAN_INVALID_MGMT_SEQ;
  	sta->flags &= ~(WLAN_STA_AUTH | WLAN_STA_ASSOC | WLAN_STA_ASSOC_REQ_OK);
+ 
++#ifdef CONFIG_VENDOR_MXL
 +	sta->flags &= ~WLAN_STA_BSS_TRANS_MGMT_REQ_TIMEOUT;
 +	sta->deauth_reason = reason;
 +	sta->disconnect_source = DISCONNECT_SOURCE_LOCAL;
- 	ap_sta_set_authorized(hapd, sta, 0);
- 	hostapd_set_sta_flags(hapd, sta);
++#endif /* CONFIG_VENDOR_MXL */
  	sta->timeout_next = STA_REMOVE;
-@@ -997,7 +1015,6 @@ void ap_sta_deauthenticate(struct hostapd_data *hapd, struct sta_info *sta,
- 	accounting_sta_stop(hapd, sta);
- 	ieee802_1x_free_station(hapd, sta);
- 
--	sta->deauth_reason = reason;
- 	sta->flags |= WLAN_STA_PENDING_DEAUTH_CB;
- 	eloop_cancel_timeout(ap_sta_deauth_cb_timeout, hapd, sta);
- 	eloop_register_timeout(hapd->iface->drv_flags &
-@@ -1372,6 +1389,7 @@ const char * ap_sta_wpa_get_keyid(struct hostapd_data *hapd,
+ 	ap_sta_disconnect_common(hapd, sta, AP_MAX_INACTIVITY_AFTER_DEAUTH,
+ 				 true);
+@@ -1616,6 +1643,7 @@ const char * ap_sta_wpa_get_keyid(struct hostapd_data *hapd,
  }
  
  #define STA_EVENT_MAX_BUF_LEN	1024
@@ -365,10 +361,23 @@ index ad9f1cbce..21c0a7e75 100644
  
  const u8 * ap_sta_wpa_get_dpp_pkhash(struct hostapd_data *hapd,
  				     struct sta_info *sta)
-@@ -1380,13 +1398,387 @@ const u8 * ap_sta_wpa_get_dpp_pkhash(struct hostapd_data *hapd,
+@@ -1631,7 +1659,11 @@ bool ap_sta_set_authorized_flag(struct hostapd_data *hapd, struct sta_info *sta,
+ 	const u8 *dev_addr = NULL;
+ 	char *buf, *pos, *end;
+ 	int buflen = STA_EVENT_MAX_BUF_LEN;
++	char *sta_extra_cap = NULL;
+ 	int i, ret = 0, len = 0;
++	unsigned int max_ch_width = 0, phy_mode = 0;
++	unsigned int mumimo = 0, max_mcs = 0, max_streams = 0, tx_streams = 0, rx_streams = 0;
++	unsigned int rrm_cap = 0, band_2g_capable = 0, band_5g_capable = 0, band_6g_capable = 0;
+ #ifdef CONFIG_P2P
+ 	u8 addr[ETH_ALEN];
+ 	u8 ip_addr_buf[4];
+@@ -1668,6 +1700,377 @@ bool ap_sta_set_authorized_flag(struct hostapd_data *hapd, struct sta_info *sta,
+ 	return true;
  }
  
- 
++#ifdef CONFIG_VENDOR_MXL
 +static void sta_get_phy_mode_ch_width(struct hostapd_data *hapd, struct sta_info *sta,
 +	unsigned int *phy_mode, unsigned int *max_ch_width)
 +{
@@ -738,22 +747,11 @@ index ad9f1cbce..21c0a7e75 100644
 +	}
 +	return mode_b ? "802.11b" : "UNKNOWN";
 +}
-+
- void ap_sta_set_authorized(struct hostapd_data *hapd, struct sta_info *sta,
- 			   int authorized)
- {
- 	const u8 *dev_addr = NULL;
- 	char *buf, *pos, *end;
- 	int buflen = STA_EVENT_MAX_BUF_LEN;
-+	char *sta_extra_cap = NULL;
- 	int i, ret = 0, len = 0;
-+	unsigned int max_ch_width = 0, phy_mode = 0;
-+	unsigned int mumimo = 0, max_mcs = 0, max_streams = 0, tx_streams = 0, rx_streams = 0;
-+	unsigned int rrm_cap = 0, band_2g_capable = 0, band_5g_capable = 0, band_6g_capable = 0;
- #ifdef CONFIG_P2P
- 	u8 addr[ETH_ALEN];
- 	u8 ip_addr_buf[4];
-@@ -1437,7 +1829,13 @@ void ap_sta_set_authorized(struct hostapd_data *hapd, struct sta_info *sta,
++#endif /* CONFIG_VENDOR_MXL */
+ 
+ void ap_sta_set_authorized_event(struct hostapd_data *hapd,
+ 				 struct sta_info *sta, int authorized)
+@@ -1697,7 +2100,13 @@ void ap_sta_set_authorized_event(struct hostapd_data *hapd,
  	else
  #endif /* CONFIG_P2P */
  	{
@@ -768,21 +766,7 @@ index ad9f1cbce..21c0a7e75 100644
  		if (ret <= 0) {
  			wpa_printf(MSG_ERROR, "%s: sprintf_s error %d", __func__, ret);
  			goto free_alloc;
-@@ -1449,6 +1847,13 @@ void ap_sta_set_authorized(struct hostapd_data *hapd, struct sta_info *sta,
- 		hapd->sta_authorized_cb(hapd->sta_authorized_cb_ctx,
- 					sta->addr, authorized, dev_addr);
- 
-+	sta_extra_cap = os_malloc(STA_EXTRA_CAP_LEN);
-+	if (sta_extra_cap == NULL) {
-+		wpa_printf(MSG_ERROR, "malloc failed");
-+		goto free_alloc;
-+	}
-+	sta_extra_cap[0] = '\0';
-+
- 	if (authorized) {
- 		const u8 *dpp_pkhash;
- 		const char *keyid;
-@@ -1466,6 +1871,7 @@ void ap_sta_set_authorized(struct hostapd_data *hapd, struct sta_info *sta,
+@@ -1722,6 +2131,7 @@ void ap_sta_set_authorized_event(struct hostapd_data *hapd,
  		dpp_pkhash_buf[0] = '\0';
  		keyid_buf[0] = '\0';
  		ip_addr[0] = '\0';
@@ -790,7 +774,7 @@ index ad9f1cbce..21c0a7e75 100644
  
  		/* 4 symbols per rate */
  		rates = os_malloc(WLAN_SUPP_RATES_MAX * 4);
-@@ -1674,25 +2080,198 @@ void ap_sta_set_authorized(struct hostapd_data *hapd, struct sta_info *sta,
+@@ -1931,25 +2341,198 @@ void ap_sta_set_authorized_event(struct hostapd_data *hapd,
  		}
  #endif
  
@@ -994,8 +978,8 @@ index ad9f1cbce..21c0a7e75 100644
 +		sta->disconnect_source = DISCONNECT_SOURCE_UNKNOWN;
  	}
  
- #ifdef CONFIG_FST
-@@ -1707,6 +2286,7 @@ void ap_sta_set_authorized(struct hostapd_data *hapd, struct sta_info *sta,
+ 	if (hapd->sta_authorized_cb)
+@@ -1969,6 +2552,7 @@ void ap_sta_set_authorized_event(struct hostapd_data *hapd,
  
  free_alloc:
  	os_free(buf);
@@ -1003,10 +987,11 @@ index ad9f1cbce..21c0a7e75 100644
  }
  
  
-@@ -1730,6 +2310,17 @@ void ap_sta_disconnect(struct hostapd_data *hapd, struct sta_info *sta,
+@@ -2002,6 +2586,19 @@ void ap_sta_disconnect(struct hostapd_data *hapd, struct sta_info *sta,
  
  	if (sta == NULL)
  		return;
++#ifdef CONFIG_VENDOR_MXL
 +	sta->flags &= ~WLAN_STA_BSS_TRANS_MGMT_REQ_TIMEOUT;
 +	if (hapd->iface->current_mode &&
 +	    hapd->iface->current_mode->mode == HOSTAPD_MODE_IEEE80211AD) {
@@ -1018,26 +1003,11 @@ index ad9f1cbce..21c0a7e75 100644
 +		sta->deauth_reason = reason;
 +	}
 +	sta->disconnect_source = DISCONNECT_SOURCE_LOCAL;
- 	ap_sta_set_authorized(hapd, sta, 0);
- 	sta->flags &= ~(WLAN_STA_AUTH | WLAN_STA_ASSOC);
- 	hostapd_set_sta_flags(hapd, sta);
-@@ -1749,7 +2340,6 @@ void ap_sta_disconnect(struct hostapd_data *hapd, struct sta_info *sta,
- 	    hapd->iface->current_mode->mode == HOSTAPD_MODE_IEEE80211AD) {
- 		/* Deauthentication is not used in DMG/IEEE 802.11ad;
- 		 * disassociate the STA instead. */
--		sta->disassoc_reason = reason;
- 		sta->flags |= WLAN_STA_PENDING_DISASSOC_CB;
- 		eloop_cancel_timeout(ap_sta_disassoc_cb_timeout, hapd, sta);
- 		eloop_register_timeout(hapd->iface->drv_flags &
-@@ -1759,7 +2349,6 @@ void ap_sta_disconnect(struct hostapd_data *hapd, struct sta_info *sta,
- 		return;
- 	}
++#endif /* CONFIG_VENDOR_MXL */
  
--	sta->deauth_reason = reason;
- 	sta->flags |= WLAN_STA_PENDING_DEAUTH_CB;
- 	eloop_cancel_timeout(ap_sta_deauth_cb_timeout, hapd, sta);
- 	eloop_register_timeout(hapd->iface->drv_flags &
-@@ -1949,6 +2538,8 @@ int ap_sta_re_add(struct hostapd_data *hapd, struct sta_info *sta)
+ 	if (hapd->iface->current_mode &&
+ 	    hapd->iface->current_mode->mode == HOSTAPD_MODE_IEEE80211AD) {
+@@ -2243,6 +2840,8 @@ int ap_sta_re_add(struct hostapd_data *hapd, struct sta_info *sta)
  	}
  #endif /* CONFIG_IEEE80211BE */
  
@@ -1047,18 +1017,20 @@ index ad9f1cbce..21c0a7e75 100644
  	hostapd_drv_sta_remove(hapd, sta->addr);
  	sta->flags &= ~(WLAN_STA_ASSOC | WLAN_STA_AUTH | WLAN_STA_AUTHORIZED);
 diff --git a/src/ap/sta_info.h b/src/ap/sta_info.h
-index 3f69c3c4e..afdef6021 100644
+index e3a272bb6..1840c1445 100644
 --- a/src/ap/sta_info.h
 +++ b/src/ap/sta_info.h
-@@ -21,6 +21,7 @@
- /* STA flags */
+@@ -23,6 +23,9 @@
  #define WLAN_STA_AUTH BIT(0)
  #define WLAN_STA_ASSOC BIT(1)
+ #define WLAN_STA_SPP_AMSDU BIT(2)
++#ifdef CONFIG_VENDOR_MXL
 +#define WLAN_STA_BSS_TRANS_MGMT_REQ_TIMEOUT BIT(2)
++#endif /* CONFIG_VENDOR_MXL */
  #define WLAN_STA_AUTHORIZED BIT(5)
  #define WLAN_STA_PENDING_POLL BIT(6) /* pending activity poll not ACKed */
  #define WLAN_STA_SHORT_PREAMBLE BIT(7)
-@@ -52,6 +53,7 @@
+@@ -54,6 +57,7 @@
  /* Maximum number of supported rates (from both Supported Rates and Extended
   * Supported Rates IEs). */
  #define WLAN_SUPP_RATES_MAX 32
@@ -1066,7 +1038,7 @@ index 3f69c3c4e..afdef6021 100644
  
  struct hostapd_data;
  
-@@ -70,6 +72,19 @@ struct pending_eapol_rx {
+@@ -72,6 +76,19 @@ struct pending_eapol_rx {
  	enum frame_encryption encrypted;
  };
  
@@ -1086,7 +1058,7 @@ index 3f69c3c4e..afdef6021 100644
  #define EHT_ML_MAX_STA_PROF_LEN 1024
  struct mld_info {
  	bool mld_sta;
-@@ -112,6 +127,8 @@ struct sta_info {
+@@ -99,6 +116,8 @@ struct sta_info {
  	u16 listen_interval; /* or beacon_int for APs */
  	u8 supported_rates[WLAN_SUPP_RATES_MAX];
  	int supported_rates_len;
@@ -1095,7 +1067,7 @@ index 3f69c3c4e..afdef6021 100644
  	u8 qosinfo; /* Valid when WLAN_STA_WMM is set */
  
  #ifdef CONFIG_MESH
-@@ -205,6 +222,7 @@ struct sta_info {
+@@ -191,6 +210,7 @@ struct sta_info {
  	char *radius_cui; /* Chargeable-User-Identity from RADIUS */
  
  	struct ieee80211_ht_capabilities *ht_capabilities;
@@ -1103,19 +1075,19 @@ index 3f69c3c4e..afdef6021 100644
  	struct ieee80211_vht_capabilities *vht_capabilities;
  	struct ieee80211_vht_operation *vht_operation;
  	u8 vht_opmode;
-@@ -346,6 +364,7 @@ struct sta_info {
+@@ -335,6 +355,7 @@ struct sta_info {
  	/* IEEE 802.11f (IAPP) related data */
  	struct ieee80211_mgmt *last_assoc_req;
  	size_t last_assoc_req_len;
 +	enum sta_disconnect_source disconnect_source;
+ #endif /* CONFIG_VENDOR_MXL */
  };
  
- 
 diff --git a/src/ap/wnm_ap.c b/src/ap/wnm_ap.c
-index ecb1b73d7..cc5ad3bbd 100644
+index 066af6184..09f2d8372 100644
 --- a/src/ap/wnm_ap.c
 +++ b/src/ap/wnm_ap.c
-@@ -1100,6 +1100,7 @@ static void set_disassoc_timer(struct hostapd_data *hapd, struct sta_info *sta,
+@@ -1125,6 +1125,7 @@ static void set_disassoc_timer(struct hostapd_data *hapd, struct sta_info *sta,
  		   " set to %d ms", MAC2STR(sta->addr), timeout);
  
  	sta->timeout_next = STA_DISASSOC_FROM_CLI;
@@ -1124,10 +1096,10 @@ index ecb1b73d7..cc5ad3bbd 100644
  	eloop_register_timeout(timeout / 1000,
  			       timeout % 1000 * 1000,
 diff --git a/src/common/ieee802_11_defs.h b/src/common/ieee802_11_defs.h
-index eaf6c88cf..62fb8b0eb 100644
+index 700e9383c..89a1574aa 100644
 --- a/src/common/ieee802_11_defs.h
 +++ b/src/common/ieee802_11_defs.h
-@@ -1270,6 +1270,14 @@ struct auth_fail_list {
+@@ -1322,6 +1322,14 @@ struct auth_fail_list {
  #define HT_CAP_AMPDU_MAXIMUM_AMPDU_LENGTH_EXPONENT	((u8)(BIT(0) | BIT(1)))
  #define HT_CAP_AMPDU_MINIMUM_MPDU_START_SPACING 	((u8)(BIT(2) | BIT(3) | BIT(4)))
  
@@ -1142,15 +1114,17 @@ index eaf6c88cf..62fb8b0eb 100644
  /* HT Extended Capabilities field within HT Capabilities element */
  #define EXT_HT_CAP_INFO_PCO			((u16) BIT(0))
  #define EXT_HT_CAP_INFO_PCO_TRANS_TIME_MASK	((u16) (BIT(1) | BIT(2)))
-@@ -2323,6 +2331,7 @@ enum phy_type {
- 	PHY_TYPE_HT = 7,
- 	PHY_TYPE_DMG = 8,
- 	PHY_TYPE_VHT = 9,
-+	PHY_TYPE_HE = 10,
+@@ -2453,6 +2461,9 @@ enum phy_type {
+ 	PHY_TYPE_S1G = 11,
+ 	PHY_TYPE_CDMG = 12,
+ 	PHY_TYPE_CMMG = 13,
++#ifdef CONFIG_VENDOR_MXL
++	PHY_TYPE_HE = 14,
++#endif /* CONFIG_VENDOR_MXL */
  };
  
- /* IEEE P802.11-REVmd/D3.0, 9.4.2.36 - Neighbor Report element */
-@@ -2462,6 +2471,67 @@ struct ieee80211_spatial_reuse {
+ /* IEEE Std 802.11-2020, 9.4.2.36 - Neighbor Report element */
+@@ -2592,6 +2603,67 @@ struct ieee80211_spatial_reuse {
  #define HE_PHYCAP_PPE_THRESHOLD_PRESENT_IDX	6
  #define HE_PHYCAP_PPE_THRESHOLD_PRESENT		((u8) BIT(7))
  
@@ -1219,10 +1193,10 @@ index eaf6c88cf..62fb8b0eb 100644
  #define HE_PPE_THRES_RU_INDEX_BITMASK_MASK	0xf
  #define HE_PPE_THRES_RU_INDEX_BITMASK_SHIFT	3
 diff --git a/src/utils/common.h b/src/utils/common.h
-index fd748b52d..9cb154297 100644
+index 17d9d585f..7da451a9e 100644
 --- a/src/utils/common.h
 +++ b/src/utils/common.h
-@@ -590,6 +590,7 @@ char * get_param(const char *cmd, const char *param);
+@@ -632,6 +632,7 @@ char * get_param(const char *cmd, const char *param);
  void forced_memzero(void *ptr, size_t len);
  
  #ifdef CONFIG_IEEE80211AX

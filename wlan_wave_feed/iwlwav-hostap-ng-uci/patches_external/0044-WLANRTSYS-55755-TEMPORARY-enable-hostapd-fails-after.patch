@@ -1,4 +1,4 @@
-From b659ae98d5f51b9c3ae3b32a0d6887031f0f4163 Mon Sep 17 00:00:00 2001
+From f0df1c953a51d03e4b3467148200b6ccb054c8ec Mon Sep 17 00:00:00 2001
 From: Dmitrijs Martinovs <dmartinovs@maxlinear.com>
 Date: Tue, 30 May 2023 13:24:11 +0300
 Subject: [PATCH] WLANRTSYS-55755: TEMPORARY: enable hostapd fails after it was
@@ -10,10 +10,10 @@ Subject: [PATCH] WLANRTSYS-55755: TEMPORARY: enable hostapd fails after it was
  2 files changed, 8 insertions(+), 2 deletions(-)
 
 diff --git a/hostapd/config_file.c b/hostapd/config_file.c
-index 4ff1eaa45..f1a20e5a1 100644
+index cda636476..de1be552f 100644
 --- a/hostapd/config_file.c
 +++ b/hostapd/config_file.c
-@@ -1073,11 +1073,13 @@ static int hostapd_config_ht_capab(struct hostapd_config *conf,
+@@ -1141,11 +1141,13 @@ static int hostapd_config_ht_capab(struct hostapd_config *conf,
  		conf->ht_capab |= HT_CAP_INFO_LDPC_CODING_CAP;
  	if (os_strstr(capab, "[HT40-]")) {
  		conf->ht_capab |= HT_CAP_INFO_SUPP_CHANNEL_WIDTH_SET;
@@ -29,7 +29,7 @@ index 4ff1eaa45..f1a20e5a1 100644
  	}
  	if (os_strstr(capab, "[HT40+]") && os_strstr(capab, "[HT40-]")) {
  		conf->ht_capab |= HT_CAP_INFO_SUPP_CHANNEL_WIDTH_SET;
-@@ -3785,6 +3787,9 @@ static int hostapd_config_fill(struct hostapd_config *conf,
+@@ -3849,6 +3851,9 @@ static int hostapd_config_fill(struct hostapd_config *conf,
  				   line);
  			return 1;
  		}
@@ -40,10 +40,10 @@ index 4ff1eaa45..f1a20e5a1 100644
  		conf->ht_tx_bf_capab_from_hw = atoi(pos);
  	} else if (os_strcmp(buf, "ht_tx_bf_capab") == 0) {
 diff --git a/src/ap/ap_config.h b/src/ap/ap_config.h
-index 13baf0f16..efd0d984c 100644
+index fd3008a52..027b6bcfc 100644
 --- a/src/ap/ap_config.h
 +++ b/src/ap/ap_config.h
-@@ -1219,6 +1219,7 @@ struct hostapd_config {
+@@ -1250,6 +1250,7 @@ struct hostapd_config {
  	u32 ht_tx_bf_capab;
  	int ieee80211n;
  	int secondary_channel;

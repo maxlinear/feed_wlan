@@ -1,4 +1,4 @@
-From 3d6103d9bb47474e7c1d6717547a3eee052e75a6 Mon Sep 17 00:00:00 2001
+From 5b9d87e885a2154af316283f8f1a5548b7ff632a Mon Sep 17 00:00:00 2001
 From: Jurijs Soloveckis <jsoloveckis@maxlinear.com>
 Date: Tue, 13 Jun 2023 13:23:09 +0200
 Subject: [PATCH] WLANRTSYS-48788: VHT IEs are absent in 2.4GHz beacon from
@@ -7,7 +7,7 @@ Subject: [PATCH] WLANRTSYS-48788: VHT IEs are absent in 2.4GHz beacon from
 ---
  hostapd/config_file.c          |  3 +++
  src/ap/ap_config.c             |  4 ++--
- src/ap/beacon.c                | 12 ++++++------
+ src/ap/beacon.c                | 14 +++++++++-----
  src/ap/hw_features.c           | 19 +++++++++++++++++++
  src/ap/ieee802_11.c            | 13 ++++++++++---
  src/ap/ieee802_11.h            |  2 ++
@@ -16,13 +16,13 @@ Subject: [PATCH] WLANRTSYS-48788: VHT IEs are absent in 2.4GHz beacon from
  src/ap/sta_info.h              |  1 +
  src/common/ieee802_11_common.c |  3 ++-
  src/common/ieee802_11_defs.h   |  1 +
- 11 files changed, 77 insertions(+), 12 deletions(-)
+ 11 files changed, 80 insertions(+), 11 deletions(-)
 
 diff --git a/hostapd/config_file.c b/hostapd/config_file.c
-index 2b3c2298f..0878a7415 100644
+index d50919118..c9f892ce2 100644
 --- a/hostapd/config_file.c
 +++ b/hostapd/config_file.c
-@@ -4019,6 +4019,9 @@ static int hostapd_config_fill(struct hostapd_config *conf,
+@@ -4086,6 +4086,9 @@ static int hostapd_config_fill(struct hostapd_config *conf,
  				   line);
  			return 1;
  		}
@@ -33,10 +33,10 @@ index 2b3c2298f..0878a7415 100644
  		conf->require_vht = atoi(pos);
  	} else if (os_strcmp(buf, "vht_oper_chwidth") == 0) {
 diff --git a/src/ap/ap_config.c b/src/ap/ap_config.c
-index 71a71cc8f..d64ed4252 100644
+index c4f795161..11baf01ef 100644
 --- a/src/ap/ap_config.c
 +++ b/src/ap/ap_config.c
-@@ -1444,7 +1444,7 @@ static int hostapd_config_check_bss(struct hostapd_bss_config *bss,
+@@ -1468,7 +1468,7 @@ static int hostapd_config_check_bss(struct hostapd_bss_config *bss,
  
  #ifdef CONFIG_IEEE80211AC
  #ifdef CONFIG_WEP
@@ -45,7 +45,7 @@ index 71a71cc8f..d64ed4252 100644
  	    bss->ssid.security_policy == SECURITY_STATIC_WEP) {
  		bss->disable_11ac = true;
  		wpa_printf(MSG_ERROR,
-@@ -1452,7 +1452,7 @@ static int hostapd_config_check_bss(struct hostapd_bss_config *bss,
+@@ -1476,7 +1476,7 @@ static int hostapd_config_check_bss(struct hostapd_bss_config *bss,
  	}
  #endif /* CONFIG_WEP */
  
@@ -55,19 +55,22 @@ index 71a71cc8f..d64ed4252 100644
  	    !(bss->rsn_pairwise & (WPA_CIPHER_CCMP | WPA_CIPHER_GCMP |
  				   WPA_CIPHER_CCMP_256 | WPA_CIPHER_GCMP_256)))
 diff --git a/src/ap/beacon.c b/src/ap/beacon.c
-index 0e42acb28..1ddefe72e 100644
+index ddbd1bb78..f5ef5aac8 100644
 --- a/src/ap/beacon.c
 +++ b/src/ap/beacon.c
-@@ -646,7 +646,7 @@ static size_t hostapd_probe_resp_elems_len(struct hostapd_data *hapd,
- #endif /* CONFIG_FST */
- 	if (hapd->conf->vendor_elements)
- 		buflen += wpabuf_len(hapd->conf->vendor_elements);
--	if (hapd->conf->vendor_vht) {
+@@ -793,7 +793,11 @@ static size_t hostapd_probe_resp_elems_len(struct hostapd_data *hapd,
+ 	if (hapd->conf->presp_elements)
+ 		buflen += wpabuf_len(hapd->conf->presp_elements);
+ #endif /* CONFIG_TESTING_OPTIONS */
++#ifndef CONFIG_VENDOR_MXL
+ 	if (hapd->conf->vendor_vht) {
++#else /* CONFIG_VENDOR_MXL */
 +	if (hapd->conf->vendor_vht && !hapd->conf->disable_11ac) {
++#endif /* CONFIG_VENDOR_MXL */
  		buflen += 5 + 2 + sizeof(struct ieee80211_vht_capabilities) +
  			2 + sizeof(struct ieee80211_vht_operation);
  	}
-@@ -835,7 +835,7 @@ static u8 * hostapd_probe_resp_fill_elems(struct hostapd_data *hapd,
+@@ -970,7 +974,7 @@ static u8 * hostapd_probe_resp_fill_elems(struct hostapd_data *hapd,
  #endif /* CONFIG_FST */
  
  #ifdef CONFIG_IEEE80211AC
@@ -76,7 +79,7 @@ index 0e42acb28..1ddefe72e 100644
  	    !is_6ghz_op_class(hapd->iconf->op_class)) {
  		pos = hostapd_eid_vht_capabilities(hapd, pos, 0);
  		pos = hostapd_eid_vht_operation(hapd, pos);
-@@ -908,7 +908,7 @@ static u8 * hostapd_probe_resp_fill_elems(struct hostapd_data *hapd,
+@@ -1046,7 +1050,7 @@ static u8 * hostapd_probe_resp_fill_elems(struct hostapd_data *hapd,
  #endif /* CONFIG_IEEE80211BE */
  
  #ifdef CONFIG_IEEE80211AC
@@ -85,7 +88,7 @@ index 0e42acb28..1ddefe72e 100644
  		pos = hostapd_eid_vendor_vht(hapd, pos);
  #endif /* CONFIG_IEEE80211AC */
  
-@@ -2257,7 +2257,7 @@ int ieee802_11_build_ap_params(struct hostapd_data *hapd,
+@@ -2380,7 +2384,7 @@ int ieee802_11_build_ap_params(struct hostapd_data *hapd,
  		tail_len += wpabuf_len(hapd->conf->vendor_elements);
  
  #ifdef CONFIG_IEEE80211AC
@@ -94,7 +97,7 @@ index 0e42acb28..1ddefe72e 100644
  		tail_len += 5 + 2 + sizeof(struct ieee80211_vht_capabilities) +
  			2 + sizeof(struct ieee80211_vht_operation);
  	}
-@@ -2442,7 +2442,7 @@ int ieee802_11_build_ap_params(struct hostapd_data *hapd,
+@@ -2557,7 +2561,7 @@ int ieee802_11_build_ap_params(struct hostapd_data *hapd,
  #endif /* CONFIG_FST */
  
  #ifdef CONFIG_IEEE80211AC
@@ -103,7 +106,7 @@ index 0e42acb28..1ddefe72e 100644
  	    !is_6ghz_op_class(hapd->iconf->op_class)) {
  		tailpos = hostapd_eid_vht_capabilities(hapd, tailpos, 0);
  		tailpos = hostapd_eid_vht_operation(hapd, tailpos);
-@@ -2519,7 +2519,7 @@ int ieee802_11_build_ap_params(struct hostapd_data *hapd,
+@@ -2638,7 +2642,7 @@ int ieee802_11_build_ap_params(struct hostapd_data *hapd,
  #endif /* CONFIG_IEEE80211BE */
  
  #ifdef CONFIG_IEEE80211AC
@@ -113,10 +116,10 @@ index 0e42acb28..1ddefe72e 100644
  #endif /* CONFIG_IEEE80211AC */
  
 diff --git a/src/ap/hw_features.c b/src/ap/hw_features.c
-index 21039486c..b1d47cdad 100644
+index 77ff20d12..169fe125c 100644
 --- a/src/ap/hw_features.c
 +++ b/src/ap/hw_features.c
-@@ -810,6 +810,19 @@ static int ieee80211ax_supported_he_capab(struct hostapd_iface *iface)
+@@ -832,6 +832,19 @@ static int ieee80211ax_supported_he_capab(struct hostapd_iface *iface)
  }
  #endif /* CONFIG_IEEE80211AX */
  
@@ -136,7 +139,7 @@ index 21039486c..b1d47cdad 100644
  
  int hostapd_check_ht_capab(struct hostapd_iface *iface)
  {
-@@ -842,6 +855,12 @@ int hostapd_check_ht_capab(struct hostapd_iface *iface)
+@@ -864,6 +877,12 @@ int hostapd_check_ht_capab(struct hostapd_iface *iface)
  	    !ieee80211ac_supported_vht_capab(iface))
  		return -1;
  #endif /* CONFIG_IEEE80211AC */
@@ -150,10 +153,10 @@ index 21039486c..b1d47cdad 100644
  	if (ret)
  		return ret;
 diff --git a/src/ap/ieee802_11.c b/src/ap/ieee802_11.c
-index 40b69d9d2..c8a2b7217 100644
+index ced78878c..6d4fe60b2 100644
 --- a/src/ap/ieee802_11.c
 +++ b/src/ap/ieee802_11.c
-@@ -3946,6 +3946,11 @@ static int __check_assoc_ies(struct hostapd_data *hapd, struct sta_info *sta,
+@@ -4321,6 +4321,11 @@ static int __check_assoc_ies(struct hostapd_data *hapd, struct sta_info *sta,
  		if (resp != WLAN_STATUS_SUCCESS)
  			return resp;
  	}
@@ -165,7 +168,7 @@ index 40b69d9d2..c8a2b7217 100644
  #endif /* CONFIG_IEEE80211AC */
  #ifdef CONFIG_IEEE80211AX
  	if (hapd->iconf->ieee80211ax && !hapd->conf->disable_11ax) {
-@@ -4919,8 +4924,9 @@ static u16 send_assoc_resp(struct hostapd_data *hapd, struct sta_info *sta,
+@@ -5315,8 +5320,9 @@ static u16 send_assoc_resp(struct hostapd_data *hapd, struct sta_info *sta,
  	p = hostapd_eid_ht_operation(hapd, p);
  
  #ifdef CONFIG_IEEE80211AC
@@ -177,7 +180,7 @@ index 40b69d9d2..c8a2b7217 100644
  		u32 nsts = 0, sta_nsts;
  
  		if (sta && hapd->conf->use_sta_nsts && sta->vht_capabilities) {
-@@ -4943,7 +4949,8 @@ static u16 send_assoc_resp(struct hostapd_data *hapd, struct sta_info *sta,
+@@ -5339,7 +5345,8 @@ static u16 send_assoc_resp(struct hostapd_data *hapd, struct sta_info *sta,
  #endif /* CONFIG_IEEE80211AC */
  
  #ifdef CONFIG_IEEE80211AX
@@ -188,7 +191,7 @@ index 40b69d9d2..c8a2b7217 100644
  		p = hostapd_eid_he_capab(hapd, p, IEEE80211_MODE_AP);
  		p = hostapd_eid_he_operation(hapd, p);
 diff --git a/src/ap/ieee802_11.h b/src/ap/ieee802_11.h
-index 3448cf737..dadd8e030 100644
+index 156403f22..9367c63b0 100644
 --- a/src/ap/ieee802_11.h
 +++ b/src/ap/ieee802_11.h
 @@ -112,6 +112,8 @@ u16 copy_sta_ht_capab(struct hostapd_data *hapd, struct sta_info *sta,
@@ -201,10 +204,10 @@ index 3448cf737..dadd8e030 100644
  int update_ht_state(struct hostapd_data *hapd, struct sta_info *sta);
  void ht40_intolerant_add(struct hostapd_iface *iface, struct sta_info *sta);
 diff --git a/src/ap/ieee802_11_vht.c b/src/ap/ieee802_11_vht.c
-index db615a38b..e61e136c4 100644
+index 4dc325ce8..d59aa7503 100644
 --- a/src/ap/ieee802_11_vht.c
 +++ b/src/ap/ieee802_11_vht.c
-@@ -265,6 +265,36 @@ no_capab:
+@@ -269,6 +269,36 @@ no_capab:
  	return WLAN_STATUS_SUCCESS;
  }
  
@@ -254,10 +257,10 @@ index 94417505e..1ed72f1a3 100644
  };
  
 diff --git a/src/ap/sta_info.h b/src/ap/sta_info.h
-index 1f7142371..3f69c3c4e 100644
+index 2052cfda2..e3a272bb6 100644
 --- a/src/ap/sta_info.h
 +++ b/src/ap/sta_info.h
-@@ -44,6 +44,7 @@
+@@ -46,6 +46,7 @@
  #define WLAN_STA_6GHZ BIT(25)
  #define WLAN_STA_PENDING_PASN_FILS_ERP BIT(26)
  #define WLAN_STA_EHT BIT(27)
@@ -266,10 +269,10 @@ index 1f7142371..3f69c3c4e 100644
  #define WLAN_STA_PENDING_DEAUTH_CB BIT(30)
  #define WLAN_STA_NONERP BIT(31)
 diff --git a/src/common/ieee802_11_common.c b/src/common/ieee802_11_common.c
-index d4ebb747b..6067457df 100644
+index 94500c895..273476cbf 100644
 --- a/src/common/ieee802_11_common.c
 +++ b/src/common/ieee802_11_common.c
-@@ -158,7 +158,8 @@ static int ieee802_11_parse_vendor_specific(const u8 *pos, size_t elen,
+@@ -183,7 +183,8 @@ static int ieee802_11_parse_vendor_specific(const u8 *pos, size_t elen,
  		case VENDOR_VHT_TYPE:
  			if (elen > 4 &&
  			    (pos[4] == VENDOR_VHT_SUBTYPE ||
@@ -280,10 +283,10 @@ index d4ebb747b..6067457df 100644
  				elems->vendor_vht_len = elen;
  			} else
 diff --git a/src/common/ieee802_11_defs.h b/src/common/ieee802_11_defs.h
-index 3e5e5646c..ee2c92e0f 100644
+index 398ea253c..f040ec73f 100644
 --- a/src/common/ieee802_11_defs.h
 +++ b/src/common/ieee802_11_defs.h
-@@ -1884,6 +1884,7 @@ enum plink_action_field {
+@@ -1984,6 +1984,7 @@ enum plink_action_field {
  #define VENDOR_VHT_TYPE		0x04
  #define VENDOR_VHT_SUBTYPE	0x08
  #define VENDOR_VHT_SUBTYPE2	0x00

@@ -1,4 +1,4 @@
-From 086254098c51a2ca97fd41af5f2f7367f178e3c8 Mon Sep 17 00:00:00 2001
+From 2e75ae8e34c1486c2d93a4de583bf94a72576141 Mon Sep 17 00:00:00 2001
 From: mvuls <mvuls@maxlinear.com>
 Date: Thu, 9 Nov 2023 11:39:24 +0200
 Subject: [PATCH] WLANRTSYS-50839: MXL ZWDFS
@@ -12,7 +12,7 @@ Subject: [PATCH] WLANRTSYS-50839: MXL ZWDFS
  hostapd/mxl_hostapd_cli.c          |  31 +++
  hostapd/mxl_hostapd_cli.h          |   6 +
  src/ap/beacon.c                    |   3 +
- src/ap/dfs.c                       |   8 +
+ src/ap/dfs.c                       |   7 +
  src/ap/hostapd.c                   |   6 +-
  src/ap/mxl_config.h                |   1 +
  src/ap/mxl_dfs_common.c            |   8 +-
@@ -33,15 +33,15 @@ Subject: [PATCH] WLANRTSYS-50839: MXL ZWDFS
  src/drivers/mxl_driver.h           |   3 +
  src/drivers/mxl_driver_nl80211.c   |   6 +
  src/drivers/mxl_driver_nl80211.h   |   1 +
- 29 files changed, 643 insertions(+), 9 deletions(-)
+ 29 files changed, 642 insertions(+), 9 deletions(-)
  create mode 100644 src/ap/mxl_zwdfs.c
  create mode 100644 src/ap/mxl_zwdfs.h
 
 diff --git a/hostapd/Makefile b/hostapd/Makefile
-index b03f4c1e4..0fca86790 100644
+index 0ebc18a60..5c7e336fc 100644
 --- a/hostapd/Makefile
 +++ b/hostapd/Makefile
-@@ -369,6 +369,7 @@ OBJS += ../src/drivers/mxl_driver_nl80211.o
+@@ -373,6 +373,7 @@ OBJS += ../src/drivers/mxl_driver_nl80211.o
  OBJS += ../src/ap/mxl_dfs_common.o
  OBJS += ../src/ap/mxl_sub_band_dfs.o
  OBJS += ../src/ap/mxl_dfs_file.o
@@ -50,10 +50,10 @@ index b03f4c1e4..0fca86790 100644
  
  include ../src/drivers/drivers.mak
 diff --git a/hostapd/ctrl_iface.c b/hostapd/ctrl_iface.c
-index 835fb0f90..519df2035 100644
+index 2c52e1c1f..944e1c34f 100644
 --- a/hostapd/ctrl_iface.c
 +++ b/hostapd/ctrl_iface.c
-@@ -2624,7 +2624,10 @@ static int hostapd_ctrl_iface_chan_switch(struct hostapd_iface *iface,
+@@ -2734,7 +2734,10 @@ static int hostapd_ctrl_iface_chan_switch(struct hostapd_iface *iface,
  		}
  
  		settings.freq_params.channel = chan;
@@ -66,13 +66,13 @@ index 835fb0f90..519df2035 100644
  			   "DFS/CAC to (channel=%u, freq=%d, sec_channel_offset=%d, bw=%d, center_freq1=%d)",
  			   settings.freq_params.channel,
 diff --git a/hostapd/main.c b/hostapd/main.c
-index b821b2a4a..76a369c5a 100644
+index ebd6d3ffd..85795f14b 100644
 --- a/hostapd/main.c
 +++ b/hostapd/main.c
-@@ -310,6 +310,11 @@ setup_mld:
- 
+@@ -336,6 +336,11 @@ setup_mld:
  		iface->drv_flags = capa.flags;
  		iface->drv_flags2 = capa.flags2;
+ 		iface->drv_rrm_flags = capa.rrm_flags;
 +
 +#ifdef CONFIG_VENDOR_MXL
 +		iface->mxl_iface.drv_flags = capa.mxl_flags;
@@ -213,24 +213,24 @@ index 57d868288..1906d5893 100644
  
  #endif /* MXL_HOSTAPD_CLI_H */
 diff --git a/src/ap/beacon.c b/src/ap/beacon.c
-index 935ffd25e..df2920751 100644
+index a7d7ecd20..7ad5b3d30 100644
 --- a/src/ap/beacon.c
 +++ b/src/ap/beacon.c
-@@ -2259,6 +2259,9 @@ int ieee802_11_build_ap_params(struct hostapd_data *hapd,
+@@ -2364,6 +2364,9 @@ int ieee802_11_build_ap_params(struct hostapd_data *hapd,
+ 	tailpos = hostapd_eid_chsw_wrapper(hapd, tailpos);
  
- 	tailpos = hostapd_eid_wb_chsw_wrapper(hapd, tailpos);
- 
+ 	tailpos = hostapd_eid_rnr(hapd, tailpos, WLAN_FC_STYPE_BEACON, true);
 +#ifdef CONFIG_VENDOR_MXL
 +	tailpos = mxl_hostapd_eid_opmodenotif(hapd, tailpos);
 +#endif /* CONFIG_VENDOR_MXL */
- 	tailpos = hostapd_eid_rnr(hapd, tailpos, WLAN_FC_STYPE_BEACON);
  	tailpos = hostapd_eid_fils_indic(hapd, tailpos, 0);
- 	tailpos = hostapd_get_rsnxe(hapd, tailpos, tailend - tailpos);
+ 
+ 	/* Max Channel Switch Time element */
 diff --git a/src/ap/dfs.c b/src/ap/dfs.c
-index 7e4bd5310..e5d112e79 100644
+index af5f1b439..88e5a9ec4 100644
 --- a/src/ap/dfs.c
 +++ b/src/ap/dfs.c
-@@ -20,6 +20,7 @@
+@@ -21,6 +21,7 @@
  #ifdef CONFIG_VENDOR_MXL
  #include "mxl_dfs_common.h"
  #include "mxl_dfs_file.h"
@@ -238,7 +238,7 @@ index 7e4bd5310..e5d112e79 100644
  #endif /* CONFIG_VENDOR_MXL */
  
  enum dfs_channel_type {
-@@ -788,6 +789,9 @@ static int dfs_are_channels_overlapped(struct hostapd_iface *iface, int freq,
+@@ -798,6 +799,9 @@ static int dfs_are_channels_overlapped(struct hostapd_iface *iface, int freq,
  
  	for (i = 0; i < n_chans; i++) {
  		chan = &mode->channels[start_chan_idx + i];
@@ -248,22 +248,21 @@ index 7e4bd5310..e5d112e79 100644
  		if (!(chan->flag & HOSTAPD_CHAN_RADAR))
  			continue;
  		for (j = 0; j < radar_n_chans; j++) {
-@@ -1213,6 +1217,10 @@ int hostapd_dfs_complete_cac(struct hostapd_iface *iface, int success, int freq,
- 		hostpad_dfs_update_background_chain(iface);
+@@ -1240,6 +1244,9 @@ int hostapd_dfs_complete_cac(struct hostapd_iface *iface, int success, int freq,
  	}
  
+ 	iface->radar_detected = false;
 +#ifdef CONFIG_VENDOR_MXL
 +	return mxl_hostapd_zwdfs_switch(iface, success, freq, chan_width, cf1, cf2);
 +#endif /* CONFIG_VENDOR_MXL */
-+
  	return 0;
  }
  
 diff --git a/src/ap/hostapd.c b/src/ap/hostapd.c
-index 7acd4bccd..20456c605 100644
+index a1e30575d..8d1029265 100644
 --- a/src/ap/hostapd.c
 +++ b/src/ap/hostapd.c
-@@ -667,7 +667,7 @@ static void hostapd_cleanup_iface(struct hostapd_iface *iface)
+@@ -743,7 +743,7 @@ static void hostapd_cleanup_iface(struct hostapd_iface *iface)
  
  	hostapd_cleanup_iface_partial(iface);
  #ifdef CONFIG_VENDOR_MXL
@@ -272,7 +271,7 @@ index 7acd4bccd..20456c605 100644
  #endif /* CONFIG_VENDOR_MXL */
  	hostapd_config_free(iface->conf);
  	iface->conf = NULL;
-@@ -2806,6 +2806,10 @@ void hostapd_interface_deinit(struct hostapd_iface *iface)
+@@ -3025,6 +3025,10 @@ void hostapd_interface_deinit(struct hostapd_iface *iface)
  	}
  #endif /* CONFIG_FST */
  
@@ -931,7 +930,7 @@ index 000000000..91be0cf98
 +
 +#endif /* MXL_ZWDFS_H */
 diff --git a/src/common/ieee802_11_defs.h b/src/common/ieee802_11_defs.h
-index 9e3771318..247ba283c 100644
+index d59bcbc9a..5ad667539 100644
 --- a/src/common/ieee802_11_defs.h
 +++ b/src/common/ieee802_11_defs.h
 @@ -11,6 +11,9 @@
@@ -997,11 +996,11 @@ index 6e77d4312..3f175ddff 100644
 +
  #endif /* _VENDOR_CMDS_H_ */
 diff --git a/src/drivers/driver.h b/src/drivers/driver.h
-index 610458d87..86abc8cda 100644
+index fd1d3a699..9be5735c5 100644
 --- a/src/drivers/driver.h
 +++ b/src/drivers/driver.h
-@@ -2320,6 +2320,10 @@ struct wpa_driver_capa {
- #define WPA_DRIVER_FLAGS2_SAE_OFFLOAD_AP	0x0000000000100000ULL
+@@ -2398,6 +2398,10 @@ struct wpa_driver_capa {
+ #define WPA_DRIVER_FLAGS2_P2P_FEATURE_PCC_MODE	0x0000000004000000ULL
  	u64 flags2;
  
 +#ifdef CONFIG_VENDOR_MXL
@@ -1012,7 +1011,7 @@ index 610458d87..86abc8cda 100644
  	(drv_flags & WPA_DRIVER_FLAGS_FULL_AP_CLIENT_STATE)
  
 diff --git a/src/drivers/driver_nl80211_capa.c b/src/drivers/driver_nl80211_capa.c
-index 847631bfb..102d3064a 100644
+index 8cb90caae..094d054d0 100644
 --- a/src/drivers/driver_nl80211_capa.c
 +++ b/src/drivers/driver_nl80211_capa.c
 @@ -18,6 +18,9 @@
@@ -1025,7 +1024,7 @@ index 847631bfb..102d3064a 100644
  
  
  static int protocol_feature_handler(struct nl_msg *msg, void *arg)
-@@ -1178,6 +1181,10 @@ static int wiphy_info_handler(struct nl_msg *msg, void *arg)
+@@ -1189,6 +1192,10 @@ static int wiphy_info_handler(struct nl_msg *msg, void *arg)
  	if (tb[NL80211_ATTR_MLO_SUPPORT])
  		capa->flags2 |= WPA_DRIVER_FLAGS2_MLO;
  
@@ -1037,10 +1036,10 @@ index 847631bfb..102d3064a 100644
  }
  
 diff --git a/src/drivers/driver_nl80211_event.c b/src/drivers/driver_nl80211_event.c
-index a1736995d..d450efd28 100644
+index a76474ccb..fa9459b27 100644
 --- a/src/drivers/driver_nl80211_event.c
 +++ b/src/drivers/driver_nl80211_event.c
-@@ -3243,6 +3243,12 @@ static void mxl_nl80211_handle_radar(struct wpa_driver_nl80211_data *drv, const
+@@ -3381,6 +3381,12 @@ static void mxl_nl80211_handle_radar(struct wpa_driver_nl80211_data *drv, const
  	mxl_drv_event_radar(drv->ctx, data, len);
  }
  
@@ -1053,7 +1052,7 @@ index a1736995d..d450efd28 100644
  #endif /* CONFIG_DRIVER_NL80211_MXL */
  
  static void nl80211_vendor_event_mxl(struct wpa_driver_nl80211_data *drv,
-@@ -3255,6 +3261,9 @@ static void nl80211_vendor_event_mxl(struct wpa_driver_nl80211_data *drv,
+@@ -3393,6 +3399,9 @@ static void nl80211_vendor_event_mxl(struct wpa_driver_nl80211_data *drv,
  		case LTQ_NL80211_VENDOR_EVENT_RADAR_DETECTED:
  			mxl_nl80211_handle_radar(drv, data, len);
  			break;

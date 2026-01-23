@@ -1,27 +1,27 @@
-From b09c78c81362b4e44e9cf50d09604b7bebfa280c Mon Sep 17 00:00:00 2001
+From 4e188d522b0ffc4c07a2e6c3912d46a058190c45 Mon Sep 17 00:00:00 2001
 From: Dmitrijs Martinovs <dmartinovs@maxlinear.com>
 Date: Tue, 30 May 2023 15:47:20 +0300
 Subject: [PATCH] WLANRTSYS-55761: Passpoint integration part 2
 
 ---
  hostapd/config_file.c      | 18 +++++++++++++++
- hostapd/ctrl_iface.c       | 44 +++++++++++++++++++++++++++++++++++
+ hostapd/ctrl_iface.c       | 35 ++++++++++++++++++++++++++++
  hostapd/hostapd_cli.c      | 47 +++++++++++++++++++-------------------
  hostapd/mxl_config.c       |  2 ++
- src/ap/ap_config.h         |  8 +++++++
+ src/ap/ap_config.h         | 10 ++++++++
  src/ap/beacon.c            |  1 -
  src/ap/gas_serv.c          | 12 ++++++++++
  src/ap/ieee802_11.c        | 29 +++++++++++++++++++++++
  src/ap/ieee802_11.h        |  2 ++
  src/ap/ieee802_11_shared.c |  2 +-
  src/common/wpa_ctrl.h      |  2 ++
- 11 files changed, 142 insertions(+), 25 deletions(-)
+ 11 files changed, 135 insertions(+), 25 deletions(-)
 
 diff --git a/hostapd/config_file.c b/hostapd/config_file.c
-index f0df44170..9f17d7a9e 100644
+index b0aa7d59e..4b8aba984 100644
 --- a/hostapd/config_file.c
 +++ b/hostapd/config_file.c
-@@ -3735,6 +3735,8 @@ static int hostapd_config_fill(struct hostapd_config *conf,
+@@ -3793,6 +3793,8 @@ static int hostapd_config_fill(struct hostapd_config *conf,
  		}
  	} else if (os_strcmp(buf, "use_driver_iface_addr") == 0) {
  		conf->use_driver_iface_addr = atoi(pos);
@@ -29,8 +29,8 @@ index f0df44170..9f17d7a9e 100644
 +		conf->notify_action_frame = atoi(pos);
  	} else if (os_strcmp(buf, "ieee80211w") == 0) {
  		bss->ieee80211w = atoi(pos);
- 	} else if (os_strcmp(buf, "group_mgmt_cipher") == 0) {
-@@ -4527,6 +4529,15 @@ static int hostapd_config_fill(struct hostapd_config *conf,
+ 	} else if (os_strcmp(buf, "rsn_override_mfp") == 0) {
+@@ -4611,6 +4613,15 @@ static int hostapd_config_fill(struct hostapd_config *conf,
  			return 1;
  		}
  		bss->hs20_release = val;
@@ -46,7 +46,7 @@ index f0df44170..9f17d7a9e 100644
  	} else if (os_strcmp(buf, "disable_dgaf") == 0) {
  		bss->disable_dgaf = atoi(pos);
  	} else if (os_strcmp(buf, "na_mcast_to_ucast") == 0) {
-@@ -5425,6 +5436,13 @@ static int hostapd_config_fill(struct hostapd_config *conf,
+@@ -5570,6 +5581,13 @@ static int hostapd_config_fill(struct hostapd_config *conf,
  			return 1;
  		}
  		conf->override_6g_mbssid_default_mode = val;
@@ -61,31 +61,14 @@ index f0df44170..9f17d7a9e 100644
  		int val = atoi(pos);
  		if (!IS_VALID_BOOL_RANGE(val)) {
 diff --git a/hostapd/ctrl_iface.c b/hostapd/ctrl_iface.c
-index f28617b08..581de4a5d 100644
+index 3a8428fc0..afdcc4494 100644
 --- a/hostapd/ctrl_iface.c
 +++ b/hostapd/ctrl_iface.c
-@@ -626,6 +626,17 @@ static int hostapd_ctrl_iface_hs20_wnm_notif(struct hostapd_data *hapd,
- 	u8 addr[ETH_ALEN];
- 	const char *url;
- 
-+	hapd = mxl_get_bss_index(cmd, hapd->iface);
-+	if (NULL == hapd) {
-+		return -1;
-+	}
-+
-+	cmd = os_strchr(cmd, ' ');
-+	if (NULL == cmd) {
-+		return -1;
-+	}
-+	cmd++;
-+
- 	if (hwaddr_aton(cmd, addr))
- 		return -1;
- 	url = cmd + 17;
-@@ -652,6 +663,17 @@ static int hostapd_ctrl_iface_hs20_deauth_req(struct hostapd_data *hapd,
+@@ -631,6 +631,19 @@ static int hostapd_ctrl_iface_hs20_deauth_req(struct hostapd_data *hapd,
  	size_t url_len;
  	struct wpabuf *req;
  
++#ifdef CONFIG_VENDOR_MXL
 +	hapd = mxl_get_bss_index(cmd, hapd->iface);
 +	if (NULL == hapd) {
 +		return -1;
@@ -96,11 +79,12 @@ index f28617b08..581de4a5d 100644
 +		return -1;
 +	}
 +	cmd++;
++#endif /* CONFIG_VENDOR_MXL */
 +
  	/* <STA MAC Addr> <Code(0/1)> <Re-auth-Delay(sec)> [URL] */
  	if (hwaddr_aton(cmd, addr))
  		return -1;
-@@ -704,6 +726,17 @@ static int hostapd_ctrl_iface_set_qos_map_set(struct hostapd_data *hapd,
+@@ -682,6 +695,17 @@ static int hostapd_ctrl_iface_set_qos_map_set(struct hostapd_data *hapd,
  	const char *pos = cmd;
  	int val, ret;
  
@@ -118,7 +102,7 @@ index f28617b08..581de4a5d 100644
  	for (;;) {
  		if (count == sizeof(qos_map_set)) {
  			wpa_printf(MSG_ERROR, "Too many qos_map_set parameters");
-@@ -751,6 +784,17 @@ static int hostapd_ctrl_iface_send_qos_map_conf(struct hostapd_data *hapd,
+@@ -729,6 +753,17 @@ static int hostapd_ctrl_iface_send_qos_map_conf(struct hostapd_data *hapd,
  	u8 qos_map_set_len = hapd->conf->qos_map_set_len;
  	int ret;
  
@@ -137,10 +121,10 @@ index f28617b08..581de4a5d 100644
  		wpa_printf(MSG_INFO, "QoS Map Set is not set");
  		return -1;
 diff --git a/hostapd/hostapd_cli.c b/hostapd/hostapd_cli.c
-index e08187d26..e4968223c 100644
+index dba2a0198..8660ecffd 100644
 --- a/hostapd/hostapd_cli.c
 +++ b/hostapd/hostapd_cli.c
-@@ -877,14 +877,14 @@ static int hostapd_cli_cmd_set_qos_map_set(struct wpa_ctrl *ctrl,
+@@ -885,14 +885,14 @@ static int hostapd_cli_cmd_set_qos_map_set(struct wpa_ctrl *ctrl,
  	char buf[200];
  	int res;
  
@@ -159,7 +143,7 @@ index e08187d26..e4968223c 100644
  	if (os_snprintf_error(sizeof(buf), res))
  		return -1;
  	return wpa_ctrl_command(ctrl, buf);
-@@ -897,13 +897,13 @@ static int hostapd_cli_cmd_send_qos_map_conf(struct wpa_ctrl *ctrl,
+@@ -905,13 +905,13 @@ static int hostapd_cli_cmd_send_qos_map_conf(struct wpa_ctrl *ctrl,
  	char buf[50];
  	int res;
  
@@ -176,7 +160,7 @@ index e08187d26..e4968223c 100644
  	if (os_snprintf_error(sizeof(buf), res))
  		return -1;
  	return wpa_ctrl_command(ctrl, buf);
-@@ -916,14 +916,14 @@ static int hostapd_cli_cmd_hs20_wnm_notif(struct wpa_ctrl *ctrl, int argc,
+@@ -924,14 +924,14 @@ static int hostapd_cli_cmd_hs20_wnm_notif(struct wpa_ctrl *ctrl, int argc,
  	char buf[300];
  	int res;
  
@@ -196,7 +180,7 @@ index e08187d26..e4968223c 100644
  	if (os_snprintf_error(sizeof(buf), res))
  		return -1;
  	return wpa_ctrl_command(ctrl, buf);
-@@ -936,19 +936,20 @@ static int hostapd_cli_cmd_hs20_deauth_req(struct wpa_ctrl *ctrl, int argc,
+@@ -944,19 +944,20 @@ static int hostapd_cli_cmd_hs20_deauth_req(struct wpa_ctrl *ctrl, int argc,
  	char buf[300];
  	int res;
  
@@ -224,7 +208,7 @@ index e08187d26..e4968223c 100644
  	if (os_snprintf_error(sizeof(buf), res))
  		return -1;
  	return wpa_ctrl_command(ctrl, buf);
-@@ -2311,7 +2312,7 @@ static const struct hostapd_cli_cmd hostapd_cli_commands[] = {
+@@ -2381,7 +2382,7 @@ static const struct hostapd_cli_cmd hostapd_cli_commands[] = {
  	  "<arg,arg,...> = set QoS Map set element" },
  	{ "send_qos_map_conf", hostapd_cli_cmd_send_qos_map_conf,
  	  hostapd_complete_stations,
@@ -233,7 +217,7 @@ index e08187d26..e4968223c 100644
  	{ "chan_switch", hostapd_cli_cmd_chan_switch, NULL,
  	  "<cs_count> <freq> [sec_channel_offset=] [center_freq1=]\n"
  	  "  [center_freq2=] [bandwidth=] [blocktx] [ht|vht]\n"
-@@ -2319,10 +2320,10 @@ static const struct hostapd_cli_cmd hostapd_cli_commands[] = {
+@@ -2394,10 +2395,10 @@ static const struct hostapd_cli_cmd hostapd_cli_commands[] = {
  	{ "notify_cw_change", hostapd_cli_cmd_notify_cw_change, NULL,
  	  "<channel_width> = 0 - 20 MHz, 1 - 40 MHz, 2 - 80 MHz, 3 - 160 MHz" },
  	{ "hs20_wnm_notif", hostapd_cli_cmd_hs20_wnm_notif, NULL,
@@ -246,7 +230,7 @@ index e08187d26..e4968223c 100644
  	  "  = send WNM-Notification imminent deauthentication indication" },
  	{ "vendor", hostapd_cli_cmd_vendor, NULL,
  	  "<vendor id> <sub command id> [<hex formatted data>]\n"
-@@ -2493,7 +2494,7 @@ static const struct hostapd_cli_cmd hostapd_cli_commands[] = {
+@@ -2584,7 +2585,7 @@ static const struct hostapd_cli_cmd hostapd_cli_commands[] = {
  	{ "send_action_frame", hostapd_cli_cmd_send_action_frame, NULL,
  	  "<bss> <mac_addr> <freq> frame=<frame_buf>" },
  	{ "update_wan_metrics", hostapd_cli_cmd_update_wan_metrics, NULL,
@@ -269,10 +253,10 @@ index 77e00ecdb..0c7cf7c7e 100644
  
  }
 diff --git a/src/ap/ap_config.h b/src/ap/ap_config.h
-index 29efea15a..ba50bbcf4 100644
+index 2c8d3f192..be429699c 100644
 --- a/src/ap/ap_config.h
 +++ b/src/ap/ap_config.h
-@@ -685,6 +685,7 @@ struct hostapd_bss_config {
+@@ -701,6 +701,7 @@ struct hostapd_bss_config {
  #ifdef CONFIG_HS20
  	int hs20;
  	int hs20_release;
@@ -280,10 +264,10 @@ index 29efea15a..ba50bbcf4 100644
  	int disable_dgaf;
  	u16 anqp_domain_id;
  	unsigned int hs20_oper_friendly_name_count;
-@@ -1375,10 +1376,12 @@ struct hostapd_config {
- 		ENHANCED_MBSSID_ENABLED = 2,
- 	} mbssid;
- 
+@@ -1429,10 +1430,12 @@ struct hostapd_config {
+ 	bool channel_usage;
+ 	bool peer_to_peer_twt;
+ #ifdef CONFIG_VENDOR_MXL
 +	u8 notify_action_frame; /* Forwarding incoming action frames to upper layers */
  #define DEFAULT_MU_OPERATION	1
  	int sMuOperation;
@@ -293,23 +277,25 @@ index 29efea15a..ba50bbcf4 100644
  
  	u8 owl; /* Forwarding incoming probe reqests to upper layers */
  #ifdef CONFIG_IEEE80211AX
-@@ -1488,6 +1491,11 @@ hostapd_set_oper_centr_freq_seg1_idx(struct hostapd_config *conf,
- 	conf->vht_oper_centr_freq_seg1_idx = oper_centr_freq_seg1_idx;
+@@ -1579,6 +1582,13 @@ hostapd_set_and_check_bw320_offset(struct hostapd_config *conf,
+ #endif /* CONFIG_IEEE80211BE */
  }
  
++#ifdef CONFIG_VENDOR_MXL
 +/* Advertisement protocol IE*/
 +#define ADV_PROTO_QUERY_RESP_LEN_MIN		1u
 +#define ADV_PROTO_QUERY_RESP_LEN_MAX		0x7fu
 +#define ADV_PROTO_QUERY_RESP_LEN_DEFAULT	0x7fu
 +#define ADV_PROTO_QUERY_RESP_LEN_MASK		ADV_PROTO_QUERY_RESP_LEN_MAX
++#endif /* CONFIG_VENDOR_MXL */
  
  int hostapd_mac_comp(const void *a, const void *b);
  struct hostapd_config * hostapd_config_defaults(void);
 diff --git a/src/ap/beacon.c b/src/ap/beacon.c
-index 64af2ce2f..0e42acb28 100644
+index 9756b75d3..ddbd1bb78 100644
 --- a/src/ap/beacon.c
 +++ b/src/ap/beacon.c
-@@ -2379,7 +2379,6 @@ int ieee802_11_build_ap_params(struct hostapd_data *hapd,
+@@ -2494,7 +2494,6 @@ int ieee802_11_build_ap_params(struct hostapd_data *hapd,
  	tailpos = hostapd_eid_ext_supp_rates(hapd, tailpos);
  
  	tailpos = hostapd_get_rsne(hapd, tailpos, tailend - tailpos);
@@ -318,7 +304,7 @@ index 64af2ce2f..0e42acb28 100644
  					       tailend - tailpos);
  
 diff --git a/src/ap/gas_serv.c b/src/ap/gas_serv.c
-index b3b92ba81..3355e6c96 100644
+index d2d68e908..e657b919f 100644
 --- a/src/ap/gas_serv.c
 +++ b/src/ap/gas_serv.c
 @@ -19,6 +19,7 @@
@@ -329,7 +315,7 @@ index b3b92ba81..3355e6c96 100644
  
  
  #ifdef CONFIG_DPP
-@@ -1860,6 +1861,12 @@ send_resp:
+@@ -1578,6 +1579,12 @@ send_resp:
  	wpabuf_free(tx_buf);
  }
  
@@ -342,7 +328,7 @@ index b3b92ba81..3355e6c96 100644
  
  static void gas_serv_rx_public_action(void *ctx, const u8 *buf, size_t len,
  				      int freq)
-@@ -1868,6 +1875,7 @@ static void gas_serv_rx_public_action(void *ctx, const u8 *buf, size_t len,
+@@ -1586,6 +1593,7 @@ static void gas_serv_rx_public_action(void *ctx, const u8 *buf, size_t len,
  	const struct ieee80211_mgmt *mgmt;
  	const u8 *sa, *data;
  	int prot, std_addr3;
@@ -350,7 +336,7 @@ index b3b92ba81..3355e6c96 100644
  
  	mgmt = (const struct ieee80211_mgmt *) buf;
  	if (len < IEEE80211_HDRLEN + 2)
-@@ -1892,10 +1900,14 @@ static void gas_serv_rx_public_action(void *ctx, const u8 *buf, size_t len,
+@@ -1610,10 +1618,14 @@ static void gas_serv_rx_public_action(void *ctx, const u8 *buf, size_t len,
  	data = buf + IEEE80211_HDRLEN + 1;
  	switch (data[0]) {
  	case WLAN_PA_GAS_INITIAL_REQ:
@@ -366,10 +352,10 @@ index b3b92ba81..3355e6c96 100644
  					     std_addr3);
  		break;
 diff --git a/src/ap/ieee802_11.c b/src/ap/ieee802_11.c
-index 618b10e11..2081910cb 100644
+index 054930927..2be643a9d 100644
 --- a/src/ap/ieee802_11.c
 +++ b/src/ap/ieee802_11.c
-@@ -6034,6 +6034,32 @@ static int robust_action_frame(u8 category)
+@@ -6426,6 +6426,32 @@ static int robust_action_frame(u8 category)
  }
  
  
@@ -402,7 +388,7 @@ index 618b10e11..2081910cb 100644
  static int handle_action(struct hostapd_data *hapd,
  			 const struct ieee80211_mgmt *mgmt, size_t len,
  			 unsigned int freq)
-@@ -6095,6 +6121,9 @@ static int handle_action(struct hostapd_data *hapd,
+@@ -6487,6 +6513,9 @@ static int handle_action(struct hostapd_data *hapd,
  		sta->last_subtype = WLAN_FC_STYPE_ACTION;
  	}
  
@@ -413,11 +399,11 @@ index 618b10e11..2081910cb 100644
  #ifdef CONFIG_IEEE80211R_AP
  	case WLAN_ACTION_FT:
 diff --git a/src/ap/ieee802_11.h b/src/ap/ieee802_11.h
-index 8dc13b327..3448cf737 100644
+index d54cc2b88..156403f22 100644
 --- a/src/ap/ieee802_11.h
 +++ b/src/ap/ieee802_11.h
-@@ -258,6 +258,8 @@ const char * sae_get_password(struct hostapd_data *hapd,
- 			      struct sae_pt **s_pt, const struct sae_pk **s_pk);
+@@ -272,6 +272,8 @@ int hostapd_process_assoc_ml_info(struct hostapd_data *hapd,
+ 				  bool offload);
  
  u8 round_pow2_up(u8 x);
 +void notify_action_frame(struct hostapd_data *hapd, const u8 *action_frame,
@@ -426,10 +412,10 @@ index 8dc13b327..3448cf737 100644
  u8 * hostapd_eid_multiple_bssid(struct hostapd_data *hapd, u8 *eid, bool is_beacon);
  u8 * hostapd_eid_ssid(struct hostapd_data *hapd, u8 *eid);
 diff --git a/src/ap/ieee802_11_shared.c b/src/ap/ieee802_11_shared.c
-index a2295c389..4edfb187b 100644
+index 883ce4397..73135f1e9 100644
 --- a/src/ap/ieee802_11_shared.c
 +++ b/src/ap/ieee802_11_shared.c
-@@ -588,7 +588,7 @@ u8 * hostapd_eid_adv_proto(struct hostapd_data *hapd, u8 *eid)
+@@ -612,7 +612,7 @@ u8 * hostapd_eid_adv_proto(struct hostapd_data *hapd, u8 *eid)
  
  	*pos++ = WLAN_EID_ADV_PROTO;
  	*pos++ = 2;
@@ -439,10 +425,10 @@ index a2295c389..4edfb187b 100644
  #endif /* CONFIG_INTERWORKING */
  
 diff --git a/src/common/wpa_ctrl.h b/src/common/wpa_ctrl.h
-index 11c21c066..b63a7eb2d 100644
+index 79119a654..ae343936c 100644
 --- a/src/common/wpa_ctrl.h
 +++ b/src/common/wpa_ctrl.h
-@@ -383,6 +383,8 @@ extern "C" {
+@@ -399,6 +399,8 @@ extern "C" {
  /* BSS Transition Management Query frame received */
  #define BSS_TM_QUERY "BSS-TM-QUERY "
  

@@ -1,4 +1,4 @@
-From 17d4930bc8bb77e7d713536a2090ce35f6f463e8 Mon Sep 17 00:00:00 2001
+From 5b37144961e7dc7790458930c5910fd526c1be4e Mon Sep 17 00:00:00 2001
 From: Jurijs Soloveckis <jsoloveckis@maxlinear.com>
 Date: Thu, 6 Jul 2023 14:31:18 +0200
 Subject: [PATCH] WLANRTSYS-56718: IOP fixes implementation
@@ -20,10 +20,10 @@ Subject: [PATCH] WLANRTSYS-56718: IOP fixes implementation
  1 file changed, 14 insertions(+)
 
 diff --git a/src/drivers/driver_nl80211_event.c b/src/drivers/driver_nl80211_event.c
-index 7082c1d02..ea60f4b86 100644
+index 641127833..495e1392f 100644
 --- a/src/drivers/driver_nl80211_event.c
 +++ b/src/drivers/driver_nl80211_event.c
-@@ -311,6 +311,20 @@ static void mlme_event_assoc(struct wpa_driver_nl80211_data *drv,
+@@ -314,6 +314,20 @@ static void mlme_event_assoc(struct wpa_driver_nl80211_data *drv,
  	}
  
  	drv->associated = 1;
