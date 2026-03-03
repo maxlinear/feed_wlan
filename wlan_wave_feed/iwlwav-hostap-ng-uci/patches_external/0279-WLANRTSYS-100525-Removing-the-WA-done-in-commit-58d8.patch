@@ -1,0 +1,47 @@
+From c1e5b9420b22263b70a5168638f52e071583682b Mon Sep 17 00:00:00 2001
+From: pvaish <pvaish@maxlinear.com>
+Date: Wed, 28 Jan 2026 23:44:12 -0800
+Subject: [PATCH] WLANRTSYS-100525 Removing the WA done in commit
+ `58d88fdbf1ff3cc00c13ca82491e10802fabf3c5` Porting the actual fix commit
+ f67f40cc9821dba3e59a6e30fef2d53c702e2fb6 from wlan_master.
+
+Signed-off-by: pvaish <pvaish@maxlinear.com>
+---
+ hostapd/hostapd_cli.c        | 2 --
+ src/ap/mxl_acs_proprietary.c | 5 +++++
+ 2 files changed, 5 insertions(+), 2 deletions(-)
+
+diff --git a/hostapd/hostapd_cli.c b/hostapd/hostapd_cli.c
+index bf81c8ff8..2cbcfe47d 100644
+--- a/hostapd/hostapd_cli.c
++++ b/hostapd/hostapd_cli.c
+@@ -2801,10 +2801,8 @@ static const struct hostapd_cli_cmd hostapd_cli_commands[] = {
+ 	  "= reload configuration for current interface" },
+ 	{ "reload_bss", hostapd_cli_cmd_reload_bss, NULL,
+ 	  "= reload configuration for current BSS" },
+-#ifndef CONFIG_VENDOR_MXL
+ 	{ "reload_config", hostapd_cli_cmd_reload_config, NULL,
+ 	  "= reload configuration for current interface" },
+-#endif /* CONFIG_VENDOR_MXL */
+ 	{ "disable", hostapd_cli_cmd_disable, NULL,
+ 	  "= disable hostapd on current interface" },
+ 	{ "enable_mld", hostapd_cli_cmd_enable_mld, NULL,
+diff --git a/src/ap/mxl_acs_proprietary.c b/src/ap/mxl_acs_proprietary.c
+index cdba88a3e..2170eb9ff 100644
+--- a/src/ap/mxl_acs_proprietary.c
++++ b/src/ap/mxl_acs_proprietary.c
+@@ -4859,6 +4859,11 @@ void mxl_event_scan_results(struct hostapd_data *hapd, union wpa_event_data *dat
+ 		return;
+ 	}
+ 
++	if (data->scan_info.aborted) {
++		wpa_printf(MSG_INFO, "ACS: Ignoring aborted scan results to avoid faulty ACS");
++		return;
++	}
++
+ 	if (hapd->iface->scan_cb)
+ 		hapd->iface->scan_cb(hapd->iface);
+ 
+-- 
+2.43.0
+
