@@ -1,0 +1,162 @@
+From b4cbc630c1af70c091e7a56db538b91bff60133e Mon Sep 17 00:00:00 2001
+From: "mujiburrahimank@maxlinear.com"
+ <mujiburrahimank@lvdocker7.lvsw.maxlinear.com>
+Date: Tue, 10 Mar 2026 02:00:28 -0700
+Subject: [PATCH] WLANRTSYS-101057 : [UPDK] [AOCS] with 2.4G+40MHz Interface
+ not up after toggling Auto Channel
+
+Fix 2.4GHz HT40 center_segment0 mismatch when ACS is disabled
+
+Issue:
+
+Interface up fails on fixed/(ACS disabled) 2.4GHz HT40 configs with error:
+20/40 MHz: center segment 0 (...) and center freq 1 (...) not in sync
+Seen with manual channel + secondary_channel (ACS disabled), e.g. HT40- cases.
+
+RCA:
+
+In ieee80211n_check_scan(), when ACS is disabled on 2.4GHz, configured center_segment0
+can remain inconsistent with channel + secondary_channel.
+Later validation in hostapd_set_freq_params() rejects the config due to seg0/center-freq mismatch.
+
+Fix:
+
+In hw_features.c, add validation/correction for fixed-channel 2.4GHz HT40:
+apply only when !iface->conf->acs, 2.4GHz, and secondary_channel != 0
+compute expected seg0 as channel + secondary_channel * 2
+update only center_segment0 when mismatched
+do not modify secondary_channel
+
+Fixup:
+WLANRTSYS-50170 [MXL] Smart ACS implementation
+---
+ hostapd/Makefile         |  1 +
+ src/ap/hw_features.c     |  5 ++++
+ src/ap/mxl_hw_features.c | 53 ++++++++++++++++++++++++++++++++++++++++
+ src/ap/mxl_hw_features.h | 19 ++++++++++++++
+ 4 files changed, 78 insertions(+)
+ create mode 100644 src/ap/mxl_hw_features.c
+ create mode 100644 src/ap/mxl_hw_features.h
+
+diff --git a/hostapd/Makefile b/hostapd/Makefile
+index f5502a871..904f1d5fb 100644
+--- a/hostapd/Makefile
++++ b/hostapd/Makefile
+@@ -423,6 +423,7 @@ OBJS += ../src/ap/mxl_wmm.o
+ OBJS += ../src/ap/mxl_csa.o
+ OBJS += ../src/ap/mxl_acs.o
+ OBJS += ../src/ap/mxl_dfs_debug.o
++OBJS += ../src/ap/mxl_hw_features.o
+ ifndef CONFIG_MXL_OSS_BUILD
+ CFLAGS+= -DCONFIG_VENDOR_MXL_PROPRIETARY
+ OBJS += ../src/ap/mxl_acs_proprietary.o
+diff --git a/src/ap/hw_features.c b/src/ap/hw_features.c
+index e1dcfa4b3..6db9b6783 100644
+--- a/src/ap/hw_features.c
++++ b/src/ap/hw_features.c
+@@ -29,6 +29,7 @@
+ #include "mxl_dfs_file.h"
+ #include "mxl_dfs_common.h"
+ #include "common/mxl_wpa_ctrl.h"
++#include "mxl_hw_features.h"
+ #endif /* CONFIG_VENDOR_MXL */
+ 
+ 
+@@ -415,6 +416,10 @@ static void ieee80211n_check_scan(struct hostapd_iface *iface)
+ 			 */
+ 		}
+ 	}
++#ifdef CONFIG_VENDOR_MXL
++	/* validate center segment index */
++	mxl_check_2G_HT_channel_segment_idx(iface);
++#endif /* CONFIG_VENDOR_MXL */
+ 
+ #ifdef CONFIG_IEEE80211AX
+ 	if (iface->conf->secondary_channel &&
+diff --git a/src/ap/mxl_hw_features.c b/src/ap/mxl_hw_features.c
+new file mode 100644
+index 000000000..51a450318
+--- /dev/null
++++ b/src/ap/mxl_hw_features.c
+@@ -0,0 +1,53 @@
++/******************************************************************************
++
++         Copyright (c) 2020 - 2026, MaxLinear, Inc.
++         Copyright 2016 - 2020 Intel Corporation
++         Copyright 2015 - 2016 Lantiq Beteiligungs-GmbH & Co. KG
++         Copyright 2009 - 2014 Lantiq Deutschland GmbH
++         Copyright 2007 - 2008 Infineon Technologies AG
++
++  This software may be distributed under the terms of the BSD license.
++  See README for more details.
++
++*******************************************************************************/
++#include "utils/includes.h"
++#include "utils/common.h"
++#include "hostapd.h"
++#include "ap_config.h"
++#include "mxl_hw_features.h"
++
++
++/* Fixed-channel 2.4GHz HT40: validate center segment index and
++ * correct it if it does not match primary channel + secondary offset.
++ * Do not modify secondary_channel in this path.
++ */
++void mxl_check_2G_HT_channel_segment_idx(struct hostapd_iface *iface)
++{
++	int expected_seg0 = 0;
++	u8 curr_seg0 = 0;
++
++	if (!iface || !iface->conf)
++		return;
++
++	if (!iface->conf->acs &&
++			iface->freq >= 2412 && iface->freq <= 2472 &&
++			iface->conf->secondary_channel) {
++
++		/* calculate expected seg0 */
++		expected_seg0 = iface->conf->channel + iface->conf->secondary_channel * 2;
++
++		/* Get the current seg0 idx */
++		curr_seg0 = hostapd_get_oper_centr_freq_seg0_idx(iface->conf);
++
++		/* Validate the seg0 idx & adjust it */
++		if (expected_seg0 >= 1 && expected_seg0 <= 13 &&
++				curr_seg0 != expected_seg0) {
++			wpa_printf(MSG_INFO,
++					"2.4GHz HT40: Correcting center_segment0 from %u to %d (channel=%d sec_offset=%d)",
++					curr_seg0, expected_seg0, iface->conf->channel, iface->conf->secondary_channel);
++			hostapd_set_oper_centr_freq_seg0_idx(iface->conf,
++					expected_seg0);
++		}	
++	}
++	return;
++}
+diff --git a/src/ap/mxl_hw_features.h b/src/ap/mxl_hw_features.h
+new file mode 100644
+index 000000000..253411a51
+--- /dev/null
++++ b/src/ap/mxl_hw_features.h
+@@ -0,0 +1,19 @@
++/******************************************************************************
++
++         Copyright (c) 2020 - 2026, MaxLinear, Inc.
++         Copyright 2016 - 2020 Intel Corporation
++         Copyright 2015 - 2016 Lantiq Beteiligungs-GmbH & Co. KG
++         Copyright 2009 - 2014 Lantiq Deutschland GmbH
++         Copyright 2007 - 2008 Infineon Technologies AG
++
++  This software may be distributed under the terms of the BSD license.
++  See README for more details.
++
++*******************************************************************************/
++
++#ifndef MXL_HW_FEATURES_H
++#define MXL_HW_FEATURES_H
++
++void mxl_check_2G_HT_channel_segment_idx(struct hostapd_iface *iface);
++
++#endif /* MXL_HW_FEATURES_H */
+-- 
+2.43.0
+

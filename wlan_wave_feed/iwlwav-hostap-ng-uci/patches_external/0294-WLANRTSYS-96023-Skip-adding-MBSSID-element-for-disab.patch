@@ -1,0 +1,34 @@
+From e8971739911635463d13396f87f0087457ac0635 Mon Sep 17 00:00:00 2001
+From: Nikita Chernikov <nchernikov@maxlinear.com>
+Date: Thu, 19 Feb 2026 10:30:16 +0200
+Subject: [PATCH] WLANRTSYS-96023 Skip adding MBSSID element for disabled link
+
+Fixup to: WLANRTSYS-96596 MLO: Triband MLD Support
+
+Signed-off-by: Nikita Chernikov <nchernikov@maxlinear.com>
+---
+ src/ap/ieee802_11_shared.c | 8 ++++++++
+ 1 file changed, 8 insertions(+)
+
+diff --git a/src/ap/ieee802_11_shared.c b/src/ap/ieee802_11_shared.c
+index 13de86741..6465c708c 100644
+--- a/src/ap/ieee802_11_shared.c
++++ b/src/ap/ieee802_11_shared.c
+@@ -1679,6 +1679,14 @@ u8 * hostapd_eid_multiple_bssid(struct hostapd_data *hapd, u8 *eid, bool is_beac
+ 		if (mxl_hostapd_mbssid_is_tx_bss(bss->conf->bss_idx))
+ 			continue;
+ 
++#ifdef CONFIG_IEEE80211BE_MXL_MLO
++		/* Skip disabled BSS which removed by sibling link */
++		if (mxl_is_mlo_enabled(bss->conf) &&
++			!bss->started &&
++			bss->mxl_data.removed_by_sibling)
++			continue;
++#endif /* CONFIG_IEEE80211BE_MXL_MLO */
++
+ 		/* Separate MBSSID IE will be created if size is more than MAX_MBSSID_IE_ELEM_LEN */
+ 		if ((get_non_tx_bss_len(bss, is_beacon,
+ 					probe_req_mle, probe_req_mle_len) + ie_len)  > MAX_MBSSID_IE_ELEM_LEN) {
+-- 
+2.43.0
+

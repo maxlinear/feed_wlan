@@ -1,4 +1,4 @@
-From 0c923647e0cbf2a71c26171eb27f7b4f5a738a41 Mon Sep 17 00:00:00 2001
+From c3755ed4beea2b1ed1ec3f73b92f9214c0f636ed Mon Sep 17 00:00:00 2001
 From: pvaish <pvaish@maxlinear.com>
 Date: Mon, 12 Jan 2026 03:01:59 -0800
 Subject: [PATCH] WLANRTSYS-99479 Fixing the RNR for 2GHz and 5GHz Radio.

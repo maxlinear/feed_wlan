@@ -1,0 +1,150 @@
+From d2a4eb958d8ca150a20ddbc49a3b0a45585d13ee Mon Sep 17 00:00:00 2001
+From: nchernikov <nchernikov@maxlinear.com>
+Date: Sun, 18 Jan 2026 07:57:15 +0200
+Subject: [PATCH] WLANRTSYS-100259 Remove mxl_tx_bss and prepare to use OS
+ tx_bss_auth for bigtk set key and get pn
+
+Signed-off-by: nchernikov <nchernikov@maxlinear.com>
+---
+ src/ap/hostapd.c       |  3 ---
+ src/ap/mxl_wpa_auth.c  | 18 ------------------
+ src/ap/mxl_wpa_auth.h  |  1 -
+ src/ap/wpa_auth.c      |  4 ----
+ src/ap/wpa_auth.h      |  1 -
+ src/ap/wpa_auth_ft.c   | 11 -----------
+ src/ap/wpa_auth_glue.c | 12 ------------
+ 7 files changed, 50 deletions(-)
+
+diff --git a/src/ap/hostapd.c b/src/ap/hostapd.c
+index 88b64c29b..77b1f86bb 100644
+--- a/src/ap/hostapd.c
++++ b/src/ap/hostapd.c
+@@ -194,9 +194,6 @@ static void hostapd_reload_bss(struct hostapd_data *hapd)
+ 			wpa_printf(MSG_ERROR, "Failed to configure WPA IE for "
+ 				   "the kernel driver.");
+ 	} else if (hapd->wpa_auth) {
+-#ifdef CONFIG_VENDOR_MXL
+-		mxl_wpa_clear_mxl_tx_bss_auth(hapd);
+-#endif /* CONFIG_VENDOR_MXL */
+ 		wpa_deinit(hapd->wpa_auth);
+ 		hapd->wpa_auth = NULL;
+ 		hostapd_set_privacy(hapd, 0);
+diff --git a/src/ap/mxl_wpa_auth.c b/src/ap/mxl_wpa_auth.c
+index 74860c871..868bf519a 100644
+--- a/src/ap/mxl_wpa_auth.c
++++ b/src/ap/mxl_wpa_auth.c
+@@ -988,21 +988,3 @@ void mxl_wpa_auth_clear_group_key_flag(struct wpa_authenticator *wpa_auth)
+ 		return;
+ 	wpa_auth->group->first_sta_seen = false;
+ }
+-
+-void mxl_wpa_clear_mxl_tx_bss_auth(struct hostapd_data *hapd)
+-{
+-	if (hapd->iconf->multibss_enable) {
+-		size_t tx_bss_idx = mxl_hostapd_get_mbssid_tx_bss_idx(hapd->iface);
+-
+-		if (hapd->iface->bss[tx_bss_idx] == hapd) {
+-			for (int i = 0; i < hapd->iface->num_bss; i++) {
+-				struct hostapd_data *bss = hapd->iface->bss[i];
+-
+-				if (!bss || !bss->wpa_auth)
+-				continue;
+-
+-				bss->wpa_auth->conf.mxl_tx_bss_auth = NULL;
+-			}
+-		}
+-	}
+-}
+diff --git a/src/ap/mxl_wpa_auth.h b/src/ap/mxl_wpa_auth.h
+index a51580159..70d8e4c13 100644
+--- a/src/ap/mxl_wpa_auth.h
++++ b/src/ap/mxl_wpa_auth.h
+@@ -74,6 +74,5 @@ struct wpa_authenticator;
+ void mxl_wpa_auth_clear_group_key_flag(struct wpa_authenticator *wpa_auth);
+ u8 *bip_protect(struct wpa_authenticator *wpa_auth,
+ 		u8 *frame, size_t len, size_t *prot_len, s8 ipn_type);
+-void mxl_wpa_clear_mxl_tx_bss_auth(struct hostapd_data *hapd);
+ #endif /* MXL_WPA_AUTH_H */
+ 
+diff --git a/src/ap/wpa_auth.c b/src/ap/wpa_auth.c
+index be5e3c35b..0b344d310 100644
+--- a/src/ap/wpa_auth.c
++++ b/src/ap/wpa_auth.c
+@@ -317,10 +317,6 @@ static inline int wpa_auth_get_seqnum(struct wpa_authenticator *wpa_auth,
+ 				      const u8 *addr, int idx, u8 *seq)
+ {
+ 	int res;
+-#ifdef CONFIG_VENDOR_MXL
+-	if (wpa_auth->conf.mxl_tx_bss_auth != NULL)
+-		wpa_auth = wpa_auth->conf.mxl_tx_bss_auth;
+-#endif /* CONFIG_VENDOR_MXL */
+ 
+ 	if (!wpa_auth->cb->get_seqnum)
+ 		return -1;
+diff --git a/src/ap/wpa_auth.h b/src/ap/wpa_auth.h
+index 6665bb933..57c35cb20 100644
+--- a/src/ap/wpa_auth.h
++++ b/src/ap/wpa_auth.h
+@@ -341,7 +341,6 @@ struct wpa_auth_config {
+ 
+ 	bool spp_amsdu;
+ #ifdef CONFIG_VENDOR_MXL
+-	struct wpa_authenticator *mxl_tx_bss_auth;
+ #ifdef CONFIG_IEEE80211BE_MXL_MLO
+ 	struct wpa_auth_mlo_conf mlo_conf;
+ #endif /* CONFIG_IEEE80211BE_MXL_MLO */
+diff --git a/src/ap/wpa_auth_ft.c b/src/ap/wpa_auth_ft.c
+index 6bc138af3..ddd3cc445 100644
+--- a/src/ap/wpa_auth_ft.c
++++ b/src/ap/wpa_auth_ft.c
+@@ -2206,17 +2206,6 @@ void wpa_auth_ft_store_keys(struct wpa_state_machine *sm, const u8 *pmk_r0,
+ static inline int wpa_auth_get_seqnum(struct wpa_authenticator *wpa_auth,
+ 				      const u8 *addr, int idx, u8 *seq)
+ {
+-#ifdef CONFIG_VENDOR_MXL
+-	struct wpa_authenticator *mxl_tx_bss_auth = NULL;
+-
+-	if (wpa_auth->conf.mxl_tx_bss_auth != NULL) {
+-		mxl_tx_bss_auth = wpa_auth->conf.mxl_tx_bss_auth;
+-		if (mxl_tx_bss_auth->cb->get_seqnum == NULL)
+-			return -1;
+-		return mxl_tx_bss_auth->cb->get_seqnum(mxl_tx_bss_auth->cb_ctx, addr, idx, seq);
+-	}
+-#endif /* CONFIG_VENDOR_MXL */
+-
+ 	if (wpa_auth->cb->get_seqnum == NULL)
+ 		return -1;
+ 	return wpa_auth->cb->get_seqnum(wpa_auth->cb_ctx, addr, idx, seq);
+diff --git a/src/ap/wpa_auth_glue.c b/src/ap/wpa_auth_glue.c
+index 116dacafb..6e9dbb956 100644
+--- a/src/ap/wpa_auth_glue.c
++++ b/src/ap/wpa_auth_glue.c
+@@ -1805,15 +1805,6 @@ int hostapd_setup_wpa(struct hostapd_data *hapd)
+ 	mxl_hostapd_setup_wpa_mlo(hapd, &_conf);
+ #endif /* CONFIG_IEEE80211BE_MXL_MLO */
+ 	_conf.msg_ctx = hapd->msg_ctx;
+-#ifdef CONFIG_VENDOR_MXL
+-	if (hapd->iconf->multibss_enable) {
+-		size_t tx_bss_idx = mxl_hostapd_get_mbssid_tx_bss_idx(hapd->iface);
+-		struct hostapd_data *mbss_tx_bss = hapd->iface->bss[tx_bss_idx];
+-
+-		if (mbss_tx_bss != hapd)
+-			_conf.mxl_tx_bss_auth = mbss_tx_bss->wpa_auth;
+-	}
+-#endif /* CONFIG_VENDOR_MXL */
+ 	tx_bss = hostapd_mbssid_get_tx_bss(hapd);
+ 	if (tx_bss != hapd)
+ 		_conf.tx_bss_auth = tx_bss->wpa_auth;
+@@ -1953,9 +1944,6 @@ void hostapd_deinit_wpa(struct hostapd_data *hapd)
+ 
+ 	rsn_preauth_iface_deinit(hapd);
+ 	if (hapd->wpa_auth) {
+-#ifdef CONFIG_VENDOR_MXL
+-	mxl_wpa_clear_mxl_tx_bss_auth(hapd);
+-#endif /* CONFIG_VENDOR_MXL */
+ 		wpa_deinit(hapd->wpa_auth);
+ 		hapd->wpa_auth = NULL;
+ 
+-- 
+2.43.0
+

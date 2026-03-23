@@ -1,0 +1,490 @@
+From 255856f199676a11df543186db292c780cdd7a9b Mon Sep 17 00:00:00 2001
+From: hmgokhale <hmgokhale@maxlinear.com>
+Date: Fri, 27 Feb 2026 04:29:34 -0800
+Subject: [PATCH] WLANRTSYS-100621 MLO triband critical update changes
+
+Signed-off-by: hmgokhale <hmgokhale@maxlinear.com>
+---
+ src/ap/hostapd.c           |  18 ++++-
+ src/ap/mxl_beacon.c        |  33 +++++----
+ src/ap/mxl_drv_callbacks.c |  50 ++++++++++++--
+ src/ap/mxl_hostapd.c       |  26 +++++++
+ src/ap/mxl_hostapd.h       |   3 +
+ src/ap/mxl_mld.c           | 137 ++++++++++++++++++++-----------------
+ src/ap/sta_info.c          |   2 +
+ 7 files changed, 187 insertions(+), 82 deletions(-)
+
+diff --git a/src/ap/hostapd.c b/src/ap/hostapd.c
+index 59d96f852..88d91342a 100644
+--- a/src/ap/hostapd.c
++++ b/src/ap/hostapd.c
+@@ -5385,6 +5385,7 @@ int hostapd_disable_iface(struct hostapd_iface *hapd_iface)
+ 	for (j = 0; j < hapd_iface->num_bss; j++) {
+ 		struct hostapd_data *hapd = hapd_iface->bss[j];
+ #ifdef CONFIG_IEEE80211BE_MXL_MLO
++		hapd_iface->mxl_iface.ml_csa_in_progress = false;
+ 		if ((mld = mxl_ml_get_ap_mld(hapd)) != NULL) {
+ 			if (!mxl_ml_is_last_link_in_mld(hapd)) {
+ 				mxl_mlo_hostapd_cleanup_cs_params(hapd);
+@@ -6499,9 +6500,15 @@ int hostapd_switch_channel(struct hostapd_data *hapd,
+ #endif /* CONFIG_VENDOR_MXL */
+ 
+ 	ret = hostapd_fill_csa_settings(hapd, settings);
++#ifdef CONFIG_IEEE80211BE_MXL_MLO
++	if (ret) {
++		mxl_set_csa_status_on_all_reporting_link(hapd, false);
++		return ret;
++	}
++#else
+ 	if (ret)
+ 		return ret;
+-
++#endif /* CONFIG_IEEE80211BE_MXL_MLO */
+ 	ret = hostapd_drv_switch_channel(hapd, settings);
+ 	free_beacon_data(&settings->beacon_csa);
+ 	free_beacon_data(&settings->beacon_after);
+@@ -6509,11 +6516,20 @@ int hostapd_switch_channel(struct hostapd_data *hapd,
+ 	os_free(settings->ubpr.unsol_bcast_probe_resp_tmpl);
+ #endif /* CONFIG_IEEE80211AX */
+ 
++#ifdef CONFIG_IEEE80211BE_MXL_MLO
+ 	if (ret) {
+ 		/* if we failed, clean cs parameters */
+ 		hostapd_cleanup_cs_params(hapd);
++		mxl_set_csa_status_on_all_reporting_link(hapd, false);
+ 		return ret;
+ 	}
++#else
++	if (ret) {
++		/* if we failed, clean cs parameters */
++		hostapd_cleanup_cs_params(hapd);
++		return ret;
++	}
++#endif /* CONFIG_IEEE80211BE_MXL_MLO */
+ 
+ #ifdef CONFIG_VENDOR_MXL
+ 	mxl_hostapd_sb_dfs_switch_update_cntr(hapd->iface, settings->mxl_csa_settings.sb_dfs_bw);
+diff --git a/src/ap/mxl_beacon.c b/src/ap/mxl_beacon.c
+index ef07a5d88..7b16e4823 100644
+--- a/src/ap/mxl_beacon.c
++++ b/src/ap/mxl_beacon.c
+@@ -530,26 +530,31 @@ u8 * mxl_hostapd_eid_max_chan_sw_time(struct hostapd_data *hapd, u8 *eid)
+ {
+ #define MAX_CHANNEL_SWITCH_TIME_VAL_SIZE 3
+ 	u32 max_chan_switch_time;
+-	struct hostapd_data *sibling_hapd = hapd->mxl_data.sibling_hapd[LINK1]; /* TODO: WLANRTSYS-95653 - Need to handle during the CSA task */
++	struct hostapd_data *lhapd;
+ 
+ 	if (!mxl_is_mlo_enabled(hapd->conf) ||
+-	    (!hapd->mxl_data.max_chan_sw_time_ie_add &&
+-	    !hapd->mxl_data.ml_ie_max_chan_sw_time_ie_add))
++			(!hapd->mxl_data.max_chan_sw_time_ie_add &&
++			 !hapd->mxl_data.ml_ie_max_chan_sw_time_ie_add))
+ 		return eid;
+ 
+-	if (hapd->mxl_data.max_chan_sw_time_ie_add)
+-		max_chan_switch_time = hapd->iconf->mxl_conf.max_chan_switch_time;
+-	else
+-		max_chan_switch_time = sibling_hapd->iconf->mxl_conf.max_chan_switch_time;
++	mxl_mld_for_each_sibling_link(lhapd, hapd) {
++		if (!lhapd->iface->mxl_iface.ml_csa_in_progress)
++			continue;
+ 
+-	wpa_printf(MSG_INFO, "Add max chan sw time IE");
++		if (hapd->mxl_data.max_chan_sw_time_ie_add)
++			max_chan_switch_time = hapd->iconf->mxl_conf.max_chan_switch_time;
++		else
++			max_chan_switch_time = lhapd->iconf->mxl_conf.max_chan_switch_time;
+ 
+-	*eid++ = WLAN_EID_EXTENSION;
+-	*eid++ = 4;
+-	*eid++ = WLAN_EID_EXT_MAX_CHAN_SWITCH_TIME;
+-	memcpy_s(eid, MAX_CHANNEL_SWITCH_TIME_VAL_SIZE,
+-		 &max_chan_switch_time, MAX_CHANNEL_SWITCH_TIME_VAL_SIZE);
+-	eid += MAX_CHANNEL_SWITCH_TIME_VAL_SIZE;
++		wpa_printf(MSG_INFO, "MXL_MLO: Add max chan sw time IE");
++
++		*eid++ = WLAN_EID_EXTENSION;
++		*eid++ = 4;
++		*eid++ = WLAN_EID_EXT_MAX_CHAN_SWITCH_TIME;
++		memcpy_s(eid, MAX_CHANNEL_SWITCH_TIME_VAL_SIZE,
++				&max_chan_switch_time, MAX_CHANNEL_SWITCH_TIME_VAL_SIZE);
++		eid += MAX_CHANNEL_SWITCH_TIME_VAL_SIZE;
++	}
+ 	return eid;
+ #undef MAX_CHANNEL_SWITCH_TIME_VAL_SIZE
+ }
+diff --git a/src/ap/mxl_drv_callbacks.c b/src/ap/mxl_drv_callbacks.c
+index f057f0df8..b63cd786b 100644
+--- a/src/ap/mxl_drv_callbacks.c
++++ b/src/ap/mxl_drv_callbacks.c
+@@ -96,20 +96,55 @@ void mxl_hostapd_notif_disassoc(struct hostapd_data *hapd, const u8 *addr)
+ 	ap_free_sta(hapd, sta);
+ }
+ 
++static void mxl_clear_channel_switch_occurred(struct hostapd_data *hapd)
++{
++	unsigned int i;
++	struct hostapd_iface *iface = hapd->iface;
++
++	for (i = 0; i < iface->interfaces->count; i++) {
++		if (iface->interfaces->iface[i]->mxl_iface.ml_csa_in_progress) {
++			iface->interfaces->iface[i]->mxl_iface.ml_csa_in_progress = false;
++		}
++	}
++}
++
++/* Check if channel switch completed event received on all reporting links */
++static bool mxl_is_csa_done_on_all_reporting_link(struct hostapd_data *hapd)
++{
++	unsigned int i, j, reporting_link = 0;
++	struct hostapd_iface *iface = hapd->iface;
++
++	for (i = 0; i < iface->interfaces->count; i++) {
++		struct hostapd_iface *h_iface = iface->interfaces->iface[i];
++		for (j = 0; j < h_iface->num_bss; j++) {
++			struct hostapd_data *h_hapd = h_iface->bss[j];
++			if (!mxl_is_mlo_enabled(h_hapd->conf))
++				continue;
++			if (h_hapd->mxl_data.csa_on_reporting_link)
++				reporting_link++;
++		}
++	}
++	return (reporting_link == 0)? true : false;
++}
++
+ #define EVENT_CHAN_SWITCH_COUNT_DONE        0
+ #define EVENT_MAX_CHAN_SWITCH_TIME_EXPIRY   1
+ static void mxl_hostapd_event_ml_csa_done_on_reporting_link(struct hostapd_data *hapd, enum wpa_event_type event)
+ {
+ 	int ret = 0;
+ 	u32 max_chan_switch_time;
+-	struct hostapd_data *sibling_hapd = hapd->mxl_data.sibling_hapd[LINK1]; /* TODO: WLANRTSYS-95653 - Need to handle during the CSA task */
++	struct hostapd_data *lhapd = NULL;
+ 
+-	if (!sibling_hapd) {
+-		wpa_printf(MSG_ERROR, "MXL_MLO: mxl_hostapd_event_ml_csa_done_on_reporting_link: sibling_hapd NULL");
++	mxl_mld_for_each_sibling_link(lhapd, hapd) {
++		if (lhapd->iface->mxl_iface.ml_csa_in_progress)
++			break;
++	}
++	if (!lhapd) {
++		wpa_printf(MSG_ERROR, "MXL_MLO: mxl_hostapd_event_ml_csa_done_on_reporting_link: sibling hapd NULL");
+ 		return;
+ 	}
+ 
+-	max_chan_switch_time = sibling_hapd->iconf->mxl_conf.max_chan_switch_time;
++	max_chan_switch_time = lhapd->iconf->mxl_conf.max_chan_switch_time;
+ 	if (event == EVENT_CHAN_SWITCH_COUNT_DONE) {
+ 		ret = mxl_ml_send_bss_critical_update_info(hapd,
+ 				ML_BCN_PER_STA_PROF_MAX_SWITCH_TIME, 0, max_chan_switch_time);
+@@ -123,6 +158,13 @@ static void mxl_hostapd_event_ml_csa_done_on_reporting_link(struct hostapd_data
+ 	ieee802_11_set_beacon_per_bss_only(hapd);
+ 
+ 	hapd->mxl_data.ml_ie_max_chan_sw_time_ie_len_add = false;
++
++	if (event == EVENT_MAX_CHAN_SWITCH_TIME_EXPIRY) {
++		hapd->mxl_data.csa_on_reporting_link = false;
++		if (mxl_is_csa_done_on_all_reporting_link(hapd)) {
++			mxl_clear_channel_switch_occurred(hapd);
++		}
++	}
+ }
+ 
+ int mxl_wpa_supplicant_event(void *ctx, enum wpa_event_type event, union wpa_event_data *data)
+diff --git a/src/ap/mxl_hostapd.c b/src/ap/mxl_hostapd.c
+index f16a23053..af62d1eb3 100644
+--- a/src/ap/mxl_hostapd.c
++++ b/src/ap/mxl_hostapd.c
+@@ -3044,6 +3044,28 @@ void mxl_hostapd_deinit_mld_params(struct hostapd_data *hapd)
+ }
+ #endif /* CONFIG_IEEE80211BE_MXL_MLO */
+ 
++#ifdef CONFIG_IEEE80211BE_MXL_MLO
++/* Set or reset the csa_on_reporting_link to indicate the CSA complete event should be processed
++ * for reporting link
++ */
++void mxl_set_csa_status_on_all_reporting_link(struct hostapd_data *hapd, bool status)
++{
++	struct hostapd_iface *iface = hapd->iface;
++	unsigned int i;
++
++	for (i = 1; i < iface->num_bss; i++) {
++		struct hostapd_data *lhapd, *h_hapd = iface->bss[i];
++		if (mxl_is_mlo_enabled(h_hapd->conf)) {
++			mxl_mld_for_each_sibling_link(lhapd, h_hapd) {
++				if (!lhapd)
++					continue;
++				lhapd->mxl_data.csa_on_reporting_link = status;
++			}
++		}
++	}
++}
++#endif /* CONFIG_IEEE80211BE_MXL_MLO */
++
+ int mxl_switch_channel(struct hostapd_data *hapd, struct csa_settings *settings)
+ {
+ 	int i;
+@@ -3126,6 +3148,10 @@ int mxl_switch_channel(struct hostapd_data *hapd, struct csa_settings *settings)
+ #endif /* CONFIG_IEEE80211BE_MXL_MLO */
+ 			mxl_hostapd_set_eht_punct_bitmap(hapd_csa, hapd->iconf->punct_bitmap);
+ 		}
++#ifdef CONFIG_IEEE80211BE_MXL_MLO
++		hapd->iface->mxl_iface.ml_csa_in_progress = true;
++		mxl_set_csa_status_on_all_reporting_link(hapd, true);
++#endif /* CONFIG_IEEE80211BE_MXL_MLO */
+ 	}
+ #endif /* defined(CONFIG_IEEE80211BE) */
+ 	return 0;
+diff --git a/src/ap/mxl_hostapd.h b/src/ap/mxl_hostapd.h
+index 670e6b0ec..e222ba0c6 100644
+--- a/src/ap/mxl_hostapd.h
++++ b/src/ap/mxl_hostapd.h
+@@ -183,6 +183,7 @@ struct mxl_hostapd_iface {
+ 	u8 coc_BW;
+ 	u8 autococ_background_cac_running;
+ #ifdef CONFIG_IEEE80211BE_MXL_MLO
++	bool ml_csa_in_progress; /* Indicates CSA is in progress on this interface */
+ 	u8 disabled_by_sibling;
+ #endif /* CONFIG_IEEE80211BE_MXL_MLO */
+ };
+@@ -232,6 +233,7 @@ struct mxl_hostapd_data {
+ 	bool ml_ie_max_chan_sw_time_ie_len_add;
+ 	bool bw_indication_ie_len_add;
+ 	bool removed_by_sibling;
++	bool csa_on_reporting_link; /* Track CSA completion on reporting links */
+ #endif /* CONFIG_IEEE80211BE_MXL_MLO */
+ 	u8 require_csa;		/* Variable to keep track whether csa IE should be added or not */
+ 	u8 limit_reached;
+@@ -366,6 +368,7 @@ bool mxl_hostapd_prune_sta(struct hostapd_data *hapd, const u8 *addr, struct sta
+ void mxl_hostapd_deinit_mld_params(struct hostapd_data *hapd);
+ void mxl_mlo_hostapd_cleanup_cs_params(struct hostapd_data *hapd);
+ void mxl_mlo_hostapd_cleanup_cca_params(struct hostapd_data *hapd);
++void mxl_set_csa_status_on_all_reporting_link(struct hostapd_data *hapd, bool status);
+ #endif /* CONFIG_IEEE80211BE_MXL_MLO */
+ void mxl_parse_rnr(struct ieee802_11_elems *elems, struct dl_list *rnr_scan_6g_ap_info);
+ void mxl_hostapd_check_limit_reached(struct hostapd_data *hapd, const u8 *sta_addr, u16 *resp);
+diff --git a/src/ap/mxl_mld.c b/src/ap/mxl_mld.c
+index b283e7aaf..324ff9952 100644
+--- a/src/ap/mxl_mld.c
++++ b/src/ap/mxl_mld.c
+@@ -1534,7 +1534,8 @@ static u8 * mxl_hostapd_eid_mld_staprof_epcs(struct hostapd_data *hapd, u8 *eid)
+ }
+ #endif /* CONFIG_EPCS_MXL */
+ 
+-static u8 * mxl_hostapd_eid_mld_staprof(struct hostapd_data *hapd, u8 *buf, u16 *ie_len,
++static u8 * mxl_hostapd_eid_mld_staprof(struct hostapd_data *hapd, struct hostapd_data *lhapd,
++										u8 *buf, u16 *ie_len,
+ 										enum multilink_type ml_type, u8 *fw_ie_len)
+ {
+ 	u8 *eid = buf;
+@@ -1546,10 +1547,12 @@ static u8 * mxl_hostapd_eid_mld_staprof(struct hostapd_data *hapd, u8 *buf, u16
+ 	/* Set initial len */
+ 	*ie_len = 0;
+ 
+-	/* capability info - common for all types */
+-	capab_info = host_to_le16(hostapd_own_capab_info(hapd));
+-	memcpy_s(eid, sizeof(capab_info), &capab_info, sizeof(capab_info));
+-	eid += sizeof(capab_info);
++	if (ml_type != ML_EPCS) {
++		/* capability info - common for all types */
++		capab_info = host_to_le16(hostapd_own_capab_info(lhapd));
++		memcpy_s(eid, sizeof(capab_info), &capab_info, sizeof(capab_info));
++		eid += sizeof(capab_info);
++	}
+ 
+ 	/* Build ML type-specific per sta profile content */
+ 	switch (ml_type) {
+@@ -1558,7 +1561,7 @@ static u8 * mxl_hostapd_eid_mld_staprof(struct hostapd_data *hapd, u8 *buf, u16
+ 		break;
+ 
+ 	case ML_PROBE:
+-		eid = mxl_hostapd_eid_mld_staprof_probe(hapd, eid);
++		eid = mxl_hostapd_eid_mld_staprof_probe(lhapd, eid);
+ 		break;
+ 
+ #ifdef CONFIG_EPCS_MXL
+@@ -1622,8 +1625,11 @@ u8 * mxl_hostapd_eid_multilink_common(struct hostapd_data *hapd, u8 *eid,
+ 			size_t total_len = 0;
+ 			size_t sta_info_len = 0;
+ 
++			if ((ml_type == ML_BASIC) && !lhapd->iface->mxl_iface.ml_csa_in_progress)
++				continue;
++
+ 			/* Build Per-STA profile */
+-			mxl_hostapd_eid_mld_staprof(lhapd, per_sta_cap_buf, &per_sta_cap_len, ml_type, &fw_ie_len);
++			mxl_hostapd_eid_mld_staprof(hapd, lhapd, per_sta_cap_buf, &per_sta_cap_len, ml_type, &fw_ie_len);
+ 			wpa_printf(MSG_DEBUG, "MXL_MLO: fw ie len %d!!!", fw_ie_len);
+ 
+ 			if (!per_sta_cap_len) {
+@@ -2683,13 +2689,6 @@ int mxl_ml_handle_critical_update(struct hostapd_data *hapd)
+ 	 * for Wi-Fi 7 certification Need to Re-work on this.
+ 	 */
+ 	if (mxl_is_mlo_enabled(hapd->conf)) {
+-
+-		sib_hapd = hapd->mxl_data.sibling_hapd[LINK1]; /* TODO: WLANRTSYS-95653 - Hanlde in critical update task */
+-		if (!sib_hapd) {
+-			wpa_printf(MSG_ERROR, "MXL_MLO: Invalid sibling hapd, critical update failed");
+-			return -1;
+-		}
+-
+ 		/* Increment BPCC count on Link A */
+ 		mxl_ml_increment_bss_param_change_count(hapd);
+ 
+@@ -2708,43 +2707,46 @@ int mxl_ml_handle_critical_update(struct hostapd_data *hapd)
+ 			return -1;
+ 		}
+ 
+-		flags = BSS_CRITICAL_UPDATE_COMMON;
+-		sib_hapd_tx = sib_hapd;
++		mxl_mld_for_each_sibling_link(sib_hapd, hapd) { /* First sibling hapd itself is NULL */
++			if (!sib_hapd && _sib_idx == LINK1) {
++				wpa_printf(MSG_ERROR, "MXL_MLO: Invalid sibling hapd, critical update failed");
++				return -1;
++			}
++
++			if (!sib_hapd)
++				continue;
+ 
+-		if ((sib_hapd->iconf->multibss_enable)
+-		    && (MULTIBSS_REFERENCE_BSS_IDX != sib_hapd->conf->bss_idx)) {
+-			/* Set Non-Tx Critical Update */
+-			sib_hapd->mxl_data.ml_non_tx_critical_update = true;
+-			sib_tx_bss_idx = mxl_hostapd_get_mbssid_tx_bss_idx(sib_hapd->iface);
+-			sib_hapd_tx = sib_hapd->iface->bss[sib_tx_bss_idx];
+-			flags = NON_TX_BSS_CRITICAL_UPDATE_COMMON; /* Bit7 */
+-		}
++			flags = BSS_CRITICAL_UPDATE_COMMON;
++			sib_hapd_tx = sib_hapd;
+ 
+-		/* Send BSS critical update vendor cmd on link B */
+-		if (mxl_ml_send_bss_critical_update_info(sib_hapd_tx, flags, 0, 0) < 0) {
+-			wpa_printf(MSG_ERROR, "MXL_MLO: Critical update on link B failed");
+-			return -1;
+-		}
++			if ((sib_hapd->iconf->multibss_enable)
++			    && (MULTIBSS_REFERENCE_BSS_IDX != sib_hapd->conf->bss_idx)) {
++				/* Set Non-Tx Critical Update */
++				sib_hapd->mxl_data.ml_non_tx_critical_update = true;
++				sib_tx_bss_idx = mxl_hostapd_get_mbssid_tx_bss_idx(sib_hapd->iface);
++				sib_hapd_tx = sib_hapd->iface->bss[sib_tx_bss_idx];
++				flags = NON_TX_BSS_CRITICAL_UPDATE_COMMON; /* Bit7 */
++			}
++
++			/* Send BSS critical update vendor cmd on link B */
++			if (mxl_ml_send_bss_critical_update_info(sib_hapd_tx, flags, 0, 0) < 0) {
++				wpa_printf(MSG_ERROR, "MXL_MLO: Critical update on link B failed");
++				return -1;
++			}
+ 
+-		ieee802_11_set_beacon_per_bss_only(hapd_tx);
+-		ieee802_11_set_beacon_per_bss_only(sib_hapd_tx);
++			ieee802_11_set_beacon_per_bss_only(hapd_tx);
++			ieee802_11_set_beacon_per_bss_only(sib_hapd_tx);
+ 
++			sib_hapd->mxl_data.ml_non_tx_critical_update = false;
++		}
+ 		hapd->mxl_data.ml_non_tx_critical_update = false;
+-		sib_hapd->mxl_data.ml_non_tx_critical_update = false;
+ 	}
+ 	return 0;
+ }
+ 
+ int mxl_ml_handle_csa_critical_update(struct hostapd_data *hapd, struct csa_settings *settings)
+ {
+-	struct hostapd_data *sibling_hapd = hapd->mxl_data.sibling_hapd[LINK1]; /* TODO: WLANRTSYS-95653 - Need to handle during the CSA task */
+-
+-	if (!sibling_hapd) {
+-		wpa_printf(MSG_ERROR, "MXL_MLO: sibling_hapd NULL");
+-		return -1;
+-	}
+-
+-	hapd->mxl_data.max_chan_sw_time_ie_add = true;
++	struct hostapd_data *sibling_hapd;
+ 
+ 	/* Send BSS critical update vendor cmd on link A */
+ 	if (mxl_ml_send_bss_critical_update_info(hapd,
+@@ -2761,34 +2763,43 @@ int mxl_ml_handle_csa_critical_update(struct hostapd_data *hapd, struct csa_sett
+ 	hapd->mxl_data.max_chan_sw_time_ie_add = false;
+ 	hapd->mxl_data.bw_indication_ie_len_add = false;
+ 
+-	sibling_hapd->mxl_data.ml_ie_csa_ie_len_add = true;
+-	sibling_hapd->mxl_data.ml_ie_max_chan_sw_time_ie_add = true;
++	mxl_mld_for_each_sibling_link(sibling_hapd, hapd) {
++		if (!sibling_hapd && _sib_idx == LINK1) { /* First sibling hapd itself is NULL */
++			wpa_printf(MSG_ERROR, "MXL_MLO: sibling_hapd NULL");
++			return -1;
++		}
+ 
+-	if (settings->freq_params.bandwidth > 20) {
+-		sibling_hapd->mxl_data.ml_ie_csw_ie_len_add = true;
+-	}
++		if (!sibling_hapd)
++			continue;
+ 
+-	if ((settings->freq_params.punct_bitmap) || (settings->freq_params.bandwidth == 320)) {
+-		sibling_hapd->mxl_data.bw_indication_ie_len_add = true;
+-	}
++		sibling_hapd->mxl_data.ml_ie_csa_ie_len_add = true;
++		sibling_hapd->mxl_data.ml_ie_max_chan_sw_time_ie_add = true;
+ 
+-	/* Send BSS critical update vendor cmd on link B */
+-	if (mxl_ml_send_bss_critical_update_info(sibling_hapd,
+-	    (BSS_CRITICAL_UPDATE_COMMON | BSS_CRITICAL_UPDATE_CSA), 0, 0) < 0) {
+-		wpa_printf(MSG_ERROR, "CSA critical update on link B failed");
+-		return -1;
+-	}
+-	if (!(sibling_hapd->beacon_set_done && sibling_hapd->started)){
+-		wpa_printf(MSG_ERROR, "CSA bcn update on link B failed");
+-		return -1;
+-	}
+-	ieee802_11_set_beacon_per_bss_only(sibling_hapd);
++		if (settings->freq_params.bandwidth > 20) {
++			sibling_hapd->mxl_data.ml_ie_csw_ie_len_add = true;
++		}
+ 
+-	sibling_hapd->mxl_data.ml_ie_csa_ie_len_add = false;
+-	sibling_hapd->mxl_data.ml_ie_max_chan_sw_time_ie_add = false;
+-	sibling_hapd->mxl_data.ml_ie_csw_ie_len_add = false;
+-	sibling_hapd->mxl_data.bw_indication_ie_len_add = false;
++		if ((settings->freq_params.punct_bitmap) || (settings->freq_params.bandwidth == 320)) {
++			sibling_hapd->mxl_data.bw_indication_ie_len_add = true;
++		}
+ 
++		/* Send BSS critical update vendor cmd on link B */
++		if (mxl_ml_send_bss_critical_update_info(sibling_hapd,
++					(BSS_CRITICAL_UPDATE_COMMON | BSS_CRITICAL_UPDATE_CSA), 0, 0) < 0) {
++			wpa_printf(MSG_ERROR, "CSA critical update on link B failed");
++			return -1;
++		}
++		if (!(sibling_hapd->beacon_set_done && sibling_hapd->started)){
++			wpa_printf(MSG_ERROR, "CSA bcn update on link B failed");
++			return -1;
++		}
++		ieee802_11_set_beacon_per_bss_only(sibling_hapd);
++
++		sibling_hapd->mxl_data.ml_ie_csa_ie_len_add = false;
++		sibling_hapd->mxl_data.ml_ie_max_chan_sw_time_ie_add = false;
++		sibling_hapd->mxl_data.ml_ie_csw_ie_len_add = false;
++		sibling_hapd->mxl_data.bw_indication_ie_len_add = false;
++	}
+ 	return 0;
+ }
+ 
+diff --git a/src/ap/sta_info.c b/src/ap/sta_info.c
+index 9a863e6f9..c25abd3d1 100644
+--- a/src/ap/sta_info.c
++++ b/src/ap/sta_info.c
+@@ -2178,7 +2178,9 @@ void ap_sta_set_authorized_event(struct hostapd_data *hapd,
+ 	char *buf, *pos, *end;
+ 	int buflen = STA_EVENT_MAX_BUF_LEN;
+ 	char *sta_extra_cap = NULL;
++#ifdef CONFIG_IEEE80211BE_MXL_MLO
+ 	int mld_assoc_link_id = -1;
++#endif /* CONFIG_IEEE80211BE_MXL_MLO */
+ 	int i, ret = 0, len = 0;
+ 	unsigned int max_ch_width = 0, phy_mode = 0;
+ 	unsigned int mumimo = 0, max_mcs = 0, max_streams = 0, tx_streams = 0, rx_streams = 0;
+-- 
+2.43.0
+

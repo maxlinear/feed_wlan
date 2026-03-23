@@ -1,4 +1,4 @@
-From 42c83c7b56ce76ae3241de36ad9798a72abc3ed0 Mon Sep 17 00:00:00 2001
+From eea9a994214c6cbf2342f177d7c01eb78db3c701 Mon Sep 17 00:00:00 2001
 From: "karthikgk@maxlinear.com" <karthikgk@lvdocker7.lvsw.maxlinear.com>
 Date: Wed, 7 Jan 2026 23:32:21 -0800
 Subject: [PATCH] WLANRTSYS-99511 : Hostap-ng compilation issue
