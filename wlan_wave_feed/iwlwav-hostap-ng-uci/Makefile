@@ -53,6 +53,8 @@ PATCH_DIR:=./patches_external
 # OS_REPO_URL:=git://w1.fi/hostap.git
 # OS_FORK_REF:=hostap_2_10
 
+RSTRIP:=:
+
 include $(INCLUDE_DIR)/package.mk
 -include $(INCLUDE_DIR)/package-version-override.mk
 
