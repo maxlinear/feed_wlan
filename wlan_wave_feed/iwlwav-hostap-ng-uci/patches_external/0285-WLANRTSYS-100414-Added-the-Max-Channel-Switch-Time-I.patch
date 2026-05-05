@@ -1,0 +1,65 @@
+From 7523856583f5255549fbaa3d15644363acc86d73 Mon Sep 17 00:00:00 2001
+From: pvaish <pvaish@maxlinear.com>
+Date: Sun, 29 Mar 2026 21:46:17 -0700
+Subject: [PATCH] WLANRTSYS-100414 Added the Max Channel Switch Time IE in the
+ CSA Beacon on the main link. Fixup to: WLANRTSYS-96596 MLO: Triband MLD
+ Support
+
+Signed-off-by: pvaish <pvaish@maxlinear.com>
+---
+ src/ap/mxl_beacon.c | 14 ++++++++++----
+ src/ap/mxl_mld.c    |  2 ++
+ 2 files changed, 12 insertions(+), 4 deletions(-)
+
+diff --git a/src/ap/mxl_beacon.c b/src/ap/mxl_beacon.c
+index 7b16e4823..d88f1cc50 100644
+--- a/src/ap/mxl_beacon.c
++++ b/src/ap/mxl_beacon.c
+@@ -538,14 +538,17 @@ u8 * mxl_hostapd_eid_max_chan_sw_time(struct hostapd_data *hapd, u8 *eid)
+ 		return eid;
+ 
+ 	mxl_mld_for_each_sibling_link(lhapd, hapd) {
++		if (hapd->iface->mxl_iface.ml_csa_in_progress) {
++			max_chan_switch_time = hapd->iconf->mxl_conf.max_chan_switch_time;
++			goto build_ie;
++		}
++
+ 		if (!lhapd->iface->mxl_iface.ml_csa_in_progress)
+ 			continue;
+ 
+-		if (hapd->mxl_data.max_chan_sw_time_ie_add)
+-			max_chan_switch_time = hapd->iconf->mxl_conf.max_chan_switch_time;
+-		else
+-			max_chan_switch_time = lhapd->iconf->mxl_conf.max_chan_switch_time;
++		max_chan_switch_time = lhapd->iconf->mxl_conf.max_chan_switch_time;
+ 
++build_ie:
+ 		wpa_printf(MSG_INFO, "MXL_MLO: Add max chan sw time IE");
+ 
+ 		*eid++ = WLAN_EID_EXTENSION;
+@@ -554,6 +557,9 @@ u8 * mxl_hostapd_eid_max_chan_sw_time(struct hostapd_data *hapd, u8 *eid)
+ 		memcpy_s(eid, MAX_CHANNEL_SWITCH_TIME_VAL_SIZE,
+ 				&max_chan_switch_time, MAX_CHANNEL_SWITCH_TIME_VAL_SIZE);
+ 		eid += MAX_CHANNEL_SWITCH_TIME_VAL_SIZE;
++
++		if (hapd->iface->mxl_iface.ml_csa_in_progress)
++			return eid;
+ 	}
+ 	return eid;
+ #undef MAX_CHANNEL_SWITCH_TIME_VAL_SIZE
+diff --git a/src/ap/mxl_mld.c b/src/ap/mxl_mld.c
+index 4ef83d1f2..481401753 100644
+--- a/src/ap/mxl_mld.c
++++ b/src/ap/mxl_mld.c
+@@ -2773,6 +2773,8 @@ int mxl_ml_handle_csa_critical_update(struct hostapd_data *hapd, struct csa_sett
+ {
+ 	struct hostapd_data *sibling_hapd;
+ 
++	hapd->mxl_data.max_chan_sw_time_ie_add = true;
++
+ 	/* Send BSS critical update vendor cmd on link A */
+ 	if (mxl_ml_send_bss_critical_update_info(hapd,
+ 	     (BSS_CRITICAL_UPDATE_COMMON | BSS_CRITICAL_UPDATE_CSA), 0, 0) < 0) {
+-- 
+2.43.0
+

@@ -1,0 +1,86 @@
+From 62826fe79585faeb5f54c56e29518b1e2f6bdb06 Mon Sep 17 00:00:00 2001
+From: Venkatasaiprudhvi Raj Sannidhi <vsannidhi@maxlinear.com>
+Date: Mon, 9 Feb 2026 02:57:19 -0800
+Subject: [PATCH] WLANRTSYS-100701 Fix the AID printed during STA removal in
+ hostapd and some cosmetic changes.
+
+Signed-off-by: Venkatasaiprudhvi Raj Sannidhi <vsannidhi@maxlinear.com>
+---
+ src/ap/mxl_hostapd.c | 9 +++++----
+ src/ap/mxl_mld.h     | 4 ++--
+ 2 files changed, 7 insertions(+), 6 deletions(-)
+
+diff --git a/src/ap/mxl_hostapd.c b/src/ap/mxl_hostapd.c
+index 8e8f8a279..0ebb487ea 100644
+--- a/src/ap/mxl_hostapd.c
++++ b/src/ap/mxl_hostapd.c
+@@ -140,14 +140,14 @@ int mxl_hostapd_get_aid(struct hostapd_data *hapd, struct sta_info *sta)
+ #ifdef CONFIG_IEEE80211BE_MXL_MLO
+ 		if (mxl_is_mlo_enabled(hapd->conf) && mxl_mlo_is_ml_sta(sta)) {
+ 			aid_offset = MXL_ML_AID_OFFSET;
+-			aid_words = ML_AID_WORDS;
++			aid_words = MXL_ML_AID_WORDS;
+ 			aid_max = MXL_ML_AID_MAX;
+ 			aid_pool = hapd->iface->interfaces->mxl_interfaces.non_ap_mld_aid;
+ 		}
+ #endif /* CONFIG_IEEE80211BE_MXL_MLO */
+ 
+ 		for (i = 0; i < aid_words; i++) {
+-			if (aid_pool[i] == (u32) -1)
++			if (aid_pool[i] == (u32) - 1)
+ 				continue;
+ 			for (j = 0; j < 32; j++) {
+ 				if (!(aid_pool[i] & BIT(j)))
+@@ -336,6 +336,7 @@ int mxl_hostapd_get_aid(struct hostapd_data *hapd, struct sta_info *sta)
+ void mxl_hostapd_free_aid(struct hostapd_data *hapd, struct sta_info *sta)
+ {
+ 	struct mxl_hostapd_iface *mxl_iface = &hapd->iface->mxl_iface;
++	u16 aid = sta->aid;
+ 
+ #ifdef CONFIG_IEEE80211BE_MXL_MLO
+ 	if (mxl_mlo_is_ml_sta(sta) && (sta->mxl_sta_info.ext_flags & WLAN_STA_MLD_STA)) {
+@@ -365,14 +366,14 @@ void mxl_hostapd_free_aid(struct hostapd_data *hapd, struct sta_info *sta)
+ 		/* Free SID */
+ 		if (!mxl_hostapd_is_recovery(hapd->iface)) {
+ 			(*hapd->driver->free_aid)(hapd->drv_priv, &sta->aid);
+-			wpa_printf(MSG_ERROR, " Free AID %d", sta->aid);
++			wpa_printf(MSG_ERROR, " Free AID %d", aid);
+ 		}
+ 	} else {
+ 		/* Legacy */
+ 		if (!mxl_hostapd_is_recovery(hapd->iface)) {
+ 			sta->aid -= hapd->iconf->mbssid_aid_offset;
+ 			(*hapd->driver->free_aid)(hapd->drv_priv, &sta->aid);
+-			wpa_printf(MSG_ERROR, " Free AID %d", sta->aid);
++			wpa_printf(MSG_ERROR, " Free AID %d", aid);
+ 		}
+ 	}
+ 
+diff --git a/src/ap/mxl_mld.h b/src/ap/mxl_mld.h
+index 596f952c9..c743dc01b 100644
+--- a/src/ap/mxl_mld.h
++++ b/src/ap/mxl_mld.h
+@@ -125,10 +125,10 @@
+ #define ASSOC_FRAME 1
+ 
+ #define LINKS_PER_AP_MLD_DEFAULT                 2
+-#define ML_AID_WORDS ((128 + 31) / 32)
+ #define MXL_ML_AID_OFFSET                        63
+ #define MXL_ML_AID_MAX                           191
+ #define MXL_ML_AID_RANGE                         128
++#define MXL_ML_AID_WORDS                         ((MXL_ML_AID_RANGE + 31) / 32)
+ 
+ struct mxl_mld_wds {
+ 	struct dl_list wds_pending_assoc;
+@@ -145,7 +145,7 @@ struct p_ap_mld {
+ 
+ struct mxl_hapd_interfaces {
+ 	struct p_ap_mld g_ap_mld[MAX_SUPPORTED_MLDS];
+-	u32 non_ap_mld_aid[ML_AID_WORDS];
++	u32 non_ap_mld_aid[MXL_ML_AID_WORDS];
+ };
+ 
+ enum multilink_type {
+-- 
+2.43.0
+

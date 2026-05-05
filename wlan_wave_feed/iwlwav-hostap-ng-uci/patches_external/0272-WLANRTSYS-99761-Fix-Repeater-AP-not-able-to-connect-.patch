@@ -1,0 +1,83 @@
+From 7e36109ea545ba9e1512f9d3415ff989773bfaf8 Mon Sep 17 00:00:00 2001
+From: dkolhe <dkolhe@maxlinear.com>
+Date: Mon, 16 Feb 2026 03:21:37 -0800
+Subject: [PATCH] WLANRTSYS-99761 Fix Repeater AP not able to connect with
+ Backhaul AP in Client Mode
+
+RCA: Unsupported attr packed into Auth+Assoc NL
+
+Fix: Disable packing of NL80211_ATTR_SUPPORTED_SELECTORS attribute,
+until we upgrade to Kernel v6.14 or later
+
+ToDo: Should be reverted post kernel v6.14 is available
+
+Signed-off-by: dkolhe <dkolhe@maxlinear.com>
+---
+ src/drivers/driver_nl80211.c | 24 +++++++++++++++++++++---
+ 1 file changed, 21 insertions(+), 3 deletions(-)
+
+diff --git a/src/drivers/driver_nl80211.c b/src/drivers/driver_nl80211.c
+index 466f78684..1294d1e14 100644
+--- a/src/drivers/driver_nl80211.c
++++ b/src/drivers/driver_nl80211.c
+@@ -4249,7 +4249,12 @@ static enum nl80211_auth_type get_nl_auth_type(int wpa_auth_alg)
+ 	return NL80211_AUTHTYPE_MAX;
+ }
+ 
+-
++/*
++	This is a workaround.
++	ToDo: Should be reverted once we upgrade kernel to v6.14 or later.
++	Refer WLANRTSYS-99761 for detailed info.
++*/
++#ifndef CONFIG_VENDOR_MXL
+ static int
+ nl80211_put_bss_membership_selectors(struct wpa_driver_nl80211_data *drv,
+ 				     struct nl_msg *msg)
+@@ -4275,6 +4280,7 @@ nl80211_put_bss_membership_selectors(struct wpa_driver_nl80211_data *drv,
+ 	return nla_put(msg, NL80211_ATTR_SUPPORTED_SELECTORS,
+ 		       selectors_len, selectors);
+ }
++#endif /* CONFIG_VENDOR_MXL */
+ 
+ 
+ static int wpa_driver_nl80211_authenticate(
+@@ -4377,10 +4383,16 @@ retry:
+ 		if (nla_put_flag(msg, NL80211_ATTR_LOCAL_STATE_CHANGE))
+ 			goto fail;
+ 	}
+-
++/*
++	This is a workaround.
++	ToDo: Should be reverted once we upgrade kernel to v6.14 or later.
++	Refer WLANRTSYS-99761 for detailed info.
++*/
++#ifndef CONFIG_VENDOR_MXL
+ 	ret = nl80211_put_bss_membership_selectors(drv, msg);
+ 	if (ret)
+ 		goto fail;
++#endif /* CONFIG_VENDOR_MXL */
+ 
+ 	if (params->mld && params->ap_mld_addr) {
+ 		wpa_printf(MSG_DEBUG, "  * MLD: link_id=%u, MLD addr=" MACSTR,
+@@ -7707,10 +7719,16 @@ static int wpa_driver_nl80211_associate(
+ 	ret = nl80211_connect_common(drv, params, msg);
+ 	if (ret)
+ 		goto fail;
+-
++/*
++	This is a workaround.
++	ToDo: Should be reverted once we upgrade kernel to v6.14 or later.
++	Refer WLANRTSYS-99761 for detailed info.
++*/
++#ifndef CONFIG_VENDOR_MXL
+ 	ret = nl80211_put_bss_membership_selectors(drv, msg);
+ 	if (ret)
+ 		goto fail;
++#endif /* CONFIG_VENDOR_MXL */
+ 
+ 	if (params->mgmt_frame_protection == MGMT_FRAME_PROTECTION_REQUIRED &&
+ 	    nla_put_u32(msg, NL80211_ATTR_USE_MFP, NL80211_MFP_REQUIRED))
+-- 
+2.43.0
+

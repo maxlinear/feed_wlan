@@ -1,0 +1,97 @@
+From 56639eca2e204ff17370feaf1c56c0fc686c3d1c Mon Sep 17 00:00:00 2001
+From: Sagar Reddy <snandanuri@maxlinear.com>
+Date: Tue, 14 Apr 2026 02:26:40 -0700
+Subject: [PATCH] WLANRTSYS-98234 MLO: Use MLD MAC in STA event messages
+
+**Issue:**
+When a dual-link STA MLD connects, 3 Associated Device objects are
+created isof 1 in the DM.
+
+**RCA:**
+When a STA MLD connects, hostapd emits AP-STA-CONNECTED,
+AP-STA-DISCONNECTED, and EAPOL-4WAY-HS-COMPLETED WPA events with the
+STA's _per-link MAC address isof the non-AP MLD MAC address_.
+pWHM parses the MAC from these events to create/lookup AssociatedDevice
+objects, so per-link MACs cause redundant AD instances
+(one per affiliated link) instead of a single MLD-keyed entry.
+
+**Fix:**
+STA MLD WPA control interface event message use MLD MAC Address isof
+link MACAddress. Non-MLO STA behavior remains unchanged.
+Changes involves the following events:
+  - AP-STA-CONNECTED,
+  - AP-STA-DISCONNECTED,
+  - EAPOL-4WAY-HS-COMPLETED
+
+Fixup to: WLANRTSYS-96596 MLO: Triband MLD Support
+
+Signed-off-by: Sagar Reddy <snandanuri@maxlinear.com>
+---
+ src/ap/sta_info.c | 25 ++++++++++++++++++++-----
+ src/ap/wpa_auth.c |  5 +++++
+ 2 files changed, 25 insertions(+), 5 deletions(-)
+
+diff --git a/src/ap/sta_info.c b/src/ap/sta_info.c
+index e48d4260d..bdc9cc16e 100644
+--- a/src/ap/sta_info.c
++++ b/src/ap/sta_info.c
+@@ -2242,18 +2242,33 @@ void ap_sta_set_authorized_event(struct hostapd_data *hapd,
+ 	else
+ #endif /* CONFIG_P2P */
+ 	{
+-		/* Report disassociation following expired BSS Transition Management Request timeout
+-		 * in case STA didn't dis-associate on its own */
+-		if (!authorized && (sta->timeout_next == STA_DISASSOC_FROM_CLI) &&
+-			(sta->flags & WLAN_STA_BSS_TRANS_MGMT_REQ_TIMEOUT))
+-			ret = sprintf_s(pos, end - pos, MACSTR " DISASSOC_TIMER_EXPIRED", MAC2STR(sta->addr));
++		/* For ML STAs, report the non-AP MLD MAC instead of per-link MAC
++		 * to align with upstream behavior where AP-STA-CONNECTED/DISCONNECTED
++		 * events use the STA MLD MAC address */
++#ifdef CONFIG_IEEE80211BE_MXL_MLO
++		if (mxl_mlo_is_ml_sta(sta) &&
++		    !is_zero_ether_addr(sta->mxl_sta_info.non_ap_mld_mac))
++			ret = sprintf_s(pos, end - pos, MACSTR, MAC2STR(sta->mxl_sta_info.non_ap_mld_mac));
+ 		else
++#endif /* CONFIG_IEEE80211BE_MXL_MLO */
+ 			ret = sprintf_s(pos, end - pos, MACSTR, MAC2STR(sta->addr));
+ 		if (ret <= 0) {
+ 			wpa_printf(MSG_ERROR, "%s: sprintf_s error %d", __func__, ret);
+ 			goto free_alloc;
+ 		}
+ 		pos += ret;
++
++		/* Report disassociation following expired BSS Transition Management Request timeout
++		 * in case STA didn't dis-associate on its own */
++		if (!authorized && (sta->timeout_next == STA_DISASSOC_FROM_CLI) &&
++			(sta->flags & WLAN_STA_BSS_TRANS_MGMT_REQ_TIMEOUT)) {
++			ret = sprintf_s(pos, end - pos, " DISASSOC_TIMER_EXPIRED");
++			if (ret <= 0) {
++				wpa_printf(MSG_ERROR, "%s: sprintf_s error %d", __func__, ret);
++				goto free_alloc;
++			}
++			pos += ret;
++		}
+ 	}
+ #else
+ #ifdef CONFIG_P2P
+diff --git a/src/ap/wpa_auth.c b/src/ap/wpa_auth.c
+index c6643494b..ce75bbe81 100644
+--- a/src/ap/wpa_auth.c
++++ b/src/ap/wpa_auth.c
+@@ -5342,8 +5342,13 @@ SM_STATE(WPA_PTK, PTKINITDONE)
+ 	wpa_auth_vlogger(sm->wpa_auth, wpa_auth_get_spa(sm), LOGGER_INFO,
+ 			 "pairwise key handshake completed (%s)",
+ 			 sm->wpa == WPA_VERSION_WPA ? "WPA" : "RSN");
++#ifdef CONFIG_VENDOR_MXL
++	wpa_msg(sm->wpa_auth->conf.msg_ctx, MSG_INFO, "EAPOL-4WAY-HS-COMPLETED "
++		MACSTR, MAC2STR(wpa_auth_get_spa(sm)));
++#else
+ 	wpa_msg(sm->wpa_auth->conf.msg_ctx, MSG_INFO, "EAPOL-4WAY-HS-COMPLETED "
+ 		MACSTR, MAC2STR(sm->addr));
++#endif /* CONFIG_VENDOR_MXL */
+ 
+ #ifdef CONFIG_IEEE80211R_AP
+ 	wpa_ft_push_pmk_r1(sm->wpa_auth, wpa_auth_get_spa(sm));
+-- 
+2.43.0
+

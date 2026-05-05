@@ -1,4 +1,4 @@
-From 2d95084638772cd7d9a87f48890d23587d0e041a Mon Sep 17 00:00:00 2001
+From 8539d21ebe2aa3895e87fa6199d7b090044f0cac Mon Sep 17 00:00:00 2001
 From: spatel <spatel@maxlinear.com>
 Date: Mon, 14 Oct 2024 16:04:20 +0530
 Subject: [PATCH] WLANRTSYS-84507 6GHz support: Add RNR IE parsing
@@ -242,7 +242,7 @@ index 84f978a9a..10fcea71d 100644
 +}
 +
 diff --git a/src/ap/mxl_hostapd.h b/src/ap/mxl_hostapd.h
-index 3bf833f8a..78d795b7b 100644
+index fb690480c..c6d74a01b 100644
 --- a/src/ap/mxl_hostapd.h
 +++ b/src/ap/mxl_hostapd.h
 @@ -259,4 +259,5 @@ void mxl_cleanup_sta(struct hostapd_data *hapd, struct sta_info *sta);

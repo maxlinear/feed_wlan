@@ -1,4 +1,4 @@
-From 058b4fcd6dc9c2817a776f34b3636b745115a7d1 Mon Sep 17 00:00:00 2001
+From 4e4dac48aac4e5f0d35dff1f98f4ed6604398ccc Mon Sep 17 00:00:00 2001
 From: "Ross-Ashikyan, William" <washikyan@maxlinear.com>
 Date: Wed, 15 Jan 2025 11:02:19 -0800
 Subject: [PATCH] WLANRTSYS-84375 Extended TPE IE to accept multiple power

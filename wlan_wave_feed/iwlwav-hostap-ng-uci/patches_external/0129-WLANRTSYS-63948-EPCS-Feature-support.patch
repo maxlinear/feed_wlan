@@ -1,4 +1,4 @@
-From 026e344bb9a7b74961990cdfb60d70b7475083b2 Mon Sep 17 00:00:00 2001
+From d4b27c8430f46d3db39858d97167bd0e6807d593 Mon Sep 17 00:00:00 2001
 From: "Maneendra,Pokuri Naga" <pnmaneendra@maxlinear.com>
 Date: Sat, 9 Mar 2024 20:49:03 +0530
 Subject: [PATCH] WLANRTSYS-63948 EPCS Feature support

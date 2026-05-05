@@ -1,4 +1,4 @@
-From 6e5dfc5870f06bfb23ef2ac932bf8cf476466458 Mon Sep 17 00:00:00 2001
+From 7706c48304c52eaeeaf0acb890cbf27b92ac4866 Mon Sep 17 00:00:00 2001
 From: Jurijs Soloveckis <jsoloveckis@maxlinear.com>
 Date: Thu, 11 May 2023 09:49:19 +0200
 Subject: [PATCH] WLANRTSYS-54115: FILS discovery and unsolicited broadcast

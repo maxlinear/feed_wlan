@@ -1,0 +1,48 @@
+From 311ceedf8376c2eb8ac7f5897886717e205225af Mon Sep 17 00:00:00 2001
+From: Venkatasaiprudhvi Raj Sannidhi <vsannidhi@maxlinear.com>
+Date: Fri, 5 Sep 2025 00:13:32 -0700
+Subject: [PATCH] WLANRTSYS-93880 [WAV700][MBSSID] PN number for non tx VAP is
+ getting fetched incorrectly
+
+Description: Remove the code which is not necessary.
+
+Unit test: Pass
+---
+ src/ap/wpa_auth.c | 9 ---------
+ 1 file changed, 9 deletions(-)
+
+diff --git a/src/ap/wpa_auth.c b/src/ap/wpa_auth.c
+index f93f1ff7b..10fb4198c 100644
+--- a/src/ap/wpa_auth.c
++++ b/src/ap/wpa_auth.c
+@@ -317,16 +317,11 @@ static inline int wpa_auth_get_seqnum(struct wpa_authenticator *wpa_auth,
+ {
+ 	int res;
+ #ifdef CONFIG_VENDOR_MXL
+-	struct wpa_authenticator *wpa_auth_backup = wpa_auth;
+-
+ 	if (wpa_auth->conf.mxl_tx_bss_auth != NULL)
+ 		wpa_auth = wpa_auth->conf.mxl_tx_bss_auth;
+ #endif /* CONFIG_VENDOR_MXL */
+ 
+ 	if (!wpa_auth->cb->get_seqnum)
+-#ifdef CONFIG_VENDOR_MXL
+-		wpa_auth = wpa_auth_backup;
+-#endif /* CONFIG_VENDOR_MXL */
+ 		return -1;
+ #ifdef CONFIG_TESTING_OPTIONS
+ 	os_memset(seq, 0, WPA_KEY_RSC_LEN);
+@@ -353,10 +348,6 @@ static inline int wpa_auth_get_seqnum(struct wpa_authenticator *wpa_auth,
+ 			  WPA_KEY_RSC_LEN);
+ 	}
+ #endif /* CONFIG_TESTING_OPTIONS */
+-
+-#ifdef CONFIG_VENDOR_MXL
+-	wpa_auth = wpa_auth_backup;
+-#endif /* CONFIG_VENDOR_MXL */
+ 	return res;
+ }
+ 
+-- 
+2.43.0
+

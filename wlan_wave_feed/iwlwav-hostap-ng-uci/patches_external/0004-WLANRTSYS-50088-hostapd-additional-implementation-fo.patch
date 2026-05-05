@@ -1,4 +1,4 @@
-From 088023229d621a26f04d8e3a1e374501c2592b63 Mon Sep 17 00:00:00 2001
+From 6a117034f4f1f1cfd1b97b94fd6d20201e785fe2 Mon Sep 17 00:00:00 2001
 From: Jurijs Soloveckis <jsoloveckis@maxlinear.com>
 Date: Thu, 17 Nov 2022 14:58:35 +0100
 Subject: [PATCH] WLANRTSYS-50088: hostapd: additional implementation for 20-40

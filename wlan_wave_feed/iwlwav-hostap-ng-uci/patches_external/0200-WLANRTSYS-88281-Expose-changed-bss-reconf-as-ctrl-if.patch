@@ -1,4 +1,4 @@
-From d5e9126168ad45e55cc766a6af46921d821f4101 Mon Sep 17 00:00:00 2001
+From a048d29c5ae653ee445f19296a944eaf37fe34ba Mon Sep 17 00:00:00 2001
 From: nchernikov <nchernikov@maxlinear.com>
 Date: Wed, 12 Mar 2025 11:51:25 +0200
 Subject: [PATCH] WLANRTSYS-88281 Expose changed bss reconf as ctrl iface
@@ -15,7 +15,7 @@ Signed-off-by: nchernikov <nchernikov@maxlinear.com>
  6 files changed, 93 insertions(+), 1 deletion(-)
 
 diff --git a/hostapd/mxl_ctrl_iface.c b/hostapd/mxl_ctrl_iface.c
-index 6360666c5..5852f62a3 100644
+index f2a0365b7..9965f2c13 100644
 --- a/hostapd/mxl_ctrl_iface.c
 +++ b/hostapd/mxl_ctrl_iface.c
 @@ -3071,6 +3071,21 @@ static int mxl_hostapd_ctrl_iface_set_neighbor_psd(struct hostapd_data *hapd, ch
@@ -184,7 +184,7 @@ index 60f38ab7d..d95a3f9d6 100644
 +	return 0;
 +}
 diff --git a/src/ap/mxl_hostapd.h b/src/ap/mxl_hostapd.h
-index 420470c00..0463e8977 100644
+index bf25a8f56..3aed7fd19 100644
 --- a/src/ap/mxl_hostapd.h
 +++ b/src/ap/mxl_hostapd.h
 @@ -266,4 +266,5 @@ bool mxl_hostapd_prune_sta(struct hostapd_data *hapd, const u8 *addr, struct sta

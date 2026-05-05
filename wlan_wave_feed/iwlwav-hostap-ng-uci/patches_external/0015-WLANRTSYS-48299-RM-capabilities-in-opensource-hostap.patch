@@ -1,4 +1,4 @@
-From 9198b8547c866e5f537ccdc7dc9875b2bc5d8d02 Mon Sep 17 00:00:00 2001
+From 0d9b3441aaa11f1750284e0dcac27ff051235fa9 Mon Sep 17 00:00:00 2001
 From: Jurijs Soloveckis <jsoloveckis@maxlinear.com>
 Date: Mon, 23 Jan 2023 16:19:20 +0100
 Subject: [PATCH] WLANRTSYS-48299: RM capabilities in opensource hostapd: only

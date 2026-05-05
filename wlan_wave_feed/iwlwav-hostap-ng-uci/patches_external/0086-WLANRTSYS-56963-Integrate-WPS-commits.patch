@@ -1,4 +1,4 @@
-From a8d57281cfb8a2d1d8516ff285f1e9887e223765 Mon Sep 17 00:00:00 2001
+From aedc6d50ab8c9c2d0e8fd9dd4adbfc2f1badcdc9 Mon Sep 17 00:00:00 2001
 From: Dmitrijs Martinovs <dmartinovs@maxlinear.com>
 Date: Mon, 17 Jul 2023 10:03:39 +0200
 Subject: [PATCH] WLANRTSYS-56963: Integrate WPS commits

@@ -1,4 +1,4 @@
-From fc86874b8064743e996e6cccce3296bdbcf487b1 Mon Sep 17 00:00:00 2001
+From 7c8c7f1e5199df999015dcd068e80ea607edff15 Mon Sep 17 00:00:00 2001
 From: akgupta <akgupta@maxlinear.com>
 Date: Mon, 12 Feb 2024 14:20:39 +0530
 Subject: [PATCH] WLANRTSYS-63318 MLO changes in iwlwav-hostap-ng: ML CSA with
@@ -696,7 +696,7 @@ index 46b649278..34e1fc566 100644
  {
  	errno_t err;
 diff --git a/src/ap/mxl_hostapd.h b/src/ap/mxl_hostapd.h
-index 48666a80c..2b86a9407 100644
+index 777b88e5a..684dab559 100644
 --- a/src/ap/mxl_hostapd.h
 +++ b/src/ap/mxl_hostapd.h
 @@ -124,6 +124,15 @@ struct mxl_hostapd_data {

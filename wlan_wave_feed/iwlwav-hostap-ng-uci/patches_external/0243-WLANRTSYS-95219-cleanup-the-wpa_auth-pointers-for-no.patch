@@ -1,0 +1,90 @@
+From 0a8ace149823fe9f24ea198055b6318d8adcaa84 Mon Sep 17 00:00:00 2001
+From: mj <mj@maxlinear.com>
+Date: Tue, 14 Oct 2025 23:35:40 -0700
+Subject: [PATCH] WLANRTSYS-95219 cleanup the wpa_auth pointers for non tx vap
+
+Issue : wpa_auth pointers is not cleared for non tx vap
+Fix: cleanup the wpa_auth pointers for non tx vap
+---
+ src/ap/hostapd.c       |  3 +++
+ src/ap/mxl_wpa_auth.c  | 18 ++++++++++++++++++
+ src/ap/mxl_wpa_auth.h  |  2 +-
+ src/ap/wpa_auth_glue.c |  3 +++
+ 4 files changed, 25 insertions(+), 1 deletion(-)
+
+diff --git a/src/ap/hostapd.c b/src/ap/hostapd.c
+index 3440dd405..9a909cdce 100644
+--- a/src/ap/hostapd.c
++++ b/src/ap/hostapd.c
+@@ -193,6 +193,9 @@ static void hostapd_reload_bss(struct hostapd_data *hapd)
+ 			wpa_printf(MSG_ERROR, "Failed to configure WPA IE for "
+ 				   "the kernel driver.");
+ 	} else if (hapd->wpa_auth) {
++#ifdef CONFIG_VENDOR_MXL
++		mxl_wpa_clear_mxl_tx_bss_auth(hapd);
++#endif /* CONFIG_VENDOR_MXL */
+ 		wpa_deinit(hapd->wpa_auth);
+ 		hapd->wpa_auth = NULL;
+ 		hostapd_set_privacy(hapd, 0);
+diff --git a/src/ap/mxl_wpa_auth.c b/src/ap/mxl_wpa_auth.c
+index e0127e517..4d1bcd16f 100644
+--- a/src/ap/mxl_wpa_auth.c
++++ b/src/ap/mxl_wpa_auth.c
+@@ -40,6 +40,7 @@
+ #include "pmksa_cache_auth.h"
+ #include "wpa_auth_i.h"
+ #include "wpa_auth_ie.h"
++#include "hostapd.h"
+ 
+ #ifdef CONFIG_IEEE80211BE_MXL_MLO
+ #define PN_LENGTH 6
+@@ -837,3 +838,20 @@ void mxl_wpa_auth_clear_group_key_flag(struct wpa_authenticator *wpa_auth)
+ 	wpa_auth->group->first_sta_seen = false;
+ }
+ 
++void mxl_wpa_clear_mxl_tx_bss_auth(struct hostapd_data *hapd)
++{
++	if (hapd->iconf->multibss_enable) {
++		size_t tx_bss_idx = mxl_hostapd_get_mbssid_tx_bss_idx(hapd->iface);
++
++		if (hapd->iface->bss[tx_bss_idx] == hapd) {
++			for (int i = 0; i < hapd->iface->num_bss; i++) {
++				struct hostapd_data *bss = hapd->iface->bss[i];
++
++				if (!bss || !bss->wpa_auth)
++				continue;
++
++				bss->wpa_auth->conf.mxl_tx_bss_auth = NULL;
++			}
++		}
++	}
++}
+diff --git a/src/ap/mxl_wpa_auth.h b/src/ap/mxl_wpa_auth.h
+index e2be678e5..1ca642c44 100644
+--- a/src/ap/mxl_wpa_auth.h
++++ b/src/ap/mxl_wpa_auth.h
+@@ -73,6 +73,6 @@ struct wpa_authenticator;
+ void mxl_wpa_auth_clear_group_key_flag(struct wpa_authenticator *wpa_auth);
+ u8 *bip_protect(struct wpa_authenticator *wpa_auth,
+ 		u8 *frame, size_t len, size_t *prot_len, s8 ipn_type);
+-
++void mxl_wpa_clear_mxl_tx_bss_auth(struct hostapd_data *hapd);
+ #endif /* MXL_WPA_AUTH_H */
+ 
+diff --git a/src/ap/wpa_auth_glue.c b/src/ap/wpa_auth_glue.c
+index 485a8578a..4f7d35202 100644
+--- a/src/ap/wpa_auth_glue.c
++++ b/src/ap/wpa_auth_glue.c
+@@ -1953,6 +1953,9 @@ void hostapd_deinit_wpa(struct hostapd_data *hapd)
+ 
+ 	rsn_preauth_iface_deinit(hapd);
+ 	if (hapd->wpa_auth) {
++#ifdef CONFIG_VENDOR_MXL
++	mxl_wpa_clear_mxl_tx_bss_auth(hapd);
++#endif /* CONFIG_VENDOR_MXL */
+ 		wpa_deinit(hapd->wpa_auth);
+ 		hapd->wpa_auth = NULL;
+ 
+-- 
+2.43.0
+

@@ -1,4 +1,4 @@
-From 9937c4e17c662788d9487d77caa959eaf4ee794d Mon Sep 17 00:00:00 2001
+From f698bd47699411d2d04f8e8a84cf1feaa2b2c024 Mon Sep 17 00:00:00 2001
 From: mj <mj@maxlinear.com>
 Date: Sat, 8 Mar 2025 08:27:02 +0530
 Subject: [PATCH] WLANRTSYS-88422 validate mac address and link id

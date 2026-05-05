@@ -1,0 +1,31 @@
+From a362f4b0d455b88c2030f24ad190ed07f3e2ad81 Mon Sep 17 00:00:00 2001
+From: "Bruno.Kremp@sony.com" <Bruno.Kremp@sony.com>
+Date: Fri, 19 Dec 2025 10:25:46 +0000
+Subject: [PATCH] WLANRTSYS-96596 Fix ieee802_11_defrag_mle_subelem() check on
+ remaining buffer
+
+The end pointer moves as well when cutting out a subelement
+header. While the previous version checked against the original full
+buffer, it is more accurate to check against the updated end of the
+buffer.
+
+Signed-off-by: Bruno Kremp <bruno.kremp@sony.com>
+---
+ src/common/ieee802_11_common.c | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/src/common/ieee802_11_common.c b/src/common/ieee802_11_common.c
+index 68ccd3225..dded1fe62 100644
+--- a/src/common/ieee802_11_common.c
++++ b/src/common/ieee802_11_common.c
+@@ -3704,6 +3704,7 @@ size_t ieee802_11_defrag_mle_subelem(struct wpabuf *mlbuf,
+ 			return -1;
+ 
+ 		os_memmove(pos, pos + 2, end - (pos + 2));
++		end -= 2;
+ 		pos += elen - 2;
+ 		subelem_len += elen - 2;
+ 
+-- 
+2.43.0
+

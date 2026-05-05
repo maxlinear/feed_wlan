@@ -1,4 +1,4 @@
-From c4c156ec67cbb5055a05691bf00a2c936ccbbd2e Mon Sep 17 00:00:00 2001
+From 6f64523a05049902d52d0e0da7f53c5fac6726c7 Mon Sep 17 00:00:00 2001
 From: Jurijs Soloveckis <jsoloveckis@maxlinear.com>
 Date: Tue, 20 Aug 2024 15:53:01 +0300
 Subject: [PATCH] WLANRTSYS-62198 Multi-AP: wpa_supplicant: added support for

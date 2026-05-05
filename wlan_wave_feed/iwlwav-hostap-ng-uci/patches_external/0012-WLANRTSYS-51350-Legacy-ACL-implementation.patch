@@ -1,4 +1,4 @@
-From 236df5622a5527b0ff778d92121d8ed6abddd485 Mon Sep 17 00:00:00 2001
+From 12adb4fc3ec38dd16ef8b17f3f0e206eeec07f8c Mon Sep 17 00:00:00 2001
 From: Jurijs Soloveckis <jsoloveckis@maxlinear.com>
 Date: Fri, 23 Dec 2022 08:46:26 +0100
 Subject: [PATCH] WLANRTSYS-51350: Legacy ACL implementation

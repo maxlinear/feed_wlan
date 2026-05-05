@@ -1,4 +1,4 @@
-From b9b1bdc4eaabb841dccc672783c9170b519c8573 Mon Sep 17 00:00:00 2001
+From 30287a29f47119b0f7280f3455abfcf95b3abf05 Mon Sep 17 00:00:00 2001
 From: Jouni Malinen <quic_jouni@quicinc.com>
 Date: Tue, 19 Mar 2024 16:44:00 +0200
 Subject: [PATCH] WLANRTSYS-62198 Multi-AP: Use proper length for remaining

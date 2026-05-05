@@ -1,4 +1,4 @@
-From c92f3dea904eb5afda4c625a2c80e9194171645e Mon Sep 17 00:00:00 2001
+From d805cd8e6d1dd237dee837fd1be84a6adcd3c55b Mon Sep 17 00:00:00 2001
 From: "Ross-Ashikyan, William" <washikyan@maxlinear.com>
 Date: Mon, 30 Sep 2024 11:01:19 -0700
 Subject: [PATCH] WLANRTSYS-84517 Added OCSP disable option to afcd for WFA

@@ -1,4 +1,4 @@
-From b23fe0971767405d925fe66288143f031608ac43 Mon Sep 17 00:00:00 2001
+From cd334e2b78f24904663fe994ff7277d5e8a2751b Mon Sep 17 00:00:00 2001
 From: Jurijs Soloveckis <jsoloveckis@maxlinear.com>
 Date: Tue, 27 Dec 2022 10:31:21 +0100
 Subject: [PATCH] WLANRTSYS-51362: SoftBlock timer based ACL implementation
@@ -480,7 +480,7 @@ index dde8405b8..70a9e3ed3 100644
  int mxl_hostapd_drv_get_vendor_data(struct hostapd_data *hapd,
  			unsigned int vendor_id, unsigned int subcmd,
 diff --git a/src/ap/mxl_hostapd.h b/src/ap/mxl_hostapd.h
-index 7a2d3b30d..0cd70a539 100644
+index 4e4d8036a..64bc174aa 100644
 --- a/src/ap/mxl_hostapd.h
 +++ b/src/ap/mxl_hostapd.h
 @@ -109,6 +109,10 @@ struct hostapd_channel_data* mxl_hostapd_hw_get_channel_data(struct hostapd_ifac

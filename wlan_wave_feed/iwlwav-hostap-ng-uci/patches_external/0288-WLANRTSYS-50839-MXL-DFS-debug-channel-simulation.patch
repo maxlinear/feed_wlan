@@ -1,0 +1,786 @@
+From 0d182d27dfde929ec83b1c8fa96686497d8a0489 Mon Sep 17 00:00:00 2001
+From: spatel <spatel@maxlinear.com>
+Date: Thu, 10 Oct 2024 18:47:24 +0530
+Subject: [PATCH] WLANRTSYS-50839 MXL DFS debug channel simulation
+
+---
+ hostapd/Makefile        |   1 +
+ hostapd/mxl_config.c    |  22 +++-
+ src/ap/ap_drv_ops.c     |   7 +
+ src/ap/dfs.c            |  14 ++
+ src/ap/drv_callbacks.c  |   5 +
+ src/ap/hostapd.c        |   5 +-
+ src/ap/hw_features.c    |   6 +-
+ src/ap/mxl_config.h     |   2 +
+ src/ap/mxl_dfs_common.c |  22 +++-
+ src/ap/mxl_dfs_common.h |   3 +
+ src/ap/mxl_dfs_debug.c  | 282 ++++++++++++++++++++++++++++++++++++++++
+ src/ap/mxl_dfs_debug.h  |  31 +++++
+ src/ap/mxl_hostapd.c    |  40 +++++-
+ src/ap/mxl_hostapd.h    |   6 +-
+ src/ap/mxl_zwdfs.c      |  12 ++
+ 15 files changed, 443 insertions(+), 15 deletions(-)
+ create mode 100644 src/ap/mxl_dfs_debug.c
+ create mode 100644 src/ap/mxl_dfs_debug.h
+
+diff --git a/hostapd/Makefile b/hostapd/Makefile
+index 73f071e25..ec2124654 100644
+--- a/hostapd/Makefile
++++ b/hostapd/Makefile
+@@ -423,6 +423,7 @@ OBJS += ../src/ap/mxl_utils.o
+ OBJS += ../src/ap/mxl_wmm.o
+ OBJS += ../src/ap/mxl_csa.o
+ OBJS += ../src/ap/mxl_acs.o
++OBJS += ../src/ap/mxl_dfs_debug.o
+ OBJS += ../src/ap/mxl_hw_features.o
+ ifdef CONFIG_AFC
+ OBJS += ../src/ap/mxl_afc.o
+diff --git a/hostapd/mxl_config.c b/hostapd/mxl_config.c
+index 79e6f7b32..592459233 100644
+--- a/hostapd/mxl_config.c
++++ b/hostapd/mxl_config.c
+@@ -1847,6 +1847,8 @@ int mxl_hostapd_config_fill (struct hostapd_config *conf,
+ 			return 0;
+ 		}
+ 		mxl_conf->allow_scan_during_cac = val;
++	} else if(mxl_config_check_dfs_debug_chan(conf, buf, pos)) {
++		return 1;
+ #if defined(CONFIG_SCS_MXL) || defined(CONFIG_MSCS_MXL)
+ 	} else if(mxl_config_check_qos_deny_list(conf, buf, pos)) {
+ 		return 1;
+@@ -2035,7 +2037,7 @@ int mxl_hostapd_config_fill (struct hostapd_config *conf,
+ 			return 0;
+ 		}
+ 		int i = 0;
+-		for (i = 0; i < CCA_TH_SIZE; i++) { 
++		for (i = 0; i < CCA_TH_SIZE; i++) {
+ 			if (!IS_VALID_RANGE(mxl_conf->sCcaTh[i], CCA_THRESHOLD_MIN, CCA_THRESHOLD_MAX)) {
+ 				wpa_printf(MSG_ERROR, "Line %d: invalid CCA threshold %d, must be between %d..%d",
+ 				   line, mxl_conf->sCcaTh[i], CCA_THRESHOLD_MIN, CCA_THRESHOLD_MAX);
+@@ -2256,7 +2258,7 @@ int mxl_hostapd_config_defaults(struct hostapd_config *conf)
+ 	if(mxl_hostapd_acs_config_defaults(conf)) {
+ 		return 1;
+ 	}
+-	
++
+ #ifdef CONFIG_VENDOR_MXL
+ 	/* Advertisement protocol IE */
+ 	conf->adv_proto_query_resp_len = ADV_PROTO_QUERY_RESP_LEN_DEFAULT;
+@@ -2397,6 +2399,22 @@ int mxl_hostapd_config_check_bss(struct hostapd_bss_config *bss, struct hostapd_
+ 	return 0;
+ }
+ 
++int mxl_config_check_dfs_debug_chan(struct hostapd_config *conf, const char *buf, char* pos)
++{
++	struct mxl_hostapd_config *mxl_conf = &conf->mxl_conf;
++	if (os_strcmp(buf, "dfs_debug_chan") == 0) {
++		int val = atoi(pos);
++		if (!IS_VALID_RANGE(val, DFS_DEBUG_CHAN_MIN, DFS_DEBUG_CHAN_MAX)) {
++			wpa_printf(MSG_ERROR, "invalid dfs debug channel %d",val);
++			return 0;
++		}
++		mxl_conf->dfs_debug_chan = val;
++	} else {
++		return 0;
++	}
++	return 1;
++}
++
+ static int hostapd_parse_opt_ch_list(int **int_list, char *val, int *ch_count, int op_class)
+ {
+ #define MAX_OPT_CH_LIST 5
+diff --git a/src/ap/ap_drv_ops.c b/src/ap/ap_drv_ops.c
+index 37130a86a..370f6107e 100644
+--- a/src/ap/ap_drv_ops.c
++++ b/src/ap/ap_drv_ops.c
+@@ -1175,6 +1175,10 @@ int hostapd_start_dfs_cac(struct hostapd_iface *iface,
+ 	if (hapd->conf->mld_ap)
+ 		data.link_id = hapd->mld_link_id;
+ #endif /* CONFIG_IEEE80211BE */
++#ifdef CONFIG_VENDOR_MXL
++	if (mxl_hostapd_handle_dfs_debug_pre_cac(iface))
++		return 0;
++#endif /* CONFIG_VENDOR_MXL */
+ 
+ 	res = hapd->driver->start_dfs_cac(hapd->drv_priv, &data);
+ 	if (!res) {
+@@ -1185,6 +1189,9 @@ int hostapd_start_dfs_cac(struct hostapd_iface *iface,
+ 		os_get_reltime(&iface->dfs_cac_start);
+ 	}
+ 
++#ifdef CONFIG_VENDOR_MXL
++	mxl_hostapd_handle_dfs_debug_post_cac(iface, res);
++#endif /* CONFIG_VENDOR_MXL */
+ 	return res;
+ }
+ 
+diff --git a/src/ap/dfs.c b/src/ap/dfs.c
+index c7ce0f9e1..0b630b958 100644
+--- a/src/ap/dfs.c
++++ b/src/ap/dfs.c
+@@ -987,6 +987,11 @@ int hostapd_handle_dfs(struct hostapd_iface *iface)
+ 		/* Check if any of configured channels is unavailable */
+ 		res = dfs_check_chans_unavailable(iface, start_chan_idx,
+ 						  n_chans);
++
++#ifdef CONFIG_VENDOR_MXL
++		res = mxl_hostapd_handle_dfs_debug(iface, res, start_chan_idx, n_chans);
++#endif /* CONFIG_VENDOR_MXL*/
++
+ 		wpa_printf(MSG_DEBUG, "DFS %d chans unavailable - choose other channel: %s",
+ 			   res, res ? "yes": "no");
+ 		if (res) {
+@@ -1183,6 +1188,12 @@ static int hostapd_dfs_request_channel_switch(struct hostapd_iface *iface,
+ 
+ #ifdef CONFIG_VENDOR_MXL
+ 	(void)mxl_hostapd_drv_set_antenna(iface, 0, 0);
++
++	mxl_hostapd_handle_dfs_debug_pre_csa(iface, &csa_settings);
++	if (mxl_is_dfs_debug_chan(iface)) {
++		mxl_hostapd_zwdfs_cac_on_radar(iface, &csa_settings);
++	}
++
+ 	if (iface->mxl_iface.cw_reduced) {
+ 		mxl_dfs_restore_original_cw(iface);
+ 	}
+@@ -1315,6 +1326,7 @@ int hostapd_dfs_complete_cac(struct hostapd_iface *iface, int success, int freq,
+ 			     int cf1, int cf2)
+ {
+ #ifdef CONFIG_VENDOR_MXL
++	mxl_hostapd_handle_dfs_debug_cac_event(iface);
+ 	mxl_hostapd_cac_wpa_msg(iface, success, freq, ht_enabled, chan_offset, chan_width, cf1, cf2);
+ #else
+ 	wpa_msg(iface->bss[0]->msg_ctx, MSG_INFO, DFS_EVENT_CAC_COMPLETED
+@@ -1729,6 +1741,8 @@ int hostapd_dfs_radar_detected(struct hostapd_iface *iface, int freq,
+ 		return 0;
+ 
+ #ifdef CONFIG_VENDOR_MXL
++	if (mxl_hostapd_handle_dfs_debug_radar(iface))
++		return 0;
+ 	/* Ignore radar event for background zwdfs antenna if zwdfs debug chan is enabled */
+ 	if ((mxl_hostapd_dfs_is_background_event(iface, freq, cf1)) &&
+ 	    (iface->conf->mxl_conf.zwdfs_debug_chan))
+diff --git a/src/ap/drv_callbacks.c b/src/ap/drv_callbacks.c
+index fd8df4141..ac7bb2499 100644
+--- a/src/ap/drv_callbacks.c
++++ b/src/ap/drv_callbacks.c
+@@ -1456,6 +1456,11 @@ void hostapd_event_ch_switch(struct hostapd_data *hapd, int freq, int ht,
+ 	is_dfs = ieee80211_is_dfs(freq, hapd->iface->hw_features,
+ 				  hapd->iface->num_hw_features);
+ 
++#ifdef CONFIG_VENDOR_MXL
++	if (mxl_hostapd_handle_dfs_debug_post_csa(hapd, freq, width, cf1, channel))
++		return;
++#endif /* CONFIG_VENDOR_MXL */
++
+ 	wpa_msg(hapd->msg_ctx, MSG_INFO,
+ 		"%sfreq=%d ht_enabled=%d ch_offset=%d ch_width=%s cf1=%d cf2=%d is_dfs0=%d dfs=%d puncturing_bitmap=0x%04x",
+ 		finished ? WPA_EVENT_CHANNEL_SWITCH :
+diff --git a/src/ap/hostapd.c b/src/ap/hostapd.c
+index 861da7db8..d77f5a0c0 100644
+--- a/src/ap/hostapd.c
++++ b/src/ap/hostapd.c
+@@ -3063,6 +3063,9 @@ static int setup_interface2(struct hostapd_iface *iface)
+ 				   "channel. (%d)", ret);
+ 			goto fail;
+ 		}
++#ifdef CONFIG_VENDOR_MXL
++		mxl_hostapd_send_dfs_debug_channel_flag(iface);
++#endif /* CONFIG_VENDOR_MXL */
+ 		if (ret == 1) {
+ 			wpa_printf(MSG_DEBUG, "Interface initialization will be completed in a callback (ACS)");
+ 			return 0;
+@@ -5368,7 +5371,7 @@ int hostapd_disable_iface(struct hostapd_iface *hapd_iface)
+ 		mxl_hostapd_set_zwdfs_antenna(hapd_iface->bss[0], 0);
+ 	}
+ 	/* Check and reset debug dfs when disabling interface */
+-	mxl_hostapd_cleanup_dfs_debug_cac_wrap(hapd_iface);
++	mxl_hostapd_cleanup_dfs_debug_cac(hapd_iface);
+ 	/* disable acs_bgscan when iface is disabled */
+ 	mxl_acs_unset_bgscan(hapd_iface);
+ 	/* stop existing bgscan_interval timer */
+diff --git a/src/ap/hw_features.c b/src/ap/hw_features.c
+index c9c2da13c..8d1287f12 100644
+--- a/src/ap/hw_features.c
++++ b/src/ap/hw_features.c
+@@ -599,11 +599,9 @@ static int ieee80211n_check_40mhz(struct hostapd_iface *iface)
+ 		return 0;
+ 
+ #ifdef CONFIG_VENDOR_MXL
+-	if (iface->conf->mxl_conf.ignore_40_mhz_intolerant)
+-		return 0;
++	if (mxl_hostapd_ieee80211n_check_40mhz(iface))
+ #endif /* CONFIG_VENDOR_MXL */
+-
+-	hostapd_set_state(iface, HAPD_IFACE_HT_SCAN);
++		hostapd_set_state(iface, HAPD_IFACE_HT_SCAN);
+ 	wpa_printf(MSG_DEBUG, "Scan for neighboring BSSes prior to enabling "
+ 		   "40 MHz channel");
+ 	os_memset(&params, 0, sizeof(params));
+diff --git a/src/ap/mxl_config.h b/src/ap/mxl_config.h
+index 406ac6a18..63fdfde13 100644
+--- a/src/ap/mxl_config.h
++++ b/src/ap/mxl_config.h
+@@ -46,6 +46,7 @@ int mxl_hostapd_acs_config_defaults(struct hostapd_config *conf);
+ void mxl_hostapd_config_fill_acs(struct hostapd_config *conf, char *pos);
+ void mxl_hostapd_config_free_acs(struct hostapd_config *conf);
+ int mxl_hostapd_config_check_acs(struct hostapd_config *conf, int full_config);
++int mxl_config_check_dfs_debug_chan(struct hostapd_config *conf, const char *buf, char* pos);
+ 
+ #define CCA_TH_SIZE 5
+ 
+@@ -395,6 +396,7 @@ struct mxl_hostapd_config {
+ 	int acs_user_config_op_class;
+ 	int acs_user_cw_done;
+ #endif /* CONFIG_ACS */
++	int dfs_debug_chan;
+ 
+ 	int allow_scan_during_cac;
+ 	int sub_band_dfs;
+diff --git a/src/ap/mxl_dfs_common.c b/src/ap/mxl_dfs_common.c
+index b32dd6fbf..8d1237d58 100644
+--- a/src/ap/mxl_dfs_common.c
++++ b/src/ap/mxl_dfs_common.c
+@@ -71,7 +71,17 @@ int mxl_hostapd_drv_set_antenna(struct hostapd_iface *iface, u32 tx, u32 rx)
+ 	u32 tx_ant = iface->mxl_iface.failsafe.tx_ant;
+ 	struct hostapd_data *hapd = iface->bss[0];
+ 
+-	if (!iface->mxl_iface.failsafe.freq || !rx_ant || !tx_ant)
++	if (rx_ant && tx_ant && iface->mxl_iface.failsafe.freq && !tx && !rx) {
++		if (iface->conf->mxl_conf.dfs_debug_chan)
++			return 0;
++	}
++
++	if (tx && rx) {
++		rx_ant = rx;
++		tx_ant = tx;
++	}
++
++	if (!rx_ant || !tx_ant)
+ 		return 0;
+ 
+ 	if (!hapd->drv_priv)
+@@ -230,6 +240,11 @@ struct hostapd_channel_data * mxl_dfs_get_valid_channel(struct hostapd_iface *if
+ 	struct hostapd_channel_data *channel = NULL;
+ 	*secondary_channel = *oper_centr_freq_seg0_idx = *oper_centr_freq_seg1_idx = 0;
+ 
++	if (iface->conf->mxl_conf.dfs_debug_chan)
++		return mxl_dfs_get_debug_dfs_chan(iface, secondary_channel,
++						  oper_centr_freq_seg0_idx,
++						  oper_centr_freq_seg1_idx);
++
+ 	if (mxl_dfs_is_failsafe_enabled(iface)) {
+ 		/* switch to failsafe channel */
+ 		channel = mxl_dfs_get_valid_channel_failsafe(iface, secondary_channel,
+@@ -258,6 +273,9 @@ bool mxl_hostapd_handle_radar(struct hostapd_iface *iface, int cf1, int bw)
+ 		return true;
+ 	}
+ 
++	if (iface->conf->mxl_conf.dfs_debug_chan)
++		return false;
++
+ 	if (cf1 && bw) {
+ 		if (mxl_hostapd_handle_sb_dfs_radar(iface, cf1, bw))
+ 			return true;
+@@ -429,7 +447,7 @@ bool mxl_hostapd_handle_background_radar(struct hostapd_iface *iface, int freq,
+ 		wpa_printf(MSG_INFO, "Radar detected on background ZWDFS antenna. Disable ZWDFS\n");
+ 		if (mxl_hostapd_set_zwdfs_antenna(iface->bss[0], 0) < 0) {
+ 			wpa_printf(MSG_ERROR, "ZWDFS: Failed to disable antenna");
+-		}	
++		}
+ 		return true;
+ 	}
+ 
+diff --git a/src/ap/mxl_dfs_common.h b/src/ap/mxl_dfs_common.h
+index 8b4360de2..3c47ea0b7 100644
+--- a/src/ap/mxl_dfs_common.h
++++ b/src/ap/mxl_dfs_common.h
+@@ -15,6 +15,9 @@
+ #define MXL_DFS_COMMON_H
+ 
+ #include "drivers/mxl_driver_nl80211.h"
++#ifdef CONFIG_VENDOR_MXL
++#include "mxl_dfs_debug.h"
++#endif /* CONFIG_VENDOR_MXL */
+ 
+ /* CAC finished reason code */
+ enum mxl_hostapd_cac_finished_stat {
+diff --git a/src/ap/mxl_dfs_debug.c b/src/ap/mxl_dfs_debug.c
+new file mode 100644
+index 000000000..f4675ada7
+--- /dev/null
++++ b/src/ap/mxl_dfs_debug.c
+@@ -0,0 +1,282 @@
++/******************************************************************************
++
++         Copyright (c) 2020 - 2025, MaxLinear, Inc.
++         Copyright 2016 - 2020 Intel Corporation
++         Copyright 2015 - 2016 Lantiq Beteiligungs-GmbH & Co. KG
++         Copyright 2009 - 2014 Lantiq Deutschland GmbH
++         Copyright 2007 - 2008 Infineon Technologies AG
++
++  This software may be distributed under the terms of the BSD license.
++  See README for more details.
++
++*******************************************************************************/
++
++#include "utils/includes.h"
++#include "utils/common.h"
++#include "hostapd.h"
++#include "dfs.h"
++#include "mxl_dfs_common.h"
++#include "ap_drv_ops.h"
++#include "mxl_dfs_debug.h"
++
++bool mxl_is_dfs_debug_chan(struct hostapd_iface *iface) {
++	return !(iface->conf->mxl_conf.dfs_debug_chan);
++}
++
++static int mxl_dfs_adjust_debug_dfs_chan(struct hostapd_iface *iface, struct hostapd_channel_data *channel,
++					 int *secondary_chan_offset, u8 *vht_oper_centr_freq_seg0_idx)
++{
++	/* 20 MHz channel configured */
++	if (!iface->conf->secondary_channel) {
++		*vht_oper_centr_freq_seg0_idx = channel->chan;
++		*secondary_chan_offset = 0;
++		return 0;
++	}
++
++	return mxl_hostapd_get_chan_data_from_candidates_5g(channel->chan, hostapd_get_oper_chwidth(iface->conf),
++							    secondary_chan_offset, vht_oper_centr_freq_seg0_idx);
++}
++
++struct hostapd_channel_data *
++mxl_dfs_get_debug_dfs_chan(struct hostapd_iface *iface, int *secondary_channel, u8 *seg0_idx,  u8 *seg1_idx)
++{
++	int i, found = 0;
++	struct hostapd_channel_data *channel;
++	struct hostapd_hw_modes *mode = iface->current_mode;
++	u8 channel_bak, seg0_idx_bak, seg1_idx_bak;
++	int secondary_channel_bak;
++
++	/* hostapd_is_dfs_required checks if DFS is required for current channel, but
++	   we need to check it for dfs_debug_chan. Therefore need to backup, check
++	   and restore. */
++	channel_bak = iface->conf->channel;
++	secondary_channel_bak = iface->conf->secondary_channel;
++	seg0_idx_bak = hostapd_get_oper_centr_freq_seg0_idx(iface->conf);
++	seg1_idx_bak = hostapd_get_oper_centr_freq_seg1_idx(iface->conf);
++
++	for (i = 0; i < mode->num_channels; i++) {
++		channel = &mode->channels[i];
++
++		if (channel->chan == iface->conf->mxl_conf.dfs_debug_chan) {
++			wpa_printf(MSG_INFO, "DFS_DEBUG: Selected ch. #%d", channel->chan);
++			found = 1;
++			break;
++		}
++	}
++
++	if (!found) {
++		wpa_printf(MSG_INFO, "DFS_DEBUG: Did not find ch. #%d", iface->conf->mxl_conf.dfs_debug_chan);
++		return NULL;
++	}
++
++	/* Set the same channel bandwidth as configured in conf file */
++	if (mxl_dfs_adjust_debug_dfs_chan(iface, channel, secondary_channel, seg0_idx)) {
++		wpa_printf(MSG_ERROR, "DFS_DEBUG: Failed to adjust channel %d parameters", channel->chan);
++		return NULL;
++	}
++
++	/* Not supported */
++	*seg1_idx = 0;
++
++	iface->conf->channel = iface->conf->mxl_conf.dfs_debug_chan;
++	iface->conf->secondary_channel = *secondary_channel;
++	hostapd_set_oper_centr_freq_seg0_idx(iface->conf, *seg0_idx);
++	hostapd_set_oper_centr_freq_seg1_idx(iface->conf, *seg1_idx);
++
++	iface->mxl_iface.dfs_dbg_need_cac = hostapd_is_dfs_required(iface) > 0 ? true : false;
++
++	/* restore original channel */
++	iface->conf->channel = channel_bak;
++	iface->conf->secondary_channel = secondary_channel_bak;
++	hostapd_set_oper_centr_freq_seg0_idx(iface->conf,seg0_idx_bak);
++	hostapd_set_oper_centr_freq_seg1_idx(iface->conf,seg1_idx_bak);
++
++	return channel;
++}
++
++bool mxl_hostapd_handle_dfs_debug_pre_cac(struct hostapd_iface *iface)
++{
++
++	/* In debug dfs mode, radar detection during CAC will lead to restart of CAC on
++	 * the same channel, but because the kernel first stops CAC and notifies hostapd
++	 * CAC_ABORT, and only then notifies about RADAR_DETECTION, reaching hostapd_dfs_radar_detected
++	 * while iface->cac_started=true, means this is an old radar detection event from a burst
++	 * of radars. continuing here, and attempting to restart CAC will lead to failure (-16 busy) */
++	if (iface->conf->mxl_conf.dfs_debug_chan && iface->mxl_iface.dfs_dbg_in_cac) {
++		wpa_printf(MSG_DEBUG, "cac already going, not starting again");
++		iface->cac_started = 1;
++		return true;
++	}
++
++	return false;
++}
++
++void mxl_hostapd_handle_dfs_debug_post_cac(struct hostapd_iface *iface, int res)
++{
++	if (!res && iface->conf->mxl_conf.dfs_debug_chan)
++		iface->mxl_iface.dfs_dbg_in_cac = 1;
++}
++
++int mxl_hostapd_handle_dfs_debug(struct hostapd_iface *iface, int res, int start_chan_idx, int n_chans)
++{
++	/* For radar simulation */
++	/* Allow to switch to the unavailable channel for dfs debug */
++	if (res && iface->conf->mxl_conf.dfs_debug_chan) {
++		int low_freq = iface->current_mode->channels[start_chan_idx].freq;
++		wpa_printf(MSG_INFO, "DFS_DEBUG: Forcing to stay on the channel %u", iface->conf->channel);
++		mxl_hostapd_dfs_debug_set_chan_dfs_state(iface, HOSTAPD_CHAN_DFS_USABLE, low_freq, n_chans);
++		return 0;
++	}
++
++	return res;
++}
++
++void mxl_hostapd_handle_dfs_debug_cac_event(struct hostapd_iface *iface)
++{
++	if (iface->conf->mxl_conf.dfs_debug_chan)
++		iface->mxl_iface.dfs_dbg_in_cac = 0;
++}
++
++void mxl_hostapd_cleanup_dfs_debug_cac(struct hostapd_iface *iface)
++{
++	/* In debug dfs mode, when interface is disabled we need to reset dfs_dbg_in_cac in case
++	 * it is set. If it is remains enabled when disabling the interface, it will lead to hostapd
++	 * never sending a new CAC start request and will be stuck in DFS state when enabling
++	 * back the interface */
++	if (iface->conf->mxl_conf.dfs_debug_chan && iface->mxl_iface.dfs_dbg_in_cac) {
++		wpa_printf(MSG_DEBUG, "DFS_DEBUG: resetting dfs_dbg_in_cac");
++		iface->mxl_iface.dfs_dbg_in_cac = 0;
++	}
++}
++
++void mxl_hostapd_handle_dfs_debug_pre_csa(struct hostapd_iface *iface, struct csa_settings *csa_settings)
++{
++	if (iface->conf->mxl_conf.dfs_debug_chan) {
++		int n_chans = csa_settings->freq_params.bandwidth / 20;
++		int low_freq  = csa_settings->freq_params.center_freq1 - (csa_settings->freq_params.bandwidth / 2) + 10;
++		mxl_hostapd_dfs_debug_set_chan_dfs_state(iface, HOSTAPD_CHAN_DFS_AVAILABLE, low_freq, n_chans);
++	}
++}
++
++bool mxl_hostapd_handle_dfs_debug_post_csa(struct hostapd_data *hapd, int freq, int width, int cf1, int channel)
++{
++	/* For radar simulation */
++	if (hapd->iconf->mxl_conf.dfs_debug_chan) {
++		int i;
++		struct hostapd_channel_data *ch = NULL;
++		for (i = 0; i < hapd->iface->current_mode->num_channels; i++) {
++			ch = &hapd->iface->current_mode->channels[i];
++			if (ch->freq == freq)
++				break;
++		}
++
++		/* Need to Do CAC if driver switched to DFS channel and it is not available*/
++		if (ch && hapd->iface->mxl_iface.dfs_dbg_need_cac) {
++			int width_mhz = channel_width_to_int(width);
++			int n_chans = width_mhz / 20;
++			int low_freq = cf1 - (width_mhz / 2) + 10;
++			wpa_printf(MSG_INFO, "DFS_DEBUG: Starting CAC on DFS channel %d", channel);
++			hostapd_cleanup_cs_params(hapd);
++			mxl_hostapd_dfs_debug_set_chan_dfs_state(hapd->iface, HOSTAPD_CHAN_DFS_USABLE, low_freq, n_chans);
++			mxl_hostapd_restart_iface(hapd->iface);
++			hapd->iface->mxl_iface.dfs_dbg_need_cac = false;
++			return true;
++		}
++	}
++
++	return false;
++}
++
++bool mxl_hostapd_handle_dfs_debug_radar(struct hostapd_iface *iface)
++{
++	/* In debug dfs mode, radar detection during CAC will lead to restart of CAC on
++	 * the same channel, but because the kernel first stops CAC and notifies hostapd
++	 * CAC_ABORT, and only then notifies about RADAR_DETECTION, reaching hostapd_dfs_radar_detected
++	 * while iface->cac_started=true, means this is an old radar detection event from a burst
++	 * of radars. continuing here, and attempting to restart CAC will lead to failure (-16 busy) */
++	if (iface->conf->mxl_conf.dfs_debug_chan && iface->mxl_iface.dfs_dbg_in_cac) {
++		wpa_printf(MSG_DEBUG, "received an old radar detection, ignoring");
++		return true;
++	}
++
++	return false;
++}
++
++void mxl_hostapd_dfs_debug_set_chan_dfs_state(struct hostapd_iface *iface, int state,
++					      int start_freq, int n_chans)
++{
++	int i, cur_freq, kernel_state;
++	struct hostapd_channel_data* channel;
++
++	switch (state) {
++	case HOSTAPD_CHAN_DFS_USABLE:
++		kernel_state = NL80211_DFS_USABLE;
++		break;
++	case HOSTAPD_CHAN_DFS_UNAVAILABLE:
++		kernel_state = NL80211_DFS_UNAVAILABLE;
++		break;
++	case HOSTAPD_CHAN_DFS_AVAILABLE:
++		kernel_state = NL80211_DFS_AVAILABLE;
++		break;
++	default:
++		wpa_printf(MSG_ERROR, "DFS_DEBUG: Requested invalid DFS state %d", state);
++		return;
++	}
++
++	for (i = 0; i < n_chans; i++) {
++		cur_freq = start_freq + i * 20;
++
++		channel = mxl_hostapd_hw_get_channel_data(iface, cur_freq);
++		if (!channel) {
++			wpa_printf(MSG_ERROR, "DFS_DEBUG: Channel %d not found", cur_freq);
++			continue;
++		}
++
++		if (channel->flag & HOSTAPD_CHAN_DISABLED)
++			continue;
++
++		if (!(channel->flag & HOSTAPD_CHAN_RADAR))
++			continue;
++
++		wpa_printf(MSG_DEBUG, "DFS_DEBUG: Update channel %d to DFS state 0x%x", cur_freq, state);
++		if (mxl_hostapd_set_chan_dfs_state(iface, kernel_state, cur_freq, 0, 1))
++			wpa_printf(MSG_ERROR, "DFS_DEBUG: Update kernel DFS state to 0x%x for channel %d failed",
++				   state, cur_freq);
++
++		if (mxl_set_dfs_state_freq(iface, cur_freq, state) != 1)
++			wpa_printf(MSG_ERROR, "DFS_DEBUG: Update hostapd DFS state to 0x%x for channel %d failed",
++				   state, cur_freq);
++	}
++
++}
++
++void mxl_hostapd_send_dfs_debug_channel_flag(struct hostapd_iface *iface)
++{
++	int i;
++	u8 dfs_required = 0;
++	struct hostapd_channel_data *channel;
++	struct hostapd_data *hapd = iface->bss[0];
++	struct hostapd_hw_modes *mode = iface->current_mode;
++
++	if (!mode || !hapd) {
++		wpa_printf(MSG_ERROR, "HW mode or hostapd data not initialized, dfs debug channel flag won't be sent");
++		return;
++	}
++
++	/* dfs_required flag should be set, if there is any DFS channel in HW mode,
++	 * because bandwidth may change and if it wouldn't be required at lower BW,
++	 * it may be required at higher BW and we don't know the highest BW
++	 * supported. */
++	if (iface->conf->mxl_conf.dfs_debug_chan) {
++		for (i = 0; i < mode->num_channels; i++) {
++			channel = &mode->channels[i];
++			if (channel->flag & HOSTAPD_CHAN_RADAR) {
++				dfs_required = 1;
++				break;
++			}
++		}
++	}
++
++	if (MXL_DRV_VENDOR_SET(LTQ_NL80211_VENDOR_SUBCMD_DFS_DEBUG, &dfs_required, sizeof(dfs_required)))
++		wpa_printf(MSG_INFO, "Failed to send driver vendor command LTQ_NL80211_VENDOR_SUBCMD_DFS_DEBUG");
++}
+diff --git a/src/ap/mxl_dfs_debug.h b/src/ap/mxl_dfs_debug.h
+new file mode 100644
+index 000000000..f3fc4eec9
+--- /dev/null
++++ b/src/ap/mxl_dfs_debug.h
+@@ -0,0 +1,31 @@
++/******************************************************************************
++
++         Copyright (c) 2020 - 2025, MaxLinear, Inc.
++         Copyright 2016 - 2020 Intel Corporation
++         Copyright 2015 - 2016 Lantiq Beteiligungs-GmbH & Co. KG
++         Copyright 2009 - 2014 Lantiq Deutschland GmbH
++         Copyright 2007 - 2008 Infineon Technologies AG
++
++  This software may be distributed under the terms of the BSD license.
++  See README for more details.
++
++*******************************************************************************/
++#ifndef MXL_DFS_DEBUG_H
++#define MXL_DFS_DEBUG_H
++
++bool mxl_is_dfs_debug_chan(struct hostapd_iface *iface);
++struct hostapd_channel_data *
++mxl_dfs_get_debug_dfs_chan(struct hostapd_iface *iface, int *secondary_channel, u8 *seg0_idx,  u8 *seg1_idx);
++int  mxl_hostapd_handle_dfs_debug(struct hostapd_iface *iface, int res, int start_chan_idx, int n_chans);
++bool mxl_hostapd_handle_dfs_debug_pre_cac(struct hostapd_iface *iface);
++void mxl_hostapd_handle_dfs_debug_post_cac(struct hostapd_iface *iface, int res);
++void mxl_hostapd_handle_dfs_debug_cac_event(struct hostapd_iface *iface);
++void mxl_hostapd_cleanup_dfs_debug_cac(struct hostapd_iface *iface);
++bool mxl_hostapd_handle_dfs_debug_radar(struct hostapd_iface *iface);
++void mxl_hostapd_handle_dfs_debug_pre_csa(struct hostapd_iface *iface, struct csa_settings *csa_settings);
++bool mxl_hostapd_handle_dfs_debug_post_csa(struct hostapd_data *hapd, int freq, int width, int cf1, int channel);
++void mxl_hostapd_dfs_debug_set_chan_dfs_state(struct hostapd_iface *iface, int state,
++					      int start_freq, int n_chans);
++void mxl_hostapd_send_dfs_debug_channel_flag(struct hostapd_iface *iface);
++
++#endif /* MXL_DFS_DEBUG_H */
+diff --git a/src/ap/mxl_hostapd.c b/src/ap/mxl_hostapd.c
+index e5ea744a7..ed32715c3 100644
+--- a/src/ap/mxl_hostapd.c
++++ b/src/ap/mxl_hostapd.c
+@@ -1834,7 +1834,7 @@ void mxl_hostapd_setup_interface_post(struct hostapd_iface *iface)
+ 
+ 		if (ap_retry_limit_cfg[2] == AP_RETRY_INVALID)
+ 			ap_retry_limit_cfg[2] = AP_TX_RETRY_LIMIT_DEFAULT_PROBE_RESP;
+-			
++
+ 		if (MXL_DRV_VENDOR_SET(LTQ_NL80211_VENDOR_SUBCMD_SET_AP_RETRY_LIMIT, ap_retry_limit_cfg, sizeof(ap_retry_limit_cfg)))
+ 			wpa_printf(MSG_WARNING, "set sTxRetryLimit failed");
+ 	}
+@@ -2287,7 +2287,7 @@ void mxl_hostapd_set_pbac_if_allowed(struct hostapd_data *hapd)
+ {
+ 	struct mxl_hostapd_bss_config *mxl_bss_conf = &hapd->conf->mxl_bss_conf;
+ 
+-	/*  If disable_pbac was not explicitly set in conf - we check if we can advertise PBAC 
++	/*  If disable_pbac was not explicitly set in conf - we check if we can advertise PBAC
+ 	*   disable_pbac = 0 ---> PBAC is allowed if capable in Wiphy and MFPR is set
+ 	*   disable_pbac = 1 ---> PBAC is not allowed even if capable in Wiphy and MFPR is set
+ 	*/
+@@ -2439,7 +2439,7 @@ void mxl_hostapd_restart_coc(struct hostapd_iface *iface)
+ 		return;
+ 	}
+ }
+- 
++
+ void mxl_hostapd_update_coc(struct hostapd_iface *iface, const u8 *data, size_t data_len)
+ {
+ 	struct intel_vendor_event_coc *bw_params = (struct intel_vendor_event_coc *)data;
+@@ -2467,7 +2467,7 @@ void mxl_hostapd_update_coc(struct hostapd_iface *iface, const u8 *data, size_t
+ 
+ 	if (iface->cac_started)
+ 		return;
+-		
++
+ 	if (bw_params->coc_BW == BW_MOVE_DOWN) {
+ 		if (WAVE_FREQ_IS_5G(iface->freq) && (iface->dfs_domain == HOSTAPD_DFS_REGION_FCC))
+ 		{
+@@ -2556,7 +2556,7 @@ void mxl_hostapd_update_coc(struct hostapd_iface *iface, const u8 *data, size_t
+ 			wpa_printf(MSG_ERROR, "COC SWITCH UP CAC not started");
+ 		}
+ 
+-		if (ret) { 
++		if (ret) {
+ 		/* set require_csa for all VAPs in the radio*/
+ 			for (i = 0; i < iface->num_bss; i++)
+ 				iface->bss[i]->mxl_data.require_csa = 1;
+@@ -3775,3 +3775,33 @@ const char* mxl_hostapd_state_text_wrap(enum hostapd_iface_state state)
+ 		return "ACS_DONE";
+ 	return "UNKNOWN";
+ }
++
++bool mxl_hostapd_ieee80211n_check_40mhz(struct hostapd_iface *iface)
++{
++       if (iface->conf->mxl_conf.dfs_debug_chan)
++               return true;
++
++       if (iface->conf->mxl_conf.ignore_40_mhz_intolerant)
++               return true;
++
++#ifdef CONFIG_ACS
++       /* ACS smart already includes these checks */
++       if (mxl_acs_is_smart(iface) && iface->conf->mxl_conf.acs_init_done)
++               return true;
++#endif /* CONFIG_ACS */
++       return false;
++}
++
++int mxl_hostapd_restart_iface(struct hostapd_iface *iface)
++{
++        int res;
++        int acs = iface->conf->acs;
++
++        iface->whm_if_fail = false;
++        iface->conf->acs = 0;
++        hostapd_disable_iface(iface);
++        res = hostapd_enable_iface(iface);
++        iface->conf->acs = acs;
++
++        return res;
++}
+diff --git a/src/ap/mxl_hostapd.h b/src/ap/mxl_hostapd.h
+index 3a1f3b0c9..87ec78813 100644
+--- a/src/ap/mxl_hostapd.h
++++ b/src/ap/mxl_hostapd.h
+@@ -51,7 +51,7 @@
+ #define HOSTAPD_BYTE_2S_COMPLEMENT      	(1<<8)
+ 
+ #define HOSTAPD_CHAN_RESTRICTED 0x10000000
+-enum hostapd_iface_state { 
++enum hostapd_iface_state {
+ 	HAPD_IFACE_UNINITIALIZED,
+ 	HAPD_IFACE_DISABLED,
+ 	HAPD_IFACE_COUNTRY_UPDATE,
+@@ -121,6 +121,8 @@ struct mxl_hostapd_iface {
+ 	bool acs_bgscan;
+ 	bool acs_bgscan_enable;
+ 	int acs_reenable_iface;
++	int dfs_dbg_need_cac;
++	int dfs_dbg_in_cac;
+ #endif /* CONFIG_ACS */
+ 
+ 	int allow_scan_during_cac;
+@@ -271,6 +273,8 @@ enum hostapd_iface_state;
+ void mxl_hostapd_update_channel_data(struct hostapd_iface *iface, const u8 *data, size_t data_len);
+ #endif /* CONFIG_ACS */
+ void mxl_hostapd_set_state_pre(struct hostapd_iface *iface, enum hostapd_iface_state s);
++bool mxl_hostapd_ieee80211n_check_40mhz(struct hostapd_iface *iface);
++int mxl_hostapd_restart_iface(struct hostapd_iface *iface);
+ 
+ int mxl_hostapd_get_num_width(enum oper_chan_width width, int secondary);
+ const char * mxl_hostapd_channel_switch_text(enum hostapd_channel_switch_reason s);
+diff --git a/src/ap/mxl_zwdfs.c b/src/ap/mxl_zwdfs.c
+index 6588fc128..9bdcfe3c0 100644
+--- a/src/ap/mxl_zwdfs.c
++++ b/src/ap/mxl_zwdfs.c
+@@ -116,6 +116,11 @@ int mxl_hostapd_start_background_cac(struct hostapd_iface *iface, const struct c
+ 
+ 			if (settings->freq_params.bandwidth == 20) {
+ 				centr_freq_seg0_idx = data_freq->channel;
++			} else {
++				int chan_offset = 0;
++				mxl_hostapd_get_chan_data_from_candidates_5g(data_freq->channel,
++									     mxl_get_oper_width(settings->freq_params.bandwidth),
++									     &chan_offset, &centr_freq_seg0_idx);
+ 			}
+ 			iface->radar_background.centr_freq_seg0_idx = centr_freq_seg0_idx;
+ 			/* Record CAC start time */
+@@ -130,6 +135,10 @@ int mxl_hostapd_start_background_cac(struct hostapd_iface *iface, const struct c
+ 	}
+ 
+ 	mxl_hostapd_set_conf_from_freq_params(zwdfs_iface, &settings->freq_params);
++	if (mxl_hostapd_restart_iface(zwdfs_iface)) {
++		wpa_printf(MSG_ERROR, "ZWDFS: Failed to start CAC");
++		return -1;
++	}
+ 
+ end:
+ 	/* settings->beacon_data not filled/required, so os_memdup is enough here */
+@@ -533,6 +542,9 @@ int mxl_hostapd_zwdfs_restart_cac(struct hostapd_iface *iface, u8 chan, enum cha
+ 	if (chanwidth <= CHAN_WIDTH_20) {
+ 		centr_freq_seg0_idx = chan;
+ 		chan_offset = 0;
++	} else {
++		mxl_hostapd_get_chan_data_from_candidates_5g(chan, cw,
++							     &chan_offset, &centr_freq_seg0_idx);
+ 	}
+ 
+ 	if (!centr_freq_seg0_idx) {
+-- 
+2.43.0
+

@@ -1,4 +1,4 @@
-From c280c3d4f1661beb540d2878cfdc761a8f383c9a Mon Sep 17 00:00:00 2001
+From 3b3b0d2abe68cd4382f1d6576799d205333b7bde Mon Sep 17 00:00:00 2001
 From: "Ross-Ashikyan, William" <washikyan@maxlinear.com>
 Date: Mon, 27 Jan 2025 16:29:13 -0800
 Subject: [PATCH] WLANRTSYS-85201 Add additional client regulatory EIRP TPE IE

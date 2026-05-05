@@ -1,0 +1,68 @@
+From ea2c55f9e99bc6e8abb2978c043bb5f84831656a Mon Sep 17 00:00:00 2001
+From: "rramasamy@maxlinear.com" <rramasamy@maxlinear.com>
+Date: Tue, 11 Nov 2025 19:17:48 -0800
+Subject: [PATCH] WLANRTSYS-96967 Integrate hostapd patch from Airties
+
+Currently, ACL rejection messages for Probe Request and Authentication
+frames are logged at MSG_DEBUG level, which often requires hostapd to be
+compiled with verbose logging and run with high debug verbosity to see
+them. This makes troubleshooting ACL-related issues difficult in
+production environments.
+
+This patch changes the log level from MSG_DEBUG to MSG_INFO for these
+events, ensuring they are visible in standard logs when INFO level is
+enabled.
+
+Impact:
+- Easier detection of ACL rejections without enabling full debug logs.
+- No functional change to ACL behavior.
+
+Signed-off-by: rramasamy@maxlinear.com
+---
+ src/ap/beacon.c     | 6 ++++++
+ src/ap/ieee802_11.c | 6 ++++++
+ 2 files changed, 12 insertions(+)
+
+diff --git a/src/ap/beacon.c b/src/ap/beacon.c
+index 3c9478e1e..a5f34514f 100644
+--- a/src/ap/beacon.c
++++ b/src/ap/beacon.c
+@@ -1718,9 +1718,15 @@ void handle_probe_req(struct hostapd_data *hapd,
+ 	ret = hostapd_allowed_address(hapd, mgmt->sa, (const u8 *) mgmt, len,
+ 				      &rad_info, 1);
+ 	if (ret == HOSTAPD_ACL_REJECT) {
++#ifdef CONFIG_VENDOR_MXL
++		wpa_msg(hapd->msg_ctx, MSG_INFO,
++			"Ignore Probe Request frame from " MACSTR
++			" due to ACL reject ", MAC2STR(mgmt->sa));
++#else
+ 		wpa_msg(hapd->msg_ctx, MSG_DEBUG,
+ 			"Ignore Probe Request frame from " MACSTR
+ 			" due to ACL reject ", MAC2STR(mgmt->sa));
++#endif /* CONFIG_VENDOR_MXL */
+ 		return;
+ 	}
+ 
+diff --git a/src/ap/ieee802_11.c b/src/ap/ieee802_11.c
+index 4925a29a8..b70fcbb50 100644
+--- a/src/ap/ieee802_11.c
++++ b/src/ap/ieee802_11.c
+@@ -3429,9 +3429,15 @@ static void handle_auth(struct hostapd_data *hapd,
+ 	res = ieee802_11_allowed_address(hapd, sa, (const u8 *) mgmt, len,
+ 					 &rad_info);
+ 	if (res == HOSTAPD_ACL_REJECT) {
++#ifdef CONFIG_VENDOR_MXL
++		wpa_msg(hapd->msg_ctx, MSG_INFO,
++			"Ignore Authentication frame from " MACSTR
++			" due to ACL reject", MAC2STR(sa));
++#else
+ 		wpa_msg(hapd->msg_ctx, MSG_DEBUG,
+ 			"Ignore Authentication frame from " MACSTR
+ 			" due to ACL reject", MAC2STR(sa));
++#endif /* CONFIG_VENDOR_MXL */
+ 		resp = WLAN_STATUS_UNSPECIFIED_FAILURE;
+ 		goto fail;
+ 	}
+-- 
+2.43.0
+

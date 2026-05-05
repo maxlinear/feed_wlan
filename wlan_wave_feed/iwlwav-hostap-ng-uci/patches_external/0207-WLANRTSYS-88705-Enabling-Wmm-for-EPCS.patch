@@ -1,4 +1,4 @@
-From d641102878fff35d1b90b73ef594a0e7163e9700 Mon Sep 17 00:00:00 2001
+From 62a810dbe87590db5b5f5eef76e1654fdd32984f Mon Sep 17 00:00:00 2001
 From: Bharath Paidupati <bpaidupati@maxlinear.com>
 Date: Fri, 11 Apr 2025 16:08:20 +0800
 Subject: [PATCH] WLANRTSYS-88705 Enabling Wmm for EPCS
@@ -26,7 +26,7 @@ index 22c5d3af4..0ad90c8df 100644
  			if (mxl_hostapd_handle_wmm_ac_params(hapd, cmd, value) < 0) {
  				return -1;
 diff --git a/hostapd/mxl_ctrl_iface.c b/hostapd/mxl_ctrl_iface.c
-index 5852f62a3..4adac9d4d 100644
+index 9965f2c13..f297cdb7f 100644
 --- a/hostapd/mxl_ctrl_iface.c
 +++ b/hostapd/mxl_ctrl_iface.c
 @@ -253,10 +253,12 @@ static int mxl_hostapd_ctrl_iface_send_epcs_req_frame(struct hostapd_data *hapd,

@@ -1,4 +1,4 @@
-From f69266de4610fc10fe307b7d6e0380d8b162fa83 Mon Sep 17 00:00:00 2001
+From 21b73522b943da111a1486cbc71a5021f7fd2e8a Mon Sep 17 00:00:00 2001
 From: Jurijs Soloveckis <jsoloveckis@maxlinear.com>
 Date: Tue, 6 Jun 2023 14:14:25 +0200
 Subject: [PATCH] WLANRTSYS-55850: Integrate MBO commits

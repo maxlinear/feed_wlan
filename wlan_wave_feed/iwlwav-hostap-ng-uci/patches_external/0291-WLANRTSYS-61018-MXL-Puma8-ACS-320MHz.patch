@@ -1,0 +1,288 @@
+From 53199f23fc062c61a4408dc20c8cb3d5b16d4e27 Mon Sep 17 00:00:00 2001
+From: spatel <spatel@maxlinear.com>
+Date: Thu, 10 Oct 2024 23:18:26 +0530
+Subject: [PATCH] WLANRTSYS-61018 MXL Puma8: ACS 320MHz
+
+    - Implemented 320MHz support based on EHT Operation IE parsing
+    - Fixed seg0/seg1 interpretation for 2.4GHz and 5GHz
+    - Fixed secondary frequency calculation for all frequency bands
+---
+ hostapd/mxl_config.c     |  25 +++++++-
+ hostapd/mxl_ctrl_iface.c |   2 +-
+ src/ap/mxl_acs.c         | 120 ++++++++++++++++++++++++++++++++++++++-
+ src/ap/mxl_config.h      |  16 +++++-
+ 4 files changed, 158 insertions(+), 5 deletions(-)
+
+diff --git a/hostapd/mxl_config.c b/hostapd/mxl_config.c
+index a98bf6d0b..9e740ab10 100644
+--- a/hostapd/mxl_config.c
++++ b/hostapd/mxl_config.c
+@@ -2761,6 +2761,21 @@ int mxl_config_check_smart_acs_config(struct hostapd_config *conf, struct hostap
+ 		mxl_conf->acs_chanlist_all_chans = val;
+ 	} else if (os_strcmp(buf, "acs_scan_mode") == 0) {
+ 		mxl_conf->acs_scan_mode = atoi(pos);
++	} else if (os_strcmp(buf, "acs_eht_mode") == 0) {
++		int val = atoi(pos);
++		if(!IS_VALID_RANGE(val, ACS_EHT_MODE_MIN, ACS_EHT_MODE_MAX)) {
++			wpa_printf(MSG_ERROR, "Invalid EHT mode, "
++				"must be in range %i..%i", ACS_EHT_MODE_MIN, ACS_EHT_MODE_MAX);
++			return 1;
++		}
++		mxl_conf->acs_eht_mode = (enum acs_eht_modes)val;
++	} else if ((os_strcmp(buf, "acs_6g_punct_mode") == 0 && is_6ghz_op_class(conf->op_class))) {
++		int val = atoi(pos);
++		if(!IS_VALID_BOOL_RANGE(val)) {
++			wpa_printf(MSG_ERROR, "Line %d: invalid 6G ACS fused puncturing value %d, range is 0..1", line, val);
++			return 0;
++		}
++		mxl_conf->acs_6g_punct_mode = val;
+ 	} else if (os_strcmp(buf, "scan_timeout") == 0) {
+ 		int val = atoi(pos);
+ 		if (!IS_VALID_RANGE(val, SCAN_TIMEOUT_MIN, SCAN_TIMEOUT_MAX)) {
+@@ -2777,6 +2792,11 @@ int mxl_config_check_smart_acs_config(struct hostapd_config *conf, struct hostap
+ 			return 0;
+ 		}
+ 		mxl_conf->acs_bgscan_interval = val;
++	} else if (os_strcmp(buf, "acs_exclude_opclass_ch_list") == 0) {
++		if (hostapd_parse_opclass_ch_list(&mxl_conf->acs_exclude_opclass_ch_list, pos, &mxl_conf->acs_exclude_opclass_ch_count)) {
++			wpa_printf(MSG_ERROR, "Line %d: Invalid acs_exclude_opclass_ch_list value", line);
++			return 0;
++		}
+ 	} else {
+ 		return 0;
+ 	}
+@@ -2789,8 +2809,8 @@ int mxl_hostapd_acs_config_defaults(struct hostapd_config *conf)
+ {
+ #ifdef CONFIG_ACS
+ 	int i;
+-	int grp_priorities_throughput[ACS_NUM_GRP_PRIORITIES] = { 3, 2, 1, 0 };
+-	int grp_priorities_reach[ACS_NUM_GRP_PRIORITIES] = { 0, 1, 2, 3 };
++	int grp_priorities_throughput[ACS_NUM_GRP_PRIORITIES] = { 4, 3, 2, 1, 0 };
++	int grp_priorities_reach[ACS_NUM_GRP_PRIORITIES] = { 0, 1, 2, 3, 4 };
+ 	int acs_penalty_factors[ACS_NUM_PENALTY_FACTORS] = {ACS_PEN_DEFAULT, ACS_PEN_DEFAULT, ACS_PEN_DEFAULT, ACS_PEN_DEFAULT_WBSS};
+ 	struct hostapd_bss_config *bss = conf->bss[0];
+ #endif /* CONFIG_ACS */
+@@ -2892,6 +2912,7 @@ void mxl_hostapd_config_free_acs(struct hostapd_config *conf)
+ 	os_free(mxl_conf->acs_grp_priorities_throughput);
+ 	os_free(mxl_conf->acs_grp_priorities_reach);
+ 	os_free(mxl_conf->acs_6g_opt_ch_list);
++	os_free(mxl_conf->acs_exclude_opclass_ch_list);
+ #endif /* CONFIG_ACS */
+ 
+ }
+diff --git a/hostapd/mxl_ctrl_iface.c b/hostapd/mxl_ctrl_iface.c
+index 98f362a9e..5134ac17d 100644
+--- a/hostapd/mxl_ctrl_iface.c
++++ b/hostapd/mxl_ctrl_iface.c
+@@ -4551,7 +4551,7 @@ static int mxl_hostapd_ctrl_iface_acs_report(struct hostapd_iface *iface,
+ 
+ 		if (candidates[i].filled_mask & CHDATA_TX_POWER) {
+ 			ret = sprintf_s(buf + len, buflen - len, " pow=%d",
+-					candidates[i].tx_power);
++					candidates[i].tx_power[PRI_20]);
+ 			if (ret <= 0)
+ 				break;
+ 			len += ret;
+diff --git a/src/ap/mxl_acs.c b/src/ap/mxl_acs.c
+index 82d10f073..e8ce0fc3c 100644
+--- a/src/ap/mxl_acs.c
++++ b/src/ap/mxl_acs.c
+@@ -693,6 +693,20 @@ static u32 acs_get_center_chan_index(struct hostapd_iface *iface)
+ 				mxl_chan_num = ARRAY_SIZE(g_channels160_6G);
+ 			}
+ 			break;
++		case CONF_OPER_CHWIDTH_320MHZ:
++			if (iface->conf->mxl_conf.acs_eht_mode == ACS_EHT_MODE_320_2) {
++				mxl_chan = g_channels320_2_6G;
++				mxl_chan_num = ARRAY_SIZE(g_channels320_2_6G);
++			} else if (iface->conf->mxl_conf.acs_eht_mode == ACS_EHT_MODE_320_1) {
++				mxl_chan = g_channels320_1_6G;
++				mxl_chan_num = ARRAY_SIZE(g_channels320_1_6G);
++			} else {
++				mxl_chan = g_channels320_1_6G;
++				mxl_chan_num = ARRAY_SIZE(g_channels320_1_6G);
++				mxl_chan1 = g_channels320_2_6G;
++				mxl_chan_num1 = ARRAY_SIZE(g_channels320_2_6G);
++			}
++			break;
+ 		default:
+ 			break;
+ 	}
+@@ -1927,6 +1941,95 @@ static int acs_unii4_chan_disabled(struct hostapd_iface *iface, struct hostapd_c
+ 	return false;
+ }
+ 
++static bool is_in_exclude_list(const struct mxl_hostapd_config *conf,
++                                     int op_band, int chan)
++{
++    for (int i = 0; i < conf->acs_exclude_opclass_ch_count; i++) {
++        const struct acs_exclude *entry = &conf->acs_exclude_opclass_ch_list[i];
++        if (op_class_to_bandwidth(entry->op_class) == op_band &&
++            entry->channel == chan)
++            return true;
++    }
++    return false;
++}
++
++static int map_5g_80_center(int chan)
++{
++    if (chan >= 36  && chan <= 48)  return 42;
++    if (chan >= 52  && chan <= 64)  return 58;
++    if (chan >= 100 && chan <= 112) return 106;
++    if (chan >= 116 && chan <= 128) return 122;
++    if (chan >= 132 && chan <= 144) return 138;
++    if (chan >= 149 && chan <= 161) return 155;
++    return chan;
++}
++
++static int map_5g_160_center(int chan)
++{
++    if (chan >= 36  && chan <= 64)   return 50;
++    if (chan >= 100 && chan <= 128)  return 114;
++    return chan;
++}
++
++static bool is_excluded_opclass_chan(struct hostapd_iface *iface, int channel, int bandwidth)
++{
++   struct mxl_hostapd_config *mxl_conf = &iface->conf->mxl_conf;
++
++   if (mxl_conf->acs_exclude_opclass_ch_count <= 0)
++      return false;
++
++   const struct acs_exclude *list = mxl_conf->acs_exclude_opclass_ch_list;
++
++   /* Band is inferred from the FIRST entry. */
++   const int list_is_5g = is_5ghz_op_class(list[0].op_class);
++	const int list_is_6g = is_6ghz_op_class(list[0].op_class);
++
++   int eff_bw = bandwidth;
++   int eff_chan = channel;
++   int bw = 0;
++
++   /* For wide channels, first verify whether the primary 20 MHz channel is excluded.
++    * If the primary channel is excluded, the corresponding wide channel
++    * must also be treated as excluded.
++    */
++   if ((eff_bw > 40 && list_is_5g) || (eff_bw > 20 && list_is_6g)) {
++      if (is_in_exclude_list(mxl_conf, 20, channel))
++         return true;
++
++      /* Not excluded at 20 MHz; derive center channel and keep effective bw. */
++      if (list_is_5g) {
++         if (eff_bw == 80)
++            eff_chan = map_5g_80_center(channel);
++         else if (eff_bw == 160)
++            eff_chan = map_5g_160_center(channel);
++      } else if (list_is_6g) {
++         u8 seg0 = 0, seg1 = 0;
++         switch (eff_bw) {
++            case 20:
++               bw = HE_OPER_CHANWIDTH_20;
++               break;
++            case 40:
++               bw = HE_OPER_CHANWIDTH_40;
++               break;
++            case 80:
++               bw = HE_OPER_CHANWIDTH_80;
++               break;
++            case 160:
++               bw = HE_OPER_CHANWIDTH_160;
++               break;
++            case 320:
++               bw = EHT_OPER_CHANWIDTH_320;
++               break;
++            default:
++               break;
++         }
++         ch_width_and_ch_num_to_seg_idx(bw, channel, &seg0, &seg1);
++         eff_chan = (eff_bw < 160) ? seg0 : seg1;
++      }
++   }
++   return is_in_exclude_list(mxl_conf, eff_bw, eff_chan);
++}
++
+ static int acs_is_subchannel_allowed(struct hostapd_iface *iface, int channel)
+ {
+ 	int j;
+@@ -2056,6 +2159,10 @@ void add_channel_pair_candidates(struct hostapd_iface *iface, channel_pair *chan
+ 			if ((base_freq < 5000) && (!iface->conf->mxl_conf.acs_use24overlapped) &&
+ 			    (acs_is_40_mhz_overlap_chan(&channel_pairs[i])))
+ 				continue;
++			if (is_excluded_opclass_chan(iface, channel_pairs[i].primary, 40) ||
++				is_excluded_opclass_chan(iface, channel_pairs[i].secondary, 40)) {
++					continue;
++				}
+ 
+ 			if (channel_pairs[i].primary < channel_pairs[i].secondary)
+ 				candidates[iface->mxl_iface.num_candidates].freq = chan->freq;
+@@ -2223,7 +2330,8 @@ void mxl_acs_init_candidate_table(struct hostapd_iface *iface)
+ 
+ 		if (!acs_unii4_chan_disabled(iface, chan) &&
+ 		    (iface->conf->mxl_conf.acs_use24overlapped || (chan->chan == 1) ||
+-		    (chan->chan == 6) || (chan->chan == 11) || (chan->freq >= 5000))) {
++		    (chan->chan == 6) || (chan->chan == 11) || (chan->freq >= 5000)) &&
++		    !is_excluded_opclass_chan(iface, chan->chan, 20)) {
+ 			if (chan->flag & HOSTAPD_CHAN_RADAR)
+ 				candidates[iface->mxl_iface.num_candidates].radar_affected = true;
+ 
+@@ -2286,6 +2394,16 @@ void mxl_acs_init_candidate_table(struct hostapd_iface *iface)
+ 			if (bw_80_160_320 & BIT(CONF_OPER_CHWIDTH_160MHZ)) { /* 160 MHz supported */
+ 				add_160_channels(iface, g_channels160_6G, ARRAY_SIZE(g_channels160_6G), chan);
+ 			}
++			if (bw_80_160_320 & BIT(CONF_OPER_CHWIDTH_320MHZ)) { /* 320 MHz supported */
++				if (iface->conf->mxl_conf.acs_eht_mode == ACS_EHT_MODE_320_2)
++					add_320_channels(iface, g_channels320_2_6G, ARRAY_SIZE(g_channels320_2_6G), chan);
++				else if (iface->conf->mxl_conf.acs_eht_mode == ACS_EHT_MODE_320_1)
++					add_320_channels(iface, g_channels320_1_6G, ARRAY_SIZE(g_channels320_1_6G), chan);
++				else {
++					add_320_channels(iface, g_channels320_1_6G, ARRAY_SIZE(g_channels320_1_6G), chan);
++					add_320_channels(iface, g_channels320_2_6G, ARRAY_SIZE(g_channels320_2_6G), chan);
++				}
++			}
+ 		}
+ 	}
+ 	/* 80p80 is not supported */
+diff --git a/src/ap/mxl_config.h b/src/ap/mxl_config.h
+index b7a909827..baa3c2cad 100644
+--- a/src/ap/mxl_config.h
++++ b/src/ap/mxl_config.h
+@@ -26,7 +26,7 @@ struct hostapd_bss_config;
+ #define ACS_PEN_MAX                     1000
+ #define ACS_PEN_DEFAULT                 100
+ #define ACS_PEN_DEFAULT_WBSS            50
+-#define ACS_NUM_GRP_PRIORITIES          4
++#define ACS_NUM_GRP_PRIORITIES          5
+ #define ACS_MAX_CHANNELS                (233+1)
+ #define ACS_SWITCH_THRESHOLD            100
+ #define ACS_MIN_NUM_SCANS               1
+@@ -41,6 +41,19 @@ typedef struct acs_chan {
+         int width;
+ } acs_chan;
+ 
++struct acs_exclude {
++	int op_class;
++	int channel;
++};
++
++enum acs_eht_modes {
++	ACS_EHT_MODE_MIN,
++	ACS_EHT_MODE_320_0 = ACS_EHT_MODE_MIN,
++	ACS_EHT_MODE_320_1,
++	ACS_EHT_MODE_320_2,
++	ACS_EHT_MODE_MAX = ACS_EHT_MODE_320_2
++};
++
+ int mxl_config_check_smart_acs_config(struct hostapd_config *conf, struct hostapd_bss_config *bss, const char *buf, char* pos, int line);
+ int mxl_hostapd_acs_config_defaults(struct hostapd_config *conf);
+ void mxl_hostapd_config_fill_acs(struct hostapd_config *conf, char *pos);
+@@ -393,6 +406,7 @@ struct mxl_hostapd_config {
+ 	int *acs_6g_opt_ch_list;
+ 	int acs_6g_opt_ch_count;
+ 	int acs_rnr_scan_timeout;
++	enum acs_eht_modes acs_eht_mode;
+ 	int acs_6g_punct_mode;
+ 	u16 acs_bgscan_interval;
+ 	struct acs_exclude *acs_exclude_opclass_ch_list;
+-- 
+2.43.0
+

@@ -1,4 +1,4 @@
-From 3525955a21b094021da70132b35da224d88ca8ec Mon Sep 17 00:00:00 2001
+From ef29a004e358557f95dd6a55dd98ad64321d1f48 Mon Sep 17 00:00:00 2001
 From: "Maneendra,Pokuri Naga" <pnmaneendra@maxlinear.com>
 Date: Thu, 7 Mar 2024 19:14:07 +0530
 Subject: [PATCH] WLANRTSYS-63677 ML WDS configuration and association
@@ -62,7 +62,7 @@ index b069b3bbc..6d5cd1241 100644
  	bool ml_ie_add;
  	u8 link_id;
 diff --git a/src/ap/mxl_hostapd.h b/src/ap/mxl_hostapd.h
-index 75805b3d6..b4a98b226 100644
+index ca685e49c..79aba6e39 100644
 --- a/src/ap/mxl_hostapd.h
 +++ b/src/ap/mxl_hostapd.h
 @@ -121,6 +121,7 @@ struct mxl_hostapd_data {

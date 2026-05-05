@@ -1,4 +1,4 @@
-From 789bbf51b206bcdfa8cce10d73dc8d0c22aa7939 Mon Sep 17 00:00:00 2001
+From ca117e9b007cd1bb238a654fe91d1c53d6e406dd Mon Sep 17 00:00:00 2001
 From: Mikelis Vuls <mvuls@maxlinear.com>
 Date: Tue, 23 Apr 2024 10:25:13 +0300
 Subject: [PATCH] WLANRTSYS-80521 Implement support to disable network modes

@@ -1,4 +1,4 @@
-From b12520a80c2d55587ba4732c18c3ad4644fec4b5 Mon Sep 17 00:00:00 2001
+From 768a624d8c814be4de4052bc0a170b48dc8fe714 Mon Sep 17 00:00:00 2001
 From: Jurijs Soloveckis <jsoloveckis@maxlinear.com>
 Date: Sat, 20 May 2023 08:50:35 +0200
 Subject: [PATCH] WLANRTSYS-55406: Add support for BSS max idle and Protected

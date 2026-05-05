@@ -1,0 +1,41 @@
+From 8407c1226ace19bdcec4bf318b548dd5cfd34594 Mon Sep 17 00:00:00 2001
+From: "karthikgk@maxlinear.com" <karthikgk@lvdocker7.lvsw.maxlinear.com>
+Date: Thu, 14 Aug 2025 01:36:47 -0700
+Subject: [PATCH] WLANRTSYS-90037 : Observing call trace [SLID:8:16:0:7371]
+ while running R1 test.
+
+Issue : Observing call trace [SLID:8:16:0:7371] while running R1 test.
+
+Root-cause : we have observed that "mtlk_vap_is_master_ap" check is
+failing in wave_core_cfg_set_stations_stats_enabled function due to ap's role is set to "MTLK_VAP_ROLE_STA" while performing NL80211_CMD_TRIGGER_SCAN.
+
+Fix : As this changing role of the AP is opensource flow and this is not needed in our case as mac80211 allows scan request in AP mode we can revert this change.
+
+signed-of-by : karthikgkkarthikgk@maxlinear.com
+---
+ src/drivers/driver_nl80211_scan.c | 2 ++
+ 1 file changed, 2 insertions(+)
+
+diff --git a/src/drivers/driver_nl80211_scan.c b/src/drivers/driver_nl80211_scan.c
+index 13cfafb92..adef7b6ef 100644
+--- a/src/drivers/driver_nl80211_scan.c
++++ b/src/drivers/driver_nl80211_scan.c
+@@ -423,6 +423,7 @@ int wpa_driver_nl80211_scan(struct i802_bss *bss,
+ 	if (ret) {
+ 		wpa_printf(MSG_DEBUG, "nl80211: Scan trigger failed: ret=%d "
+ 			   "(%s)", ret, strerror(-ret));
++#ifndef CONFIG_VENDOR_MXL
+ 		if (drv->hostapd && is_ap_interface(drv->nlmode)) {
+ #ifdef CONFIG_IEEE80211BE
+ 			/* For multi link BSS, retry scan if any other links
+@@ -472,6 +473,7 @@ int wpa_driver_nl80211_scan(struct i802_bss *bss,
+ 
+ 			ret = 0;
+ 		} else
++#endif /*CONFIG_VENDOR_MXL*/
+ 			goto fail;
+ 	}
+ 
+-- 
+2.43.0
+

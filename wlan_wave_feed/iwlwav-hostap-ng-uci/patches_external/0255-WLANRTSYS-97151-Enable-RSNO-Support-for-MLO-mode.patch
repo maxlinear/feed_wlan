@@ -1,0 +1,510 @@
+From d401ad6fd4762263e27d3239addf454a9af28a22 Mon Sep 17 00:00:00 2001
+From: dkolhe <dkolhe@maxlinear.com>
+Date: Tue, 16 Dec 2025 04:37:41 -0800
+Subject: [PATCH] WLANRTSYS-97151 Enable RSNO Support for MLO mode
+
+Processing of RSN Selection Element in Multi Link case
+Validate MLO link KDE received in M2
+Parse RSNO Link KDE received in M2
+Construct and send RSNO Link KDE in M3
+Update MLO link setup validation to include RSNO specific validation
+
+Signed-off-by: dkolhe <dkolhe@maxlinear.com>
+---
+ hostapd/mxl_config.c    |  10 ++-
+ src/ap/ieee802_11.c     |  30 ++++++-
+ src/ap/mxl_ieee802_11.c |  36 ++++++--
+ src/ap/mxl_mld.c        |  26 +++++-
+ src/ap/mxl_wpa_auth.c   | 182 ++++++++++++++++++++++++++++++++++++++--
+ src/ap/mxl_wpa_auth.h   |   1 +
+ src/common/wpa_common.c |   8 ++
+ src/common/wpa_common.h |   9 +-
+ 8 files changed, 279 insertions(+), 23 deletions(-)
+
+diff --git a/hostapd/mxl_config.c b/hostapd/mxl_config.c
+index 61400f513..0e463eef0 100644
+--- a/hostapd/mxl_config.c
++++ b/hostapd/mxl_config.c
+@@ -2175,7 +2175,7 @@ int mxl_hostapd_config_check(struct hostapd_config *conf, int full_config)
+ 	}
+ 
+ 	for (i = 0; i < conf->num_bss; i++) {
+-		if (conf->bss[i]->mxl_bss_conf.mlo_enable) {
++		if (conf->bss[i]->mxl_bss_conf.mlo_enable && !conf->bss[i]->rsn_override_key_mgmt) {
+ 			if (conf->bss[i]->wpa_key_mgmt == WPA_KEY_MGMT_PSK) {
+ 				wpa_printf(MSG_ERROR, "MLD: WPA2 PSK is not allowed in MLD");
+ 				return -1;
+@@ -2203,6 +2203,14 @@ int mxl_hostapd_config_check_bss(struct hostapd_bss_config *bss, struct hostapd_
+ 			wpa_printf(MSG_WARNING,
+ 				"GCMP-256 cipher suite is force-enabled due to 802.11be is enabled");
+ 		}
++
++		/* If MLO is enabled and override pw 2 indicates GCMP-256, should be removed from rsn pw, clear it */
++		if ((bss->mxl_bss_conf.mlo_enable && (bss->rsn_override_pairwise_2 & WPA_CIPHER_GCMP_256)) &&
++			(bss->rsn_pairwise & WPA_CIPHER_GCMP_256)) {
++				bss->rsn_pairwise &= ~WPA_CIPHER_GCMP_256;
++				wpa_printf(MSG_INFO, "GCMP-256 cleared from rsn_pairwise");
++		}
++
+ 	}
+ #endif /* CONFIG_IEEE80211BE */
+ 
+diff --git a/src/ap/ieee802_11.c b/src/ap/ieee802_11.c
+index aea74aa65..0660f89ce 100644
+--- a/src/ap/ieee802_11.c
++++ b/src/ap/ieee802_11.c
+@@ -4841,8 +4841,36 @@ static int __check_assoc_ies(struct hostapd_data *hapd, struct sta_info *sta,
+ #endif /* CONFIG_IEEE80211BE */
+ 
+ 		wpa_auth_set_auth_alg(sta->wpa_sm, sta->auth_alg);
++#ifdef CONFIG_IEEE80211BE_MXL_MLO
++		/* 
++		* In case of MLO, the AP shall ignore the contents of the RSN
++		* Selection element and its omission for links other than 
++		* the association link.
++		*/
++		if (mxl_mlo_is_ml_sta(sta)) {
++			if(!link){
++				wpa_auth_set_rsn_selection(sta->wpa_sm, elems->rsn_selection,
++							elems->rsn_selection_len);
++				wpa_printf(MSG_DEBUG, "MLD: Set RSN Selection on association link");
++			} else {
++					wpa_printf(MSG_DEBUG, "MLD: Skipping RSN Selection on affiliated link");
++					if (sta->mxl_sta_info.linked_sta && sta->mxl_sta_info.linked_sta->wpa_sm) {
++						mxl_wpa_auth_mirror_rsn_selection(sta->mxl_sta_info.linked_sta->wpa_sm, sta->wpa_sm);
++						wpa_printf(MSG_DEBUG, "MLD: RSN Selection mirroring completed");
++					} else {
++						wpa_printf(MSG_ERROR, "MLD: Cannot mirror RSN Selection");
++					}
++				}
++		} else {
++			/* Non MLO station - process RSN Selection as usual */
++			wpa_auth_set_rsn_selection(sta->wpa_sm, elems->rsn_selection,
++					elems->rsn_selection_len);
++			wpa_printf(MSG_DEBUG, "Non MLO STA - Set RSN Selection");
++		}
++#else /* !CONFIG_IEEE80211BE_MXL_MLO */
+ 		wpa_auth_set_rsn_selection(sta->wpa_sm, elems->rsn_selection,
+-					   elems->rsn_selection_len);
++					elems->rsn_selection_len);
++#endif /* CONFIG_IEEE80211BE_MXL_MLO */
+ 		res = wpa_validate_wpa_ie(hapd->wpa_auth, sta->wpa_sm,
+ 					  hapd->iface->freq,
+ 					  wpa_ie, wpa_ie_len,
+diff --git a/src/ap/mxl_ieee802_11.c b/src/ap/mxl_ieee802_11.c
+index 8f46a040f..3cd40cf98 100644
+--- a/src/ap/mxl_ieee802_11.c
++++ b/src/ap/mxl_ieee802_11.c
+@@ -926,17 +926,35 @@ bool mxl_auth_parse_ml_ie(struct hostapd_data *hapd, const struct ieee80211_mgmt
+ 	return true;
+ }
+ 
++/**
++ * mxl_check_assoc_ies_owe - Validate authentication method for MLO stations
++ * @hapd: Pointer to hostapd data structure
++ * @sta: Pointer to station information
++ * @elems: Parsed IEEE 802.11 elements from association request
++ *
++ * This function validates that Multi-Link Operation (MLO) stations are using
++ * secure authentication methods (SAE/WPA3 or OWE) during association.
++ *
++ * Returns: true if validation fails (invalid auth method), false if valid or not MLO
++ */
++
+ bool mxl_check_assoc_ies_owe(struct hostapd_data *hapd, struct sta_info *sta, struct ieee802_11_elems *elems)
+ {
+-	if (mxl_is_mlo_enabled(hapd->conf) && mxl_mlo_is_ml_sta(sta)) {
+-		if (!(((sta->auth_alg == WLAN_AUTH_SAE) &&
+-		       (hapd->conf->wpa_key_mgmt & (WPA_KEY_MGMT_SAE | WPA_KEY_MGMT_SAE_EXT_KEY))) ||
+-				 ((sta->auth_alg == WLAN_AUTH_OPEN) && ((wpa_auth_uses_sae(sta->wpa_sm)) || ((hapd->conf->wpa_key_mgmt & WPA_KEY_MGMT_OWE) &&
+-				 elems->owe_dh))))) {
+-			return true;
+-		}
+-	}
+-	return false;
++	bool is_sae_auth;
++	bool is_owe_auth;
++
++	if (!mxl_is_mlo_enabled(hapd->conf) || !mxl_mlo_is_ml_sta(sta))
++		return false;
++
++	is_sae_auth = (sta->auth_alg == WLAN_AUTH_SAE) &&
++					((hapd->conf->wpa_key_mgmt & (WPA_KEY_MGMT_SAE | WPA_KEY_MGMT_SAE_EXT_KEY)) ||
++						(hapd->conf->rsn_override_key_mgmt_2 & WPA_KEY_MGMT_SAE_EXT_KEY));
++	
++	is_owe_auth = (sta->auth_alg == WLAN_AUTH_OPEN) &&
++					(wpa_auth_uses_sae(sta->wpa_sm) ||
++						((hapd->conf->wpa_key_mgmt & WPA_KEY_MGMT_OWE) && elems->owe_dh));
++
++	return !(is_sae_auth || is_owe_auth);
+ }
+ 
+ void mxl_free_sta_profile(struct hostapd_data *hapd, struct sta_info *sta)
+diff --git a/src/ap/mxl_mld.c b/src/ap/mxl_mld.c
+index da9c807eb..cd87191ca 100644
+--- a/src/ap/mxl_mld.c
++++ b/src/ap/mxl_mld.c
+@@ -228,6 +228,7 @@ bool mxl_hostapd_verify_mld_config(struct p_ap_mld *mld)
+ 	struct hostapd_data *link1 = mld->affiliated_links[LINK1];
+ 	struct hostapd_data *link2 = mld->affiliated_links[LINK2];
+ 	bool is_sae_link1, is_sae_link2;
++	bool is_rsno_enabled_link1 = false, is_rsno_enabled_link2 = false, check_rsno_mld_config = false;
+ 
+ 	if (link1 == NULL || link2 == NULL)
+ 		return false;
+@@ -240,14 +241,33 @@ bool mxl_hostapd_verify_mld_config(struct p_ap_mld *mld)
+ 	if (link1->conf->mld_id == INVALID_MLD_ID || link2->conf->mld_id == INVALID_MLD_ID)
+ 		mxl_update_valid_mld_id(link1, link2, mld);
+ 
++	is_rsno_enabled_link1 = link1->conf->rsn_override_key_mgmt_2 ? true : false;
++	is_rsno_enabled_link2 = link2->conf->rsn_override_key_mgmt_2 ? true : false;
++	check_rsno_mld_config = is_rsno_enabled_link1 && is_rsno_enabled_link2;
++
++	if(check_rsno_mld_config){
++		bool is_6g_link1 = is_6ghz_op_class(link1->iconf->op_class);
++		bool is_6g_link2 = is_6ghz_op_class(link2->iconf->op_class);
++
++		if ((link1->conf->rsn_override_key_mgmt_2 != link2->conf->rsn_override_key_mgmt_2) ||
++			(link1->conf->rsn_override_pairwise_2 != link2->conf->rsn_override_pairwise_2) ||
++			(!is_6g_link1 && !is_6g_link2 && 
++				((link1->conf->wpa_key_mgmt != link2->conf->wpa_key_mgmt) ||
++				(link1->conf->rsn_override_key_mgmt != link2->conf->rsn_override_key_mgmt) ||
++				(link1->conf->ieee80211w != link2->conf->ieee80211w)))) {
++					wpa_printf(MSG_ERROR, "MLD RSNO parameter validation failed");
++				return false;
++		}
++	}
++
+ 	/* possible key-mgmts for MLD are only OWE and SAE */
+ 	is_sae_link1 = !(link1->conf->wpa_key_mgmt & WPA_KEY_MGMT_OWE);
+ 	is_sae_link2 = !(link2->conf->wpa_key_mgmt & WPA_KEY_MGMT_OWE);
+ 
+ 	if (hostapd_mac_comp(link1->conf->mxl_bss_conf.ap_mld_mac, link2->conf->mxl_bss_conf.ap_mld_mac) ||
+-			(link1->conf->ieee80211w != link2->conf->ieee80211w) ||
+-			(is_sae_link1 && is_sae_link2 && (link1->conf->sae_pwe != link2->conf->sae_pwe)) ||
+-			(!(link1->conf->wpa_key_mgmt & link2->conf->wpa_key_mgmt)) ||
++			(!check_rsno_mld_config && (link1->conf->ieee80211w != link2->conf->ieee80211w)) ||
++			(!check_rsno_mld_config && is_sae_link1 && is_sae_link2 && (link1->conf->sae_pwe != link2->conf->sae_pwe)) ||
++			(!check_rsno_mld_config && !(link1->conf->wpa_key_mgmt & link2->conf->wpa_key_mgmt)) ||
+ 			(link1->conf->wpa != link2->conf->wpa) ||
+ 			(link1->conf->wpa_pairwise != link2->conf->wpa_pairwise) ||
+ 			(link1->conf->rsn_pairwise != link2->conf->rsn_pairwise) ||
+diff --git a/src/ap/mxl_wpa_auth.c b/src/ap/mxl_wpa_auth.c
+index 390552fd6..ced84b3f4 100644
+--- a/src/ap/mxl_wpa_auth.c
++++ b/src/ap/mxl_wpa_auth.c
+@@ -95,7 +95,7 @@ static u8 * wpa_auth_ml_kdes(u8 *pos, struct wpa_authenticator *wpa_auth, u8 *wp
+ 		return NULL;
+ 
+ 	/* MLO link ID */
+-	kde[0] = wpa_auth->mlo_conf.link1_linkid;
++	kde[0] = wpa_auth->mlo_conf.link1_linkid & RSN_MLO_LINK_KDE_LI_LINK_ID_MASK;
+ 	if (rsne)
+ 		kde[0] = kde[0] | (RSN_MLO_LINK_KDE_LI_RSNE_INFO);
+ 	if (rsnxe)
+@@ -119,6 +119,96 @@ static u8 * wpa_auth_ml_kdes(u8 *pos, struct wpa_authenticator *wpa_auth, u8 *wp
+ 	return pos;
+ }
+ 
++static int wpa_auth_ml_rsn_override_kde_len(struct wpa_state_machine *sm, struct wpa_authenticator *wpa_auth, u8 *wpa_ie,int wpa_ie_len)
++{
++	int kde_len = 0;
++	const u8 *rsne_override = get_vendor_ie((const u8 *) wpa_ie, wpa_ie_len, RSNE_OVERRIDE_IE_VENDOR_TYPE);
++	const u8 *rsne_override_2 = get_vendor_ie((const u8 *) wpa_ie, wpa_ie_len, RSNE_OVERRIDE_2_IE_VENDOR_TYPE);
++	const u8 *rsnxe_override = get_vendor_ie((const u8 *) wpa_ie, wpa_ie_len, RSNXE_OVERRIDE_IE_VENDOR_TYPE);
++
++	if(!rsne_override && !rsne_override_2 && !rsnxe_override){
++		return 0; /*No override KDE neeeded*/
++	}
++
++	/* KDE Header: IE_HDR_LEN(2) + RSN_SELECTOR_LEN(4) + LINK_ID(1) */
++	kde_len = 2 + RSN_SELECTOR_LEN + 1;
++
++	/*RSNE Override*/
++	if(rsne_override)
++		kde_len += (rsne_override[1] + 2);
++
++	/*RSNE Override 2*/
++	if(rsne_override_2)
++		kde_len += (rsne_override_2[1] + 2);
++
++	/*RSNXE Override*/
++	if(rsnxe_override)
++		kde_len += (rsnxe_override[1] + 2);
++
++	return kde_len;
++}
++
++static u8 * wpa_auth_ml_rsn_override_kdes(u8 *pos, struct wpa_authenticator *wpa_auth, u8 *wpa_ie, int wpa_ie_len)
++{
++	u8 *kde;
++	u8 kde_len = 1;
++	u8 *kde_pos;
++	size_t len;
++	const u8 *rsne_override = get_vendor_ie((const u8 *) wpa_ie, wpa_ie_len, RSNE_OVERRIDE_IE_VENDOR_TYPE);
++	const u8 *rsne_override_2 = get_vendor_ie((const u8 *) wpa_ie, wpa_ie_len, RSNE_OVERRIDE_2_IE_VENDOR_TYPE);
++	const u8 *rsnxe_override = get_vendor_ie((const u8 *) wpa_ie, wpa_ie_len, RSNXE_OVERRIDE_IE_VENDOR_TYPE);
++
++	if (!rsne_override && !rsne_override_2 && !rsnxe_override) {
++		wpa_printf(MSG_DEBUG, "MLO: No RSN Override elements found");
++		return pos; /* Nothing to add */
++	}
++
++	if(rsne_override)
++		kde_len += rsne_override[1] + 2;
++	if(rsne_override_2)
++		kde_len += rsne_override_2[1] + 2;
++	if(rsnxe_override)
++		kde_len += rsnxe_override[1] + 2;
++
++	kde = os_malloc(kde_len);
++	if (!kde)
++		return NULL;
++
++	/* RSNK link info */
++	kde[0] = wpa_auth->mlo_conf.link1_linkid & MXL_RSN_OVERRIDE_LINK_KDE_LI_LINK_ID_MASK;
++
++	kde_pos = &kde[1];
++
++	/* Add RSNE Override */
++	if(rsne_override) {
++		len = rsne_override[1] + 2;
++		memcpy_s(kde_pos, len, rsne_override, len);
++		kde_pos += len;
++	}
++
++	/* Add RSNE Override 2 */
++	if(rsne_override_2) {
++		len = rsne_override_2[1] + 2;
++		memcpy_s(kde_pos, len, rsne_override_2, len);
++		kde_pos += len;
++	}
++
++	/* Add RSNXE Override */
++	if(rsnxe_override) {
++		len = rsnxe_override[1] + 2;
++		memcpy_s(kde_pos, len, rsnxe_override, len);
++		kde_pos += len;
++	}
++
++	pos = wpa_add_kde(pos, MXL_WFA_KEY_DATA_RSN_OVERRIDE_LINK, kde, kde_len, NULL, 0);
++
++	os_free(kde);
++
++	wpa_printf(MSG_DEBUG, "MLO: Added RSN Override Link KDE (link_id=%d)",wpa_auth->mlo_conf.link1_linkid);
++
++	return pos;
++}
++
+ void mxl_hostapd_wpa_auth_mlo(struct wpa_authenticator *wpa1, struct wpa_authenticator *wpa2)
+ {
+ 	wpa1->mlo_conf.link2_linkid = wpa2->mlo_conf.link1_linkid;
+@@ -368,14 +458,27 @@ void mxl_ml_wpa_ptkinitnegotiating(struct wpa_state_machine *sm)
+ 		kde_len += (2 + RSN_SELECTOR_LEN + ETH_ALEN);
+ 		/* MLO link 1 KDE len */
+ 		kde_len += wpa_auth_ml_kdes_len(sm, sm->wpa_auth, wpa_ie, wpa_ie_len, gtk_len);
++		if(rsn_is_snonce_cookie(sm->SNonce))
++		{
++			/* MLO Link 1 RSN Override KDE len */
++			kde_len += wpa_auth_ml_rsn_override_kde_len(sm, sm->wpa_auth, wpa_ie, wpa_ie_len);
++		}
++
+ 		if (sibling_wpa_auth) {
+ 			sib_wpa_ie = sibling_wpa_auth->wpa_ie;
+ 			sib_wpa_ie_len = sibling_wpa_auth->wpa_ie_len;
+-
+ 		}
++
+ 		/* MLO link 2 KDE len */
+-		if (sibling_wpa_auth && !sm->mxl_sm.is_single_link_ml_sta)
++		if (sibling_wpa_auth && !sm->mxl_sm.is_single_link_ml_sta) {
++			/* MLO Link 2 KDE len*/
+ 			kde_len += wpa_auth_ml_kdes_len(sm, sibling_wpa_auth, sib_wpa_ie, sib_wpa_ie_len, gtk_len1);
++			if (rsn_is_snonce_cookie(sm->SNonce))
++			{
++				/* MLO Link 2 RSN Override KDE len */
++				kde_len += wpa_auth_ml_rsn_override_kde_len(sm, sibling_wpa_auth, sib_wpa_ie, sib_wpa_ie_len);
++			}
++		}
+ 	}
+ 	kde = os_malloc(kde_len);
+ 	if (kde == NULL)
+@@ -476,21 +579,39 @@ void mxl_ml_wpa_ptkinitnegotiating(struct wpa_state_machine *sm)
+ 	if (sm->mxl_sm.is_ml_sta) {
+ 		/* For the MAC Address KDE */
+ 		pos = wpa_add_kde(pos, RSN_KEY_DATA_MAC_ADDR, sm->wpa_auth->mlo_conf.ap_mld_mac, ETH_ALEN, NULL, 0);
+-
+-		/* MLO link 1 RSN/RSNX KDE */
++		/* MLO link 1 ML KDE */
+ 		pos = wpa_auth_ml_kdes(pos, sm->wpa_auth, wpa_ie, wpa_ie_len);
+ 		if (!pos) {
+ 			wpa_printf(MSG_ERROR, "Failed to pack MLO link 1 KDEs in 3/4 msg of 4-Way Handshake");
+ 			goto done;
+ 		}
+ 
++		if (rsn_is_snonce_cookie(sm->SNonce))
++		{
++			/* MLO Link 1 RSN Override KDE */
++			pos = wpa_auth_ml_rsn_override_kdes(pos, sm->wpa_auth, wpa_ie, wpa_ie_len);
++			if (!pos) {
++				wpa_printf(MSG_ERROR, "Failed to pack MLO link 1 RSN Override KDEs in 3/4 msg of 4-Way Handshake");
++				goto done;
++			}
++		}
++
+ 		if (sibling_wpa_auth && !sm->mxl_sm.is_single_link_ml_sta) {
+-			/* MLO link 2 RSN/RSNX KDE */
++			/* MLO link 2 ML KDE */
+ 			pos = wpa_auth_ml_kdes(pos, sibling_wpa_auth, sib_wpa_ie, sib_wpa_ie_len);
+ 			if (!pos) {
+ 				wpa_printf(MSG_ERROR, "Failed to pack MLO link 2 KDEs in 3/4 msg of 4-Way Handshake");
+ 				goto done;
+ 			}
++			if (rsn_is_snonce_cookie(sm->SNonce))
++			{
++				/* MLO Link 2 RSN Override KDE */
++				pos = wpa_auth_ml_rsn_override_kdes(pos, sibling_wpa_auth, sib_wpa_ie, sib_wpa_ie_len);
++				if (!pos) {
++					wpa_printf(MSG_ERROR, "Failed to pack MLO link 2 RSN Override KDEs in 3/4 msg of 4-Way Handshake");
++					goto done;
++				}
++			}
+ 		}
+ 
+ 		/* MLO Group KDEs */
+@@ -622,13 +743,17 @@ int mxl_ml_error_handling(struct wpa_eapol_ie_parse kde, struct wpa_state_machin
+ 		}
+ 	}
+ 	if (kde.mlo_link_kde_ie) {
+-		u8 link_id = (kde.mlo_link_kde_ie[0] & 0x3);
++		u8 link_id = (kde.mlo_link_kde_ie[0] & RSN_MLO_LINK_KDE_LI_LINK_ID_MASK);
+ 		if ((link_id != sm->wpa_auth->mlo_conf.link1_linkid) && (link_id != sm->wpa_auth->mlo_conf.link2_linkid)) {
+ 			wpa_auth_vlogger(sm->wpa_auth, sm->addr, LOGGER_INFO,
+ 					"received EAPOL-Key msg 2/4 with missmatch MLD link_id!!!");
+ 			return -1;
+ 		}
+-		/* To-do: we may compare the RSNE and RSNXE from MLO LINK KDE */
++		/*
++			Todo:
++			1. Validate RSNE and RSNXE from MLO LINK KDE with the ones received in (Re)Assoc req
++			2. Validate RSNO variants KDE from RSNO LINK KDE with the ones received in (Re)Assoc req
++		*/
+ 	}
+ 	return 0;
+ }
+@@ -811,6 +936,47 @@ void mxl_wpa_rekey_gtk(void *eloop_ctx, void *timeout_ctx)
+ 				       0, mxl_wpa_rekey_gtk, wpa_auth, NULL);
+ 	}
+ }
++
++/**
++ * mxl_wpa_auth_mirror_rsn_selection - Mirror RSN selection from one SM to another
++ * @src_sm: Source WPA state machine (primary station)
++ * @dst_sm: Destination WPA state machine (linked station)
++ */
++void mxl_wpa_auth_mirror_rsn_selection(struct wpa_state_machine *src_sm, struct wpa_state_machine *dst_sm)
++{
++	if (!src_sm || !dst_sm) {
++		wpa_printf(MSG_DEBUG, "RSN Selection: Invalid state machines for mirroring");
++		return;
++	}
++
++	os_free(dst_sm->rsn_selection);
++	dst_sm->rsn_selection = NULL;
++	dst_sm->rsn_selection_len = 0;
++	dst_sm->rsn_override = false;
++	dst_sm->rsn_override_2 = false;
++
++	if (src_sm->rsn_selection && src_sm->rsn_selection_len > 0) {
++		dst_sm->rsn_selection = os_memdup(src_sm->rsn_selection, src_sm->rsn_selection_len);
++		if (!dst_sm->rsn_selection) {
++			wpa_printf(MSG_ERROR, "RSN Selection: Failed to allocate memory for mirroring");
++			dst_sm->rsn_selection_len = 0;
++			return;
++		}
++		dst_sm->rsn_selection_len = src_sm->rsn_selection_len;
++
++		dst_sm->rsn_override = src_sm->rsn_override;
++		dst_sm->rsn_override_2 = src_sm->rsn_override_2;
++
++		wpa_printf(MSG_DEBUG,
++					"RSN Selection: Mirrored (len=%zu, override=%d, override_2=%d)",
++					dst_sm->rsn_selection_len,
++					dst_sm->rsn_override,
++					dst_sm->rsn_override_2);
++	} else {
++		wpa_printf(MSG_DEBUG, "RSN Selection: No RSN selection in source SM to mirror");
++	}
++}
++
+ #endif /* CONFIG_IEEE80211BE_MXL_MLO */
+ 
+ /* Purpose of the API is to clear the "first_sta_seen" when all the STA's are flushed,
+diff --git a/src/ap/mxl_wpa_auth.h b/src/ap/mxl_wpa_auth.h
+index 1ca642c44..a51580159 100644
+--- a/src/ap/mxl_wpa_auth.h
++++ b/src/ap/mxl_wpa_auth.h
+@@ -64,6 +64,7 @@ void mxl_wpa_group_get(struct wpa_authenticator *wpa_auth, struct wpa_group *gro
+ void mxl_wpa_group_put(struct wpa_authenticator *wpa_auth, struct wpa_group *group);
+ void mxl_wpa_group_sm_step(struct wpa_authenticator *wpa_auth, struct wpa_group *group);
+ void mxl_wpa_rekey_gtk(void *eloop_ctx, void *timeout_ctx);
++void mxl_wpa_auth_mirror_rsn_selection(struct wpa_state_machine *src_sm, struct wpa_state_machine *dst_sm);
+ #endif /* CONFIG_IEEE80211BE_MXL_MLO */
+ 
+ /* broadcast deauth reason - Recovery */
+diff --git a/src/common/wpa_common.c b/src/common/wpa_common.c
+index 17ccfa118..6b66f70bf 100644
+--- a/src/common/wpa_common.c
++++ b/src/common/wpa_common.c
+@@ -3736,6 +3736,14 @@ static int wpa_parse_generic(const u8 *pos, struct wpa_eapol_ie_parse *ie)
+ 				pos, pos[1] + 2);
+ 		return 0;
+ 	}
++	if (p[1] >= RSN_SELECTOR_LEN + 2 &&
++			RSN_SELECTOR_GET(p + 2) == MXL_WFA_KEY_DATA_RSN_OVERRIDE_LINK) {
++		ie->rsn_override_link_kde_ie = p + 2 + RSN_SELECTOR_LEN;
++		ie->rsn_override_link_kde_ie_len = p[1] - RSN_SELECTOR_LEN;
++		wpa_hexdump(MSG_DEBUG, "WPA: RSN_OVERRIDE_LINK KDE in EAPOL-Key",
++				pos, pos[1] + 2);
++		return 0;
++	}
+ #endif /* CONFIG_IEEE80211BE_MXL_MLO */
+ 
+ 	if (left >= 1 && selector == WFA_KEY_DATA_RSN_OVERRIDE_LINK) {
+diff --git a/src/common/wpa_common.h b/src/common/wpa_common.h
+index e0d125ca5..11e805e17 100644
+--- a/src/common/wpa_common.h
++++ b/src/common/wpa_common.h
+@@ -150,6 +150,9 @@ WPA_CIPHER_BIP_CMAC_256)
+ #define WFA_KEY_DATA_TRANSITION_DISABLE RSN_SELECTOR(0x50, 0x6f, 0x9a, 0x20)
+ #define WFA_KEY_DATA_DPP RSN_SELECTOR(0x50, 0x6f, 0x9a, 0x21)
+ #define WFA_KEY_DATA_RSN_OVERRIDE_LINK RSN_SELECTOR(0x50, 0x6f, 0x9a, 0x2d)
++#ifdef CONFIG_IEEE80211BE_MXL_MLO
++#define MXL_WFA_KEY_DATA_RSN_OVERRIDE_LINK RSN_SELECTOR(0x50, 0x6f, 0x9a, 0x2d)
++#endif /* CONFIG_IEEE80211BE_MXL_MLO */
+ 
+ #define WPA_OUI_TYPE RSN_SELECTOR(0x00, 0x50, 0xf2, 1)
+ 
+@@ -402,7 +405,9 @@ struct rsn_mlo_bigtk_kde {
+ #define RSN_MLO_LINK_KDE_LI_RSNE_INFO		0x10
+ #define RSN_MLO_LINK_KDE_LI_RSNXE_INFO		0x20
+ #define RSN_MLO_LINK_KDE_LINK_MAC_INDEX		1
+-
++#ifdef CONFIG_IEEE80211BE_MXL_MLO
++#define MXL_RSN_OVERRIDE_LINK_KDE_LI_LINK_ID_MASK	0x0F
++#endif /* CONFIG_IEEE80211BE_MXL_MLO */
+ struct rsn_mdie {
+ 	u8 mobility_domain[MOBILITY_DOMAIN_ID_LEN];
+ 	u8 ft_capab;
+@@ -746,6 +751,8 @@ struct wpa_eapol_ie_parse {
+ #ifdef CONFIG_IEEE80211BE_MXL_MLO
+ 	const u8 *mlo_link_kde_ie;
+ 	size_t mlo_link_kde_ie_len;
++	const u8 *rsn_override_link_kde_ie;
++	size_t rsn_override_link_kde_ie_len;
+ #endif /* CONFIG_IEEE80211BE_MXL_MLO */
+ };
+ 
+-- 
+2.43.0
+

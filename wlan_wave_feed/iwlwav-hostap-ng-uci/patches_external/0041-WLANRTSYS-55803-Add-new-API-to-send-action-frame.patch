@@ -1,4 +1,4 @@
-From 541d5a7d759beb042e4c801d4528fd3384419707 Mon Sep 17 00:00:00 2001
+From b863756f172ee41ced474a4f43cab620e7a6098c Mon Sep 17 00:00:00 2001
 From: Jurijs Soloveckis <jsoloveckis@maxlinear.com>
 Date: Fri, 2 Jun 2023 08:15:52 +0200
 Subject: [PATCH] WLANRTSYS-55803: Add new API to send action frame

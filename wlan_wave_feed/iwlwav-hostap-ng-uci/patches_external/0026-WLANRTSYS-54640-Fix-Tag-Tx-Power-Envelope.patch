@@ -1,4 +1,4 @@
-From eeda46f6e5ff67a465e0c21b8739848e96b2aefe Mon Sep 17 00:00:00 2001
+From 93c7fc862a334296ec9bdf16dbc0c48f804eb51c Mon Sep 17 00:00:00 2001
 From: Jurijs Soloveckis <jsoloveckis@maxlinear.com>
 Date: Tue, 25 Apr 2023 15:38:28 +0200
 Subject: [PATCH] WLANRTSYS-54640: Fix Tag: Tx Power Envelope

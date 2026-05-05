@@ -1,4 +1,4 @@
-From f68a9ab7e9146189327dff9c2ac749fa29461c12 Mon Sep 17 00:00:00 2001
+From 6dbc42484e53ce40b1d3ea3b2d7b1faeeae50906 Mon Sep 17 00:00:00 2001
 From: fromans <fromans@maxlinear.com>
 Date: Mon, 11 Dec 2023 14:54:40 +0200
 Subject: [PATCH] WLANRTSYS-60970: Puma8: AFC feature support
@@ -530,7 +530,7 @@ index 7db83c9ec..2fb3751cd 100644
 +	return 0;
 +}
 diff --git a/src/ap/mxl_hostapd.h b/src/ap/mxl_hostapd.h
-index 4f3eceb58..722d74c50 100644
+index 9f81b65c6..ecfa5950d 100644
 --- a/src/ap/mxl_hostapd.h
 +++ b/src/ap/mxl_hostapd.h
 @@ -76,6 +76,7 @@ struct mxl_hostapd_iface {

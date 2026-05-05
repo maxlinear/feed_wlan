@@ -1,4 +1,4 @@
-From 65d23b4302993ae41f18e395ff5899644941b0a2 Mon Sep 17 00:00:00 2001
+From 2f11e1bbade6e5255b2d60e96060fb9b5cdc64ed Mon Sep 17 00:00:00 2001
 From: Jurijs Soloveckis <jsoloveckis@maxlinear.com>
 Date: Mon, 24 Jul 2023 15:27:38 +0200
 Subject: [PATCH] WLANRTSYS-57156: Integrate LOW ACK enhancement

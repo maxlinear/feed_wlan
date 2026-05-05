@@ -1,0 +1,38 @@
+From 81ec4f778cabdaa8c31379e5a784e9072627697b Mon Sep 17 00:00:00 2001
+From: dkolhe <dkolhe@maxlinear.com>
+Date: Tue, 24 Mar 2026 03:07:32 -0700
+Subject: [PATCH] WLANRTSYS-101264 Fix dual channel context after BG Scan in
+ Vap disabled state
+
+Issue: Interface enabling fails after forced BG Scan in Vap disabled state
+
+RCA: ACS rank recalc and set chan is done upon receiving new scan results even when ACS is disabled, without any CSA being performed.
+Driver still had the older channel context, causing the validation to fail when hostap peforms set becaon with newer channel, since driver detected two different channel context on sigle radio.
+
+Fix: Don't peform rank recalc and set chan upon receiving scan results if ACS is disabled.
+
+Fixup to: WLANRTSYS-50170 MXL Smart ACS implementation
+
+Signed-off-by: dkolhe <dkolhe@maxlinear.com>
+---
+ src/ap/mxl_acs.c | 3 ++-
+ 1 file changed, 2 insertions(+), 1 deletion(-)
+
+diff --git a/src/ap/mxl_acs.c b/src/ap/mxl_acs.c
+index 5d55b33e4..bc5479a29 100644
+--- a/src/ap/mxl_acs.c
++++ b/src/ap/mxl_acs.c
+@@ -4997,8 +4997,9 @@ void mxl_event_scan_results(struct hostapd_data *hapd, union wpa_event_data *dat
+ 	if (hapd->iface->scan_cb)
+ 		hapd->iface->scan_cb(hapd->iface);
+ 
+-	if (!hapd->iface->conf->mxl_conf.acs_init_done)
++	if (hapd->iface->conf->acs && mxl_acs_is_smart(hapd->iface) && !hapd->iface->conf->mxl_conf.acs_init_done) {
+ 		mxl_acs_recalc_ranks_and_set_chan(hapd->iface, SWR_BG_SCAN);
++	}
+ 
+ 	if (hapd->iface->mxl_iface.cac_required){
+ 		wpa_printf(MSG_DEBUG, "CAC pending, need to restart CAC");
+-- 
+2.43.0
+

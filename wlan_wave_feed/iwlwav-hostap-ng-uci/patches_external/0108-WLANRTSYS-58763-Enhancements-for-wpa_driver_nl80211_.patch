@@ -1,4 +1,4 @@
-From 4f2020c938c33e194b8da6102932e4605d09b928 Mon Sep 17 00:00:00 2001
+From 4537f615e56551879f66b3287bcdb3bf8b7e9234 Mon Sep 17 00:00:00 2001
 From: fromans <fromans@maxlinear.com>
 Date: Tue, 19 Sep 2023 11:08:30 +0300
 Subject: [PATCH] WLANRTSYS-58763: Enhancements for wpa_driver_nl80211_if_add /

@@ -1,4 +1,4 @@
-From 341cf7418ab34bf652ccf8333978d5ffd5b6b75f Mon Sep 17 00:00:00 2001
+From f2741067a6c9611eddfedd99d826e1bb3096e0eb Mon Sep 17 00:00:00 2001
 From: Jack Yang <wyang@maxlinear.com>
 Date: Mon, 8 Jan 2024 16:00:21 +0800
 Subject: [PATCH] WLANRTSYS-59921:
@@ -272,7 +272,7 @@ index 6d0d650da..6ad5ab185 100644
  
  void mxl_ap_max_nss_omn_elem_timeout(void *eloop_data, void *user_data)
 diff --git a/src/ap/mxl_hostapd.h b/src/ap/mxl_hostapd.h
-index 722d74c50..82e909d23 100644
+index ecfa5950d..615e5df35 100644
 --- a/src/ap/mxl_hostapd.h
 +++ b/src/ap/mxl_hostapd.h
 @@ -118,12 +118,20 @@ int mxl_hostapd_drv_get_vendor_data(struct hostapd_data *hapd,

@@ -1,4 +1,4 @@
-From 07925094721cee0212fdf7dbe702477281d1a680 Mon Sep 17 00:00:00 2001
+From fb898565221994dc2f9bf9cadcafd8f4d8805d7e Mon Sep 17 00:00:00 2001
 From: "Ross-Ashikyan, William" <washikyan@maxlinear.com>
 Date: Tue, 8 Oct 2024 15:59:46 -0700
 Subject: [PATCH] WLANRTSYS-85289 Updated LPI JSON used in composite mode with

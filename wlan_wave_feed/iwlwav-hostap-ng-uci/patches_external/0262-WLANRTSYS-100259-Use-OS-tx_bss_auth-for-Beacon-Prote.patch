@@ -1,0 +1,104 @@
+From f5a5317fcb19d29e5a8381de9844152a84ce6242 Mon Sep 17 00:00:00 2001
+From: nchernikov <nchernikov@maxlinear.com>
+Date: Sun, 18 Jan 2026 14:18:42 +0200
+Subject: [PATCH] WLANRTSYS-100259 Use OS tx_bss_auth for Beacon Protection
+ when setting bigtk key and requesting pn
+
+Signed-off-by: nchernikov <nchernikov@maxlinear.com>
+---
+ src/ap/mxl_hostapd.c   | 52 ++++++++++++++++++++++++++++++++++++++++++
+ src/ap/mxl_hostapd.h   |  3 +++
+ src/ap/wpa_auth_glue.c |  4 ++++
+ 3 files changed, 59 insertions(+)
+
+diff --git a/src/ap/mxl_hostapd.c b/src/ap/mxl_hostapd.c
+index 6a9756ce1..67862137d 100644
+--- a/src/ap/mxl_hostapd.c
++++ b/src/ap/mxl_hostapd.c
+@@ -3538,3 +3538,55 @@ int mxl_hostapd_override_ht_vht_capab(struct hostapd_iface *iface)
+ 
+ 	return 0;
+ }
++
++struct hostapd_data *mxl_hostapd_get_setup_mbssid_bss(struct hostapd_iface *iface, size_t idx)
++{
++	struct hostapd_data *bss;
++	size_t i;
++
++	/*	To ensure correct bss init when mbssid is configured
++		Start bss in the order of bss_idx so that the transmitting BSS is always started first
++
++		After reconf the bss list may be re-arranged and TX bss is no longer bss[1], so when MBSSID
++		is enabeled this function is used to return hapd context in the order of bss_idx
++		which does not change and guaranteed that bss_idx=1 is the TX bss
++	*/
++	for (i = 0; i < iface->num_bss; i++) {
++		bss = iface->bss[i];
++		if (bss->conf->bss_idx == idx) {
++			return bss;
++		}
++	}
++	return iface->bss[idx];
++}
++
++size_t mxl_hostapd_get_mbssid_tx_bss_idx(struct hostapd_iface *iface)
++{
++	struct hostapd_data *tx_bss;
++	size_t i;
++
++	/* 	bss_idx is always the same - regardless of bss order
++		bss_idx = MULTIBSS_REFERENCE_BSS_IDX indicates that this is the TX BSS in MBSSID set
++		Find the TX BSS in the BSS list
++	*/
++	for (i = MULTIBSS_REFERENCE_BSS_IDX; i < iface->num_bss; i++) {
++		tx_bss = iface->bss[i];
++		if (tx_bss->conf->bss_idx == MULTIBSS_REFERENCE_BSS_IDX) {
++			return i;
++		}
++	}
++
++	return MULTIBSS_REFERENCE_BSS_IDX;
++}
++
++struct hostapd_data *mxl_hostapd_mbssid_get_tx_bss(struct hostapd_data *hapd)
++{
++	size_t tx_bss_idx;
++
++	if (hapd->iconf->multibss_enable) {
++		tx_bss_idx = mxl_hostapd_get_mbssid_tx_bss_idx(hapd->iface);
++		return hapd->iface->bss[tx_bss_idx];
++	}
++
++	return hapd;
++}
+diff --git a/src/ap/mxl_hostapd.h b/src/ap/mxl_hostapd.h
+index 6b6a658e5..2a9553a9e 100644
+--- a/src/ap/mxl_hostapd.h
++++ b/src/ap/mxl_hostapd.h
+@@ -268,4 +268,7 @@ bool mxl_hostapd_prune_sta(struct hostapd_data *hapd, const u8 *addr, struct sta
+ void mxl_parse_rnr(struct ieee802_11_elems *elems, struct dl_list *rnr_scan_6g_ap_info);
+ void mxl_hostapd_check_limit_reached(struct hostapd_data *hapd, const u8 *sta_addr, u16 *resp);
+ int mxl_hostapd_check_and_reorder_bss_conf(struct hostapd_iface *iface, struct hostapd_config *newconf);
++struct hostapd_data *mxl_hostapd_get_setup_mbssid_bss(struct hostapd_iface *iface, size_t idx);
++size_t mxl_hostapd_get_mbssid_tx_bss_idx(struct hostapd_iface *iface);
++struct hostapd_data *mxl_hostapd_mbssid_get_tx_bss(struct hostapd_data *hapd);
+ #endif /* MXL_HOSTAPD_H */
+diff --git a/src/ap/wpa_auth_glue.c b/src/ap/wpa_auth_glue.c
+index 3f8afcc3f..b85966e86 100644
+--- a/src/ap/wpa_auth_glue.c
++++ b/src/ap/wpa_auth_glue.c
+@@ -44,7 +44,11 @@ static void hostapd_wpa_auth_config_update(struct hostapd_data *hapd,
+ 	struct hostapd_data *tx_bss;
+ 
+ 	_conf->msg_ctx = hapd->msg_ctx;
++#ifdef CONFIG_VENDOR_MXL
++	tx_bss = mxl_hostapd_mbssid_get_tx_bss(hapd);
++#else
+ 	tx_bss = hostapd_mbssid_get_tx_bss(hapd);
++#endif /* CONFIG_VENDOR_MXL */
+ 	if (tx_bss != hapd)
+ 		_conf->tx_bss_auth = tx_bss->wpa_auth;
+ 	if (hapd->iface->drv_flags & WPA_DRIVER_FLAGS_EAPOL_TX_STATUS)
+-- 
+2.43.0
+

@@ -1,4 +1,4 @@
-From e057d38fd92452747fa51768e8fa0fa647ca320b Mon Sep 17 00:00:00 2001
+From 0e9ff9865a01d95a98061f5ffa8a26b681edf563 Mon Sep 17 00:00:00 2001
 From: Nikita Chernikov <nchernikov@maxlinear.com>
 Date: Sun, 3 Nov 2024 10:25:08 +0200
 Subject: [PATCH] WLANRTSYS-58737 Add support for setting and advertising PBAC
@@ -186,7 +186,7 @@ index 32876c19a..3f6f85533 100644
  {
  	mxl_hostapd_dfs_history_deinit(iface);
 diff --git a/src/ap/mxl_hostapd.h b/src/ap/mxl_hostapd.h
-index 747e756d8..3334b8d7a 100644
+index 60f18bb07..a1dab08e8 100644
 --- a/src/ap/mxl_hostapd.h
 +++ b/src/ap/mxl_hostapd.h
 @@ -210,6 +210,10 @@ void mxl_hostapd_update_freq_params_sec_offs(struct hostapd_freq_params *params)

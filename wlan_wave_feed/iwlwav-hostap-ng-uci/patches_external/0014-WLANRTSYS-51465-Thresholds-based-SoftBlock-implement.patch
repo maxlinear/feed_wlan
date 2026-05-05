@@ -1,4 +1,4 @@
-From a27e7dae4186bbbe5ebd502d8cd070e79a2dedcb Mon Sep 17 00:00:00 2001
+From b7a12e0111044d265e3321abccb259fc72c753ef Mon Sep 17 00:00:00 2001
 From: Jurijs Soloveckis <jsoloveckis@maxlinear.com>
 Date: Tue, 10 Jan 2023 16:22:25 +0100
 Subject: [PATCH] WLANRTSYS-51465: Thresholds based SoftBlock implementation
@@ -727,7 +727,7 @@ index 70a9e3ed3..e743055d3 100644
 +	dl_list_init(&hapd->mxl_data.multi_ap_blacklist);
 +}
 diff --git a/src/ap/mxl_hostapd.h b/src/ap/mxl_hostapd.h
-index 0cd70a539..586a2247d 100644
+index 64bc174aa..6af8d6340 100644
 --- a/src/ap/mxl_hostapd.h
 +++ b/src/ap/mxl_hostapd.h
 @@ -73,6 +73,17 @@ struct mxl_hostapd_iface {

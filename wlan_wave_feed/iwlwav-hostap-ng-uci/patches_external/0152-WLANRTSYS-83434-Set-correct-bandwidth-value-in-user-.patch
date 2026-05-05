@@ -1,4 +1,4 @@
-From 5d2a883df111d2344000ce17133ad3bbbc527a79 Mon Sep 17 00:00:00 2001
+From dbb970d7e5172c5a9bd7d6ce77c7309023f1d7a1 Mon Sep 17 00:00:00 2001
 From: mmahesh <mmahesh@maxlinear.com>
 Date: Fri, 26 Jul 2024 16:24:55 +0530
 Subject: [PATCH] WLANRTSYS-83434 Set correct bandwidth value in user config
@@ -83,7 +83,7 @@ index 3f405cf99..f1a5ac7bf 100644
 +	mxl_hostapd_update_user_conf_cw(hapd_iface);
  }
 diff --git a/src/ap/mxl_hostapd.h b/src/ap/mxl_hostapd.h
-index fe199d038..d633a2551 100644
+index c75db116d..5a1264757 100644
 --- a/src/ap/mxl_hostapd.h
 +++ b/src/ap/mxl_hostapd.h
 @@ -223,7 +223,7 @@ int mxl_hostapd_interface_update_power_regd(struct hostapd_data *hapd, int he_6g

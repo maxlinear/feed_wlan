@@ -1,4 +1,4 @@
-From 6e78f7fd4d1f00359b542dada8641f09456b138a Mon Sep 17 00:00:00 2001
+From d977a7e4dcff53a20cf8f742a4a639bf297b32b1 Mon Sep 17 00:00:00 2001
 From: Venkatasaiprudhvi Sannidhi <vsannidhi@maxlinear.com>
 Date: Mon, 23 Sep 2024 11:40:55 +0530
 Subject: [PATCH] WLANRTSYS-80273 Beacon is not transmitting in 6G band, when
@@ -75,7 +75,7 @@ index 9aae8ff18..d778b28e6 100644
 -}
  #endif /* CONFIG_VENDOR_MXL */
 diff --git a/src/ap/mxl_hostapd.h b/src/ap/mxl_hostapd.h
-index f3b1d2001..3bf833f8a 100644
+index 84b3a1df1..fb690480c 100644
 --- a/src/ap/mxl_hostapd.h
 +++ b/src/ap/mxl_hostapd.h
 @@ -238,7 +238,6 @@ void mxl_channel_list_update_timeout(void *eloop_ctx, void *timeout_ctx);

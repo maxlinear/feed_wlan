@@ -1,4 +1,4 @@
-From 6d855cf2fe464778f084450055cf728a1e204ec4 Mon Sep 17 00:00:00 2001
+From 3403d427f99ec49684e66962ca01065fc56b50bb Mon Sep 17 00:00:00 2001
 From: David Ferruz <dferruz@maxlinear.com>
 Date: Fri, 5 Jul 2024 07:18:22 +0200
 Subject: [PATCH] WLANRTSYS-82831 [Octopus][WAV700][B0][11BE][Regression]:

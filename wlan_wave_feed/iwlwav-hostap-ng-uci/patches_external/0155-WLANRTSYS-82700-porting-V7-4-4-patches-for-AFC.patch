@@ -1,4 +1,4 @@
-From d86a8304da6553455d4e07066dd63ca262f90320 Mon Sep 17 00:00:00 2001
+From 489536be1874b0e09b25dc5e3eb4c2cbe953111f Mon Sep 17 00:00:00 2001
 From: rmunjewar <rmunjewar@maxlinear.com>
 Date: Mon, 29 Jul 2024 15:11:59 +0530
 Subject: [PATCH] WLANRTSYS-82700 porting V7 [4/4] patches for AFC Introduce

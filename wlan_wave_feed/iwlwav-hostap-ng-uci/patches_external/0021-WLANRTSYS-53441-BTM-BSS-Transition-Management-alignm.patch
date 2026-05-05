@@ -1,4 +1,4 @@
-From 5b9e0886db39f968e9c7c3f94a87a7508c82276f Mon Sep 17 00:00:00 2001
+From d81d138bc28ebbc6bdf7a5620b2266791c42e294 Mon Sep 17 00:00:00 2001
 From: Jurijs Soloveckis <jsoloveckis@maxlinear.com>
 Date: Tue, 28 Feb 2023 16:29:58 +0100
 Subject: [PATCH] WLANRTSYS-53441: BTM: BSS Transition Management alignment

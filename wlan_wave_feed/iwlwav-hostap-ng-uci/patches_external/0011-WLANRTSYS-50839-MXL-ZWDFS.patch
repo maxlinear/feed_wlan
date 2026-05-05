@@ -1,4 +1,4 @@
-From 2e75ae8e34c1486c2d93a4de583bf94a72576141 Mon Sep 17 00:00:00 2001
+From 92fad6b70cee0a2004cd2235a984737cc8715dbf Mon Sep 17 00:00:00 2001
 From: mvuls <mvuls@maxlinear.com>
 Date: Thu, 9 Nov 2023 11:39:24 +0200
 Subject: [PATCH] WLANRTSYS-50839: MXL ZWDFS
@@ -544,7 +544,7 @@ index 73ff72827..dde8405b8 100644
 +	eloop_cancel_timeout(mxl_ap_max_nss_omn_elem_timeout, iface, NULL);
 +}
 diff --git a/src/ap/mxl_hostapd.h b/src/ap/mxl_hostapd.h
-index b75d7ee4a..7a2d3b30d 100644
+index ab9d8b598..4e4d8036a 100644
 --- a/src/ap/mxl_hostapd.h
 +++ b/src/ap/mxl_hostapd.h
 @@ -17,6 +17,7 @@

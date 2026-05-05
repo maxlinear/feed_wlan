@@ -1,4 +1,4 @@
-From 24f07db147b6cb34d7c3d804572cd265a9ce24bb Mon Sep 17 00:00:00 2001
+From 78cd2dd59505f8984dd4ab1b195ef6fc22bb0751 Mon Sep 17 00:00:00 2001
 From: Nikita Chernikov <nchernikov@maxlinear.com>
 Date: Thu, 21 Mar 2024 17:35:45 +0200
 Subject: [PATCH] WLANRTSYS-62534 Add support to configure PSD subfield in NR

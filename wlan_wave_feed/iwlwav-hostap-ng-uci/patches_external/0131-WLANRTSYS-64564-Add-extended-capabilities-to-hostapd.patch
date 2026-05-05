@@ -1,4 +1,4 @@
-From 57414ed471effb06ad08df4958d58fbb301b321b Mon Sep 17 00:00:00 2001
+From 90046048e37bdd5dda7602e81dc0b64dd2175976 Mon Sep 17 00:00:00 2001
 From: Jurijs Soloveckis <jsoloveckis@maxlinear.com>
 Date: Thu, 21 Mar 2024 16:17:20 +0200
 Subject: [PATCH] WLANRTSYS-64564 Add extended capabilities to hostapd_sta_add
@@ -65,7 +65,7 @@ index fb2aeeb84..46b649278 100644
 +	}
 +}
 diff --git a/src/ap/mxl_hostapd.h b/src/ap/mxl_hostapd.h
-index b4a98b226..48666a80c 100644
+index 79aba6e39..777b88e5a 100644
 --- a/src/ap/mxl_hostapd.h
 +++ b/src/ap/mxl_hostapd.h
 @@ -122,6 +122,8 @@ struct mxl_hostapd_data {

@@ -1,4 +1,4 @@
-From 7ff20ef69994288b2417a9f6f21d67e435fe4e48 Mon Sep 17 00:00:00 2001
+From d03cf3c83f308a5d5732cdfc6db9555f22972f67 Mon Sep 17 00:00:00 2001
 From: Jurijs Soloveckis <jsoloveckis@maxlinear.com>
 Date: Fri, 26 May 2023 09:19:57 +0200
 Subject: [PATCH] WLANRTSYS-55591: Add support for multi-psk

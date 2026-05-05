@@ -1,4 +1,4 @@
-From 62982dcf9a0f44e6543ef1b7b7ef648cb35b75b6 Mon Sep 17 00:00:00 2001
+From 2a15d789d49ce50c55b13ed281c2f5d6c013163f Mon Sep 17 00:00:00 2001
 From: npalanivel <npalanivel@maxlinear.com>
 Date: Thu, 18 Jul 2024 12:54:59 +0530
 Subject: [PATCH] WLANRTSYS-83174 : Extend check for Enterprise security modes

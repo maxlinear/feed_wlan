@@ -1,4 +1,4 @@
-From 6576b35f0a0c09f2e444f441931c6b2e088d5548 Mon Sep 17 00:00:00 2001
+From 7d92e19e3dab39cf45544d3c62ba88e009fb35c3 Mon Sep 17 00:00:00 2001
 From: Venkatasaiprudhvi Sannidhi <vsannidhi@maxlinear.com>
 Date: Mon, 9 Sep 2024 19:44:08 +0530
 Subject: [PATCH] WLANRTSYS-61674 Duplication of RNR IE info when MLO is

@@ -1,4 +1,4 @@
-From 0e3c2d355644ce858c0f470708a7fca0e3355324 Mon Sep 17 00:00:00 2001
+From b10414c5154fe0826afd7e43701bc7e06e1d2fa9 Mon Sep 17 00:00:00 2001
 From: "vsannidhi@maxlinear.com" <vsannidhi@lvdocker7.lvsw.maxlinear.com>
 Date: Fri, 4 Apr 2025 04:52:35 -0700
 Subject: [PATCH] WLANRTSYS-87374 [WAV700][SingleBand]Unable to connect the

@@ -1,0 +1,107 @@
+From 05c20bb8495df537c3ebb3f3dac12ce701ecbe74 Mon Sep 17 00:00:00 2001
+From: nchernikov <nchernikov@maxlinear.com>
+Date: Tue, 23 Dec 2025 11:17:58 +0200
+Subject: [PATCH] WLANRTSYS-95778 Fix wrong handling on EVENT_INTERFACE_ENABLED
+ from drv
+
+Fixup to: WLANRTSYS-97395 : Upstep hostap-ng to the latest opensource commit
+
+Signed-off-by: nchernikov <nchernikov@maxlinear.com>
+---
+ src/ap/drv_callbacks.c     | 23 ++++-------------------
+ src/ap/mxl_drv_callbacks.c | 23 +++++++++++++++++++++++
+ src/ap/mxl_drv_callbacks.h |  2 +-
+ 3 files changed, 28 insertions(+), 20 deletions(-)
+
+diff --git a/src/ap/drv_callbacks.c b/src/ap/drv_callbacks.c
+index 388bf041a..85b521145 100644
+--- a/src/ap/drv_callbacks.c
++++ b/src/ap/drv_callbacks.c
+@@ -2676,12 +2676,16 @@ static void hostapd_iface_enable(struct hostapd_data *hapd)
+ 		 * Try to re-enable interface if the driver stopped it
+ 		 * when the interface got disabled.
+ 		 */
++#ifdef CONFIG_VENDOR_MXL
++		mxl_hostapd_handle_iface_enable(hapd);
++#else
+ 		if (hapd->wpa_auth)
+ 			wpa_auth_reconfig_group_keys(hapd->wpa_auth);
+ 		else
+ 			hostapd_reconfig_encryption(hapd);
+ 		hapd->reenable_beacon = 1;
+ 		ieee802_11_set_beacon(hapd);
++#endif /* CONFIG_VENDOR_MXL */
+ #ifdef NEED_AP_MLME
+ 	} else if (hapd->disabled && hapd->iface->cac_started) {
+ 		wpa_printf(MSG_DEBUG, "DFS: restarting pending CAC");
+@@ -3173,25 +3177,6 @@ void wpa_supplicant_event(void *ctx, enum wpa_event_type event,
+ 			break;
+ 		}
+ #endif /* CONFIG_IEEE80211BE */
+-#ifdef CONFIG_VENDOR_MXL
+-			if (MXL_DRV_VENDOR_SET(LTQ_NL80211_VENDOR_SUBCMD_SET_MESH_MODE, &hapd->conf->multi_ap, sizeof(hapd->conf->multi_ap))) {
+-				wpa_printf(MSG_ERROR, "Failed to set multi_ap");
+-			}
+-			if (ieee802_11_update_beacon(hapd) < 0) {
+-				hapd->iface->set_freq_done = 0;
+-				hapd->beacon_set_done = 0;
+-				hapd->reenable_beacon = 1;
+-				hostapd_setup_interface_complete(hapd->iface, 0);
+-			} else {
+-				/* Required for FW add VAP bringup sequence */
+-				hostapd_tx_queue_params(hapd);
+-			}
+-
+-			if (hapd->wpa_auth)
+-				wpa_auth_reconfig_group_keys(hapd->wpa_auth);
+-			else
+-				hostapd_reconfig_encryption(hapd);
+-#endif /* CONFIG_VENDOR_MXL */
+ 		hostapd_iface_enable(hapd);
+ 		break;
+ 	case EVENT_INTERFACE_DISABLED:
+diff --git a/src/ap/mxl_drv_callbacks.c b/src/ap/mxl_drv_callbacks.c
+index a06ef19ff..d0648563a 100644
+--- a/src/ap/mxl_drv_callbacks.c
++++ b/src/ap/mxl_drv_callbacks.c
+@@ -222,3 +222,26 @@ void mxl_hostapd_event_eapol_rx(struct hostapd_data *hapd, const u8 *src,
+ 
+ 	ieee802_1x_receive(hapd, src, data, data_len, encrypted);
+ }
++
++void mxl_hostapd_handle_iface_enable(struct hostapd_data *hapd)
++{
++	if (MXL_DRV_VENDOR_SET(LTQ_NL80211_VENDOR_SUBCMD_SET_MESH_MODE,
++		   &hapd->conf->multi_ap, sizeof(hapd->conf->multi_ap))) {
++		wpa_printf(MSG_ERROR, "Failed to set multi_ap");
++	}
++	hapd->reenable_beacon = 1;
++	if (ieee802_11_update_beacon(hapd) < 0) {
++		hapd->iface->set_freq_done = 0;
++		hapd->beacon_set_done = 0;
++		hapd->reenable_beacon = 1;
++		hostapd_setup_interface_complete(hapd->iface, 0);
++	} else {
++		/* Required for FW add VAP bringup sequence */
++		hostapd_tx_queue_params(hapd);
++	}
++
++	if (hapd->wpa_auth)
++		wpa_auth_reconfig_group_keys(hapd->wpa_auth);
++	else
++		hostapd_reconfig_encryption(hapd);
++}
+diff --git a/src/ap/mxl_drv_callbacks.h b/src/ap/mxl_drv_callbacks.h
+index 4778c616d..d0b8a6175 100644
+--- a/src/ap/mxl_drv_callbacks.h
++++ b/src/ap/mxl_drv_callbacks.h
+@@ -26,5 +26,5 @@ void mxl_hostapd_event_eapol_rx(struct hostapd_data *hapd, const u8 *src,
+ 				enum frame_encryption encrypted,
+ 				int link_id,
+ 				u16 vlan_id);
+-
++void mxl_hostapd_handle_iface_enable(struct hostapd_data *hapd);
+ #endif /* MXL_DRV_CALLBACKS_H */
+-- 
+2.43.0
+

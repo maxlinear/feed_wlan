@@ -1,4 +1,4 @@
-From eb88a258f15f7e6906b68453a8378e1e35557b36 Mon Sep 17 00:00:00 2001
+From 1b3fceb354f847724deca5689391534fd4275cf1 Mon Sep 17 00:00:00 2001
 From: Jurijs Soloveckis <jsoloveckis@maxlinear.com>
 Date: Thu, 5 Oct 2023 14:36:55 +0300
 Subject: [PATCH] WLANRTSYS-59251: Implement dynamic EDCA

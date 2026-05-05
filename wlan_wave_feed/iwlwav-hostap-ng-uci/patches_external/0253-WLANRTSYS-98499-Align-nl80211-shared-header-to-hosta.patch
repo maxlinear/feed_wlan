@@ -1,0 +1,48 @@
+From 43a4b22a9eb296e98605bd55529c24b7d57930de Mon Sep 17 00:00:00 2001
+From: Venkatasaiprudhvi Raj Sannidhi <vsannidhi@maxlinear.com>
+Date: Sun, 21 Dec 2025 01:32:36 -0800
+Subject: [PATCH] WLANRTSYS-98499 Align nl80211 shared header to hostapd
+ upstepped version.
+
+---
+ src/drivers/nl80211_copy.h | 10 +++-------
+ 1 file changed, 3 insertions(+), 7 deletions(-)
+
+diff --git a/src/drivers/nl80211_copy.h b/src/drivers/nl80211_copy.h
+index 4c642255d..bd430f9cb 100644
+--- a/src/drivers/nl80211_copy.h
++++ b/src/drivers/nl80211_copy.h
+@@ -3448,9 +3448,6 @@ enum nl80211_attrs {
+ 
+ 	NL80211_ATTR_WIPHY_RADIOS,
+ 	NL80211_ATTR_WIPHY_INTERFACE_COMBINATIONS,
+-#ifdef CONFIG_VENDOR_MXL
+-	MXL_NL80211_ATTRS
+-#endif /* CONFIG_VENDOR_MXL */
+ 
+ 	NL80211_ATTR_VIF_RADIO_MASK,
+ 
+@@ -3458,6 +3455,9 @@ enum nl80211_attrs {
+ 
+ 	NL80211_ATTR_MLO_RECONF_REM_LINKS,
+ 	NL80211_ATTR_EPCS,
++#ifdef CONFIG_VENDOR_MXL
++	MXL_NL80211_ATTRS
++#endif /* CONFIG_VENDOR_MXL */
+ 
+ 	/* add attributes here, update the policy in nl80211.c */
+ 
+@@ -4633,10 +4633,6 @@ enum nl80211_reg_rule_flags {
+ 	NL80211_RRF_NO_6GHZ_VLP_CLIENT	= 1<<22,
+ 	NL80211_RRF_NO_6GHZ_AFC_CLIENT	= 1<<23,
+ 	NL80211_RRF_ALLOW_6GHZ_VLP_AP	= 1<<24,
+-#ifdef CONFIG_VENDOR_MXL
+-	NL80211_RRF_NO_UHB_VLP_CLIENT	= 1<<22,
+-	NL80211_RRF_NO_UHB_AFC_CLIENT	= 1<<23,
+-#endif /* CONFIG_VENDOR_MXL */
+ };
+ 
+ #define NL80211_RRF_PASSIVE_SCAN	NL80211_RRF_NO_IR
+-- 
+2.43.0
+

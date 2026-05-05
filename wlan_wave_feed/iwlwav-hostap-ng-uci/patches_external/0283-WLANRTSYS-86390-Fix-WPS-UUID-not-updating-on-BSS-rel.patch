@@ -1,0 +1,50 @@
+From 99012f0c9192e067a5780f5ca998fc9756257b9a Mon Sep 17 00:00:00 2001
+From: "kmsreddy@maxlinear.com" <kmsreddy@lvdocker8.lvsw.maxlinear.com>
+Date: Sat, 14 Mar 2026 08:13:23 -0700
+Subject: [PATCH] WLANRTSYS-86390 Fix WPS UUID not updating on BSS reload
+
+**Issue:**
+WPS UUID configured via pwhm/ubus was not reflected in probe response
+frames after BSS reload. Probe responses continued to advertise the old
+MAC-based UUID (4e4e634e-5750-fe4e-fe4f-524e4e4e634e) instead of the
+configured UUID (8a57d731-a5fd-4028-88a4-02855145d572).
+
+**RCA:**
+When pwhm updates WPS configuration and triggers RELOAD_BSS command,
+hostapd reloads the configuration file and calls hostapd_reload_bss()
+which invokes hostapd_update_wps() to refresh WPS parameters. While
+hostapd_init_wps() (used during initial startup) correctly copies UUID
+from conf->uuid to wps->uuid, hostapd_update_wps() (used during reload)
+was missing this UUID copy logic. This caused the WPS context to retain
+the old UUID value even though conf->uuid was updated from the reloaded
+configuration file.
+
+**FIX:**
+Added UUID copy logic in hostapd_update_wps() to synchronize UUID from
+configuration to WPS context during BSS reload:
+- src/ap/wps_hostapd.c: Added UUID update in hostapd_update_wps()
+      os_memcpy(wps->uuid, conf->uuid, UUID_LEN);
+---
+ src/ap/wps_hostapd.c | 6 ++++++
+ 1 file changed, 6 insertions(+)
+
+diff --git a/src/ap/wps_hostapd.c b/src/ap/wps_hostapd.c
+index 8ca265d15..190037666 100644
+--- a/src/ap/wps_hostapd.c
++++ b/src/ap/wps_hostapd.c
+@@ -1572,6 +1572,12 @@ void hostapd_update_wps(struct hostapd_data *hapd)
+ 		wps->psk_set = 1;
+ 	}
+ 
++#ifdef CONFIG_VENDOR_MXL
++	/* Update UUID if configured */
++	if (!is_nil_uuid(conf->uuid))
++		os_memcpy(wps->uuid, conf->uuid, UUID_LEN);
++#endif /* CONFIG_VENDOR_MXL */
++
+ 	hostapd_wps_update_multi_ap(hapd, wps->registrar);
+ 
+ 	hostapd_wps_set_vendor_ext(hapd, wps);
+-- 
+2.43.0
+

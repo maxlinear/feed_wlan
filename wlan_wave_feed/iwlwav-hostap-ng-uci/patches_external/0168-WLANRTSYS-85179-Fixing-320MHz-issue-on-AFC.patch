@@ -1,4 +1,4 @@
-From 038ab2e293155b94153032e91de09bd0fe8ec2ee Mon Sep 17 00:00:00 2001
+From 71b0c12eef67ee0a4714a8d3d0a42ef4f051662e Mon Sep 17 00:00:00 2001
 From: Ainy Kumari <quic_ainykuma@quicinc.com>
 Date: Thu, 22 Feb 2024 09:32:04 +0530
 Subject: [PATCH] WLANRTSYS-85179 Fixing 320MHz issue on AFC

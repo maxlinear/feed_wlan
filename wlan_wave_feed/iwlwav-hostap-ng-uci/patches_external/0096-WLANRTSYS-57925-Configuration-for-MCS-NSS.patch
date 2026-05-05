@@ -1,4 +1,4 @@
-From 511068741d3363df602b4634f5e3bfe32affcaa2 Mon Sep 17 00:00:00 2001
+From 581e012e0c20599a097c20df3a4af53eb4b1e1c2 Mon Sep 17 00:00:00 2001
 From: Jurijs Soloveckis <jsoloveckis@maxlinear.com>
 Date: Mon, 28 Aug 2023 13:36:34 +0200
 Subject: [PATCH] WLANRTSYS-57925: Configuration for MCS NSS

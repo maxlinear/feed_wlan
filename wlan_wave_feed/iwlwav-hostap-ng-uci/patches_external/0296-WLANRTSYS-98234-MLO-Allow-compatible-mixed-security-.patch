@@ -1,0 +1,58 @@
+From 3f9d7fb9da2ea383f95ef3b9f7e7acf1ef486b89 Mon Sep 17 00:00:00 2001
+From: Sagar Reddy <snandanuri@maxlinear.com>
+Date: Tue, 31 Mar 2026 07:08:13 -0700
+Subject: [PATCH] WLANRTSYS-98234 MLO: Allow compatible mixed-security MLD link
+ pairs
+
+**Issue:**
+MLD creation with compatible but different security profiles (e.g.,
+WPA3-Personal + WPA3-Personal-Transition) fails and exits hostapd.
+
+**RCA:**
+`mxl_hostapd_verify_mld_config()` performs strict equality checks on
+`ieee80211w` and `sae_pwe` across affiliated links. Security modes
+like WPA3-Personal (MFP Required, ieee80211w=2) and WPA3-Personal-
+Transition (MFP Optional, ieee80211w=1) are fully compatible for MLO
+but differ on these parameters, causing a spurious validation failure.
+
+Similarly, `sae_pwe=1` (H2E only, used on 6 GHz WPA3-P links) and
+`sae_pwe=2` (H2E + hunt-and-peck) are both H2E-capable and compatible
+for 802.11be MLO, but the strict equality check rejects the combination.
+
+**Fix:**
+Relax the `ieee80211w` & `sae_pwe` check:
+- reject only if any link has **MFP Disabled** (ieee80211w=0).
+- reject only if any link uses **only hunk-and-peck** (saw_pwe=0).
+
+Fixup to: WLANRTSYS-96596 MLO: Triband MLD Support
+
+Signed-off-by: Sagar Reddy <snandanuri@maxlinear.com>
+---
+ src/ap/mxl_mld.c | 7 +++++--
+ 1 file changed, 5 insertions(+), 2 deletions(-)
+
+diff --git a/src/ap/mxl_mld.c b/src/ap/mxl_mld.c
+index cbfba7462..c9c37cb17 100644
+--- a/src/ap/mxl_mld.c
++++ b/src/ap/mxl_mld.c
+@@ -357,12 +357,15 @@ static bool mxl_hostapd_verify_mld_config(struct p_ap_mld *mld)
+ 		}
+ 
+ 		if (!is_rsno_enabled) {
+-			if (sibling_hapd->conf->ieee80211w != first_hapd->conf->ieee80211w) {
++			if (first_hapd->conf->ieee80211w == NO_MGMT_FRAME_PROTECTION ||
++			    sibling_hapd->conf->ieee80211w == NO_MGMT_FRAME_PROTECTION) {
+ 				fail_reason = "ieee80211w";
+ 				goto fail;
+ 			}
+ 
+-			if (is_sae_first_link && is_sae_sibling_link && (sibling_hapd->conf->sae_pwe != first_hapd->conf->sae_pwe)) {
++			if (is_sae_first_link && is_sae_sibling_link &&
++			    (first_hapd->conf->sae_pwe == SAE_PWE_HUNT_AND_PECK ||
++			     sibling_hapd->conf->sae_pwe == SAE_PWE_HUNT_AND_PECK)) {
+ 				fail_reason = "sae_pwe";
+ 				goto fail;
+ 			}
+-- 
+2.43.0
+

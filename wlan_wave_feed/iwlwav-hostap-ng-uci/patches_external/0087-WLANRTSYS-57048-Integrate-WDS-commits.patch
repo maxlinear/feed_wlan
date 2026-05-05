@@ -1,4 +1,4 @@
-From a084ba39706ed05af1984dce1585be0c6b057183 Mon Sep 17 00:00:00 2001
+From f1381b3f656bec475354aec9d39a12459319cfeb Mon Sep 17 00:00:00 2001
 From: Jurijs Soloveckis <jsoloveckis@maxlinear.com>
 Date: Thu, 20 Jul 2023 13:54:30 +0200
 Subject: [PATCH] WLANRTSYS-57048: Integrate WDS commits

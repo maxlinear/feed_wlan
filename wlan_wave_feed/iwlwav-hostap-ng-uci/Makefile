@@ -36,7 +36,7 @@ BUILD_TYPE:=""
 endif
 
 PKG_BUILD_DIR:=$(BUILD_DIR)/iwlwav-hostap-ng-uci-$(BUILD_VARIANT)/iwlwav-hostap-ng-uci-$(PKG_VERSION)
-PKG_BUILD_DEPENDS:=openssl libnl safec3
+PKG_BUILD_DEPENDS:=openssl libnl safec3 iwlwav-hostap-ng-uci/host
 #PKG_BUILD_DEPENDS += iwlwav-driver-uci
 
 PKG_LICENSE:=BSD
@@ -125,6 +125,28 @@ IFX_CFLAGS += -DCONFIG_WAVE_DEBUG #-DCONFIG_NO_HOSTAPD_LOGGER
 CONFIG_SUFFIX =-debug
 endif
 
+include $(INCLUDE_DIR)/host-build.mk
+
+# Depend on host-side elfutils
+HOST_BUILD_DEPENDS:=elfutils
+HOST_LDFLAGS += -lelf -ldw -lz -lpthread
+HOST_MAKE_PATH := hostapd
+
+define Host/Compile
+	$(MAKE) -C $(HOST_BUILD_DIR)/hostapd \
+	HOSTCC="$(HOSTCC)" \
+	HOST_CFLAGS="$(HOST_CFLAGS)" \
+	HOST_LDFLAGS="$(HOST_LDFLAGS)" \
+	CONFIG_VENDOR_MXL=y \
+	mxl_hostapd_metadata
+endef
+
+define Host/Install
+	$(INSTALL_DIR) $(STAGING_DIR_HOSTPKG)/bin
+	$(INSTALL_BIN) $(HOST_BUILD_DIR)/hostapd/mxl_hostapd_metadata \
+		$(STAGING_DIR_HOSTPKG)/bin/
+endef
+
 #TODO: Add check when hostap-ng's headers will be aligned with the rest
 #RELATIVE_NLV_PKG_HEADER_PATH:=src/common/vendor_cmds_copy.h
 #RELATIVE_NL_PKG_HEADER_PATH:=src/drivers/nl80211_copy.h
@@ -135,6 +157,7 @@ define Build/Compile
 	$(CP) ./files/hostapd/defconfig-$(BUILD_SDK)$(BUILD_TYPE)$(BUILD_VARIANT) $(PKG_BUILD_DIR)/hostapd/.config
 	$(MAKE) $(TARGET_CONFIGURE_OPTS) -C $(PKG_BUILD_DIR)/hostapd \
 		EXTRA_CFLAGS="$(IFX_CFLAGS)" LDFLAGS="$(IFX_LDFLAGS)"
+	$(STAGING_DIR_HOSTPKG)/bin/mxl_hostapd_metadata $(PKG_BUILD_DIR)/hostapd/hostapd $(PKG_BUILD_DIR)/hostapd/hostapd_metadata.txt
 	$(if $(or $(CONFIG_WIRELESS_STA),$(CONFIG_WIRELESS_STA-debug)), \
 		$(MAKE) -C $(PKG_BUILD_DIR)/src clean; \
 		$(CP) ./files/wpa_supplicant/defconfig-$(BUILD_VARIANT) $(PKG_BUILD_DIR)/wpa_supplicant/.config; \
@@ -174,7 +197,11 @@ define Package/iwlwav-hostap-ng-uci/install
 	echo -e "iwlwav_hostap_hash=\"$(PKG_REV)\"\niwlwav_hostap_tag=\"$(PKG_REV)\"" > $(1)/etc/iwlwav_hostap.ver
 endef
 
-Package/iwlwav-hostap-ng-uci-debug/install = $(Package/iwlwav-hostap-ng-uci/install)
+define Package/iwlwav-hostap-ng-uci-debug/install
+	$(call Package/iwlwav-hostap-ng-uci/install,$(1))
+	$(INSTALL_DATA) $(PKG_BUILD_DIR)/hostapd/hostapd_metadata.txt $(1)/etc/hostapd_metadata.txt
+endef
 
+$(eval $(call HostBuild))
 $(eval $(call BuildPackage,iwlwav-hostap-ng-uci))
 $(eval $(call BuildPackage,iwlwav-hostap-ng-uci-debug))

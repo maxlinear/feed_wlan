@@ -1,4 +1,4 @@
-From d86dc1354eb70a7bcea4f6f88f7fe400d6a32e4c Mon Sep 17 00:00:00 2001
+From e86f996b8d53af429ccbc4cb36edaf50ba69442e Mon Sep 17 00:00:00 2001
 From: sjegadeesan <sjegadeesan@maxlinear.com>
 Date: Thu, 28 Mar 2024 14:00:46 +0530
 Subject: [PATCH] WLANRTSYS-64810 ZWDFS changes for wave700 in
@@ -896,7 +896,7 @@ index c87c580c8..84b00f5f4 100644
 +	hostapd_set_oper_chwidth(iface->conf, bw);
 +}
 diff --git a/src/ap/mxl_hostapd.h b/src/ap/mxl_hostapd.h
-index 2b86a9407..b5e58e410 100644
+index 684dab559..57906e1af 100644
 --- a/src/ap/mxl_hostapd.h
 +++ b/src/ap/mxl_hostapd.h
 @@ -80,12 +80,18 @@ struct mxl_hostapd_iface {

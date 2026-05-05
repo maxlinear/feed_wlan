@@ -1,0 +1,385 @@
+From ee02818c89c756dde22d80bcc9edfaf87c60d283 Mon Sep 17 00:00:00 2001
+From: Nikita Chernikov <nchernikov@maxlinear.com>
+Date: Mon, 6 Apr 2026 15:54:34 +0300
+Subject: [PATCH] WLANRTSYS-101355 MLO WDS Fixes
+
+- Add more debug in ML WDS flow
+- Cancel assoc timeout and ap handle timer and start them only when all ML peers are added
+- Cleanup WDS assoc pending list during MLO init and destroy
+- Set wds_force_6g_assoc to false by default
+
+Fixup to: WLANRTSYS-96596 MLO: Triband MLD Support
+
+Signed-off-by: Nikita Chernikov <nchernikov@maxlinear.com>
+---
+ hostapd/mxl_config.c  |  2 +-
+ src/ap/mxl_hostapd.c  |  5 ++-
+ src/ap/mxl_mld.c      | 16 +++++++--
+ src/ap/mxl_sta_info.h | 10 +++---
+ src/ap/mxl_wds.c      | 77 ++++++++++++++++++++++++++++++++++++++++---
+ src/ap/mxl_wds.h      |  5 +--
+ src/ap/sta_info.c     |  8 +++++
+ src/ap/sta_info.h     |  2 ++
+ 8 files changed, 108 insertions(+), 17 deletions(-)
+
+diff --git a/hostapd/mxl_config.c b/hostapd/mxl_config.c
+index 0b9c63ef8..f7955c4b8 100644
+--- a/hostapd/mxl_config.c
++++ b/hostapd/mxl_config.c
+@@ -2184,6 +2184,7 @@ void mxl_hostapd_config_defaults_bss(struct hostapd_bss_config *bss)
+ 	bss->mxl_bss_conf.mlo_enable = false;
+ 	bss->mxl_bss_conf.wds_single_ml_assoc = false;
+ 	bss->mxl_bss_conf.wds_primary_link = false;
++	bss->mxl_bss_conf.mld_wds_force_6g_assoc = false;
+ 	bss->mxl_bss_conf.switch_initial_active_link = false;
+ 	bss->mxl_bss_conf.ml_ie_add = false;
+ 	bss->mld_id = INVALID_MLD_ID;
+@@ -2192,7 +2193,6 @@ void mxl_hostapd_config_defaults_bss(struct hostapd_bss_config *bss)
+ 	os_memset(bss->mxl_bss_conf.ap_mld_mac, '\0', ETH_ALEN);
+ 	bss->mxl_bss_conf.eml_transition_timeout = EML_CAPAB_TRANSITION_TIMEOUT_DEFAULT;
+ 	bss->mxl_bss_conf.links_per_ap_mld = LINKS_PER_AP_MLD_DEFAULT;
+-	bss->mxl_bss_conf.mld_wds_force_6g_assoc = true;
+ #endif /* CONFIG_IEEE80211BE_MXL_MLO */
+ 	mxl_bss_conf->rnr_auto_update = 1;
+ 	mxl_bss_conf->disable_pbac = false;
+diff --git a/src/ap/mxl_hostapd.c b/src/ap/mxl_hostapd.c
+index e243be84f..af2da5148 100644
+--- a/src/ap/mxl_hostapd.c
++++ b/src/ap/mxl_hostapd.c
+@@ -2864,6 +2864,9 @@ void mxl_hostapd_remove_mld(struct p_ap_mld *mld)
+ 		hostapd_free_stas(aff_hapd);
+ 	}
+ 
++	if (mld->mld_added)
++		mxl_ml_wds_cleanup_pending_assoc(mld);
++
+ 	if (mxl_hostapd_send_mld_remove(mld))
+ 		wpa_printf(MSG_ERROR, "MXL_MLO: %s: MLD removal failure MLD MAC "MACSTR, __func__, MAC2STR(mld->ap_mld_mac));
+ }
+@@ -2879,7 +2882,7 @@ int mxl_hostapd_deinit_gmld(struct hostapd_data *hapd)
+ 		return -1;
+ 	}
+ 
+-	mxl_wds_deinit_pending_assoc(mld);
++	mxl_ml_wds_deinit(mld);
+ 	os_memset(mld, 0, sizeof(struct p_ap_mld));
+ 	wpa_printf(MSG_DEBUG, "MXL_MLO: MLD id %d deinitialized", mld_id);
+ 	hapd->mxl_data.removed_by_sibling = false;
+diff --git a/src/ap/mxl_mld.c b/src/ap/mxl_mld.c
+index 481401753..bc93403c4 100644
+--- a/src/ap/mxl_mld.c
++++ b/src/ap/mxl_mld.c
+@@ -105,7 +105,7 @@ static void mxl_update_mld_info(struct hostapd_data *hapd, int mld_id, bool set_
+ 	mld->affiliated_links[mld->num_links++] = hapd;
+ 	if (set_ap_mld_mac) {
+ 		memcpy_s(mld->ap_mld_mac, ETH_ALEN, hapd->conf->mxl_bss_conf.ap_mld_mac, ETH_ALEN);
+-		mxl_wds_init_pending_assoc(mld);
++		mxl_ml_wds_init(mld);
+ 	}
+ 
+ 	hapd->conf->mld_id = mld_id;
+@@ -589,6 +589,8 @@ static int mxl_mlo_wds_setup(struct p_ap_mld *mld)
+ {
+ 	struct hostapd_data *aff_hapd = NULL;
+ 
++	mxl_ml_wds_cleanup_pending_assoc(mld);
++
+ 	mxl_mld_for_each_affiliated_link(aff_hapd, mld) {
+ 		if (mxl_wds_setup(aff_hapd)){
+ 			wpa_printf(MSG_ERROR, "MXL_MLO: WDS setup failed for %s of MLD MAC "MACSTR, aff_hapd->conf->iface, MAC2STR(mld->ap_mld_mac));
+@@ -2217,7 +2219,9 @@ static u16 mxl_mld_parse_wds_ml_rnr(struct hostapd_data *hapd, struct mxl_ml_wds
+ 		const struct ieee80211_neighbor_ap_info *ap_info;
+ 		const u8 *pos = elem->data;
+ 		size_t len = elem->datalen;
+-			
++
++		wpa_hexdump(MSG_DEBUG, "MXL_MLO: rnr_wds", pos, len);
++
+ 		while (sizeof(*ap_info) <= len) {
+ 			size_t ap_info_len = sizeof(*ap_info);
+ 			u8 count;
+@@ -2266,6 +2270,8 @@ static u16 mxl_mld_handle_wds_pending_assoc(struct hostapd_data *hapd, struct st
+ 	wds_entry = mxl_ml_get_pending_wds_entry(hapd, sta->mxl_sta_info.non_ap_mld_mac);
+ 	if (wds_entry) {
+ 		/* Pending wds assoc entry exists - do nothing */
++		wpa_printf(MSG_DEBUG, "MXL_MLO: Pending WDS entry already exists for non-AP MLD " MACSTR,
++			   MAC2STR(sta->mxl_sta_info.non_ap_mld_mac));
+ 		return WLAN_STATUS_SUCCESS;
+ 	}
+ 
+@@ -2275,6 +2281,8 @@ static u16 mxl_mld_handle_wds_pending_assoc(struct hostapd_data *hapd, struct st
+ 		wpa_printf(MSG_ERROR, "MXL_MLO: failed to allocate new wds entry");
+ 		return WLAN_STATUS_UNSPECIFIED_FAILURE;
+ 	}
++	wpa_printf(MSG_DEBUG, "MXL_MLO: Created new pending WDS entry for non-AP MLD " MACSTR,
++		   MAC2STR(sta->mxl_sta_info.non_ap_mld_mac));
+ 
+ 	memcpy_s(new_wds->mld_addr, ETH_ALEN, sta->mxl_sta_info.non_ap_mld_mac, ETH_ALEN);
+ 	dl_list_add_tail(&mld->wds.wds_pending_assoc, &new_wds->list);
+@@ -2341,7 +2349,7 @@ u16 mxl_mld_parse_ml_ie_wds(struct hostapd_data *hapd, struct sta_info *sta,
+ 		goto out;
+ 	}
+ 
+-	wpa_hexdump(MSG_DEBUG, "multilink_ie_wds_validate", ml_ies, ml_ies_len);
++	wpa_hexdump(MSG_DEBUG, "MXL_MLO: multilink_ie_wds", ml_ies, ml_ies_len);
+ 	sta->mxl_sta_info.sta_ml_capab.ml_control_field = *(u16 *)ml_ies;
+ 	common_info_ie = (ml_ies + MULTILINK_CTRL_LEN) + 1;
+ 	memcpy_s(sta->mxl_sta_info.non_ap_mld_mac, ETH_ALEN, common_info_ie, ETH_ALEN);
+@@ -3121,6 +3129,8 @@ void mxl_ml_iface_disabled(struct hostapd_data *hapd)
+ 		wpa_printf(MSG_DEBUG, "MXL_MLO: %s MLD removed by driver - reset mld added status",
+ 			   hapd->conf->iface);
+ 	}
++
++	mxl_ml_wds_cleanup_pending_assoc(mld);
+ }
+ 
+ bool mxl_ml_is_last_link_in_mld(struct hostapd_data *hapd)
+diff --git a/src/ap/mxl_sta_info.h b/src/ap/mxl_sta_info.h
+index b0409bb39..98439eef3 100644
+--- a/src/ap/mxl_sta_info.h
++++ b/src/ap/mxl_sta_info.h
+@@ -62,11 +62,11 @@ struct mxl_sta_info {
+ 
+ #ifdef CONFIG_IEEE80211BE_MXL_MLO
+ 
+-#define WLAN_STA_MULTILINK BIT(1)
+-#define WLAN_STA_SINGLE_LINK_ML_ASSOC BIT(2)
+-#define WLAN_STA_MLD_STA BIT(3) /* To determine MLD STA and also to check the STOP Traffic */
+-#define WLAN_STA_MLD_WDS_STR_STA BIT(4)
+-#define WLAN_STA_MLD_WDS_MLSR_STA BIT(5)
++#define WLAN_STA_MULTILINK				BIT(1)
++#define WLAN_STA_SINGLE_LINK_ML_ASSOC	BIT(2)
++#define WLAN_STA_MLD_STA				BIT(3) /* To determine MLD STA and also to check the STOP Traffic */
++#define WLAN_STA_MLD_WDS_STR_STA		BIT(4)
++#define WLAN_STA_MLD_WDS_MLSR_STA		BIT(5)
+ 
+ void mxl_init_sta_info(struct sta_info *sta);
+ void mxl_ml_ap_handle_timer(void *eloop_ctx, void *timeout_ctx);
+diff --git a/src/ap/mxl_wds.c b/src/ap/mxl_wds.c
+index 2b623139e..2edb7881d 100644
+--- a/src/ap/mxl_wds.c
++++ b/src/ap/mxl_wds.c
+@@ -32,6 +32,8 @@ static void mxl_ml_wds_update_handled_links(struct mxl_ml_wds_entry *wds_entry,
+ static void mxl_ml_free_wds_entry(struct mxl_ml_wds_entry *wds_entry);
+ static void mxl_ml_clear_pending_wds_entry(struct hostapd_data *hapd,
+ 			   const u8 *addr);
++static void mxl_ml_wds_clear_sta_timers(struct hostapd_data *hapd, struct sta_info *sta);
++static void mxl_ml_wds_set_sta_timers(struct hostapd_data *hapd, struct sta_info *sta);
+ static bool mxl_ml_wds_all_links_handled(struct mxl_ml_wds_entry *wds_entry);
+ static int mxl_ml_add_wds_sta(struct hostapd_data *hapd, struct sta_info *sta,
+ 			   struct mxl_ml_wds_entry *wds_entry);
+@@ -453,6 +455,7 @@ void mxl_wds_event_connect(struct hostapd_data *hapd,
+ 	if (mxl_is_mlo_enabled(hapd->conf) && mxl_mlo_is_ml_sta(sta)) {
+ 		wds_entry = mxl_ml_get_pending_wds_entry(hapd, sta->mxl_sta_info.non_ap_mld_mac);
+ 		if (wds_entry) {
++			mxl_ml_wds_clear_sta_timers(hapd, sta);
+ 			mxl_ml_wds_update_handled_links(wds_entry, sta);
+ 			if (mxl_ml_wds_all_links_handled(wds_entry)) {
+ 				mxl_ml_add_wds_sta(hapd, sta, wds_entry);
+@@ -549,7 +552,7 @@ struct mxl_ml_wds_entry *mxl_ml_get_pending_wds_entry(struct hostapd_data *hapd,
+ 	}
+ 
+ 	if (!found)
+-		wpa_printf(MSG_ERROR, "MXL_MLO: No WDS entry with MLD MAC " MACSTR,
++		wpa_printf(MSG_INFO, "MXL_MLO: No WDS entry with MLD MAC " MACSTR,
+ 			   MAC2STR(mld_addr));
+ 	
+ 	return found ? wds_entry : NULL;
+@@ -589,6 +592,9 @@ static void mxl_ml_free_wds_entry(struct mxl_ml_wds_entry *wds_entry)
+ 	if (!wds_entry)
+ 		return;
+ 
++	wpa_printf(MSG_DEBUG, "MXL_MLO: Free WDS entry for MLD " MACSTR,
++		   MAC2STR(wds_entry->mld_addr));
++
+ 	dl_list_del(&wds_entry->list);
+ 	os_free(wds_entry);
+ }
+@@ -636,9 +642,42 @@ static struct sta_info *mxl_ml_wds_get_sta(struct hostapd_data *hapd, const u8 *
+ 		if (sta)
+ 			return sta;
+ 	}
++	wpa_printf(MSG_ERROR, "MXL_MLO: WDS No STA found with MAC " MACSTR, MAC2STR(addr));
+ 	return NULL;
+ }
+ 
++static void mxl_ml_wds_clear_sta_timers(struct hostapd_data *hapd, struct sta_info *sta)
++{
++	if (!sta)
++		return;
++
++	eloop_cancel_timeout(ap_handle_timer, hapd, sta);
++	ap_sta_clear_assoc_timeout(hapd, sta);
++}
++
++static void mxl_ml_wds_set_sta_timers(struct hostapd_data *hapd, struct sta_info *sta)
++{
++	int max_inactivity = hapd->conf->ap_max_inactivity;
++
++	if (!sta)
++		return;
++
++	if (sta->max_idle_period)
++		max_inactivity = (sta->max_idle_period * 1024 + 999) / 1000;
++
++	mxl_ml_wds_clear_sta_timers(hapd, sta);
++
++	if (!(hapd->iface->drv_flags & WPA_DRIVER_FLAGS_INACTIVITY_TIMER)) {
++		wpa_printf(MSG_DEBUG, "MXL_MLO: %s WDS register ap_handle_timer timeout "
++			   "for " MACSTR " (%d seconds - ap_max_inactivity)",
++			   hapd->conf->iface, MAC2STR(sta->addr),
++			   max_inactivity);
++		eloop_register_timeout(max_inactivity, 0,
++				       ap_handle_timer, hapd, sta);
++	}
++	ap_sta_set_assoc_timeout(hapd, sta);
++}
++
+ static void mxl_ml_set_linked_stas(struct sta_info *sta)
+ {
+ 	struct sta_info *lsta1 = sta->mxl_sta_info.linked_sta[0];
+@@ -687,6 +726,14 @@ static int mxl_ml_add_wds_sta(struct hostapd_data *hapd, struct sta_info *sta,
+ 		}
+ 	}
+ 
++	wpa_printf(MSG_DEBUG, "MXL_MLO: %s Adding WDS ML STA " MACSTR 
++		   " assoc link " MACSTR,
++		   hapd->conf->iface, MAC2STR(wds_entry->mld_addr), MAC2STR(sta->addr));
++
++	mxl_mld_for_each_sibling_sta(lsta, sta) {
++		wpa_printf(MSG_DEBUG, "MXL_MLO: WDS sibling link " MACSTR, MAC2STR(lsta->addr));
++	}
++
+ 	/* Get AID for MLD STA */
+ 	if (hostapd_get_aid(hapd, sta) < 0) {
+ 		hostapd_logger(hapd, sta->addr, HOSTAPD_MODULE_IEEE80211,
+@@ -695,6 +742,7 @@ static int mxl_ml_add_wds_sta(struct hostapd_data *hapd, struct sta_info *sta,
+ 	}
+ 
+ 	/* Add first linked WDS STA */
++	mxl_ml_wds_set_sta_timers(hapd, sta);
+ 	if (mxl_mlo_add_affiliated_wds_sta(hapd, sta, &new_assoc)) {
+ 		ap_free_sta(hapd, sta);
+ 		return -1;
+@@ -707,6 +755,7 @@ static int mxl_ml_add_wds_sta(struct hostapd_data *hapd, struct sta_info *sta,
+ 			mxl_mld_log_no_sibling_bss(link_id);
+ 			goto fail;
+ 		}
++		mxl_ml_wds_set_sta_timers(lhapd, lsta);
+ 		if (mxl_mlo_add_affiliated_wds_sta(lhapd, lsta, &new_assoc)) {
+ 			goto fail;
+ 		}
+@@ -787,7 +836,10 @@ void mxl_ml_set_wds_link_info(struct mxl_ml_wds_entry *wds_entry, u8 link_id,
+ 			memcpy_s(link_info->bssid, ETH_ALEN, bssid, ETH_ALEN);
+ 			link_info->valid = true;
+ 			wds_entry->num_of_links++;
+-			break;
++			wpa_printf(MSG_DEBUG, "MXL_MLO: WDS Entry MLD " MACSTR " Add new link " MACSTR
++				   " num_of_links %d", MAC2STR(wds_entry->mld_addr),
++				   MAC2STR(bssid), wds_entry->num_of_links);
++			return;
+ 		}
+ 	}
+ }
+@@ -806,18 +858,21 @@ static void mxl_ml_wds_update_handled_links(struct mxl_ml_wds_entry *wds_entry,
+ 			wds_entry->wds_handled_links++;
+ 			wpa_printf(MSG_DEBUG, "MXL_MLO: WDS expected links %d currently added %d",
+ 							wds_entry->num_of_links, wds_entry->wds_handled_links);
++			return;
+ 		}
+ 	}
+ }
+ 
+ static bool mxl_ml_wds_all_links_handled(struct mxl_ml_wds_entry *wds_entry)
+ {
+-	return (wds_entry->wds_handled_links == wds_entry->num_of_links);
++	bool res = (wds_entry->wds_handled_links == wds_entry->num_of_links);
++	wpa_printf(MSG_DEBUG, "MXL_MLO: %s res(%d)", __func__, res);
++	return res;
+ }
+ 
+ 
+ 
+-void mxl_wds_init_pending_assoc(struct p_ap_mld *mld)
++void mxl_ml_wds_init(struct p_ap_mld *mld)
+ {
+ 	if (!mld)
+ 		return;
+@@ -828,7 +883,7 @@ void mxl_wds_init_pending_assoc(struct p_ap_mld *mld)
+ 	}
+ }
+ 
+-void mxl_wds_deinit_pending_assoc(struct p_ap_mld *mld)
++void mxl_ml_wds_cleanup_pending_assoc(struct p_ap_mld *mld)
+ {
+ 	struct mxl_ml_wds_entry *iter;
+ 
+@@ -844,5 +899,17 @@ void mxl_wds_deinit_pending_assoc(struct p_ap_mld *mld)
+ 		dl_list_del(&iter->list);
+ 		os_free(iter);
+ 	}
++
++	wpa_printf(MSG_DEBUG, "MXL_MLO: WDS pending assoc cleanup done for MLD " MACSTR
++		   ,MAC2STR(mld->ap_mld_mac));
++}
++
++void mxl_ml_wds_deinit(struct p_ap_mld *mld)
++{
++	if (!mld)
++		return;
++
++	mxl_ml_wds_cleanup_pending_assoc(mld);
++	mld->wds.initialized = false;
+ }
+ #endif /* CONFIG_IEEE80211BE_MXL_MLO */
+diff --git a/src/ap/mxl_wds.h b/src/ap/mxl_wds.h
+index f74b76d10..cde4300a3 100644
+--- a/src/ap/mxl_wds.h
++++ b/src/ap/mxl_wds.h
+@@ -23,7 +23,8 @@ struct mxl_ml_wds_entry *mxl_ml_get_pending_wds_entry(struct hostapd_data *hapd,
+ 				   const u8 *mld_addr);
+ void mxl_ml_set_wds_link_info(struct mxl_ml_wds_entry *wds_entry, u8 link_id,
+ 				   const u8 *bssid);
+-void mxl_wds_init_pending_assoc(struct p_ap_mld *mld);
+-void mxl_wds_deinit_pending_assoc(struct p_ap_mld *mld);
++void mxl_ml_wds_cleanup_pending_assoc(struct p_ap_mld *mld);
++void mxl_ml_wds_init(struct p_ap_mld *mld);
++void mxl_ml_wds_deinit(struct p_ap_mld *mld);
+ #endif /* CONFIG_IEEE80211BE_MXL_MLO */
+ #endif /* MXL_WDS_H */
+\ No newline at end of file
+diff --git a/src/ap/sta_info.c b/src/ap/sta_info.c
+index dc2e829a4..e48d4260d 100644
+--- a/src/ap/sta_info.c
++++ b/src/ap/sta_info.c
+@@ -2896,6 +2896,14 @@ void ap_sta_clear_assoc_timeout(struct hostapd_data *hapd,
+ 	eloop_cancel_timeout(ap_sta_assoc_timeout, hapd, sta);
+ }
+ 
++#ifdef CONFIG_VENDOR_MXL
++void ap_sta_set_assoc_timeout(struct hostapd_data *hapd,
++				struct sta_info *sta)
++{
++	if (!(hapd->conf->mesh & MESH_ENABLED))
++		eloop_register_timeout(60, 0, ap_sta_assoc_timeout, hapd, sta);
++}
++#endif /* CONFIG_VENDOR_MXL */
+ 
+ int ap_sta_flags_txt(u32 flags, char *buf, size_t buflen)
+ {
+diff --git a/src/ap/sta_info.h b/src/ap/sta_info.h
+index 07263d7ac..687334a41 100644
+--- a/src/ap/sta_info.h
++++ b/src/ap/sta_info.h
+@@ -459,6 +459,8 @@ const u8 * ap_sta_wpa_get_dpp_pkhash(struct hostapd_data *hapd,
+ #ifdef CONFIG_VENDOR_MXL
+ const char * ap_sta_wpa_get_passphrase(struct hostapd_data *hapd,
+ 				  struct sta_info *sta);
++void ap_sta_set_assoc_timeout(struct hostapd_data *hapd,
++				struct sta_info *sta);
+ #endif /* CONFIG_VENDOR_MXL */
+ void ap_sta_disconnect(struct hostapd_data *hapd, struct sta_info *sta,
+ 		       const u8 *addr, u16 reason);
+-- 
+2.43.0
+

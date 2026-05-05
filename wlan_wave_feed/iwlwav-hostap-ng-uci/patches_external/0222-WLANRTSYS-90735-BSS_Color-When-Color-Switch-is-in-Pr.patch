@@ -1,0 +1,39 @@
+From 4fffc5cc5f8836143a80ac6541eb4d19f76a4618 Mon Sep 17 00:00:00 2001
+From: Venkatasaiprudhvi Sannidhi <vsannidhi@maxlinear.com>
+Date: Wed, 2 Jul 2025 15:59:22 +0530
+Subject: [PATCH] WLANRTSYS-90735 [BSS_Color] When Color Switch is in Process
+ Observing FW Error Code: [GroupID: 10, FileID: 0, Line: 1020] during enabling
+ of VAP
+
+Issue: FW error is observed when color switch is triggered and a VAP is
+enabled on the same radio.
+
+Fix: Add a check to prevent VAP enablement when CCA is in progress in that radio.
+
+Unit test: Pass
+---
+ hostapd/ctrl_iface.c | 8 +++++++-
+ 1 file changed, 7 insertions(+), 1 deletion(-)
+
+diff --git a/hostapd/ctrl_iface.c b/hostapd/ctrl_iface.c
+index 51b8d54fc..19bc5ce5a 100644
+--- a/hostapd/ctrl_iface.c
++++ b/hostapd/ctrl_iface.c
+@@ -1377,7 +1377,13 @@ static int hostapd_ctrl_iface_set(struct hostapd_data *hapd, char *cmd)
+ 				"start_disabled value is out of range (can be 0 or 1)");
+ 			return -1;
+ 		}
+-
++#ifdef CONFIG_IEEE80211AX
++		if (val && hapd->iface->bss[MASTER_VAP_BSS_IDX]->cca_in_progress) {
++			wpa_printf(MSG_ERROR,
++				"CCA in progress, do not enable the interface");
++			return -1;
++		}
++#endif /* CONFIG_IEEE80211AX */
+ 		hapd->conf->start_disabled = val;
+ 
+ 		if (hapd->started && !hapd->conf->start_disabled &&
+-- 
+2.43.0
+

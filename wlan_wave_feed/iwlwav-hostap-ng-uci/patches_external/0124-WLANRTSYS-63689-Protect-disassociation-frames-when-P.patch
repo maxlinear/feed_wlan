@@ -1,4 +1,4 @@
-From 66bf06bf89b4a61bd1025c5f9b0971ef0173d7c4 Mon Sep 17 00:00:00 2001
+From 087c87c4e92bf9f55f766ba260f15cdf3064c6ab Mon Sep 17 00:00:00 2001
 From: fromans <fromans@maxlinear.com>
 Date: Fri, 23 Feb 2024 13:56:03 +0200
 Subject: [PATCH] WLANRTSYS-63689 Protect disassociation frames when PMF is
@@ -99,7 +99,7 @@ index d37723aa7..2a3695757 100644
 +	return 1;
 +}
 diff --git a/src/ap/mxl_hostapd.h b/src/ap/mxl_hostapd.h
-index 22d4a762e..14daa9284 100644
+index 448b40e2f..3bc67e186 100644
 --- a/src/ap/mxl_hostapd.h
 +++ b/src/ap/mxl_hostapd.h
 @@ -202,4 +202,5 @@ void mxl_hostapd_clear_drv_priv(struct hostapd_data *hapd);

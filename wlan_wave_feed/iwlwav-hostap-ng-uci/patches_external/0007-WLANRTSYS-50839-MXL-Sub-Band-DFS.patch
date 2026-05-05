@@ -1,4 +1,4 @@
-From db5a51104357f31d13ef6716170398b9677ef92d Mon Sep 17 00:00:00 2001
+From 04bd407b10b21f8dcfbb50b8c39b8d8d8cfe4e1d Mon Sep 17 00:00:00 2001
 From: mvuls <mvuls@maxlinear.com>
 Date: Wed, 8 Nov 2023 15:19:44 +0200
 Subject: [PATCH] WLANRTSYS-50839: MXL Sub Band DFS
@@ -328,7 +328,7 @@ index d63de6e51..137e8aa26 100644
  
  #endif /* MXL_DFS_COMMON_H */
 diff --git a/src/ap/mxl_hostapd.h b/src/ap/mxl_hostapd.h
-index ea653dc47..9f560192c 100644
+index 2864741a5..2580bddec 100644
 --- a/src/ap/mxl_hostapd.h
 +++ b/src/ap/mxl_hostapd.h
 @@ -16,6 +16,7 @@
