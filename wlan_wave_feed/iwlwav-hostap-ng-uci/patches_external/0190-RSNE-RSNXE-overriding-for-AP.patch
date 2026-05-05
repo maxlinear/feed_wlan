@@ -1,4 +1,4 @@
-From e72ce4c0ba64b1a0c2b69f2faac1b8793589696c Mon Sep 17 00:00:00 2001
+From 470f6ce444660c07fdf234ebfea35e06d01ee207 Mon Sep 17 00:00:00 2001
 From: Jouni Malinen <quic_jouni@quicinc.com>
 Date: Wed, 11 Oct 2023 12:48:05 +0300
 Subject: [PATCH] RSNE/RSNXE overriding for AP

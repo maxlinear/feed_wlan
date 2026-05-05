@@ -1,4 +1,4 @@
-From ca60a82fa82127bf08a09c1cc10f6f763009ba0d Mon Sep 17 00:00:00 2001
+From 9b80eeb438086b5c465900982e69357d1b72487e Mon Sep 17 00:00:00 2001
 From: mvuls <mvuls@maxlinear.com>
 Date: Wed, 8 Nov 2023 10:39:02 +0200
 Subject: [PATCH] WLANRTSYS-50839: MXL DFS Radar bit map

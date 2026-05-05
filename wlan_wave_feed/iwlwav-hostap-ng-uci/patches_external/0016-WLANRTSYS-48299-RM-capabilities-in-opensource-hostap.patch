@@ -1,4 +1,4 @@
-From 7c8416ec53cdd1d23ae54f710070d9afbb474cd7 Mon Sep 17 00:00:00 2001
+From 6de4c50073afe4a119dafe1c48bed11861f141d0 Mon Sep 17 00:00:00 2001
 From: Jurijs Soloveckis <jsoloveckis@maxlinear.com>
 Date: Thu, 2 Feb 2023 15:33:24 +0100
 Subject: [PATCH] WLANRTSYS-48299: RM capabilities in opensource hostapd: full
@@ -5716,7 +5716,7 @@ index e743055d3..55182610e 100644
 +	return hapd->mxl_data.action_ssi_signal;
 +}
 diff --git a/src/ap/mxl_hostapd.h b/src/ap/mxl_hostapd.h
-index 586a2247d..aad961b10 100644
+index 6af8d6340..e51179036 100644
 --- a/src/ap/mxl_hostapd.h
 +++ b/src/ap/mxl_hostapd.h
 @@ -74,6 +74,8 @@ struct mxl_hostapd_iface {

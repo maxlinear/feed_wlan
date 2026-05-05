@@ -1,0 +1,67 @@
+From 637da18e2ffda1620e1f9d5b4d90898332c1784c Mon Sep 17 00:00:00 2001
+From: Venkatasaiprudhvi Sannidhi <vsannidhi@maxlinear.com>
+Date: Mon, 9 Jun 2025 07:48:16 +0530
+Subject: [PATCH] WLANRTSYS-88946 [RSNO] WiFi 7 IOP issue with Mi 14 Ultra and
+ Mi 13T Pro
+
+Issue: With Mi 14 Ultra, Mi 13T Pro, throughput is bad when RSNO is
+enabled.
+
+Root cause: In the current hostapd opensource code, the PMF
+configuration of the STA when it falls back to WPA2PSK is incorrect
+since the function "wpa_auth_pmf_enabled" considers RSNO params
+irrespective of WPA2 or WPA3.
+
+Fix: In order to enable PMF, consider RSNO config only if WPA3 is configured.
+
+Unit test : PMF configuration is checked and throughput degradation is not observed for the reported
+clients with the fix.
+---
+ src/ap/wpa_auth_ie.c | 18 ++++++++++++++++++
+ 1 file changed, 18 insertions(+)
+
+diff --git a/src/ap/wpa_auth_ie.c b/src/ap/wpa_auth_ie.c
+index b26af5085..72eb9cd04 100644
+--- a/src/ap/wpa_auth_ie.c
++++ b/src/ap/wpa_auth_ie.c
+@@ -864,6 +864,9 @@ wpa_validate_wpa_ie(struct wpa_authenticator *wpa_auth,
+ 	u32 selector;
+ 	size_t i;
+ 	const u8 *pmkid = NULL;
++#ifdef CONFIG_VENDOR_MXL
++	bool is_pmf_enabled = false;
++#endif /* CONFIG_VENDOR_MXL */
+ 
+ 	if (wpa_auth == NULL || sm == NULL)
+ 		return WPA_NOT_ENABLED;
+@@ -1146,12 +1149,27 @@ wpa_validate_wpa_ie(struct wpa_authenticator *wpa_auth,
+ 				 wpa_auth->conf.ocv : 0);
+ 	}
+ #endif /* CONFIG_OCV */
++#ifdef CONFIG_VENDOR_MXL
++	if (wpa_key_mgmt_wpa_psk_no_sae(data.key_mgmt) &&
++	    (!(data.key_mgmt & (WPA_KEY_MGMT_OWE | WPA_KEY_MGMT_SAE |
++				WPA_KEY_MGMT_FT_SAE | WPA_KEY_MGMT_SAE_EXT_KEY |
++				WPA_KEY_MGMT_FT_SAE_EXT_KEY))))
++		is_pmf_enabled = (conf->ieee80211w != NO_MGMT_FRAME_PROTECTION);
++	else
++		is_pmf_enabled = wpa_auth_pmf_enabled(conf);
+ 
++	if (!is_pmf_enabled ||
++	    !(data.capabilities & WPA_CAPABILITY_MFPC))
++		sm->mgmt_frame_prot = 0;
++	else
++		sm->mgmt_frame_prot = 1;
++#else
+ 	if (!wpa_auth_pmf_enabled(conf) ||
+ 	    !(data.capabilities & WPA_CAPABILITY_MFPC))
+ 		sm->mgmt_frame_prot = 0;
+ 	else
+ 		sm->mgmt_frame_prot = 1;
++#endif /* CONFIG_VENDOR_MXL */
+ 	sm->mfpr = !!(data.capabilities & WPA_CAPABILITY_MFPR);
+ 
+ 	if (sm->mgmt_frame_prot && (ciphers & WPA_CIPHER_TKIP)) {
+-- 
+2.43.0
+

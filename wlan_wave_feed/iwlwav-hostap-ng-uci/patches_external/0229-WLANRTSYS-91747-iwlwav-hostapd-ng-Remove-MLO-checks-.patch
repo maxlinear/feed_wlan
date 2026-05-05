@@ -1,0 +1,101 @@
+From 1b7bc45101d75dfb0dde975e3b86d1ab7f6da9d4 Mon Sep 17 00:00:00 2001
+From: Karthik D A <karthikda@maxlinear.com>
+Date: Thu, 31 Jul 2025 20:32:39 +0800
+Subject: [PATCH] WLANRTSYS-91747 iwlwav-hostapd-ng: Remove MLO checks for SCS
+
+FixUpCommit:7c69adbb2cb3cc189924ad2d5007b2c842ceaf1e
+
+Description: The existing implementation adds an MLO condition
+check in SCS related flow for the EHT UL SCS 4.47.1.
+This blocks the testing of the non-MLO STAs with SCS supported.
+The MLO checks in the SCS path are removed in the PR.
+
+Test: The EHT UL SCS TC executed successfully.
+
+Signed-off-by: Karthik D A <karthikda@maxlinear.com>
+---
+ src/ap/ieee802_11_shared.c |  5 ++---
+ src/ap/mxl_wmm.c           | 27 ++++++++++++++-------------
+ 2 files changed, 16 insertions(+), 16 deletions(-)
+
+diff --git a/src/ap/ieee802_11_shared.c b/src/ap/ieee802_11_shared.c
+index be7ef5483..f7b44db85 100644
+--- a/src/ap/ieee802_11_shared.c
++++ b/src/ap/ieee802_11_shared.c
+@@ -464,9 +464,8 @@ static void hostapd_ext_capab_byte(struct hostapd_data *hapd, u8 *pos, int idx,
+ 		if (hapd->conf->ssid.utf8_ssid)
+ 			*pos |= 0x01; /* Bit 48 - UTF-8 SSID */
+ #ifdef CONFIG_SCS_MXL
+-		if(mxl_is_mlo_enabled(hapd->conf) &&
+-		   (eht_cap->mac_cap & EHT_MAC_CAP0_SCS_TRAFFIC_DESC))
+-				*pos |= 0x40; /* Bit 54 - SCS Supported */
++		if (hapd->conf->mxl_bss_conf.scs_enable)
++			*pos |= 0x40; /* Bit 54 - SCS Supported */
+ #endif /* CONFIG_SCS_MXL */
+ 		break;
+ 	case 7: /* Bits 56-63 */
+diff --git a/src/ap/mxl_wmm.c b/src/ap/mxl_wmm.c
+index adcdcb134..5a1fe521b 100644
+--- a/src/ap/mxl_wmm.c
++++ b/src/ap/mxl_wmm.c
+@@ -427,16 +427,17 @@ int mxl_scs_add_req(struct hostapd_data *hapd, const struct ieee80211_mgmt *mgmt
+ 
+ 	os_memset(&scs_add_req, 0, sizeof(struct mxl_scs_add_req));
+ 
++	if (!hapd->conf->mxl_bss_conf.scs_enable) {
++		wpa_printf(MSG_ERROR, "SCS: mxl_scs_add_req - not enabled/supported");
++		return WLAN_STATUS_UNSPECIFIED_FAILURE;
++	}
++
+ 	sta = ap_get_sta(hapd, mgmt->sa);
+ 	if (sta == NULL) {
+ 		wpa_printf(MSG_ERROR, "SCS: mxl_scs_add_req - station not connected");
+ 		return WLAN_STATUS_UNSPECIFIED_FAILURE;
+ 	}
+ 
+-	if (!mxl_mlo_is_ml_sta(sta) && !(sta->mxl_sta_info.ext_flags & WLAN_STA_MLD_STA)) {
+-		wpa_printf(MSG_ERROR, "SCS: mxl_scs_add_req - MLO not enabled/supported in station");
+-		return WLAN_STATUS_UNSPECIFIED_FAILURE;
+-	}
+ 	/* WLANRTSYS-91362: Workaround, Extra 8 bytes are appened to the frame from the lower layers */
+ 	len = len - 8;
+ 	end = (const u8 *) mgmt + len;
+@@ -503,15 +504,15 @@ int mxl_scs_remove_req(struct hostapd_data *hapd,
+ {
+ 	struct sta_info *sta;
+ 	struct mxl_scs_rem_req scs_rem_req;
+-	sta = ap_get_sta(hapd, mgmt->sa);
+ 
+-	if (sta == NULL) {
+-		wpa_printf(MSG_ERROR, "SCS: scs_rem_req - station not connected");
++	if (!hapd->conf->mxl_bss_conf.scs_enable) {
++		wpa_printf(MSG_ERROR, "SCS: mxl_scs_add_req - not enabled/supported");
+ 		return WLAN_STATUS_UNSPECIFIED_FAILURE;
+ 	}
+ 
+-	if (!mxl_mlo_is_ml_sta(sta) && !(sta->mxl_sta_info.ext_flags & WLAN_STA_MLD_STA)) {
+-		wpa_printf(MSG_ERROR, "SCS: scs_rem_req - MLO not enabled/supported in station");
++	sta = ap_get_sta(hapd, mgmt->sa);
++	if (sta == NULL) {
++		wpa_printf(MSG_ERROR, "SCS: scs_rem_req - station not connected");
+ 		return WLAN_STATUS_UNSPECIFIED_FAILURE;
+ 	}
+ 
+@@ -570,10 +571,10 @@ void mxl_hostapd_scs_action(struct hostapd_data *hapd,
+ {
+ 	u8 *action = (u8 *) &mgmt->u.action.u;
+ 
+-	if ((hapd->iconf->mxl_conf.mlo_supported == MULTILINK_DISABLED) && !mxl_is_mlo_enabled(hapd->conf)) {
+-		wpa_printf(MSG_ERROR, "SCS: mxl_hostapd_scs_action - MLO is not supported/enabled in AP");
+-		return;
+-	}
++	if (!hapd->conf->mxl_bss_conf.scs_enable) {
++      wpa_printf(MSG_ERROR, "SCS: mxl_scs_add_req - not enabled/supported");
++      return WLAN_STATUS_UNSPECIFIED_FAILURE;
++   }
+ 
+ 	switch (*action) {
+ 	case ROBUST_AV_SCS_REQ:
+-- 
+2.43.0
+

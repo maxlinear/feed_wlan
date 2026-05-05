@@ -1,4 +1,4 @@
-From 6082db48155ba86916d6aa18d7a073265a11188c Mon Sep 17 00:00:00 2001
+From d692a68f151960d758b7d2c6893b557008503311 Mon Sep 17 00:00:00 2001
 From: rmunjewar <rmunjewar@maxlinear.com>
 Date: Mon, 29 Jul 2024 15:52:32 +0530
 Subject: [PATCH] WLANRTSYS-82700 mxl changes for V7[4/4] AFC  patches
@@ -108,7 +108,7 @@ index f1a5ac7bf..fdb34e806 100644
  				       hapd->iface, NULL);
  
 diff --git a/src/ap/mxl_hostapd.h b/src/ap/mxl_hostapd.h
-index d633a2551..f3b1d2001 100644
+index 5a1264757..84b3a1df1 100644
 --- a/src/ap/mxl_hostapd.h
 +++ b/src/ap/mxl_hostapd.h
 @@ -220,7 +220,7 @@ void mxl_hostapd_alloc_bss_data(struct hostapd_data *hapd);

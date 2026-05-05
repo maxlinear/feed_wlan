@@ -1,4 +1,4 @@
-From 8b1978a70c540d2e5ff3a4bf5e1476a3fd01cac1 Mon Sep 17 00:00:00 2001
+From d6fd841c454bf1e9eb975e36fe72f65c6f1ad529 Mon Sep 17 00:00:00 2001
 From: mvuls <mvuls@maxlinear.com>
 Date: Thu, 9 Nov 2023 08:54:53 +0200
 Subject: [PATCH] WLANRTSYS-50839: MXL DFS First non-DFS channel

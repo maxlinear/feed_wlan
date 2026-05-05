@@ -1,0 +1,258 @@
+From 181623dab5f6a7a148995128d7cc76eb9ea82046 Mon Sep 17 00:00:00 2001
+From: nchernikov <nchernikov@maxlinear.com>
+Date: Sun, 18 Jan 2026 14:22:25 +0200
+Subject: [PATCH] WLANRTSYS-100259 Fix starting order of TX BSS and non-TX BSS
+ with MBSSID when radio has both MLD and non-MLD BSS, and MBSSID bigtk for
+ MLD.
+
+ - Skip wpa keys init for non-MLD BSS which is part of MBSSID and the TX BSS is an MLD VAP, to avoid set key error since TX BSS has not started yet.
+ - Init keys for all non-TX BSS in MBSSID when MLD TX BSS is starting, to make sure all keys are installed correctly only when MBSSID starts beaconing.
+ - Add another MLD start condition, if TX BSS is MLD, consider MLD ready only when the TX BSS started beaconing.
+ - Get beacon PN from tx_bss_auth in case of MBSSID when building BIGTK KDE in MLO EAPOL 3/4.
+
+Fixup to: WLANRTSYS-60843 MLO changes: AP MLD configuration
+
+Signed-off-by: nchernikov <nchernikov@maxlinear.com>
+---
+ src/ap/hostapd.c      |  5 +++-
+ src/ap/mxl_hostapd.c  | 11 ++++++++
+ src/ap/mxl_hostapd.h  |  1 +
+ src/ap/mxl_mld.c      | 65 +++++++++++++++++++++++++++++++++++++++++--
+ src/ap/mxl_mld.h      |  1 +
+ src/ap/mxl_wpa_auth.c | 36 ++++++++++++++++++------
+ 6 files changed, 106 insertions(+), 13 deletions(-)
+
+diff --git a/src/ap/hostapd.c b/src/ap/hostapd.c
+index 3ad56c20d..ab35a2a50 100644
+--- a/src/ap/hostapd.c
++++ b/src/ap/hostapd.c
+@@ -2290,8 +2290,11 @@ setup_mld:
+ 	/*
+ 		For non-MLD VAP we can init wpa keys since VAP already started
+ 		For MLD VAP - skip wpa init now and do it during link setup
++
++		Skip init keys if MBSSID TX BSS is MLO, do it later when
++		ML is setup is done and TX BSS in MBSSID started beaconing
+ 	*/
+-	if (!mxl_is_mlo_enabled(conf))
++	if (!mxl_is_mlo_enabled(conf) && !mxl_ml_is_mlo_on_tx_bss(hapd))
+ #endif /* CONFIG_IEEE80211BE_MXL_MLO */
+ 	if (hapd->wpa_auth && wpa_init_keys(hapd->wpa_auth) < 0)
+ 		return -1;
+diff --git a/src/ap/mxl_hostapd.c b/src/ap/mxl_hostapd.c
+index 67862137d..e5edc4aaa 100644
+--- a/src/ap/mxl_hostapd.c
++++ b/src/ap/mxl_hostapd.c
+@@ -3590,3 +3590,14 @@ struct hostapd_data *mxl_hostapd_mbssid_get_tx_bss(struct hostapd_data *hapd)
+ 
+ 	return hapd;
+ }
++
++bool mxl_hostapd_is_mbssid_tx_bss(struct hostapd_data *hapd)
++{
++	if (hapd->iconf->multibss_enable) {
++		struct hostapd_data *tx_bss = mxl_hostapd_mbssid_get_tx_bss(hapd);
++		return (tx_bss == hapd);
++	}
++
++	return false;
++}
++
+diff --git a/src/ap/mxl_hostapd.h b/src/ap/mxl_hostapd.h
+index 2a9553a9e..fce422da4 100644
+--- a/src/ap/mxl_hostapd.h
++++ b/src/ap/mxl_hostapd.h
+@@ -271,4 +271,5 @@ int mxl_hostapd_check_and_reorder_bss_conf(struct hostapd_iface *iface, struct h
+ struct hostapd_data *mxl_hostapd_get_setup_mbssid_bss(struct hostapd_iface *iface, size_t idx);
+ size_t mxl_hostapd_get_mbssid_tx_bss_idx(struct hostapd_iface *iface);
+ struct hostapd_data *mxl_hostapd_mbssid_get_tx_bss(struct hostapd_data *hapd);
++bool mxl_hostapd_is_mbssid_tx_bss(struct hostapd_data *hapd);
+ #endif /* MXL_HOSTAPD_H */
+diff --git a/src/ap/mxl_mld.c b/src/ap/mxl_mld.c
+index cd87191ca..a0d67d04c 100644
+--- a/src/ap/mxl_mld.c
++++ b/src/ap/mxl_mld.c
+@@ -291,9 +291,9 @@ static int mxl_setup_link(struct p_ap_mld *mld)
+ 	struct hostapd_data *link2 = mld->affiliated_links[LINK2];
+ 	struct _mxl_vendor_mld_info *mld_info;
+ 	struct _mxl_vendor_mld_link_info *mld_link_info;
+-	struct hostapd_data *hapd = NULL;
++	struct hostapd_data *hapd = NULL, *bss = NULL;
+ 	u8 multibss_vap_mode = NON_MULTIBSS_VAP_MODE;
+-	size_t link1_tx_bss_idx, link2_tx_bss_idx;
++	size_t link1_tx_bss_idx, link2_tx_bss_idx, idx;
+ 	int ret = -1;
+ 
+ 	if (!link1 || !link2)
+@@ -424,6 +424,33 @@ static int mxl_setup_link(struct p_ap_mld *mld)
+ 			ieee802_11_set_beacon(hapd->mxl_data.sibling_hapd);
+ 	}
+ 
++	/* Init keys for all other non-TX BSS once ML TX BSS started beaconing */
++	if (mxl_hostapd_is_mbssid_tx_bss(link1)) {
++		for (idx = MULTIBSS_REFERENCE_BSS_IDX; idx < link1->iface->num_bss; idx++) {
++			bss = link1->iface->bss[idx];
++			if ((bss != link1) && (!mxl_is_mlo_enabled(bss->conf))) {
++				if (bss->wpa_auth && (wpa_init_keys(bss->wpa_auth) < 0)) {
++					wpa_printf(MSG_ERROR, "wpa init keys failed for non-ML bss %s",
++						   bss->conf->iface);
++					return -1;
++				}
++			}
++		}
++	}
++
++	if (mxl_hostapd_is_mbssid_tx_bss(link2)) {
++		for (idx = MULTIBSS_REFERENCE_BSS_IDX; idx < link2->iface->num_bss; idx++) {
++			bss = link2->iface->bss[idx];
++			if ((bss != link2) && (!mxl_is_mlo_enabled(bss->conf))) {
++				if (bss->wpa_auth && (wpa_init_keys(bss->wpa_auth) < 0)) {
++					wpa_printf(MSG_ERROR, "wpa init keys failed for non-ML bss %s",
++						   bss->conf->iface);
++					return -1;
++				}
++			}
++		}
++	}
++
+ 	hapd = link1;
+ 	/* sending mld_info on link1 context for ADD_MLD */
+ 	if (MXL_DRV_VENDOR_SET(LTQ_NL80211_VENDOR_SUBCMD_SETUP_MLD, mld_info, sizeof(struct _mxl_vendor_mld_info))) {
+@@ -476,7 +503,7 @@ int mxl_mld_link_setup(struct p_ap_mld *mld)
+ int mxl_mld_setup_interfaces(struct hapd_interfaces *interfaces)
+ {
+ 	struct p_ap_mld *p_ap_mld = NULL;
+-	struct hostapd_data *hapd1 = NULL, *hapd2 = NULL;
++	struct hostapd_data *hapd1 = NULL, *hapd2 = NULL, *tx_bss = NULL;
+ 	int num6ghz_mld_vaps=0;
+ 
+ 	if (interfaces->count <= 1)
+@@ -491,6 +518,26 @@ int mxl_mld_setup_interfaces(struct hapd_interfaces *interfaces)
+ 					!hapd1->beacon_set_done &&
+ 					hapd2 && hapd2->iface->set_freq_done &&
+ 					!hapd2->beacon_set_done) {
++				if (hapd1->iconf->multibss_enable) {
++					tx_bss = mxl_hostapd_mbssid_get_tx_bss(hapd1);
++					if (!mxl_hostapd_is_mbssid_tx_bss(hapd1) && !tx_bss->beacon_set_done) {
++						wpa_printf(MSG_ERROR, "Tx BSS (%s) is not ready yet to enable non-TX BSS = "MACSTR
++							   " beacon_set_done=%d",
++							   tx_bss->conf->iface, MAC2STR(p_ap_mld->ap_mld_mac),
++							   tx_bss->beacon_set_done);
++						return -1;
++					}
++				}
++				if (hapd2->iconf->multibss_enable) {
++					tx_bss = mxl_hostapd_mbssid_get_tx_bss(hapd2);
++					if (!mxl_hostapd_is_mbssid_tx_bss(hapd2) && !tx_bss->beacon_set_done) {
++						wpa_printf(MSG_ERROR, "Tx BSS (%s) is not ready yet to enable non-TX BSS = "MACSTR
++							   " beacon_set_done=%d",
++							   tx_bss->conf->iface, MAC2STR(p_ap_mld->ap_mld_mac),
++							   tx_bss->beacon_set_done);
++						return -1;
++					}
++				}
+ 				if((hapd1 && hapd1->iconf && is_6ghz_op_class(hapd1->iconf->op_class)) || (hapd2 && hapd2->iconf && is_6ghz_op_class(hapd2->iconf->op_class))) {
+ 					num6ghz_mld_vaps++;
+ 					if(num6ghz_mld_vaps > MAX_SUPPORTED_6G_MLDS) {
+@@ -1855,3 +1902,15 @@ bool mxl_is_sibling_hapd_init_completed(struct hostapd_iface *iface)
+ 	}
+ 	return true;
+ }
++
++bool mxl_ml_is_mlo_on_tx_bss(struct hostapd_data *hapd)
++{
++	struct hostapd_data *tx_bss;
++
++	if (hapd->iconf->multibss_enable) {
++		tx_bss = mxl_hostapd_mbssid_get_tx_bss(hapd);
++		return mxl_is_mlo_enabled(tx_bss->conf);
++	}
++
++	return false;
++}
+diff --git a/src/ap/mxl_mld.h b/src/ap/mxl_mld.h
+index 5c5db1d9e..8333e87ca 100644
+--- a/src/ap/mxl_mld.h
++++ b/src/ap/mxl_mld.h
+@@ -204,6 +204,7 @@ int mxl_ml_send_bss_critical_update_info(struct hostapd_data *hapd,
+ int mxl_ml_handle_critical_update(struct hostapd_data *hapd);
+ int mxl_ml_handle_csa_critical_update(struct hostapd_data *hapd, struct csa_settings *settings);
+ bool mxl_is_sibling_hapd_init_completed(struct hostapd_iface *iface);
++bool mxl_ml_is_mlo_on_tx_bss(struct hostapd_data *hapd);
+ #else
+ static inline bool mxl_is_ml_vap_configured(struct hostapd_iface *iface)
+ {
+diff --git a/src/ap/mxl_wpa_auth.c b/src/ap/mxl_wpa_auth.c
+index 868bf519a..4b238dbbf 100644
+--- a/src/ap/mxl_wpa_auth.c
++++ b/src/ap/mxl_wpa_auth.c
+@@ -240,7 +240,9 @@ u8 * mxl_wpa_auth_ml_group_kdes(struct wpa_state_machine *sm, u8 *pos)
+ {
+ #define PN_LENGTH 6
+ 	struct wpa_authenticator *sibling_wpa_auth = sm->wpa_auth->sibling_wpa_auth;
+-	struct wpa_group *gsm = NULL, *gsm1 = NULL;
++	struct wpa_authenticator *tx_auth;
++	struct wpa_group *gsm = NULL, *gsm1 = NULL, *tx_gsm = NULL;
++	struct wpa_auth_config *tx_conf;
+ 	size_t gtk_len = 0, gtk_len1 = 0, len = 0;
+ 	int gtkidx = 0, gtkidx1 = 0;
+ 	u8 *gtk = NULL, *gtk1 = NULL;
+@@ -300,31 +302,47 @@ u8 * mxl_wpa_auth_ml_group_kdes(struct wpa_state_machine *sm, u8 *pos)
+ 
+ 	/* MLO link1 BIGTK KDE */
+ 	if (sm->wpa_auth->conf.beacon_prot) {
+-		bigtk_hdr[0] = gsm->GN_bigtk;
++		tx_auth = sm->wpa_auth;
++		tx_gsm = sm->group;
++		if (sm->wpa_auth->conf.tx_bss_auth) {
++			tx_auth = sm->wpa_auth->conf.tx_bss_auth;
++			tx_conf = &tx_auth->conf;
++			len = wpa_cipher_key_len(tx_conf->group_mgmt_cipher);
++			tx_gsm = tx_auth->group;
++		}
++		bigtk_hdr[0] = tx_gsm->GN_bigtk;
+ 		bigtk_hdr[1] = 0;
+-		if (gsm->wpa_group_state != WPA_GROUP_SETKEYSDONE ||
+-		    mxl_wpa_auth_get_seqnum(sm->wpa_auth, NULL, gsm->GN_bigtk, rsc) < 0)
++		if (tx_gsm->wpa_group_state != WPA_GROUP_SETKEYSDONE ||
++		    mxl_wpa_auth_get_seqnum(tx_auth, NULL, tx_gsm->GN_bigtk, rsc) < 0)
+ 			os_memset(&bigtk_hdr[2], 0, PN_LENGTH);
+ 		else
+ 			memcpy_s(&bigtk_hdr[2], PN_LENGTH, rsc, PN_LENGTH);
+ 
+ 		bigtk_hdr[8] = (sm->wpa_auth->mlo_conf.link1_linkid << 4);
+-		memcpy_s(&bigtk_hdr[9], len, gsm->BIGTK[gsm->GN_bigtk - 6], len);
++		memcpy_s(&bigtk_hdr[9], len, tx_gsm->BIGTK[tx_gsm->GN_bigtk - 6], len);
+ 		pos = wpa_add_kde(pos, RSN_KEY_DATA_MLO_BIGTK, bigtk_hdr, 2 + PN_LENGTH + 1 + len, NULL, 0);
+ 	}
+ 
+ 	/* MLO link2 BIGTK KDE */
+ 	if (sibling_wpa_auth && sibling_wpa_auth->conf.beacon_prot && !sm->mxl_sm.is_single_link_ml_sta) {
+-		bigtk_hdr[0] = gsm1->GN_bigtk;
++		tx_auth = sibling_wpa_auth;
++		tx_gsm = sibling_wpa_auth->group;
++		if (sibling_wpa_auth->conf.tx_bss_auth) {
++			tx_auth = sibling_wpa_auth->conf.tx_bss_auth;
++			tx_conf = &tx_auth->conf;
++			len = wpa_cipher_key_len(tx_conf->group_mgmt_cipher);
++			tx_gsm = tx_auth->group;
++		}
++		bigtk_hdr[0] = tx_gsm->GN_bigtk;
+ 		bigtk_hdr[1] = 0;
+-		if (gsm1->wpa_group_state != WPA_GROUP_SETKEYSDONE ||
+-		    mxl_wpa_auth_get_seqnum(sibling_wpa_auth, NULL, gsm1->GN_bigtk, rsc) < 0)
++		if (tx_gsm->wpa_group_state != WPA_GROUP_SETKEYSDONE ||
++		    mxl_wpa_auth_get_seqnum(tx_auth, NULL, tx_gsm->GN_bigtk, rsc) < 0)
+ 			os_memset(&bigtk_hdr[2], 0, PN_LENGTH);
+ 		else
+ 			memcpy_s(&bigtk_hdr[2], PN_LENGTH, rsc, PN_LENGTH);
+ 
+ 		bigtk_hdr[8] = (sm->wpa_auth->mlo_conf.link2_linkid << 4);
+-		memcpy_s(&bigtk_hdr[9], len, gsm1->BIGTK[gsm1->GN_bigtk - 6], len);
++		memcpy_s(&bigtk_hdr[9], len, tx_gsm->BIGTK[tx_gsm->GN_bigtk - 6], len);
+ 		pos = wpa_add_kde(pos, RSN_KEY_DATA_MLO_BIGTK, bigtk_hdr, 2 + PN_LENGTH + 1 + len, NULL, 0);
+ 	}
+ 	return pos;
+-- 
+2.43.0
+

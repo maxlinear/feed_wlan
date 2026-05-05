@@ -1,4 +1,4 @@
-From 112f256a32a49c7820ee60571d1a55fa8afa76df Mon Sep 17 00:00:00 2001
+From 4d461282e3fac348a5d5a285246bcb8934353941 Mon Sep 17 00:00:00 2001
 From: Jurijs Soloveckis <jsoloveckis@maxlinear.com>
 Date: Mon, 3 Jul 2023 16:24:12 +0200
 Subject: [PATCH] WLANRTSYS-56402: HE Spatial reuse parameters

@@ -1,0 +1,29 @@
+From d4239850292ddb5728f8e13fb2cc9cf74cdbd915 Mon Sep 17 00:00:00 2001
+From: Gary Wu <gwu@maxlinear.com>
+Date: Wed, 14 Jan 2026 13:58:48 +0800
+Subject: [PATCH] WLANRTSYS-99671 Enhance gProbeReqList to support
+ multi-antenna RSSI query
+
+As per ATT requirements, provide a method to query RSSI without STA connection.
+Extended gProbeReqList functionality from storing a single maximum RSSI to supporting up to 4 RSSI values per antenna.
+
+Signed-off-by: Gary Wu <gwu@maxlinear.com>
+---
+ src/common/vendor_cmds_copy.h | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/src/common/vendor_cmds_copy.h b/src/common/vendor_cmds_copy.h
+index 976b55c51..c1cfb0424 100644
+--- a/src/common/vendor_cmds_copy.h
++++ b/src/common/vendor_cmds_copy.h
+@@ -505,6 +505,7 @@ struct intel_vendor_probe_req_info {
+   DEF_IEEE_ADDR(addr);
+   u16 age;
+   s8 rssi;
++  s8 rssi_ant[4];
+ } __attribute__ ((packed));
+ 
+ /* SoftBlock Timer ACL configuration */
+-- 
+2.43.0
+

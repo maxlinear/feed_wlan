@@ -1,4 +1,4 @@
-From 82751a895e00f39dd41a7a8249c84207d4188f43 Mon Sep 17 00:00:00 2001
+From 1280cfb0a841bfa10d6d575eb6f4acbc3f4f6f18 Mon Sep 17 00:00:00 2001
 From: Jurijs Soloveckis <jsoloveckis@maxlinear.com>
 Date: Thu, 23 Feb 2023 13:05:20 +0100
 Subject: [PATCH] WLANRTSYS-53245: Add support for MBSSID

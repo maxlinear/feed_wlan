@@ -1,0 +1,32 @@
+From f1ee7f4041f32132416fe1fa52015eb78bd5a743 Mon Sep 17 00:00:00 2001
+From: pvaish <pvaish@maxlinear.com>
+Date: Wed, 25 Mar 2026 00:08:37 -0700
+Subject: [PATCH] WLANRTSYS-99529 Added the PMKSA cache for the main hapd along
+ with the sibling hapd.
+
+FixUp : WLANRTSYS-97395 : Upstep hostap-ng to the latest opensource commit
+Commit id: 6d408f9eb06e47503b4f6c8623c5415a5cdcc471
+
+Signed-off-by: pvaish <pvaish@maxlinear.com>
+---
+ src/ap/ieee802_11.c | 4 ++++
+ 1 file changed, 4 insertions(+)
+
+diff --git a/src/ap/ieee802_11.c b/src/ap/ieee802_11.c
+index b70fcbb50..eb4f0b55d 100644
+--- a/src/ap/ieee802_11.c
++++ b/src/ap/ieee802_11.c
+@@ -4327,6 +4327,10 @@ static u16 owe_process_assoc_req(struct hostapd_data *hapd,
+ 					    sta->owe_pmk_len, pmkid, 0, WPA_KEY_MGMT_OWE, NULL, false);
+ 		}
+ 	}
++	wpa_auth_pmksa_add2(hapd->wpa_auth, spa_addr, sta->owe_pmk,
++			    sta->owe_pmk_len, pmkid, 0, WPA_KEY_MGMT_OWE,
++			    NULL, false);
++
+ #else /* CONFIG_IEEE80211BE_MXL_MLO */
+ 	wpa_auth_pmksa_add2(hapd->wpa_auth, sta->addr, sta->owe_pmk,
+ 			    sta->owe_pmk_len, pmkid, 0, WPA_KEY_MGMT_OWE,
+-- 
+2.43.0
+

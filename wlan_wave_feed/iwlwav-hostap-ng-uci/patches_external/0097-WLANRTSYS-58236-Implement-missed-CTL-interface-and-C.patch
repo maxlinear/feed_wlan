@@ -1,4 +1,4 @@
-From 3bccd77f5c95aa2a74741a7f39b35eeb6574cedc Mon Sep 17 00:00:00 2001
+From 1fefeae4865f52e1571b46b03e099423b1786a81 Mon Sep 17 00:00:00 2001
 From: Jurijs Soloveckis <jsoloveckis@maxlinear.com>
 Date: Wed, 30 Aug 2023 10:43:53 +0200
 Subject: [PATCH] WLANRTSYS-58236: Implement missed CTL interface and CLI APIs

@@ -1,0 +1,279 @@
+From d19098f4b962174ce445f08f672677afe6037b0f Mon Sep 17 00:00:00 2001
+From: Karthik D A <karthikda@maxlinear.com>
+Date: Sun, 7 Sep 2025 20:37:13 +0800
+Subject: [PATCH] WLANRTSYS-93718 iwlwav-hostapd-ng: Fix for TC 4.5.3
+
+Description: The SCS TC4.5.3_2G/5G, along with SCS validations,
+the MSCS support in extended capabilities IE is also validated by the TC. The TC failed.
+
+Root cause: Classifier mask based ip tuple comparison and unsolicited SCS resp was not handled.
+
+Fix: Added the changes to handle comparsion of tuple based on classifier mask and unsolicited SCS resp.
+
+Test: Tested and verify that the TC 4.5.3_24G/5G passed successfully.
+
+Fixup Commit:WLANRTSYS-88975 iwlwav-hostap-ng DL SCS support
+
+Signed-off-by: Karthik D A <karthikda@maxlinear.com>
+---
+ hostapd/mxl_ctrl_iface.c      | 57 +++++++++++++++++++++++++++++++++++
+ hostapd/mxl_hostapd_cli.c     | 18 +++++++++++
+ hostapd/mxl_hostapd_cli.h     |  3 ++
+ src/ap/mxl_wmm.c              | 22 ++++++++------
+ src/ap/mxl_wmm.h              |  3 +-
+ src/common/vendor_cmds_copy.h |  1 +
+ 6 files changed, 93 insertions(+), 11 deletions(-)
+
+diff --git a/hostapd/mxl_ctrl_iface.c b/hostapd/mxl_ctrl_iface.c
+index 7a9def3f0..e2d7e0a5b 100644
+--- a/hostapd/mxl_ctrl_iface.c
++++ b/hostapd/mxl_ctrl_iface.c
+@@ -3134,6 +3134,60 @@ static int mxl_hostapd_ctrl_iface_get_scs_enable(struct hostapd_data *hapd, char
+ 
+ 	return res;
+ }
++
++static int mxl_hostapd_ctrl_iface_scs_unsolicited_rem(struct hostapd_data *hapd, const char *cmd, char *reply, size_t reply_size)
++{
++	u8 addr[ETH_ALEN];
++	u8 scs_id, req_type;
++	u8 scs_count = 0;
++	int status;
++	int res = 0;
++	int used;
++	long int val;
++	const char *pos;
++	char *pos2;
++	struct mxl_scs_status_list status_list;
++
++	pos = cmd;
++	used = hwaddr_aton2(pos, addr);
++	if (used < 0)
++		return -1;
++	pos += used;
++
++	while (*pos == ' ')
++		pos++;
++	
++	val = strtol(pos, &pos2, 0);
++	if (val < 0 || val > 0xff)
++		return -1;
++	scs_id = (u8) val;
++	pos = pos2;
++
++	while (*pos == ' ')
++		pos++;
++
++	val = strtol(pos, &pos2, 0);
++	if (val < 0 || val > 0xff)
++		return -1;
++	req_type = (u8) val;
++
++	if (req_type != SCS_REQ_REMOVE)
++		return -1;
++
++	status = mxl_scs_remove_req(hapd, addr, 0, scs_id);
++	status_list.scsId = scs_id;
++	status_list.status = status;
++	scs_count ++;
++	mxl_send_scs_resp(hapd, addr, &status_list, scs_count, 0);
++
++	res = sprintf_s(reply, reply_size, "%d\n", status);
++	if (res <= 0) {
++		wpa_printf(MSG_ERROR, "%s: sprintf_s error %d", __func__, res);
++		return -1;
++	}
++
++	return res;
++}
+ #endif
+ 
+ #ifdef CONFIG_MSCS_MXL
+@@ -3419,6 +3473,9 @@ int mxl_hostapd_ctrl_iface_receive_process(struct hostapd_data *hapd,
+ 	} else if (os_strncmp(buf, "GET_SCS_ENABLE", 14) == 0) {
+ 		if (mxl_hostapd_ctrl_iface_get_scs_enable(hapd, reply, reply_size) < 0)
+ 			*reply_len = -1;
++	} else if (os_strncmp(buf, "SCS_REM_REQ ", sizeof("SCS_REM_REQ ") - 1) == 0) {
++		if (mxl_hostapd_ctrl_iface_scs_unsolicited_rem(hapd, buf + sizeof("SCS_REM_REQ ") -1, reply, reply_size) < 0)
++			*reply_len = -1;
+ #endif /* CONFIG_SCS */
+ #ifdef CONFIG_MSCS_MXL
+ 	} else if (os_strncmp(buf, "GET_MSCS_ENABLE", 15) == 0) {
+diff --git a/hostapd/mxl_hostapd_cli.c b/hostapd/mxl_hostapd_cli.c
+index c30003995..42312c8df 100644
+--- a/hostapd/mxl_hostapd_cli.c
++++ b/hostapd/mxl_hostapd_cli.c
+@@ -570,6 +570,24 @@ int mxl_hostapd_cli_cmd_get_mscs_enable(struct wpa_ctrl *ctrl, int argc, char *a
+ 	return mxl_wpa_ctrl_command(ctrl, "GET_MSCS_ENABLE");
+ }
+ 
++int mxl_hostapd_cli_cmd_scs_rem(struct wpa_ctrl *ctrl, int argc, char *argv[])
++{
++	char cmd[256];
++	int res;
++
++	if (argc != 3) {
++		printf("Usage: scs_remove <STA-MAC> <SCSID> <REQ TYPE>\n");
++		return -1;
++	}
++
++	res = sprintf_s(cmd, sizeof(cmd), "SCS_REM_REQ %s %s %s", argv[0] ,argv[1], argv[2]);
++	if (res <= 0) {
++		printf("%s: sprintf_s error %d", __func__, res);
++		return -1;
++	}
++	return mxl_wpa_ctrl_command(ctrl, cmd);
++}
++
+ int mxl_hostapd_cli_cmd_mscs_rem(struct wpa_ctrl *ctrl, int argc, char *argv[])
+ {
+    char cmd[256];
+diff --git a/hostapd/mxl_hostapd_cli.h b/hostapd/mxl_hostapd_cli.h
+index 5892ce4b3..66a197c0a 100644
+--- a/hostapd/mxl_hostapd_cli.h
++++ b/hostapd/mxl_hostapd_cli.h
+@@ -109,6 +109,8 @@ int mxl_wpa_ctrl_command(struct wpa_ctrl *ctrl, const char *cmd);
+ 	  " = do reconf on all changed bss in radio"}, \
+ 	{ "get_scs_enable", mxl_hostapd_cli_cmd_get_scs_enable, NULL, \
+ 	  " = Get scs enable/disable status"}, \
++	{"scs_remove", mxl_hostapd_cli_cmd_scs_rem, NULL, \
++	  " = Unsolicited scs rem req"}, \
+ 	{ "get_mscs_enable", mxl_hostapd_cli_cmd_get_mscs_enable, NULL, \
+ 	  " = Get mscs enable/disable status"}, \
+ 	{ "mscs_remove", mxl_hostapd_cli_cmd_mscs_rem, NULL, \
+@@ -194,6 +196,7 @@ int mxl_hostapd_cli_cmd_set_assocresp_elements(struct wpa_ctrl *ctrl, int argc,
+ int mxl_hostapd_cli_cmd_get_assocresp_elements(struct wpa_ctrl *ctrl, int argc, char *argv[]);
+ int mxl_hostapd_cli_cmd_bss_reconf(struct wpa_ctrl *ctrl, int argc, char *argv[]);
+ int mxl_hostapd_cli_cmd_get_scs_enable(struct wpa_ctrl *ctrl, int argc, char *argv[]);
++int mxl_hostapd_cli_cmd_scs_rem(struct wpa_ctrl *ctrl, int argc, char *argv[]);
+ int mxl_hostapd_cli_cmd_get_mscs_enable(struct wpa_ctrl *ctrl, int argc, char *argv[]);
+ int mxl_hostapd_cli_cmd_mscs_rem(struct wpa_ctrl *ctrl, int argc, char *argv[]);
+ 
+diff --git a/src/ap/mxl_wmm.c b/src/ap/mxl_wmm.c
+index 9df5fe8a6..36f90bb48 100644
+--- a/src/ap/mxl_wmm.c
++++ b/src/ap/mxl_wmm.c
+@@ -173,14 +173,14 @@ void mxl_hostapd_eht_protected(struct hostapd_data *hapd,
+ #endif /* CONFIG_EPCS_MXL */
+ 
+ #ifdef CONFIG_SCS_MXL
+-static void mxl_send_scs_resp(struct hostapd_data *hapd,
+-			const struct ieee80211_mgmt *mgmt, struct mxl_scs_status_list *status_list, u8 scs_count)
++void mxl_send_scs_resp(struct hostapd_data *hapd,
++		const u8 *addr, struct mxl_scs_status_list *status_list, u8 scs_count, u8 dialog_token)
+ {
+ 	u8 buf[256];
+ 	struct ieee80211_mgmt *mgmt_resp = (struct ieee80211_mgmt *) buf;
+ 	struct sta_info *sta;
+ 	wpa_printf(MSG_DEBUG, "Send SCS Response");
+-	sta = ap_get_sta(hapd, mgmt->sa);
++	sta = ap_get_sta(hapd, addr);
+ 
+ 	if (sta == NULL) {
+ 		wpa_printf(MSG_ERROR, "SCS: mxl_send_scs_resp - station not connected");
+@@ -190,13 +190,13 @@ static void mxl_send_scs_resp(struct hostapd_data *hapd,
+ 	wpa_printf(MSG_DEBUG, "handle_scs_resp");
+ 	os_memset(buf, 0, sizeof(buf));
+ 	mgmt_resp->frame_control = IEEE80211_FC(WLAN_FC_TYPE_MGMT, WLAN_FC_STYPE_ACTION);
+-	os_memcpy(mgmt_resp->da, mgmt->sa, ETH_ALEN);
++	os_memcpy(mgmt_resp->da, addr, ETH_ALEN);
+ 	os_memcpy(mgmt_resp->sa, hapd->own_addr, ETH_ALEN);
+ 	os_memcpy(mgmt_resp->bssid, hapd->own_addr, ETH_ALEN);
+ 
+ 	mgmt_resp->u.action.category = WLAN_ACTION_ROBUST_AV_STREAMING;
+ 	mgmt_resp->u.action.u.scs_action_resp.action = ROBUST_AV_SCS_RESP;
+-	mgmt_resp->u.action.u.scs_action_resp.dialog_token = mgmt->u.action.u.scs_action_req.dialog_token;
++	mgmt_resp->u.action.u.scs_action_resp.dialog_token = dialog_token;
+ 	mgmt_resp->u.action.u.scs_action_resp.count = scs_count;
+ 	os_memcpy(mgmt_resp->u.action.u.scs_action_resp.scs_status, status_list, (scs_count * sizeof(struct mxl_scs_status_list)));
+ 
+@@ -304,6 +304,7 @@ int mxl_scs_parse_tclas_elems(const u8 *pos, struct mxl_scs_add_req *scs_add_req
+ 		switch (class_type) { /* Classifier type 4 and 10 are allowed */
+ 			case CLASSIFIER_TYPE4:
+ 				mask = *pos++;
++				scs_add_req->tclasInfo.tclasMask = mask;
+ 
+ 				/* Process classifiers frames */
+ 				if (mask & BIT(CLASS_TYPE4_VERSION))
+@@ -509,7 +510,7 @@ int mxl_scs_add_req(struct hostapd_data *hapd, const struct ieee80211_mgmt *mgmt
+ }
+ 
+ int mxl_scs_remove_req(struct hostapd_data *hapd,
+-			const struct ieee80211_mgmt *mgmt, size_t len, u8 scsId)
++			const u8 *addr, size_t len, u8 scsId)
+ {
+ 	struct sta_info *sta;
+ 	struct mxl_scs_rem_req scs_rem_req;
+@@ -519,7 +520,7 @@ int mxl_scs_remove_req(struct hostapd_data *hapd,
+ 		return WLAN_STATUS_UNSPECIFIED_FAILURE;
+ 	}
+ 
+-	sta = ap_get_sta(hapd, mgmt->sa);
++	sta = ap_get_sta(hapd, addr);
+ 	if (sta == NULL) {
+ 		wpa_printf(MSG_ERROR, "SCS: scs_rem_req - station not connected");
+ 		return WLAN_STATUS_UNSPECIFIED_FAILURE;
+@@ -546,6 +547,7 @@ void mxl_handle_scs_req(struct hostapd_data *hapd,
+ 	u8 reqType, scsId, eid;
+ 	size_t elen;
+ 	const u8 *pos = mgmt->u.action.u.scs_action_req.variable;
++	u8 dialog_token = mgmt->u.action.u.scs_action_req.dialog_token;
+ 	struct mxl_scs_status_list status_list[8]; /* Assuming max 8 status duples for SCS response */
+ 	u8 scs_count = 0;
+ 
+@@ -582,13 +584,13 @@ void mxl_handle_scs_req(struct hostapd_data *hapd,
+ 				scs_count ++;
+ 				break;
+ 			case SCS_REQ_REMOVE:
+-				status = mxl_scs_remove_req(hapd, mgmt, elen, scsId);
++				status = mxl_scs_remove_req(hapd, mgmt->sa, elen, scsId);
+ 				status_list[scs_count].scsId = scsId;
+ 				status_list[scs_count].status = status;
+ 				scs_count ++;
+ 				break;
+ 			case SCS_REQ_CHANGE:
+-				status = mxl_scs_remove_req(hapd, mgmt, elen, scsId);
++				status = mxl_scs_remove_req(hapd, mgmt->sa, elen, scsId);
+ 				if (status == WLAN_STATUS_TCLAS_PROCESSING_TERMINATED)
+ 					status = mxl_scs_add_req(hapd, mgmt, pos, elen, scsId);
+ 				status_list[scs_count].scsId = scsId;
+@@ -605,7 +607,7 @@ void mxl_handle_scs_req(struct hostapd_data *hapd,
+ 
+ 		pos += elen;
+ 	}
+-	mxl_send_scs_resp(hapd, mgmt, status_list, scs_count);
++	mxl_send_scs_resp(hapd, mgmt->sa, status_list, scs_count, dialog_token);
+ }
+ #endif /* CONFIG_SCS_MXL */
+ 
+diff --git a/src/ap/mxl_wmm.h b/src/ap/mxl_wmm.h
+index 81d177a35..026da6f6d 100644
+--- a/src/ap/mxl_wmm.h
++++ b/src/ap/mxl_wmm.h
+@@ -31,9 +31,10 @@ void mxl_hostapd_handle_robust_av_stream(struct hostapd_data *hapd, const struct
+ #ifdef CONFIG_SCS_MXL
+ void mxl_handle_scs_req(struct hostapd_data *hapd, const struct ieee80211_mgmt *mgmt, size_t len);
+ int mxl_scs_add_req(struct hostapd_data *hapd, const struct ieee80211_mgmt *mgmt, const u8 *pos, size_t len, u8 scsId);
+-int mxl_scs_remove_req(struct hostapd_data *hapd, const struct ieee80211_mgmt *mgmt, size_t len, u8 scsId);
++int mxl_scs_remove_req(struct hostapd_data *hapd, const u8 *addr, size_t len, u8 scsId);
+ int mxl_scs_parse_qos_characteristics_elems(const u8 *pos, struct mxl_scs_add_req *scs_add_req);
+ int mxl_scs_parse_tclas_elems(const u8 *pos, struct mxl_scs_add_req *scs_add_req, size_t len, u8 *elems_num);
++void mxl_send_scs_resp(struct hostapd_data *hapd, const u8 *addr, struct mxl_scs_status_list *status_list, u8 scs_count, u8 dialog_token);
+ #endif /* CONFIG_SCS_MXL */
+ 
+ #ifdef CONFIG_MSCS_MXL
+diff --git a/src/common/vendor_cmds_copy.h b/src/common/vendor_cmds_copy.h
+index 843cc7063..976b55c51 100644
+--- a/src/common/vendor_cmds_copy.h
++++ b/src/common/vendor_cmds_copy.h
+@@ -732,6 +732,7 @@ struct mxl_scs_tclas_info {
+   u8 tclasElemsUp;
+   u8 tclasLen;
+   u8 tclasElemstype;
++  u8 tclasMask;
+ } __attribute__ ((packed));
+ 
+ struct classIpv4Params {
+-- 
+2.43.0
+

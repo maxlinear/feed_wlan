@@ -1,4 +1,4 @@
-From 8debee593731a4ee27fe4239a1873e8dd129ad68 Mon Sep 17 00:00:00 2001
+From a8d68ded7caddbbec979f2a0e8229039b7ca985b Mon Sep 17 00:00:00 2001
 From: hmgokhale <hmgokhale@maxlinear.com>
 Date: Thu, 8 Feb 2024 10:29:50 +0530
 Subject: [PATCH] WLANRTSYS-60843 MLO changes: AP MLD configuration
@@ -2317,7 +2317,7 @@ index 6ad5ab185..f5a735e21 100644
 +}
 +#endif /* CONFIG_IEEE80211BE_MXL_MLO */
 diff --git a/src/ap/mxl_hostapd.h b/src/ap/mxl_hostapd.h
-index 82e909d23..9866f01e5 100644
+index 615e5df35..e84a979d4 100644
 --- a/src/ap/mxl_hostapd.h
 +++ b/src/ap/mxl_hostapd.h
 @@ -18,6 +18,10 @@

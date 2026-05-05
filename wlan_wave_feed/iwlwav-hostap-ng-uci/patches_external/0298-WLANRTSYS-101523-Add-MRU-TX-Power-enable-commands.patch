@@ -1,0 +1,42 @@
+From aa6c5fdbb7924705f8bc67b4a325260cfe11741d Mon Sep 17 00:00:00 2001
+From: Lior Ben Ishay <liorbi@maxlinear.com>
+Date: Tue, 21 Apr 2026 09:34:38 +0300
+Subject: [PATCH] WLANRTSYS-101523 Add MRU TX Power enable commands
+
+Issue:
+The current implementation lacks support for managing MRU TX power settings, which may affect performance in specific scenarios.
+
+Fix:
+Added two new vendor command identifiers for MRU TX power management in `vendor_cmds_copy.h`:
+- `LTQ_NL80211_VENDOR_SUBCMD_SET_MRU_TX_POWER_ENABLE`
+- `LTQ_NL80211_VENDOR_SUBCMD_GET_MRU_TX_POWER_ENABLE`
+
+Test:
+- Dry-Run sanity test
+- GCI
+
+AI code review:
+Yes
+
+Impact analysis:
+This change introduces new command identifiers, which may increase the complexity of command handling but should not introduce regressions if properly managed.
+---
+ src/common/vendor_cmds_copy.h | 2 ++
+ 1 file changed, 2 insertions(+)
+
+diff --git a/src/common/vendor_cmds_copy.h b/src/common/vendor_cmds_copy.h
+index 61cdd23c1..dcbcd9a92 100644
+--- a/src/common/vendor_cmds_copy.h
++++ b/src/common/vendor_cmds_copy.h
+@@ -422,6 +422,8 @@ enum ltq_nl80211_vendor_subcmds {
+   LTQ_NL80211_VENDOR_SUBCMD_SET_PCIE_AUTO_GEN_ENABLE,
+   LTQ_NL80211_VENDOR_SUBCMD_SET_VW_TEST_MODE,
+   LTQ_NL80211_VENDOR_SUBCMD_GET_VW_TEST_MODE,
++  LTQ_NL80211_VENDOR_SUBCMD_SET_MRU_TX_POWER_ENABLE,
++  LTQ_NL80211_VENDOR_SUBCMD_GET_MRU_TX_POWER_ENABLE,
+   LTQ_NL80211_VENDOR_SUBCMD_SET_PBAC,
+   LTQ_NL80211_VENDOR_SUBCMD_SET_AQM_STA_EN,
+   LTQ_NL80211_VENDOR_SUBCMD_GET_AQM_STA_EN,
+-- 
+2.43.0
+

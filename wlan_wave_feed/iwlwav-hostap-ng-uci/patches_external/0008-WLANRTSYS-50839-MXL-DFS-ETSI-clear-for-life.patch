@@ -1,4 +1,4 @@
-From 69e7e28b16915f4334d5e15f2d9e2572596e6913 Mon Sep 17 00:00:00 2001
+From 610cd8561556af83f9d67919a01b970358f156e4 Mon Sep 17 00:00:00 2001
 From: mvuls <mvuls@maxlinear.com>
 Date: Wed, 8 Nov 2023 17:12:30 +0200
 Subject: [PATCH] WLANRTSYS-50839: MXL DFS ETSI clear for life
@@ -397,7 +397,7 @@ index 000000000..35fb5f578
 +
 +#endif /* MXL_DFS_FILE_H */
 diff --git a/src/ap/mxl_hostapd.h b/src/ap/mxl_hostapd.h
-index 9f560192c..b75d7ee4a 100644
+index 2580bddec..ab9d8b598 100644
 --- a/src/ap/mxl_hostapd.h
 +++ b/src/ap/mxl_hostapd.h
 @@ -67,6 +67,7 @@ struct mxl_hostapd_iface {

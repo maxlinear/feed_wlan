@@ -1,4 +1,4 @@
-From dfbeef9a17d572741b07f36b4e2f5cb28d8c7c87 Mon Sep 17 00:00:00 2001
+From bd081fa6a8ea30c20b531fb07258b422cb01e223 Mon Sep 17 00:00:00 2001
 From: "Ross-Ashikyan, William" <washikyan@maxlinear.com>
 Date: Tue, 27 Aug 2024 14:19:07 -0700
 Subject: [PATCH] WLANRTSYS-83162 Ported afcd and composite mode changes from
@@ -8,7 +8,7 @@ Subject: [PATCH] WLANRTSYS-83162 Ported afcd and composite mode changes from
  afc/afcd.c                   |  24 +++-
  hostapd/Makefile             |   3 +
  hostapd/defconfig            |   2 +-
- hostapd/mxl_ctrl_iface.c     |  46 ++++++-
+ hostapd/mxl_ctrl_iface.c     |  38 +++++-
  hostapd/mxl_hostapd_cli.c    |   6 +
  hostapd/mxl_hostapd_cli.h    |  19 ++-
  src/ap/afc.c                 |  37 +++++-
@@ -16,7 +16,7 @@ Subject: [PATCH] WLANRTSYS-83162 Ported afcd and composite mode changes from
  src/ap/mxl_afc.h             |  74 +++++++++++
  src/ap/mxl_hostapd.c         |  26 +++-
  src/common/ieee802_11_defs.h |   4 +
- 11 files changed, 471 insertions(+), 15 deletions(-)
+ 11 files changed, 463 insertions(+), 15 deletions(-)
  create mode 100644 src/ap/mxl_afc.c
  create mode 100644 src/ap/mxl_afc.h
 
@@ -119,7 +119,7 @@ index 29a66eab2..d5a4e7c80 100644
 -#CONFIG_AFC=y
 +CONFIG_AFC=y
 diff --git a/hostapd/mxl_ctrl_iface.c b/hostapd/mxl_ctrl_iface.c
-index 5eca66d4a..494ad1807 100644
+index 5eca66d4a..58e0f6d72 100644
 --- a/hostapd/mxl_ctrl_iface.c
 +++ b/hostapd/mxl_ctrl_iface.c
 @@ -32,6 +32,9 @@
@@ -158,7 +158,7 @@ index 5eca66d4a..494ad1807 100644
  #ifdef CONFIG_IEEE80211BE_MXL_MLO
  	} else if (os_strncmp(buf, "SEND_T2LM_TEARDOWN_FRAME ", sizeof("SEND_T2LM_TEARDOWN_FRAME ") - 1) == 0) {
  		*reply_len = mxl_hostapd_ctrl_iface_send_t2lm_teardown_frame(hapd, buf + sizeof("SEND_T2LM_TEARDOWN_FRAME ") - 1);
-@@ -3563,15 +3578,36 @@ int mxl_hostapd_ctrl_iface_set_power_mode(struct hostapd_iface *iface, const cha
+@@ -3563,15 +3578,28 @@ int mxl_hostapd_ctrl_iface_set_power_mode(struct hostapd_iface *iface, const cha
  
  	pos++;
  	val = atoi(pos);
@@ -185,14 +185,6 @@ index 5eca66d4a..494ad1807 100644
 +		mxl_hostapd_afc_clear_and_load_lpi(iface);
 +		mxl_hostap_afc_construct_regrule_from_afc_data(iface);
 +	}
-+#ifdef CONFIG_VENDOR_MXL_PROPRIETARY
-+	else if (val == HE_REG_INFO_6GHZ_AP_TYPE_INDOOR) {
-+		if (iface->conf->mxl_conf.acs_6g_punct_mode) {
-+			mxl_hostapd_set_eht_punct_bitmap(iface->bss[0], 0);
-+			iface->conf->punct_bitmap = 0;
-+		}
-+	}
-+#endif /* CONFIG_VENDOR_MXL_PROPRIETARY */
 +#endif /* CONFIG_AFC */
  
 -	return os_snprintf(buf, buflen, "Power Mode=%s\n", iface->conf->he_6ghz_reg_pwr_type ? "STANDARD-POWER" : "LOW-POWER-INDOOR");

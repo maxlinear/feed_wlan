@@ -1,4 +1,4 @@
-From e0dae31cda40e95df7b756a3fab286784800e0ba Mon Sep 17 00:00:00 2001
+From ed64b685d7e5f413ae9edb3800d824b6269c1802 Mon Sep 17 00:00:00 2001
 From: rportnikh <rportnikh@maxlinear.com>
 Date: Wed, 14 Feb 2024 10:11:56 +0200
 Subject: [PATCH] WLANRTSYS-62335 updk-support-sccath

@@ -1,0 +1,138 @@
+From 28cf679e82dd1f45a626313b50ce177f9d1ca6cf Mon Sep 17 00:00:00 2001
+From: "pvaish@maxlinear.com" <pvaish@lvdocker8.lvsw.maxlinear.com>
+Date: Mon, 7 Jul 2025 04:40:25 -0700
+Subject: [PATCH] WLANRTSYS-89089 Updating the MCS NSS in VHT capabilities
+ based on the negotiation between the driver and the conf file
+
+Signed-off-by: pvaish@maxlinear.com <pvaish@lvdocker8.lvsw.maxlinear.com>
+---
+ src/ap/hostapd.c     |  5 +++++
+ src/ap/hw_features.c | 37 -------------------------------------
+ src/ap/mxl_hostapd.c | 30 ++++++++++++++++++++++++++++++
+ src/ap/mxl_hostapd.h |  1 +
+ 4 files changed, 36 insertions(+), 37 deletions(-)
+
+diff --git a/src/ap/hostapd.c b/src/ap/hostapd.c
+index 230be8483..0e1f7a6e2 100644
+--- a/src/ap/hostapd.c
++++ b/src/ap/hostapd.c
+@@ -3721,6 +3721,11 @@ static int hostapd_setup_interface_complete_sync(struct hostapd_iface *iface,
+ 	if (hostapd_get_psd_val(iface, &iface->conf->psd_20mhz))
+ 		wpa_printf(MSG_ERROR, "hostapd_get_psd_val failed");
+ 
++#ifdef CONFIG_VENDOR_MXL
++	if (0 < mxl_hostapd_override_ht_vht_capab(iface))
++		return -1;
++#endif /* CONFIG_VENDOR_MXL */
++
+ 	for (j = 0; j < iface->num_bss; j++) {
+ #ifdef CONFIG_VENDOR_MXL
+ 		/*	When MBSSID is conifgured - TX bss should always start first
+diff --git a/src/ap/hw_features.c b/src/ap/hw_features.c
+index 0c186771a..8b2b05d05 100644
+--- a/src/ap/hw_features.c
++++ b/src/ap/hw_features.c
+@@ -837,38 +837,6 @@ static int ieee80211ax_supported_he_capab(struct hostapd_iface *iface)
+ }
+ #endif /* CONFIG_IEEE80211AX */
+ 
+-#ifdef CONFIG_VENDOR_MXL
+-static int hostapd_override_capab_vendor_mxl(struct hostapd_iface *iface)
+-{
+-	if (iface->conf->ieee80211n && iface->conf->ht_mcs_set[0]) {
+-		wpa_printf(MSG_DEBUG, "Override HT MCS SET");
+-		if (EOK != memcpy_s(iface->current_mode->mcs_set, sizeof(iface->current_mode->mcs_set),
+-			 iface->conf->ht_mcs_set, sizeof(iface->conf->ht_mcs_set))) {
+-				wpa_printf(MSG_ERROR, "%s: memcpy_s error", __func__);
+-				return -1;
+-		}
+-	}
+-
+-#ifdef CONFIG_IEEE80211AC
+-	if(iface->conf->ieee80211ac && iface->conf->vht_mcs_set[0]) {
+-		wpa_printf(MSG_DEBUG, "Override VHT MCS SET");
+-		if (EOK != memcpy_s(iface->current_mode->vht_mcs_set, sizeof(iface->current_mode->vht_mcs_set),
+-			 iface->conf->vht_mcs_set, sizeof(iface->conf->vht_mcs_set))) {
+-				wpa_printf(MSG_ERROR, "%s: memcpy_s error", __func__);
+-				return -1;
+-		}
+-	}
+-
+-	/* If VHT Capabs explicitly not set for 2.4GHz, take from HW capabilities for vendor_vht usecase */
+-	if (!iface->conf->mxl_conf.vht_capab_set && (iface->current_mode->mode == HOSTAPD_MODE_IEEE80211G))
+-		iface->conf->vht_capab = iface->current_mode->vht_capab;
+-
+-#endif /* CONFIG_IEEE80211AC */
+-
+-	return 0;
+-}
+-#endif /* CONFIG_VENDOR_MXL */
+-
+ int hostapd_check_ht_capab(struct hostapd_iface *iface)
+ {
+ 	int ret;
+@@ -901,11 +869,6 @@ int hostapd_check_ht_capab(struct hostapd_iface *iface)
+ 		return -1;
+ #endif /* CONFIG_IEEE80211AC */
+ 
+-#ifdef CONFIG_VENDOR_MXL
+-	if (0 < hostapd_override_capab_vendor_mxl(iface))
+-		return -1;
+-#endif /* CONFIG_VENDOR_MXL */
+-
+ 	ret = ieee80211n_check_40mhz(iface);
+ 	if (ret)
+ 		return ret;
+diff --git a/src/ap/mxl_hostapd.c b/src/ap/mxl_hostapd.c
+index 09c40a82f..9df1425d1 100644
+--- a/src/ap/mxl_hostapd.c
++++ b/src/ap/mxl_hostapd.c
+@@ -3504,3 +3504,33 @@ int mxl_hostapd_check_and_reorder_bss_conf(struct hostapd_iface *iface, struct h
+ 
+ 	return 0;
+ }
++
++int mxl_hostapd_override_ht_vht_capab(struct hostapd_iface *iface)
++{
++	if (iface->conf->ieee80211n && iface->conf->ht_mcs_set[0]) {
++		wpa_printf(MSG_DEBUG, "Override HT MCS SET");
++		if (EOK != memcpy_s(iface->current_mode->mcs_set, sizeof(iface->current_mode->mcs_set),
++			 iface->conf->ht_mcs_set, sizeof(iface->conf->ht_mcs_set))) {
++				wpa_printf(MSG_ERROR, "%s: memcpy_s error", __func__);
++				return -1;
++		}
++	}
++
++#ifdef CONFIG_IEEE80211AC
++	if(iface->conf->ieee80211ac && iface->conf->vht_mcs_set[0]) {
++		wpa_printf(MSG_DEBUG, "Override VHT MCS SET");
++		if (EOK != memcpy_s(iface->current_mode->vht_mcs_set, sizeof(iface->current_mode->vht_mcs_set),
++			 iface->conf->vht_mcs_set, sizeof(iface->conf->vht_mcs_set))) {
++				wpa_printf(MSG_ERROR, "%s: memcpy_s error", __func__);
++				return -1;
++		}
++	}
++
++	/* If VHT Capabs explicitly not set for 2.4GHz, take from HW capabilities for vendor_vht usecase */
++	if (!iface->conf->mxl_conf.vht_capab_set && (iface->current_mode->mode == HOSTAPD_MODE_IEEE80211G))
++		iface->conf->vht_capab = iface->current_mode->vht_capab;
++
++#endif /* CONFIG_IEEE80211AC */
++
++	return 0;
++}
+diff --git a/src/ap/mxl_hostapd.h b/src/ap/mxl_hostapd.h
+index 3aed7fd19..6b6a658e5 100644
+--- a/src/ap/mxl_hostapd.h
++++ b/src/ap/mxl_hostapd.h
+@@ -202,6 +202,7 @@ void mxl_hostapd_setup_interface_post(struct hostapd_iface *iface);
+ int mxl_hostapd_setup_bss_pre(struct hostapd_data *hapd);
+ int mxl_hostapd_setup_bss_post(struct hostapd_data *hapd);
+ void mxl_hostapd_set_eht_punct_bitmap(struct hostapd_data *hapd, u16 punct_bitmap);
++int mxl_hostapd_override_ht_vht_capab(struct hostapd_iface *iface);
+ 
+ void mxl_hostapd_driver_init(struct hostapd_iface *iface, struct wpa_init_params *params);
+ void mxl_hostapd_setup_interface_pre(struct hostapd_iface *iface);
+-- 
+2.43.0
+

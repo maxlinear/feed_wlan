@@ -1,4 +1,4 @@
-From 21fe0f5c47a7978c77b8cf2158f7e39a41e99d32 Mon Sep 17 00:00:00 2001
+From c965d36fd0e7571535001d1a81710a1bf1d451fe Mon Sep 17 00:00:00 2001
 From: fromans <fromans@maxlinear.com>
 Date: Fri, 17 Nov 2023 13:27:39 +0200
 Subject: [PATCH] WLANRTSYS-60081: Compatibility stub for ATF configuration

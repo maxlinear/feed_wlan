@@ -1,4 +1,4 @@
-From 0d478d76476c03f3ee3fb63b9517ec2d715bc44f Mon Sep 17 00:00:00 2001
+From 4e45461213ce5cc65f16d2a6b8b9490565394e4a Mon Sep 17 00:00:00 2001
 From: mvulsx <mvuls@maxlinear.com>
 Date: Mon, 3 Jul 2023 11:14:38 +0000
 Subject: [PATCH] WLANRTSYS-56651: Implement CoC Power saving

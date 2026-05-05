@@ -1,4 +1,4 @@
-From 73818713ae0cd72a81414128d0848313e1263ad3 Mon Sep 17 00:00:00 2001
+From 0b70a78b20357b24b5c9999ff6c375920c372c12 Mon Sep 17 00:00:00 2001
 From: Jurijs Soloveckis <jsoloveckis@maxlinear.com>
 Date: Fri, 3 Mar 2023 10:34:24 +0100
 Subject: [PATCH] WLANRTSYS-53529: 802.11ax: Add support for the broadcast TWT

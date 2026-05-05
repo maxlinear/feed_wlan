@@ -1,0 +1,93 @@
+From 75cd0474e8e5e08737e579c85ea14713b9c142f3 Mon Sep 17 00:00:00 2001
+From: Nikita Chernikov <nchernikov@maxlinear.com>
+Date: Sun, 15 Mar 2026 09:45:36 +0200
+Subject: [PATCH] WLANRTSYS-95669 Force 6G ML assoc for triband WDS
+
+Fixup to: WLANRTSYS-96596 MLO: Triband MLD Support
+
+Signed-off-by: Nikita Chernikov <nchernikov@maxlinear.com>
+---
+ hostapd/mxl_config.c |  9 +++++++++
+ src/ap/mxl_config.h  |  1 +
+ src/ap/mxl_wds.c     | 18 ++++++++++++++++--
+ 3 files changed, 26 insertions(+), 2 deletions(-)
+
+diff --git a/hostapd/mxl_config.c b/hostapd/mxl_config.c
+index 61235421b..0b9c63ef8 100644
+--- a/hostapd/mxl_config.c
++++ b/hostapd/mxl_config.c
+@@ -1669,6 +1669,14 @@ static int mxl_hostapd_config_fill_mlo(struct hostapd_config *conf, const char *
+ 			return 0;
+ 		}
+ 		bss->mxl_bss_conf.links_per_ap_mld = (u8)val;
++	} else if (os_strcmp(buf, "mld_wds_force_6g_assoc") == 0) {
++		int val = atoi(pos);
++		if (!IS_VALID_BOOL_RANGE(val)) {
++			wpa_printf(MSG_ERROR, "MXL_MLO: Line %d: invalid mld_wds_force_6g_assoc %d",
++					line, val);
++			return 0;
++		}
++		bss->mxl_bss_conf.mld_wds_force_6g_assoc = val;
+ 	} else
+ 		return 0;
+ 
+@@ -2184,6 +2192,7 @@ void mxl_hostapd_config_defaults_bss(struct hostapd_bss_config *bss)
+ 	os_memset(bss->mxl_bss_conf.ap_mld_mac, '\0', ETH_ALEN);
+ 	bss->mxl_bss_conf.eml_transition_timeout = EML_CAPAB_TRANSITION_TIMEOUT_DEFAULT;
+ 	bss->mxl_bss_conf.links_per_ap_mld = LINKS_PER_AP_MLD_DEFAULT;
++	bss->mxl_bss_conf.mld_wds_force_6g_assoc = true;
+ #endif /* CONFIG_IEEE80211BE_MXL_MLO */
+ 	mxl_bss_conf->rnr_auto_update = 1;
+ 	mxl_bss_conf->disable_pbac = false;
+diff --git a/src/ap/mxl_config.h b/src/ap/mxl_config.h
+index 1cdbdb1ca..ffdd0dd4f 100644
+--- a/src/ap/mxl_config.h
++++ b/src/ap/mxl_config.h
+@@ -421,6 +421,7 @@ struct mxl_hostapd_bss_config {
+ 	u8 mld_mediumsync_maxtxop;
+ 	u8 mld_bpcc_count;
+ 	bool mlo_t2lm_support; /* tid to link mapping negotiation support */
++	bool mld_wds_force_6g_assoc; /* Used to force assoc on 6G for triband ML WDS */
+ #endif /* CONFIG_IEEE80211BE_MXL_MLO */
+ 	int rnr_auto_update;
+ 	bool veriwave_test;
+diff --git a/src/ap/mxl_wds.c b/src/ap/mxl_wds.c
+index 26d57d3b3..2b623139e 100644
+--- a/src/ap/mxl_wds.c
++++ b/src/ap/mxl_wds.c
+@@ -658,7 +658,7 @@ static void mxl_ml_set_linked_stas(struct sta_info *sta)
+ static int mxl_ml_add_wds_sta(struct hostapd_data *hapd, struct sta_info *sta,
+ 			   struct mxl_ml_wds_entry *wds_entry)
+ {
+-	struct hostapd_data *lhapd;
++	struct hostapd_data *lhapd, *assoc_hapd = NULL;
+ 	struct sta_info *lsta, *sib_sta;
+ 	struct wds_ml_link_info *link_info;
+ 	u8 link_id;
+@@ -711,8 +711,22 @@ static int mxl_ml_add_wds_sta(struct hostapd_data *hapd, struct sta_info *sta,
+ 			goto fail;
+ 		}
+ 	}
++	/* Use 6G Link as Assoc link in case of Triband WDS connection */
++	assoc_hapd = hapd;
++	if (hapd->conf->mxl_bss_conf.mld_wds_force_6g_assoc &&
++		wds_entry->num_of_links == MLD_TRI_BAND_NUM_LINKS) {
++		assoc_hapd = mxl_ml_get_bss_by_link_id(hapd, LINK_ID_6G);
++		if (!assoc_hapd) {
++			wpa_printf(MSG_ERROR, "MXL_MLO: 6G link not found - fallback using link %s",
++				   hapd->conf->iface);
++			assoc_hapd = hapd;
++		} else {
++			wpa_printf(MSG_DEBUG, "MXL_MLO: Using 6G link %s as assoc link for WDS ML STA",
++				   assoc_hapd->conf->iface);
++		}
++	}
+ 	/* Add MLD */
+-	if (mxl_ml_add_sta_mld(hapd, sta) < 0) {
++	if (mxl_ml_add_sta_mld(assoc_hapd, sta) < 0) {
+ 		wpa_printf(MSG_ERROR,"MXL_MLO: WDS ML STA ADD failed");
+ 		goto fail;
+ 	}
+-- 
+2.43.0
+

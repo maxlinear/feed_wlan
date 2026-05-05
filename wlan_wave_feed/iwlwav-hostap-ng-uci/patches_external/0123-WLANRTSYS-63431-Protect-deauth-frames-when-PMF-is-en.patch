@@ -1,4 +1,4 @@
-From d29d9d8f1d6177a9ce817234795ab3886ca2efc7 Mon Sep 17 00:00:00 2001
+From 8378e01d65fdfaeb2127eac52bce7a35ab7e3846 Mon Sep 17 00:00:00 2001
 From: fromans <fromans@maxlinear.com>
 Date: Tue, 20 Feb 2024 14:24:39 +0200
 Subject: [PATCH] WLANRTSYS-63431 Protect deauth frames when PMF is enabled
@@ -166,7 +166,7 @@ index d9788ddd3..d37723aa7 100644
 +	return 1;
 +}
 diff --git a/src/ap/mxl_hostapd.h b/src/ap/mxl_hostapd.h
-index 9866f01e5..22d4a762e 100644
+index e84a979d4..448b40e2f 100644
 --- a/src/ap/mxl_hostapd.h
 +++ b/src/ap/mxl_hostapd.h
 @@ -201,4 +201,5 @@ int mxl_hostapd_remove_bss(struct hostapd_iface *iface, unsigned int idx);

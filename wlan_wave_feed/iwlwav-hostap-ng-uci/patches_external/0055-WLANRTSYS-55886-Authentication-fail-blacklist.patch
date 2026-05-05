@@ -1,4 +1,4 @@
-From 9d96ad15c1b2b63ffa71124981e774e4a63c93ea Mon Sep 17 00:00:00 2001
+From f39614204a91cfe2dc4e7768546095d5fc57febf Mon Sep 17 00:00:00 2001
 From: Dmitrijs Martinovs <dmartinovs@maxlinear.com>
 Date: Mon, 12 Jun 2023 09:40:24 +0200
 Subject: [PATCH] WLANRTSYS-55886: Authentication fail blacklist

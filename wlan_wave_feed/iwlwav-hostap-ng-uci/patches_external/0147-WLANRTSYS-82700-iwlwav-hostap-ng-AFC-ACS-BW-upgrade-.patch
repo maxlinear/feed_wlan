@@ -1,4 +1,4 @@
-From 3a827526f010551695b7cb61129d02fd34ca802d Mon Sep 17 00:00:00 2001
+From bf37359c5d703b88f355fbcb668bea9717a18b16 Mon Sep 17 00:00:00 2001
 From: rmunjewar <rmunjewar@maxlinear.com>
 Date: Thu, 11 Jul 2024 11:17:41 +0530
 Subject: [PATCH] WLANRTSYS-82700 : iwlwav-hostap-ng : [AFC][ACS] BW
@@ -78,13 +78,13 @@ index 1e17e6a65..3f405cf99 100644
 +	mxl_hostapd_backup_user_conf_cw(hapd_iface);
 +}
 diff --git a/src/ap/mxl_hostapd.h b/src/ap/mxl_hostapd.h
-index b5e58e410..fe199d038 100644
+index 57906e1af..c75db116d 100644
 --- a/src/ap/mxl_hostapd.h
 +++ b/src/ap/mxl_hostapd.h
 @@ -70,6 +70,8 @@ struct hostapd_failsafe_freq_params {
  struct mxl_hostapd_iface {
  	u32 sta_aid_link[MXL_AID_WORDS];
-   s8 stas_free_reason; /* the reason for all stations remove */
+ 	s8 stas_free_reason; /* the reason for all stations remove */
 +	int acs_user_config_cw;
 +	int acs_user_config_op_class;
  	int allow_scan_during_cac;

@@ -1,4 +1,4 @@
-From 9835cfc09ea8206b60da1c8f2e5a6103896016bd Mon Sep 17 00:00:00 2001
+From 3ecf046d5e8832ba2750a54f7f022282c7ad446d Mon Sep 17 00:00:00 2001
 From: Dmitrijs Martinovs <dmartinovs@maxlinear.com>
 Date: Thu, 14 Sep 2023 10:39:12 +0200
 Subject: [PATCH] WLANRTSYS-58529: Use WLAN_REASON_IE_IN_4WAY_DIFFERS code in

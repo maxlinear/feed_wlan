@@ -1,4 +1,4 @@
-From 3345d56e5934745654e5ad625e5e7812531079d4 Mon Sep 17 00:00:00 2001
+From 103f5a8bfcd2cd77d1d6868d9537dd85203ae356 Mon Sep 17 00:00:00 2001
 From: rmunjewar <rmunjewar@maxlinear.com>
 Date: Thu, 27 Jun 2024 17:09:49 +0530
 Subject: [PATCH] WLANRTSYS-82700 : iwlwav-hostap-ng : porting hostap to

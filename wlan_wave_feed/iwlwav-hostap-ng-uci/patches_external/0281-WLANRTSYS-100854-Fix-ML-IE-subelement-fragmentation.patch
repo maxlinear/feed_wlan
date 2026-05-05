@@ -1,0 +1,41 @@
+From b0a57aa5961d77182ce39d58f5ec7367cb665543 Mon Sep 17 00:00:00 2001
+From: pvaish <pvaish@maxlinear.com>
+Date: Thu, 19 Mar 2026 23:49:26 -0700
+Subject: [PATCH] WLANRTSYS-100854 Fix ML IE subelement fragmentation. Fixup
+ to: WLANRTSYS-96596 MLO: Triband MLD Support
+
+Signed-off-by: pvaish <pvaish@maxlinear.com>
+---
+ src/ap/mxl_mld.c  | 2 +-
+ src/ap/sta_info.c | 2 +-
+ 2 files changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/src/ap/mxl_mld.c b/src/ap/mxl_mld.c
+index 3ffe1b4b6..4ef83d1f2 100644
+--- a/src/ap/mxl_mld.c
++++ b/src/ap/mxl_mld.c
+@@ -1098,7 +1098,7 @@ static void mxl_ml_fragment_per_sta_profile(struct wpabuf *buf, u8 *per_sta_cap,
+ {
+ 	u8 *ptr = per_sta_cap;
+ 	size_t len = per_sta_cap_len;
+-	size_t slice_len = MAX_IE_LEN - sta_info_len;
++	size_t slice_len = MAX_IE_LEN - LINK_INFO_STA_CTRL_LEN - sta_info_len;
+ 
+ 	wpa_printf(MSG_DEBUG, "MXL_MLO: Fragmenting per STA profile, total len %u, per_sta_cap_len %u",
+ 																		total_len, per_sta_cap_len);
+diff --git a/src/ap/sta_info.c b/src/ap/sta_info.c
+index 570bb7be8..dc2e829a4 100644
+--- a/src/ap/sta_info.c
++++ b/src/ap/sta_info.c
+@@ -2213,7 +2213,7 @@ void ap_sta_set_authorized_event(struct hostapd_data *hapd,
+ 			/* Purge existing STA entry which matches with the current STA's MLD MAC */
+ 			struct sta_info *lsta;
+ 			mxl_mld_for_each_sibling_sta(lsta, sta) {
+-				if (!os_memcmp(sta->mxl_sta_info.non_ap_mld_mac, lsta->addr, ETH_ALEN)) {
++				if (os_memcmp(sta->mxl_sta_info.non_ap_mld_mac, lsta->addr, ETH_ALEN)) {
+ 					hostapd_prune_associations(hapd, sta->mxl_sta_info.non_ap_mld_mac, mld_assoc_link_id);
+ 					break;
+ 				}
+-- 
+2.43.0
+

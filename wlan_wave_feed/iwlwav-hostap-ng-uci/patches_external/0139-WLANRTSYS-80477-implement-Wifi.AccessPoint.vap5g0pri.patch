@@ -1,4 +1,4 @@
-From 1d5d0a12369dc49a5fbf97a6781ffe0a94eb275f Mon Sep 17 00:00:00 2001
+From 5af3b0be68c178e8f3b6f9d996f89710125d4ca7 Mon Sep 17 00:00:00 2001
 From: Gal Savion <gsavion@maxlinear.com>
 Date: Fri, 3 May 2024 18:20:43 +0300
 Subject: [PATCH] WLANRTSYS-80477 implement Wifi.AccessPoint.vap5g0priv

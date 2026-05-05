@@ -1,4 +1,4 @@
-From 2bce3e32e5e34bd59c433aff950466eed225528b Mon Sep 17 00:00:00 2001
+From 0913500d2154347e7284161b34bf4402235a5c74 Mon Sep 17 00:00:00 2001
 From: rmunjewar <rmunjewar@maxlinear.com>
 Date: Fri, 13 Sep 2024 22:39:40 +0530
 Subject: [PATCH] WLANRTSYS-83953 [AFC][ACS] ACS TX-power ranking enhancement

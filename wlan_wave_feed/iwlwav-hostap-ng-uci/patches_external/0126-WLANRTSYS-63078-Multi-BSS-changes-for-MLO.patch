@@ -1,4 +1,4 @@
-From 9dc099db5beb37c1e96b4790e862c3e5074bcae8 Mon Sep 17 00:00:00 2001
+From c2758b229610c8490c7889ccbc4f38f0a74f9b9e Mon Sep 17 00:00:00 2001
 From: sjegadeesan <sjegadeesan@maxlinear.com>
 Date: Mon, 5 Feb 2024 18:30:40 +0530
 Subject: [PATCH] WLANRTSYS-63078 Multi BSS changes for MLO
@@ -838,7 +838,7 @@ index c705ee8c4..a41d00b01 100644
 +	return pos;
 +}
 diff --git a/src/ap/mxl_hostapd.h b/src/ap/mxl_hostapd.h
-index 14daa9284..10b49794e 100644
+index 3bc67e186..8c2daa5d2 100644
 --- a/src/ap/mxl_hostapd.h
 +++ b/src/ap/mxl_hostapd.h
 @@ -145,6 +145,14 @@ int mxl_hostapd_drv_get_vendor_data_at_least(struct hostapd_data *hapd,

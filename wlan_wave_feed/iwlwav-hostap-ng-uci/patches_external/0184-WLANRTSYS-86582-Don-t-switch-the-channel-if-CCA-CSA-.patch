@@ -1,4 +1,4 @@
-From 50cc3a0118ef1baf59f3af3ef42f5517afcfa8b2 Mon Sep 17 00:00:00 2001
+From efa1d07e311b6fc18987cdb5752a8c98911a3937 Mon Sep 17 00:00:00 2001
 From: mj <mj@maxlinear.com>
 Date: Wed, 8 Jan 2025 08:32:51 +0530
 Subject: [PATCH] WLANRTSYS-86582 Don't switch the channel if CCA/CSA in
@@ -51,10 +51,10 @@ index e99aefe69..64a1d8826 100644
  	if (ret)
  		return ret;
 diff --git a/hostapd/mxl_ctrl_iface.c b/hostapd/mxl_ctrl_iface.c
-index 44420664e..55b93cd69 100644
+index 890cdb9c2..110a16e97 100644
 --- a/hostapd/mxl_ctrl_iface.c
 +++ b/hostapd/mxl_ctrl_iface.c
-@@ -3788,6 +3788,45 @@ int mxl_hostapd_handle_wmm_ac_params(struct hostapd_data *hapd, char *cmd, char
+@@ -3780,6 +3780,45 @@ int mxl_hostapd_handle_wmm_ac_params(struct hostapd_data *hapd, char *cmd, char
  	return 0;
  }
  

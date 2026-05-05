@@ -1,4 +1,4 @@
-From 406b0ccc48cf0d9a8c59b16d2419178e0f7dadfa Mon Sep 17 00:00:00 2001
+From 3355da9844c6137649b9a55b846ec53c61bdde8d Mon Sep 17 00:00:00 2001
 From: Jurijs Soloveckis <jsoloveckis@maxlinear.com>
 Date: Tue, 5 Dec 2023 15:19:25 +0200
 Subject: [PATCH] WLANRTSYS-60767: Puma8: Implement puncturing bitmap legacy
@@ -82,7 +82,7 @@ index 5dbb46328..7db83c9ec 100644
  
  	/* Add next vendor command here */
 diff --git a/src/ap/mxl_hostapd.h b/src/ap/mxl_hostapd.h
-index ee6d93dfc..4f3eceb58 100644
+index 78de5f37e..9f81b65c6 100644
 --- a/src/ap/mxl_hostapd.h
 +++ b/src/ap/mxl_hostapd.h
 @@ -143,6 +143,7 @@ int mxl_hostapd_setup_interface(struct hostapd_data *hapd);

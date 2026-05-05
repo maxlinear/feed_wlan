@@ -1,4 +1,4 @@
-From 7a082abd18ba5d24791dd6da947c0d7c3c20c0b0 Mon Sep 17 00:00:00 2001
+From ea1fb428d5ea590f6810abe9982ca8a65417ca1d Mon Sep 17 00:00:00 2001
 From: Jurijs Soloveckis <jsoloveckis@maxlinear.com>
 Date: Wed, 17 May 2023 15:52:54 +0200
 Subject: [PATCH] WLANRTSYS-55314: Align HT capabilities
@@ -432,7 +432,7 @@ index a5b123b56..c390908cd 100644
  {
  	mxl_hostapd_dfs_history_deinit(iface);
 diff --git a/src/ap/mxl_hostapd.h b/src/ap/mxl_hostapd.h
-index 17760b206..f8e641c6c 100644
+index d58c2251a..1e9a8fe58 100644
 --- a/src/ap/mxl_hostapd.h
 +++ b/src/ap/mxl_hostapd.h
 @@ -147,8 +147,10 @@ void mxl_hostapd_driver_init(struct hostapd_iface *iface, struct wpa_init_params

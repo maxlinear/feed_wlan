@@ -1,0 +1,1183 @@
+From 5b34e6d842a86114ba70bcb9be5d7742fcc09351 Mon Sep 17 00:00:00 2001
+From: Inbarasan S <inbarasans@maxlinear.com>
+Date: Mon, 23 Feb 2026 02:17:54 -0800
+Subject: [PATCH] WLANRTSYS-96200 Implemented hostapd config structs dump using
+ CLI command
+
+---
+ hostapd/Makefile                  |   9 +
+ hostapd/mxl_ctrl_iface.c          | 142 +++++++++
+ hostapd/mxl_hostapd_cli.c         |   9 +
+ hostapd/mxl_hostapd_cli.h         |   3 +
+ hostapd/mxl_hostapd_config_dump.c | 463 ++++++++++++++++++++++++++++++
+ hostapd/mxl_hostapd_config_dump.h |  54 ++++
+ hostapd/mxl_hostapd_metadata.c    | 383 ++++++++++++++++++++++++
+ 7 files changed, 1063 insertions(+)
+ create mode 100644 hostapd/mxl_hostapd_config_dump.c
+ create mode 100644 hostapd/mxl_hostapd_config_dump.h
+ create mode 100644 hostapd/mxl_hostapd_metadata.c
+
+diff --git a/hostapd/Makefile b/hostapd/Makefile
+index 22510389c..17ac5ecef 100644
+--- a/hostapd/Makefile
++++ b/hostapd/Makefile
+@@ -398,6 +398,7 @@ ifdef CONFIG_VENDOR_MXL
+ CFLAGS+= -DCONFIG_VENDOR_MXL
+ OBJS_c += mxl_hostapd_cli.o
+ OBJS += mxl_config.o
++OBJS += mxl_hostapd_config_dump.o 
+ OBJS += ../src/ap/mxl_hostapd.o
+ OBJS += ../src/ap/mxl_events.o
+ OBJS += ../src/ap/mxl_coexistence.o
+@@ -1550,6 +1551,11 @@ sae_pk_gen: $(SOBJS)
+ 	$(Q)$(CC) $(LDFLAGS) -o sae_pk_gen $(SOBJS) $(LIBS_s)
+ 	@$(E) "  LD " $@
+ 
++ifdef CONFIG_VENDOR_MXL
++mxl_hostapd_metadata: mxl_hostapd_metadata.c
++	$(Q)$(HOSTCC) $(HOST_CFLAGS) -o mxl_hostapd_metadata mxl_hostapd_metadata.c $(HOST_LDFLAGS)
++endif
++
+ .PHONY: lcov-html
+ lcov-html:
+ 	lcov -c -d $(BUILDDIR) > lcov.info
+@@ -1560,3 +1566,6 @@ clean: common-clean
+ 	rm -f sae_pk_gen
+ 	rm -f lcov.info
+ 	rm -rf lcov-html
++ifdef CONFIG_VENDOR_MXL
++	rm -f mxl_hostapd_metadata hostapd_metadata.txt
++endif
+diff --git a/hostapd/mxl_ctrl_iface.c b/hostapd/mxl_ctrl_iface.c
+index 936780c9d..6ed9690d1 100644
+--- a/hostapd/mxl_ctrl_iface.c
++++ b/hostapd/mxl_ctrl_iface.c
+@@ -13,6 +13,7 @@
+ 
+ #include <stdio.h>
+ #include <stddef.h>
++#include <sys/stat.h>
+ #include "utils/includes.h"
+ #include "utils/common.h"
+ #include "ap/ap_config.h"
+@@ -27,6 +28,7 @@
+ #include "ap/mxl_hostapd.h"
+ #include "drivers/mxl_driver_nl80211.h"
+ #include "mxl_ctrl_iface.h"
++#include "mxl_hostapd_config_dump.h"
+ #include "ap/mxl_softblock.h"
+ #include "ap/mxl_rrm.h"
+ #include "ap/ctrl_iface_ap.h"
+@@ -3485,6 +3487,144 @@ static int mxl_hostapd_ctrl_iface_mscs_add_rule(struct hostapd_data *hapd, char
+ }
+ #endif /* CONFIG_MSCS_MXL */
+ 
++
++static int mxl_hostapd_ctrl_iface_dump_hostapd_config(struct hostapd_data *hapd, 
++                                                      char *reply, size_t reply_size)
++{
++	struct hapd_interfaces *interfaces;
++	struct hostapd_iface *iface;
++	struct hostapd_data *bss;
++	char output_dir[] = HOSTAPD_CONFIG_OUTPUT_DIR;
++	char output_file[128];
++	FILE *fp = NULL;
++	int i, j;
++	int res = 0;
++	int total_files = 0;
++
++	res = mxl_parse_metadata(HOSTAPD_METADATA_FILE);
++	if (res != 0) {
++		wpa_printf(MSG_ERROR, "%s: Failed to parse metadata file %d\n", __func__, res);
++		return res;
++	}
++
++	/* Create the output directory */
++	if (mkdir(output_dir, 0755) != 0 && errno != EEXIST) {
++		wpa_printf(MSG_ERROR, "%s: Failed to create output directory %s: %s\n",
++			__func__, output_dir, strerror(errno));
++		return -1;
++	}
++	
++	interfaces = hapd->iface ? hapd->iface->interfaces : NULL;
++	if(!interfaces) {
++		wpa_printf(MSG_ERROR, "%s: No interfaces found\n", __func__);
++		return -1;
++	}
++
++	/* Iterate through all radios */
++	for (i = 0; i < interfaces->count; i++) {
++		int radio_active = 0;
++		iface = interfaces->iface[i];
++		if (iface == NULL) {
++			continue;
++		}
++		
++		/* Check if any BSS in this radio is started */
++		for (j = 0; j < iface->num_bss; j++) {
++			if (iface->bss[j] && iface->bss[j]->started) {
++				radio_active = 1;
++				break;
++			}
++		}
++
++
++		if (radio_active && iface->conf != NULL) {
++			const char *radio_name = (iface->phy[0] != '\0') ? iface->phy : "unknown";
++
++			/* Create radio config file */
++			res = os_snprintf(output_file, sizeof(output_file), 
++				"%s/hostapd_radio_%s.txt", output_dir, radio_name);
++			if (os_snprintf_error(sizeof(output_file), res)) {
++				wpa_printf(MSG_ERROR, "%s:%d: Path too long for radio %s\n", 
++					__func__, __LINE__, radio_name);
++				continue;
++			}
++			
++			fp = fopen(output_file, "w");
++			if (fp == NULL) {
++				wpa_printf(MSG_ERROR, "%s:%d: Failed to create %s: %s\n", 
++					__func__, __LINE__, output_file, strerror(errno));
++				continue;
++			}
++			
++			/* Write radio header */
++			fprintf(fp, "========== Hostapd_Radio_config==========\n");
++			fprintf(fp, "Radio Name = %s\n", radio_name);
++			fprintf(fp, "Radio Index = %d\n", i);
++			fprintf(fp, "Channel = %d\n", iface->conf->channel);
++			
++			/* Dump the hostapd_config structure */
++			mxl_hostapd_config_dump(fp, iface->conf, "hostapd_config", "", 0);
++			fclose(fp);
++			total_files++;
++			wpa_printf(MSG_INFO, "%s:%d: Completed dump for radio %s\n", 
++				__func__, __LINE__, radio_name);
++			
++			 /* Dump BSS configs */
++			for (j = 0; j < iface->num_bss; j++) {
++				bss = iface->bss[j];
++				if (bss == NULL || !bss->started) {
++					wpa_printf(MSG_INFO, "%s:%d: Skipping BSS %d (not started)\n",
++						__func__, __LINE__, j);
++					continue;
++				}
++				
++				/* Create BSS config file */
++				res = os_snprintf(output_file, sizeof(output_file), 
++					"%s/hostapd_bss_%s_%s.txt", 
++					output_dir, radio_name, bss->conf->iface);
++				if (os_snprintf_error(sizeof(output_file), res)) {
++					wpa_printf(MSG_ERROR, "%s:%d: Path too long for BSS %s\n", 
++						__func__, __LINE__, bss->conf->iface);
++					continue;
++				}
++				
++				fp = fopen(output_file, "w");
++				if (fp == NULL) {
++					wpa_printf(MSG_ERROR, "%s:%d: Failed to create %s: %s\n", 
++						__func__, __LINE__, output_file, strerror(errno));
++					continue;
++				}
++				
++				/* Write BSS header */
++				fprintf(fp, "========== BSS Interface: %s (Radio: %s) ==========\n", 
++					bss->conf->iface, radio_name);
++				fprintf(fp, "VAP Index = %d\n", j);
++				fprintf(fp, "SSID = %s\n", 
++					wpa_ssid_txt(bss->conf->ssid.ssid, bss->conf->ssid.ssid_len));
++				
++				/* Dump the hostapd_bss_config structure */
++				mxl_hostapd_config_dump(fp, bss->conf, "hostapd_bss_config", "", 0);
++				
++				fclose(fp);
++				total_files++;
++				wpa_printf(MSG_INFO, "%s:%d: Completed dump for BSS %s\n", 
++					__func__, __LINE__, bss->conf->iface);
++			}
++		}
++	}
++
++	
++	if (total_files > 0) {
++		res = os_snprintf(reply, reply_size,
++			"Configuration dumped successfully!\n"
++			"Created %d file(s) in %s\n",
++			total_files, output_dir);
++		} else {
++			res = os_snprintf(reply, reply_size,"No active radios/BSS found\n");
++		}
++	return res;
++}
++
+ int mxl_hostapd_ctrl_iface_receive_process(struct hostapd_data *hapd,
+ 					      char *buf, char *reply,
+ 					      int reply_size,
+@@ -3540,6 +3680,8 @@ int mxl_hostapd_ctrl_iface_receive_process(struct hostapd_data *hapd,
+ 	} else if (os_strncmp(buf, "SET_NEIGHBOR_PSD ", 17) == 0) {
+ 		if (mxl_hostapd_ctrl_iface_set_neighbor_psd(hapd, buf + 17))
+ 			*reply_len = -1;
++	} else if (os_strncmp(buf, "DUMP_HOSTAPD_CONFIG", 19) == 0) {
++		*reply_len = mxl_hostapd_ctrl_iface_dump_hostapd_config(hapd, reply, reply_size);
+ 	} else if (os_strncmp(buf, "ACCEPT_ACL ", sizeof("ACCEPT_ACL ") - 1 ) == 0) {
+ 		char *buf_start = buf + sizeof("ACCEPT_ACL ") - 1;
+ 		char *mac;
+diff --git a/hostapd/mxl_hostapd_cli.c b/hostapd/mxl_hostapd_cli.c
+index ab10f3594..93b156f37 100644
+--- a/hostapd/mxl_hostapd_cli.c
++++ b/hostapd/mxl_hostapd_cli.c
+@@ -801,3 +801,12 @@ int mxl_hostapd_cli_cmd_show_mscs_deny_mac_list(struct wpa_ctrl *ctrl, int argc,
+ 
+ 	return mxl_wpa_ctrl_command(ctrl, cmd);
+ }
++
++int mxl_hostapd_cli_cmd_dump_hostapd_config(struct wpa_ctrl *ctrl, int argc, char *argv[])
++{
++	if (argc != 0) {
++		printf("dump_hostapd_config doesn't require parameters\n");
++		return -1;
++	}
++	return mxl_wpa_ctrl_command(ctrl, "DUMP_HOSTAPD_CONFIG");
++}
+diff --git a/hostapd/mxl_hostapd_cli.h b/hostapd/mxl_hostapd_cli.h
+index 59144c53e..fecb8c74c 100644
+--- a/hostapd/mxl_hostapd_cli.h
++++ b/hostapd/mxl_hostapd_cli.h
+@@ -135,6 +135,8 @@ int mxl_wpa_ctrl_command(struct wpa_ctrl *ctrl, const char *cmd);
+      "<mac_addr1 mac_addr2..> = list of station mac which are denied for mscs" }, \
+ 	{ "show_mscs_deny_mac_list", mxl_hostapd_cli_cmd_show_mscs_deny_mac_list, NULL, \
+      "= show list of station mac which are denied for mscs" }, \
++	{ "dump_hostapd_config", mxl_hostapd_cli_cmd_dump_hostapd_config, NULL,\
++	  " = dump hostapd configuration" },	\
+ 
+ #ifdef CONFIG_ACS
+ #define MXL_CLI_COMMANDS_ACS \
+@@ -229,6 +231,7 @@ int mxl_hostapd_cli_cmd_scs_deny_mac_list(struct wpa_ctrl *ctrl, int argc, char
+ int mxl_hostapd_cli_cmd_mscs_deny_mac_list(struct wpa_ctrl *ctrl, int argc, char *argv[]);
+ int mxl_hostapd_cli_cmd_show_scs_deny_mac_list(struct wpa_ctrl *ctrl, int argc, char *argv[]);
+ int mxl_hostapd_cli_cmd_show_mscs_deny_mac_list(struct wpa_ctrl *ctrl, int argc, char *argv[]);
++int mxl_hostapd_cli_cmd_dump_hostapd_config(struct wpa_ctrl *ctrl, int argc, char *argv[]);
+ 
+ 
+ 
+diff --git a/hostapd/mxl_hostapd_config_dump.c b/hostapd/mxl_hostapd_config_dump.c
+new file mode 100644
+index 000000000..e6cbfdb2f
+--- /dev/null
++++ b/hostapd/mxl_hostapd_config_dump.c
+@@ -0,0 +1,463 @@
++/******************************************************************************
++
++	 Copyright (c) 2020 - 2026, MaxLinear, Inc.
++	 Copyright 2016 - 2020 Intel Corporation
++	 Copyright 2015 - 2016 Lantiq Beteiligungs-GmbH & Co. KG
++	 Copyright 2009 - 2014 Lantiq Deutschland GmbH
++	 Copyright 2007 - 2008 Infineon Technologies AG
++
++  This software may be distributed under the terms of the BSD license.
++  See README for more details.
++
++*******************************************************************************/
++
++#include "utils/includes.h"
++#include "utils/common.h"
++#include "ap/hostapd.h"
++#include "mxl_hostapd_config_dump.h"
++#include "mxl_hostapd_cli.h"
++#include <ctype.h>
++#include <string.h>
++
++static Structure_info structs[MAX_STRUCTS];
++static int struct_count = 0;
++
++Structure_info *mxl_find_struct(const char *name)
++{
++	for (int i = 0; i < struct_count; i++)
++		if (strcmp(structs[i].name, name) == 0)
++			return &structs[i];
++	return NULL;
++}
++
++int mxl_parse_metadata(const char *file)
++{
++	FILE *f = fopen(file, "r");
++	if (!f) {
++		wpa_printf(MSG_ERROR, "Cannot open metadata file: %s", file);
++		return -1;
++	}
++
++	char line[1024];
++	Structure_info *cur = NULL;
++
++	/* Parsing the metadata file */
++	while (fgets(line, sizeof(line), f)) {
++		line[strcspn(line, "\n")] = 0;
++
++		if (strncmp(line, "STRUCT|", 7) == 0) {
++			if (struct_count >= MAX_STRUCTS) {
++				wpa_printf(MSG_ERROR, "Too many structures in metadata");
++				fclose(f);
++				return -1;
++			}
++
++			cur = &structs[struct_count++];
++			cur->member_count = 0;
++
++			// Parse: STRUCT|<name>|<size>|<member_count>
++			char line_copy[512];
++			os_strlcpy(line_copy, line + 7, sizeof(line_copy));
++
++			char *token = strtok(line_copy, "|");
++
++			if (token)
++				os_strlcpy(cur->name, token, sizeof(cur->name));
++				
++			token = strtok(NULL, "|");
++			if (token)
++				cur->size = atoi(token);
++		} else if (strncmp(line, "  MEMBER|", 9) == 0 && cur) {
++			if (cur->member_count >= MAX_MEMBERS) {
++				wpa_printf(MSG_ERROR, "Too many members in struct %s", cur->name);
++				continue;
++			}
++
++			Member_info *m = &cur->members[cur->member_count];
++
++			// Parse delimited fields
++			char line_copy[512];
++			os_strlcpy(line_copy, line + 9, sizeof(line_copy));
++
++			char *token;
++			int field = 0;
++
++			token = strtok(line_copy, "|");
++			while (token && field < MEMBER_FIELD_MAX) {
++				switch (field) {
++				case 0:
++					os_strlcpy(m->name, token, sizeof(m->name));
++					break;
++				case 1:
++					os_strlcpy(m->type, token, sizeof(m->type));
++					break;
++				case 2:
++					m->size = atoi(token);
++					break;
++				case 3:
++					m->offset = atoi(token);
++					break;
++				case 4:
++					m->pointer_depth = atoi(token);
++					break;
++				case 5:
++					m->array_count = atoi(token);
++					break;
++				}
++				field++;
++				token = strtok(NULL, "|");
++			}
++
++			cur->member_count++;
++		}
++	}
++
++	fclose(f);
++	return 0;
++}
++
++void mxl_hostapd_config_dump(FILE *out, void *base, const char *sname, const char *prefix, int use_arrow)
++{
++	static int recursion_depth = 0;
++	const int MAX_RECURSION_DEPTH = 20;
++	if (recursion_depth >= MAX_RECURSION_DEPTH) {
++		fprintf(out, "%s = <max recursion depth reached>\n", prefix);
++		return;
++	}
++	recursion_depth++;
++	if (!base) {
++		recursion_depth--;
++		return;
++	}
++	Structure_info *s = mxl_find_struct(sname);
++	if (!s) {
++		wpa_printf(MSG_WARNING, "Struct '%s' not found in %d loaded structs",
++			   sname, struct_count);
++		recursion_depth--;
++		return;
++	}
++
++	for (int i = 0; i < s->member_count; i++) {
++		Member_info *m = &s->members[i];
++		void *addr = (char *)base + m->offset;
++		char path[512];
++		if (strlen(prefix) == 0)
++			strcpy(path, m->name);
++		else if (use_arrow)
++			snprintf(path, sizeof(path), "%s->%s", prefix, m->name);
++		else
++			snprintf(path, sizeof(path), "%s.%s", prefix, m->name);
++
++		//skip this fields
++		if (strcmp(m->name, "bss") == 0 || strcmp(m->name, "last_bss") == 0 || strcmp(m->name, "driver") == 0)
++			continue;
++
++		// Double pointers (array of pointers)
++		if (m->pointer_depth == 2) {
++			void ***ptr_array_field = (void ***)addr;
++			void **ptr_array = *ptr_array_field;
++			if (!ptr_array) {
++				fprintf(out, "%s = NULL\n", path);
++				continue;
++			}
++
++			int count = 0;
++			while (count < 100 && ptr_array[count] != NULL)
++				count++;
++
++			// Handle char**
++			if (strcmp(m->type, "char") == 0) {
++				fprintf(out, "%s = [\n", path);
++				for (int arr_idx = 0; arr_idx < count; arr_idx++) {
++					char *str = (char *)ptr_array[arr_idx];
++					fprintf(out, "  [%d] = %s\n", arr_idx, str ? str : "NULL");
++				}
++				fprintf(out, "]\n");
++				continue;
++			}
++
++			// Handle struct**
++			if (strncmp(m->type, "struct ", 7) == 0) {
++				char nested[MAX_NAME];
++				sscanf(m->type, "struct %s", nested);
++				for (int arr_idx = 0; arr_idx < count ; arr_idx++) {
++					void *elem_ptr = ptr_array[arr_idx];
++					char elem_path[128];
++					snprintf(elem_path, sizeof(elem_path), "%s[%d]", path, arr_idx);
++					if (!elem_ptr)
++						fprintf(out, "%s = NULL\n", elem_path);
++					else
++						mxl_hostapd_config_dump(out, elem_ptr, nested, elem_path, 0);
++				}
++				continue;
++			}
++			continue;
++		}
++
++		// Single pointer to struct (linked list/struct pointer)
++		if (m->pointer_depth == 1 && strncmp(m->type, "struct ", 7) == 0) {
++			void **ptr_field = (void **)addr;
++			void *pointed = *ptr_field;
++			if (!pointed) {
++				fprintf(out, "%s = NULL\n", path);
++				continue;
++			}
++			char nested[MAX_NAME];
++			sscanf(m->type, "struct %s", nested);
++
++			// Linked list self-reference
++			if ((strcmp(m->name, "next") == 0 || strcmp(m->name, "prev") == 0) && strcmp(nested, sname) == 0) {
++				fprintf(out, "%s = %p\n", path, pointed);
++				continue;
++			}
++			// Linked list
++			Structure_info *target_struct = mxl_find_struct(nested);
++			int is_list_head = 0, next_offset = 0;
++			if (target_struct && strcmp(m->name, "next") != 0 && strcmp(m->name, "prev") != 0) {
++				for (int k = 0; k < target_struct->member_count; k++) {
++					if (strcmp(target_struct->members[k].name, "next") == 0 &&
++					    target_struct->members[k].pointer_depth == 1) {
++						is_list_head = 1;
++						next_offset = target_struct->members[k].offset;
++						break;
++					}
++				}
++			}
++
++			// Traverse linked list
++			if (is_list_head) {
++				void *curr = pointed;
++				void *start = pointed;
++				int idx = 0;
++				while (curr && idx < 100) {
++					char list_path[128];
++					snprintf(list_path, sizeof(list_path), "%s[%d]", path, idx);
++					mxl_hostapd_config_dump(out, curr, nested, list_path, 0);
++					void **next_ptr = (void **)((char *)curr + next_offset);
++					curr = *next_ptr;
++					if (curr == start && idx > 0) {
++						fprintf(out, "%s = <circular list detected>\n", path);
++						break;
++					}
++					idx++;
++				}
++			} else {
++				mxl_hostapd_config_dump(out, pointed, nested, path, 1);
++			}
++			continue;
++		}
++
++		// Single pointer to basic types
++		if (m->pointer_depth == 1) {
++			void **ptr_field = (void **)addr;
++			void *pointed = *ptr_field;
++			if (!pointed) {
++				fprintf(out, "%s = NULL\n", path);
++				continue;
++			}
++			if (strcmp(m->type, "int") == 0)
++				fprintf(out, "%s = %d\n", path, *(int *)pointed);
++			else if (strcmp(m->type, "unsigned int") == 0)
++				fprintf(out, "%s = %u\n", path, *(unsigned int *)pointed);
++			else if (strcmp(m->type, "char") == 0)
++				fprintf(out, "%s = \"%s\"\n", path, (char *)pointed);
++			else if (strcmp(m->type, "unsigned char") == 0 || strcmp(m->type, "u8") == 0)
++				fprintf(out, "%s = %u\n", path, *(unsigned char *)pointed);
++			else if (strcmp(m->type, "short") == 0 || strcmp(m->type, "short int") == 0)
++				fprintf(out, "%s = %d\n", path, *(short *)pointed);
++			else if (strcmp(m->type, "unsigned short") == 0 || strcmp(m->type, "short unsigned int") == 0)
++				fprintf(out, "%s = %u\n", path, *(unsigned short *)pointed);
++			else if (strcmp(m->type, "long") == 0 || strcmp(m->type, "long int") == 0)
++				fprintf(out, "%s = %ld\n", path, *(long *)pointed);
++			else if (strcmp(m->type, "unsigned long") == 0 || strcmp(m->type, "long unsigned int") == 0)
++				fprintf(out, "%s = %lu\n", path, *(unsigned long *)pointed);
++			else if (strcmp(m->type, "float") == 0)
++				fprintf(out, "%s = %f\n", path, *(float *)pointed);
++			else if (strcmp(m->type, "double") == 0)
++				fprintf(out, "%s = %lf\n", path, *(double *)pointed);
++			else
++				fprintf(out, "%s = %p\n", path, pointed);
++			continue;
++		}
++
++		// Arrays of structs
++		if (m->array_count > 0 && strncmp(m->type, "struct ", 7) == 0) {
++			char nested[MAX_NAME];
++			sscanf(m->type, "struct %s", nested);
++			for (int arr_idx = 0; arr_idx < m->array_count; arr_idx++) {
++				char elem_path[512];
++				snprintf(elem_path, sizeof(elem_path), "%s[%d]", path, arr_idx);
++				void *elem_addr = (char *)addr + arr_idx * m->size;
++				mxl_hostapd_config_dump(out, elem_addr, nested, elem_path, 0);
++			}
++			continue;
++		}
++
++		// if unknown arrays
++		if (m->array_count > 0 && strcmp(m->type, "unknown") == 0) {
++			int ptr_size = sizeof(void *);
++			fprintf(out, "%s = [\n", path);
++			for (int i = 0; i < m->array_count; i++) {
++				void **ptr_elem = (void **)((char *)addr + i * ptr_size);
++				void *pointed = *ptr_elem;
++				fprintf(out, "  [%d] = %p\n", i, pointed);
++			}
++			fprintf(out, "]\n");
++			continue;
++		}
++
++		// Byte arrays (u8/unsigned char arrays)
++		if (m->array_count > 0 && (strcmp(m->type, "u8") == 0 ||
++					   strcmp(m->type, "uint8_t") == 0 ||
++					   strcmp(m->type, "unsigned char") == 0)) {
++			unsigned char *byte_arr = (unsigned char *)addr;
++			int is_hex_field = (strstr(m->name, "psk") || strstr(m->name, "he_mu_ac") ||
++				strstr(m->name, "bssid") || strstr(m->name, "uuid") ||
++				strstr(m->name, "device_type") || strstr(m->name, "radio_measurements") ||
++				strstr(m->name, "measurement") || strstr(m->name, "hessid") ||
++				strstr(m->name, "cmmac") || strstr(m->name, "addr") ||
++				strstr(m->name, "mac") || strstr(m->name, "cache_id") ||
++				strstr(m->name, "ext_capa") || strstr(m->name, "transition_ssid") ||
++				strstr(m->name, "basic_eht_mcs_nss_set"));
++			if (is_hex_field) {
++				fprintf(out, "%s = ", path);
++				for (int i = 0; i < m->array_count; i++)
++					fprintf(out, "%02x", byte_arr[i]);
++				fprintf(out, "\n");
++			} else {
++				fprintf(out, "%s = \"%s\"\n", path, (char *)byte_arr);
++			}
++			continue;
++		}
++
++		// Integer arrays (int and unsigned int)
++		if (m->array_count > 0 && (strcmp(m->type, "int") == 0 || strcmp(m->type, "unsigned int") == 0)) {
++			int is_unsigned = (strcmp(m->type, "unsigned int") == 0);
++			fprintf(out, "%s = [", path);
++			for (int i = 0; i < m->array_count; i++) {
++				if (i > 0)
++					fprintf(out, ", ");
++				if (is_unsigned) {
++					unsigned int *uint_arr = (unsigned int *)addr;
++					fprintf(out, "%u", uint_arr[i]);
++				} else {
++					int *int_arr = (int *)addr;
++					fprintf(out, "%d", int_arr[i]);
++				}
++			}
++			fprintf(out, "]\n");
++			continue;
++		}
++
++
++		// Embedded struct
++		if (strncmp(m->type, "struct ", 7) == 0) {
++			char nested[MAX_NAME];
++			sscanf(m->type, "struct %s", nested);
++			mxl_hostapd_config_dump(out, addr, nested, path, 0);
++			continue;
++		}
++
++		// Union
++		if (strncmp(m->type, "union ", 6) == 0) {
++			char nested[MAX_NAME];
++			sscanf(m->type, "union %s", nested);
++			fprintf(out, "%s = ", path);
++			unsigned char *bytes = (unsigned char *)addr;
++			int bytes_to_print = (m->size <= 32) ? m->size : 32;
++			for (int i = 0; i < bytes_to_print; i++)
++				fprintf(out, "%02x", bytes[i]);
++			if (m->size > 32)
++				fprintf(out, "...");
++			fprintf(out, "\n");
++			continue;
++		}
++
++		// Function pointer
++		if (strstr(m->type, "(*") != NULL || strstr(m->type, "* ") != NULL) {
++			void **func_ptr = (void **)addr;
++			void *func_addr = *func_ptr;
++			if (!func_addr)
++				fprintf(out, "%s = NULL\n", path);
++			else
++				fprintf(out, "%s = %p\n", path, func_addr);
++			continue;
++		}
++
++		// Char arrays (strings)
++		if (m->array_count > 0 && strcmp(m->type, "char") == 0) {
++			char *str = (char *)addr;
++			int has_content = 0;
++			for (int i = 0; i < m->array_count && str[i] != '\0'; i++) {
++				if (str[i] != '\0') {
++					has_content = 1;
++					break;
++				}
++			}
++			fprintf(out, "%s = \"%s\"\n", path, has_content ? str : "");
++			continue;
++		}
++
++		// Basic types
++		if (strcmp(m->type, "int") == 0)
++			fprintf(out, "%s = %d\n", path, *(int *)addr);
++		else if (strcmp(m->type, "unsigned int") == 0)
++			fprintf(out, "%s = %u\n", path, *(unsigned int *)addr);
++		else if (strcmp(m->type, "float") == 0)
++			fprintf(out, "%s = %f\n", path, *(float *)addr);
++		else if (strcmp(m->type, "double") == 0)
++			fprintf(out, "%s = %lf\n", path, *(double *)addr);
++		else if (strcmp(m->type, "char") == 0)
++			fprintf(out, "%s = '%c'\n", path, *(char *)addr);
++		else if (strcmp(m->type, "enum") == 0 || strncmp(m->type, "enum ", 5) == 0)
++			fprintf(out, "%s = %d\n", path, *(int *)addr);
++		else if (strcmp(m->type, "_Bool") == 0 || strcmp(m->type, "bool") == 0)
++			fprintf(out, "%s = %u\n", path, *(unsigned char *)addr);
++		else if (strcmp(m->type, "u8") == 0 || strcmp(m->type, "uint8_t") == 0 ||
++			 strcmp(m->type, "unsigned char") == 0)
++			fprintf(out, "%s = %u\n", path, *(unsigned char *)addr);
++		else if (strcmp(m->type, "u16") == 0 || strcmp(m->type, "uint16_t") == 0 ||
++			 strcmp(m->type, "unsigned short") == 0 || strcmp(m->type, "short unsigned int") == 0)
++			fprintf(out, "%s = %u\n", path, *(unsigned short *)addr);
++		else if (strcmp(m->type, "u32") == 0 || strcmp(m->type, "uint32_t") == 0)
++			fprintf(out, "%s = %u\n", path, *(unsigned int *)addr);
++		else if (strcmp(m->type, "u64") == 0 || strcmp(m->type, "uint64_t") == 0 ||
++			 strcmp(m->type, "unsigned long long") == 0 || strcmp(m->type, "long unsigned int") == 0)
++			fprintf(out, "%s = %llu\n", path, *(unsigned long long *)addr);
++		else if (strcmp(m->type, "size_t") == 0)
++			fprintf(out, "%s = %zu\n", path, *(size_t *)addr);
++		else if (strcmp(m->type, "unsigned long") == 0 || strcmp(m->type, "long unsigned int") == 0)
++			fprintf(out, "%s = %lu\n", path, *(unsigned long *)addr);
++		else if (strcmp(m->type, "short") == 0 || strcmp(m->type, "short int") == 0)
++			fprintf(out, "%s = %d\n", path, *(short *)addr);
++		else if (strcmp(m->type, "long") == 0 || strcmp(m->type, "long int") == 0)
++			fprintf(out, "%s = %ld\n", path, *(long *)addr);
++		else if (m->size > 0 && m->size <= 64) {
++			fprintf(out, "%s = ", path);
++			unsigned char *bytes = (unsigned char *)addr;
++			for (int i = 0; i < m->size; i++)
++				fprintf(out, "%02x", bytes[i]);
++			fprintf(out, "\n");
++		} else if (m->size == 0 && strcmp(m->type, "unknown") == 0) {
++
++			if (strstr(m->name, "bssid") || strstr(m->name, "addr") || strstr(m->name, "mac")) {
++				fprintf(out, "%s = ", path);
++				unsigned char *bytes = (unsigned char *)addr;
++				for (int i = 0; i < 6; i++)
++					fprintf(out, "%02x", bytes[i]);
++				fprintf(out, "\n");
++			} else {
++				fprintf(out, "%s = ", path);
++				unsigned char *bytes = (unsigned char *)addr;
++				for (int i = 0; i < 4; i++)
++					fprintf(out, "%02x", bytes[i]);
++				fprintf(out, "\n");
++			}
++		} else {
++			fprintf(out, "%s = <unknown type '%s', size=%d, offset=%d>\n",
++				path, m->type, m->size, m->offset);
++		}
++	}
++	recursion_depth--;
++}
++
+diff --git a/hostapd/mxl_hostapd_config_dump.h b/hostapd/mxl_hostapd_config_dump.h
+new file mode 100644
+index 000000000..a7160d06b
+--- /dev/null
++++ b/hostapd/mxl_hostapd_config_dump.h
+@@ -0,0 +1,54 @@
++/******************************************************************************
++
++         Copyright (c) 2020 - 2026, MaxLinear, Inc.
++         Copyright 2016 - 2020 Intel Corporation
++         Copyright 2015 - 2016 Lantiq Beteiligungs-GmbH & Co. KG
++         Copyright 2009 - 2014 Lantiq Deutschland GmbH
++         Copyright 2007 - 2008 Infineon Technologies AG
++
++  This software may be distributed under the terms of the BSD license.
++  See README for more details.
++
++*******************************************************************************/
++
++#ifndef MXL_HOSTAPD_CONFIG_DUMP_H
++#define MXL_HOSTAPD_CONFIG_DUMP_H
++
++#include <stdio.h>
++
++#define MAX_NAME 256
++#define MAX_MEMBERS 500   
++#define MAX_STRUCTS 150  
++
++#define HOSTAPD_CONFIG_OUTPUT_DIR "/tmp/hostapd_config"
++#define HOSTAPD_METADATA_FILE "/etc/hostapd_metadata.txt"
++#define MEMBER_FIELD_MAX 6
++
++//Member_info - Structure member metadata
++typedef struct {
++	char name[MAX_NAME];
++	char type[MAX_NAME];
++	int size;
++	int offset;
++	int pointer_depth;
++	int array_count;
++} Member_info;
++
++//Structure - Complete structure metadata 
++typedef struct {
++	char name[MAX_NAME];
++	int size;
++	int member_count;
++	Member_info members[MAX_MEMBERS];
++} Structure_info;
++
++
++int mxl_parse_metadata(const char* file);
++
++Structure_info* mxl_find_struct(const char* name);
++
++void mxl_hostapd_config_dump(FILE* out, void* base, const char* sname, 
++                   const char* prefix, int use_arrow);
++
++#endif /* MXL_HOSTAPD_CONFIG_DUMP_H */
++
+diff --git a/hostapd/mxl_hostapd_metadata.c b/hostapd/mxl_hostapd_metadata.c
+new file mode 100644
+index 000000000..ca6fbf234
+--- /dev/null
++++ b/hostapd/mxl_hostapd_metadata.c
+@@ -0,0 +1,383 @@
++/******************************************************************************
++
++         Copyright (c) 2020 - 2026, MaxLinear, Inc.
++         Copyright 2016 - 2020 Intel Corporation
++         Copyright 2015 - 2016 Lantiq Beteiligungs-GmbH & Co. KG
++         Copyright 2009 - 2014 Lantiq Deutschland GmbH
++         Copyright 2007 - 2008 Infineon Technologies AG
++
++  This software may be distributed under the terms of the BSD license.
++  See README for more details.
++
++*******************************************************************************/
++
++#include <stdio.h>
++#include <stdlib.h>
++#include <string.h>
++#include <fcntl.h>
++#include <unistd.h>
++#include <errno.h>
++#include <dwarf.h>
++#include <elfutils/libdw.h>
++
++#define MAX_STRUCTS 256
++#define MAX_MEMBERS 512
++#define MAX_NAME_LEN 128
++#define MAX_TYPE_LEN 128
++
++// Array of structures to extract
++static const char *STRUCTS_TO_EXTRACT[] = {
++	"hostapd_config",
++	"hostapd_bss_config",
++	NULL
++};
++
++typedef struct {
++	char name[MAX_NAME_LEN];
++	char type_name[MAX_TYPE_LEN];
++	unsigned long offset;
++	unsigned long size;
++	int is_pointer;
++	int is_array;
++	int array_count;
++} member_info_t;
++
++typedef struct {
++	char name[MAX_NAME_LEN];
++	unsigned long size;
++	int member_count;
++	member_info_t members[MAX_MEMBERS];
++	int extracted;
++} struct_info_t;
++
++static struct_info_t structs[MAX_STRUCTS];
++static int struct_count = 0;
++
++static int mxl_find_struct_index(const char *name) {
++	for (int i = 0; i < struct_count; i++) {
++		if (strcmp(structs[i].name, name) == 0) {
++			return i;
++		}
++	}
++	return -1;
++}
++
++static int mxl_add_hostapd_struct(const char *name) {
++	//Duplicate check
++	if (mxl_find_struct_index(name) >= 0) {
++		return mxl_find_struct_index(name);
++	}
++
++	if (struct_count >= MAX_STRUCTS) {
++		return -1;
++	}
++
++	strncpy(structs[struct_count].name, name, MAX_NAME_LEN - 1);
++	structs[struct_count].size = 0;
++	structs[struct_count].member_count = 0;
++	structs[struct_count].extracted = 0;
++	return struct_count++;
++}
++
++
++static void mxl_extract_type_info(Dwarf_Die *type_die,
++			      char *type_name,
++			      unsigned long *type_size,
++			      int *is_pointer,
++			      int *is_array,
++			      int *array_count) {
++	*is_pointer = 0;
++	*is_array = 0;
++	*array_count = 0;
++	*type_size = 0;
++	strcpy(type_name, "unknown");
++
++	if (!type_die) {
++		return;
++	}
++
++	Dwarf_Die current = *type_die;
++
++	// Handle pointers - count depth (*, **, ***, etc.)
++	while (dwarf_tag(&current) == DW_TAG_pointer_type) {
++		(*is_pointer)++;
++		*type_size = sizeof(void*);
++
++		Dwarf_Attribute attr;
++		if (dwarf_attr(&current, DW_AT_type, &attr) != NULL) {
++			Dwarf_Die next;
++			if (dwarf_formref_die(&attr, &next) != NULL) {
++				current = next;
++				continue;
++			}
++		}
++		strcpy(type_name, "void");
++		return;
++	}
++
++	// Handle arrays
++	if (dwarf_tag(&current) == DW_TAG_array_type) {
++		*is_array = 1;
++
++		Dwarf_Die child;
++		if (dwarf_child(&current, &child) == 0) {
++			do {
++				if (dwarf_tag(&child) == DW_TAG_subrange_type) {
++					Dwarf_Attribute attr;
++					Dwarf_Word bound;
++
++					if (dwarf_attr(&child, DW_AT_upper_bound, &attr) != NULL) {
++						if (dwarf_formudata(&attr, &bound) == 0) {
++							*array_count = bound + 1;
++						}
++					} else if (dwarf_attr(&child, DW_AT_count, &attr) != NULL) {
++						if (dwarf_formudata(&attr, &bound) == 0) {
++							*array_count = bound;
++						}
++					}
++					break;
++				}
++			} while (dwarf_siblingof(&child, &child) == 0);
++		}
++
++		Dwarf_Attribute attr;
++		if (dwarf_attr(&current, DW_AT_type, &attr) != NULL) {
++			Dwarf_Die elem_type;
++			if (dwarf_formref_die(&attr, &elem_type) != NULL) {
++				current = elem_type;
++			}
++		}
++	}
++
++	// Resolve typedefs
++	while (1) {
++		int tag = dwarf_tag(&current);
++		if (tag == DW_TAG_typedef || tag == DW_TAG_const_type ||
++		    tag == DW_TAG_volatile_type || tag == DW_TAG_restrict_type) {
++			Dwarf_Attribute attr;
++			if (dwarf_attr(&current, DW_AT_type, &attr) != NULL) {
++				Dwarf_Die next;
++				if (dwarf_formref_die(&attr, &next) != NULL) {
++					current = next;
++					continue;
++				}
++			}
++		}
++		break;
++	}
++
++	// Get type name
++	int tag = dwarf_tag(&current);
++	const char *name = dwarf_diename(&current);
++
++	if (tag == DW_TAG_structure_type) {
++		if (name) {
++			snprintf(type_name, MAX_TYPE_LEN, "struct %s", name);
++			mxl_add_hostapd_struct(name);
++		} else {
++			strcpy(type_name, "struct <anon>");
++		}
++	} else if (tag == DW_TAG_union_type) {
++		if (name) {
++			snprintf(type_name, MAX_TYPE_LEN, "union %s", name);
++		} else {
++			strcpy(type_name, "union <anon>");
++		}
++	} else if (tag == DW_TAG_enumeration_type) {
++		strcpy(type_name, "enum");
++	} else if (tag == DW_TAG_base_type) {
++		if (name) {
++			strncpy(type_name, name, MAX_TYPE_LEN - 1);
++		}
++	} else if (name) {
++		strncpy(type_name, name, MAX_TYPE_LEN - 1);
++	}
++
++	// Get size
++	Dwarf_Attribute size_attr;
++	if (dwarf_attr(&current, DW_AT_byte_size, &size_attr) != NULL) {
++		Dwarf_Word sz;
++		if (dwarf_formudata(&size_attr, &sz) == 0) {
++			*type_size = sz;
++		}
++	}
++}
++
++static int mxl_extract_structure(Dwarf *dwarf, const char *struct_name) {
++	int struct_idx = mxl_find_struct_index(struct_name);
++	if (struct_idx < 0) {
++		return 0;
++	}
++
++	if (structs[struct_idx].extracted) {
++		return 1;
++	}
++
++	Dwarf_Off offset = 0;
++	size_t hsize;
++	int found = 0;
++
++	while (dwarf_nextcu(dwarf, offset, &offset, &hsize, NULL, NULL, NULL) == 0) {
++		Dwarf_Die cu_die;
++		if (dwarf_offdie(dwarf, offset + hsize, &cu_die) == NULL) {
++			continue;
++		}
++
++		Dwarf_Die child;
++		if (dwarf_child(&cu_die, &child) != 0) {
++			continue;
++		}
++
++		do {
++			if (dwarf_tag(&child) != DW_TAG_structure_type) {
++				continue;
++			}
++
++			const char *name = dwarf_diename(&child);
++			if (!name || strcmp(name, struct_name) != 0) {
++				continue;
++			}
++
++			found = 1;
++
++			// Get structure size
++			Dwarf_Attribute size_attr;
++			if (dwarf_attr(&child, DW_AT_byte_size, &size_attr) != NULL) {
++				Dwarf_Word sz;
++				if (dwarf_formudata(&size_attr, &sz) == 0) {
++					structs[struct_idx].size = sz;
++				}
++			}
++
++			// Extract members
++			Dwarf_Die member;
++			if (dwarf_child(&child, &member) == 0) {
++				int member_idx = 0;
++
++				do {
++					if (dwarf_tag(&member) != DW_TAG_member) {
++						continue;
++					}
++
++					if (member_idx >= MAX_MEMBERS) {
++						break;
++					}
++
++					member_info_t *m = &structs[struct_idx].members[member_idx];
++					memset(m, 0, sizeof(member_info_t));
++
++					const char *member_name = dwarf_diename(&member);
++					if (member_name) {
++						strncpy(m->name, member_name, MAX_NAME_LEN - 1);
++					} else {
++						snprintf(m->name, MAX_NAME_LEN, "_anon_%d", member_idx);
++					}
++
++					// Get offset
++					Dwarf_Attribute offset_attr;
++					if (dwarf_attr(&member, DW_AT_data_member_location, &offset_attr) != NULL) {
++						Dwarf_Word off;
++						if (dwarf_formudata(&offset_attr, &off) == 0) {
++							m->offset = off;
++						}
++					}
++
++					// Get type
++					Dwarf_Attribute type_attr;
++					if (dwarf_attr(&member, DW_AT_type, &type_attr) != NULL) {
++						Dwarf_Die type_die;
++						if (dwarf_formref_die(&type_attr, &type_die) != NULL) {
++							mxl_extract_type_info(&type_die, m->type_name, &m->size,
++								&m->is_pointer, &m->is_array, &m->array_count);
++						}
++					}
++
++					member_idx++;
++				} while (dwarf_siblingof(&member, &member) == 0);
++
++				structs[struct_idx].member_count = member_idx;
++			}
++
++			structs[struct_idx].extracted = 1;
++			break;
++
++		} while (dwarf_siblingof(&child, &child) == 0);
++
++		if (found) {
++			break;
++		}
++	}
++	
++	return found;
++}
++
++static void mxl_write_metadata_file(const char *output_path) {
++	FILE *f = fopen(output_path, "w");
++	if (!f) {
++		fprintf(stderr, "Error: Cannot create '%s': %s\n", output_path, strerror(errno));
++		return;
++	}
++	for (int i = 0; i < struct_count; i++) {
++		if (!structs[i].extracted) {
++			continue;
++		}
++
++		struct_info_t *s = &structs[i];
++		fprintf(f, "STRUCT|%s|%lu|%d\n", s->name, s->size, s->member_count);
++
++		for (int j = 0; j < s->member_count; j++) {
++			member_info_t *m = &s->members[j];
++			fprintf(f, "  MEMBER|%s|%s|%lu|%lu|%d|%d\n",
++				m->name, m->type_name, m->size,
++				m->offset,
++				m->is_pointer, m->array_count);
++		}
++
++		fprintf(f, "END_STRUCT\n\n");
++	}
++
++	fclose(f);
++}
++
++int main(int argc, char *argv[]) {
++
++	if (argc < 2) {
++		fprintf(stderr, "Usage: %s <binary_path> [output_path]\n", argv[0]);
++		return 1;
++	}
++
++	const char *binary_path = argv[1];
++	const char *output_path = (argc >= 3) ? argv[2] : "hostapd_metadata.txt";
++
++	int fd = open(binary_path, O_RDONLY);
++	if (fd < 0) {
++		fprintf(stderr, "Error: Cannot open '%s': %s\n", binary_path, strerror(errno));
++		return 1;
++	}
++
++	Dwarf *dwarf = dwarf_begin(fd, DWARF_C_READ);
++	if (!dwarf) {
++		fprintf(stderr, "Error: No DWARF debug info in '%s'\n", binary_path);
++		close(fd);
++		return 1;
++	}
++
++	for (int i = 0; STRUCTS_TO_EXTRACT[i] != NULL; i++) {
++		mxl_add_hostapd_struct(STRUCTS_TO_EXTRACT[i]);
++	}
++
++	int current = 0;
++	while (current < struct_count) {
++		const char *name = structs[current].name;
++		mxl_extract_structure(dwarf, name);
++		current++;
++	}
++
++	mxl_write_metadata_file(output_path);
++
++	dwarf_end(dwarf);
++
++	close(fd);
++	return 0;
++}
++
+-- 
+2.43.0
+

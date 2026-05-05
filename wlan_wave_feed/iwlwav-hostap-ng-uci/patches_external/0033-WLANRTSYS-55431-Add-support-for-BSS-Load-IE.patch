@@ -1,4 +1,4 @@
-From c4af8be5ea33be4abfa6e7063a44eed97ffb78bc Mon Sep 17 00:00:00 2001
+From 27bccdc988c0830ae5e0d6b7f4c97e4a6e41820e Mon Sep 17 00:00:00 2001
 From: Jurijs Soloveckis <jsoloveckis@maxlinear.com>
 Date: Sat, 20 May 2023 12:00:52 +0200
 Subject: [PATCH] WLANRTSYS-55431: Add support for BSS Load IE

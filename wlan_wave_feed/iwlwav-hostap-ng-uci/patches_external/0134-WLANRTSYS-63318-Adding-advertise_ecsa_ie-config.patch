@@ -1,4 +1,4 @@
-From 2d92fce69afcdb0692d715f3e5d424d68b881690 Mon Sep 17 00:00:00 2001
+From e760cf769e297bf3a92ba7101ba0957651673340 Mon Sep 17 00:00:00 2001
 From: akgupta <akgupta@maxlinear.com>
 Date: Mon, 1 Apr 2024 11:51:31 +0530
 Subject: [PATCH] WLANRTSYS-63318 Adding advertise_ecsa_ie config.

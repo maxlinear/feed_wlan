@@ -1,4 +1,4 @@
-From 0cb7a09dd21054278356400354e687b4dc574fc4 Mon Sep 17 00:00:00 2001
+From 8a05a9932d985d34c34c0f8cac457040f4378d3a Mon Sep 17 00:00:00 2001
 From: "Ross-Ashikyan, William" <washikyan@maxlinear.com>
 Date: Tue, 3 Dec 2024 10:32:04 -0800
 Subject: [PATCH] WLANRTSYS-85289 Fix for WLANRTSYS-83162 Add afc timeout logic
@@ -20,7 +20,7 @@ Fixup: WLANRTSYS-83162 Ported afcd and composite mode changes from legacy hostap
  4 files changed, 69 insertions(+), 2 deletions(-)
 
 diff --git a/hostapd/mxl_ctrl_iface.c b/hostapd/mxl_ctrl_iface.c
-index da498ce93..44420664e 100644
+index da2c552b9..890cdb9c2 100644
 --- a/hostapd/mxl_ctrl_iface.c
 +++ b/hostapd/mxl_ctrl_iface.c
 @@ -85,7 +85,7 @@ static int mxl_hostapd_ctrl_iface_send_afcd_request(struct hostapd_iface *iface,

@@ -1,4 +1,4 @@
-From 09e1c48ccd1921d04cbba14c10818041667e46f6 Mon Sep 17 00:00:00 2001
+From 6a3453e9f66448daec27789af0ce73b862d636ae Mon Sep 17 00:00:00 2001
 From: mvuls <mvuls@maxlinear.com>
 Date: Wed, 1 Nov 2023 14:39:32 +0200
 Subject: [PATCH] WLANRTSYS-54432: Add support for CSA
@@ -470,7 +470,7 @@ index a34c837dd..a5b123b56 100644
  {
  	switch (width) {
 diff --git a/src/ap/mxl_hostapd.h b/src/ap/mxl_hostapd.h
-index aad961b10..17760b206 100644
+index e51179036..d58c2251a 100644
 --- a/src/ap/mxl_hostapd.h
 +++ b/src/ap/mxl_hostapd.h
 @@ -146,6 +146,7 @@ int mxl_hostapd_setup_bss_post(struct hostapd_data *hapd);

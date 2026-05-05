@@ -1,4 +1,4 @@
-From 91100ba88dd1de4d321102a87ffe54c66d136ca1 Mon Sep 17 00:00:00 2001
+From 221ed5f060d4e9cbaace013d7fa341e1d39237e5 Mon Sep 17 00:00:00 2001
 From: hmgokhale <hmgokhale@maxlinear.com>
 Date: Wed, 6 Mar 2024 16:04:05 +0530
 Subject: [PATCH] WLANRTSYS-62845 MLO Auth Assoc, WPA3 and eapol changes
@@ -1642,7 +1642,7 @@ index a41d00b01..dccd3b855 100644
  }
  
 diff --git a/src/ap/mxl_hostapd.h b/src/ap/mxl_hostapd.h
-index 10b49794e..75805b3d6 100644
+index 8c2daa5d2..ca685e49c 100644
 --- a/src/ap/mxl_hostapd.h
 +++ b/src/ap/mxl_hostapd.h
 @@ -29,6 +29,11 @@

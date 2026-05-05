@@ -1,4 +1,4 @@
-From 153963d09785d17265b3272fe0ccb4c7372a44a5 Mon Sep 17 00:00:00 2001
+From 65f9224a57e5bffe061cd94b4f120db38e78183c Mon Sep 17 00:00:00 2001
 From: Dmitrijs Martinovs <dmartinovs@maxlinear.com>
 Date: Tue, 20 Jun 2023 13:52:09 +0200
 Subject: [PATCH] WLANRTSYS-56281: Add rssi_ignore_probe_request pipe

@@ -1,4 +1,4 @@
-From 7a404a58a701ed01961ca78b7ffa79152c2909d5 Mon Sep 17 00:00:00 2001
+From 0603d4f7999acbad955836542386d614d66f0961 Mon Sep 17 00:00:00 2001
 From: mj <mj@maxlinear.com>
 Date: Thu, 7 Nov 2024 13:31:04 +0530
 Subject: [PATCH] WLANRTSYS-80442 prevent sending EHT IE in assoc response if

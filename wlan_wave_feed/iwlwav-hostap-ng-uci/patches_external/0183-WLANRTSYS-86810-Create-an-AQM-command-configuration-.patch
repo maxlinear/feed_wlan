@@ -1,4 +1,4 @@
-From 1482c33829b48b7405c535b52a4013dfdd53a23b Mon Sep 17 00:00:00 2001
+From 4ea78213728e7331538fd2e0074b38945a381fcf Mon Sep 17 00:00:00 2001
 From: Udhayakumar Mahendiran <umahendiran@maxlinear.com>
 Date: Mon, 23 Dec 2024 19:45:54 +0800
 Subject: [PATCH] WLANRTSYS-86810 Create an AQM command configuration to set it

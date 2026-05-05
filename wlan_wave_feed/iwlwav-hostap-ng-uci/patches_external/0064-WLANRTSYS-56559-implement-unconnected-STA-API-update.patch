@@ -1,4 +1,4 @@
-From ee353746c1e56a84f7debab925b32aa215be3025 Mon Sep 17 00:00:00 2001
+From 6ccb23a61c913f9ab023c889829d770c9ea80938 Mon Sep 17 00:00:00 2001
 From: mvulsx <mvuls@maxlinear.com>
 Date: Wed, 28 Jun 2023 14:02:27 +0000
 Subject: [PATCH] WLANRTSYS-56559: implement unconnected STA API updates

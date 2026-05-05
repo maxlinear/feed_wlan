@@ -1,4 +1,4 @@
-From 47e1b04bc67237e37f10c9400a8f6c467e6b8af1 Mon Sep 17 00:00:00 2001
+From 055b84b383aa1595e7dd8d15a1ca1aa1280ea0f8 Mon Sep 17 00:00:00 2001
 From: Vasudevan Raman <vraman@maxlinear.com>
 Date: Tue, 30 Jul 2024 22:00:53 +0800
 Subject: [PATCH] WLANRTSYS-80984 Cancel

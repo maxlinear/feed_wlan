@@ -1,4 +1,4 @@
-From c2ef46b341194a71f8ea78034de31e84126e05bc Mon Sep 17 00:00:00 2001
+From 7db905cf9af100aa7eb6824bcce5b5771fec6f3d Mon Sep 17 00:00:00 2001
 From: Jurijs Soloveckis <jsoloveckis@maxlinear.com>
 Date: Mon, 21 Aug 2023 08:56:51 +0200
 Subject: [PATCH] WLANRTSYS-57988: Implement MU EDCA IE vendor extensions

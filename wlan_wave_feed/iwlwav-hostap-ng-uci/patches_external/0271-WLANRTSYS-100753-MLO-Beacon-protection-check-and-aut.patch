@@ -1,0 +1,138 @@
+From 5d67eb99cd2fe520611a913fec761fbeff1cda26 Mon Sep 17 00:00:00 2001
+From: Nikita Chernikov <nchernikov@maxlinear.com>
+Date: Tue, 10 Feb 2026 18:58:52 +0200
+Subject: [PATCH] WLANRTSYS-100753 MLO: Beacon protection check and auth
+ improvement
+
+ - Clear GTKs header buffers before usage for sibling links and clear from stack after done using
+ - Check beacon_prot is same for all links during MLD config check
+
+Fixup to: WLANRTSYS-96596 MLO: Triband MLD Support
+
+Signed-off-by: Nikita Chernikov <nchernikov@maxlinear.com>
+---
+ src/ap/mxl_config.h   |  2 +-
+ src/ap/mxl_mld.c      |  5 +++++
+ src/ap/mxl_wpa_auth.c | 20 ++++++++++++++------
+ 3 files changed, 20 insertions(+), 7 deletions(-)
+
+diff --git a/src/ap/mxl_config.h b/src/ap/mxl_config.h
+index 4462c2e18..60b4d7977 100644
+--- a/src/ap/mxl_config.h
++++ b/src/ap/mxl_config.h
+@@ -412,7 +412,7 @@ struct mxl_hostapd_bss_config {
+ 	int rnr_auto_update;
+ 	bool veriwave_test;
+ #ifdef CONFIG_IEEE80211BE
+-	bool disable_beacon_prot;
++	bool disable_beacon_prot; /* Disable beacon protection - should be same value for all VAPs in MBSSID */
+ #endif /* CONFIG_IEEE80211BE */
+ 	u32 bss_same_ssid; /* bitmap size [32 bits] - Need to handle based on MAX_SUPPORTED_6GHZ_VAP_PER_RADIO - WLANRTSYS-61684 */
+ 	bool disable_pbac;
+diff --git a/src/ap/mxl_mld.c b/src/ap/mxl_mld.c
+index beec35905..b283e7aaf 100644
+--- a/src/ap/mxl_mld.c
++++ b/src/ap/mxl_mld.c
+@@ -409,6 +409,11 @@ static bool mxl_hostapd_verify_mld_config(struct p_ap_mld *mld)
+ 			fail_reason = "ignore_broadcast_ssid";
+ 			goto fail;
+ 		}
++
++		if (sibling_hapd->conf->beacon_prot != first_hapd->conf->beacon_prot) {
++			fail_reason = "beacon_prot";
++			goto fail;
++		}
+ 	}
+ 
+ 	if (is_invalid_mld_id)
+diff --git a/src/ap/mxl_wpa_auth.c b/src/ap/mxl_wpa_auth.c
+index e3b721a0d..c44f0270a 100644
+--- a/src/ap/mxl_wpa_auth.c
++++ b/src/ap/mxl_wpa_auth.c
+@@ -243,9 +243,9 @@ u8 * mxl_wpa_auth_ml_group_kdes(struct wpa_state_machine *sm, u8 *pos)
+ 	size_t gtk_len = 0, sib_gtk_len = 0, len = 0;
+ 	int gtkidx = 0, sib_gtkidx = 0;
+ 	u8 *gtk = NULL, *sib_gtk = NULL;
+-	u8 gtk_hdr[1 + PN_LENGTH];
+-	u8 igtk_hdr[2 + PN_LENGTH + 1 + 32];
+-	u8 bigtk_hdr[2 + PN_LENGTH + 1 + 32];
++	u8 gtk_hdr[1 + PN_LENGTH] = {0};
++	u8 igtk_hdr[2 + PN_LENGTH + 1 + 32] = {0};
++	u8 bigtk_hdr[2 + PN_LENGTH + 1 + 32] = {0};
+ 	u8 rsc[WPA_KEY_RSC_LEN];
+ 
+ 	gsm = sm->group;
+@@ -259,12 +259,13 @@ u8 * mxl_wpa_auth_ml_group_kdes(struct wpa_state_machine *sm, u8 *pos)
+ 	gtk_hdr[0] |= (sm->wpa_auth->mlo_conf.wpa_link_conf.link_id << 4);
+ 	os_memset(&gtk_hdr[1], 0, PN_LENGTH);
+ 	pos = wpa_add_kde(pos, RSN_KEY_DATA_MLO_GTK, gtk_hdr, (1 + PN_LENGTH), gtk, gtk_len);
+-	/* Fill for sibling links */
++	/* GTK for sibling links */
+ 	mxl_wpa_sm_for_each_sibling_link(link_info, sm) {
+ 		sibling_wpa_auth = mxl_wpa_sta_get_wpa_auth_by_link_id(sm, link_info->link_id);
+ 		if (!sibling_wpa_auth)
+ 			continue;
+ 
++		os_memset(gtk_hdr, 0, sizeof(gtk_hdr));
+ 		sib_gsm = sibling_wpa_auth->group;
+ 		sib_gtk = sib_gsm->GTK[sib_gsm->GN - 1];
+ 		sib_gtk_len = sib_gsm->GTK_len;
+@@ -276,6 +277,7 @@ u8 * mxl_wpa_auth_ml_group_kdes(struct wpa_state_machine *sm, u8 *pos)
+ 		os_memset(&gtk_hdr[1], 0, PN_LENGTH);
+ 		pos = wpa_add_kde(pos, RSN_KEY_DATA_MLO_GTK, gtk_hdr, (1 + PN_LENGTH), sib_gtk, sib_gtk_len);
+ 	}
++	forced_memzero(gtk_hdr, sizeof(gtk_hdr));
+ 
+ 	/* MLO link IGTK KDEs */
+ 	igtk_hdr[0] = gsm->GN_igtk;
+@@ -285,11 +287,13 @@ u8 * mxl_wpa_auth_ml_group_kdes(struct wpa_state_machine *sm, u8 *pos)
+ 	len = wpa_cipher_key_len(sm->wpa_auth->conf.group_mgmt_cipher);
+ 	memcpy_s(&igtk_hdr[9], len, gsm->IGTK[gsm->GN_igtk - 4], len);
+ 	pos = wpa_add_kde(pos, RSN_KEY_DATA_MLO_IGTK, igtk_hdr, 2 + PN_LENGTH + 1 + len, NULL, 0);
+-	/* Fill for sibling links */
++	/* IGTK for sibling links */
+ 	mxl_wpa_sm_for_each_sibling_link(link_info, sm) {
+ 		sibling_wpa_auth = mxl_wpa_sta_get_wpa_auth_by_link_id(sm, link_info->link_id);
+ 		if (!sibling_wpa_auth)
+ 			continue;
++		
++		os_memset(igtk_hdr, 0, sizeof(igtk_hdr));
+ 		sib_gsm = sibling_wpa_auth->group;
+ 
+ 		igtk_hdr[0] = sib_gsm->GN_igtk;
+@@ -299,6 +303,7 @@ u8 * mxl_wpa_auth_ml_group_kdes(struct wpa_state_machine *sm, u8 *pos)
+ 		memcpy_s(&igtk_hdr[9], len, sib_gsm->IGTK[sib_gsm->GN_igtk - 4], len);
+ 		pos = wpa_add_kde(pos, RSN_KEY_DATA_MLO_IGTK, igtk_hdr, 2 + PN_LENGTH + 1 + len, NULL, 0);
+ 	}
++	forced_memzero(igtk_hdr, sizeof(igtk_hdr));
+ 
+ 	/* MLO link BIGTK KDEs */
+ 	if (sm->wpa_auth->conf.beacon_prot) {
+@@ -321,13 +326,15 @@ u8 * mxl_wpa_auth_ml_group_kdes(struct wpa_state_machine *sm, u8 *pos)
+ 		memcpy_s(&bigtk_hdr[9], len, gsm->BIGTK[gsm->GN_bigtk - 6], len);
+ 		pos = wpa_add_kde(pos, RSN_KEY_DATA_MLO_BIGTK, bigtk_hdr, 2 + PN_LENGTH + 1 + len, NULL, 0);
+ 	}
+-	/* Fill for sibling links */
++	/* BIGTK for sibling links */
+ 	mxl_wpa_sm_for_each_sibling_link(link_info, sm) {
+ 		sibling_wpa_auth = mxl_wpa_sta_get_wpa_auth_by_link_id(sm, link_info->link_id);
+ 		if (!sibling_wpa_auth)
+ 			continue;
+ 		if (!sibling_wpa_auth->conf.beacon_prot)
+ 			continue;
++		
++		os_memset(bigtk_hdr, 0, sizeof(bigtk_hdr));
+ 		wpa_auth = sibling_wpa_auth;
+ 		sib_gsm = sibling_wpa_auth->group;
+ 		if (sibling_wpa_auth->conf.tx_bss_auth) {
+@@ -348,6 +355,7 @@ u8 * mxl_wpa_auth_ml_group_kdes(struct wpa_state_machine *sm, u8 *pos)
+ 		memcpy_s(&bigtk_hdr[9], len, sib_gsm->BIGTK[sib_gsm->GN_bigtk - 6], len);
+ 		pos = wpa_add_kde(pos, RSN_KEY_DATA_MLO_BIGTK, bigtk_hdr, 2 + PN_LENGTH + 1 + len, NULL, 0);
+ 	}
++	forced_memzero(bigtk_hdr, sizeof(bigtk_hdr));
+ 
+ 	return pos;
+ }
+-- 
+2.43.0
+

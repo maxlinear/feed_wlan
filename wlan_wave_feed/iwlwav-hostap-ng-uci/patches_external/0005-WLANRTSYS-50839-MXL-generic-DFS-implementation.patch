@@ -1,4 +1,4 @@
-From 50bc921f8a9f082b33e2e7776c0de9e366b3507d Mon Sep 17 00:00:00 2001
+From 173b3a0f87ac96d44af5c44164c6c993a0fed597 Mon Sep 17 00:00:00 2001
 From: mvuls <mvuls@maxlinear.com>
 Date: Fri, 27 Oct 2023 17:39:37 +0300
 Subject: [PATCH] WLANRTSYS-50839: MXL generic DFS implementation
@@ -1280,7 +1280,7 @@ index 2fb84e182..73ff72827 100644
 +	return -1; /* should never happen */
 +}
 diff --git a/src/ap/mxl_hostapd.h b/src/ap/mxl_hostapd.h
-index 6f71be805..ea653dc47 100644
+index abb0679ea..2864741a5 100644
 --- a/src/ap/mxl_hostapd.h
 +++ b/src/ap/mxl_hostapd.h
 @@ -15,6 +15,7 @@
@@ -1326,7 +1326,7 @@ index 6f71be805..ea653dc47 100644
 +
  struct mxl_hostapd_iface {
  	u32 sta_aid_link[MXL_AID_WORDS];
-   s8 stas_free_reason; /* the reason for all stations remove */
+ 	s8 stas_free_reason; /* the reason for all stations remove */
 +	int allow_scan_during_cac;
 +	struct hostapd_failsafe_freq_params failsafe;
 +	u8 rbm; /* Radar Bit Map */

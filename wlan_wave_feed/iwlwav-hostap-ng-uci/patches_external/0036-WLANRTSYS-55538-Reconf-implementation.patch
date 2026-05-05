@@ -1,4 +1,4 @@
-From 0e24e4b5e8400261433d71f623ef3c708f88567f Mon Sep 17 00:00:00 2001
+From cf482014504d483a1db218e68b3531e94cb15745 Mon Sep 17 00:00:00 2001
 From: Jurijs Soloveckis <jsoloveckis@maxlinear.com>
 Date: Thu, 25 May 2023 09:18:47 +0200
 Subject: [PATCH] WLANRTSYS-55538: Reconf implementation

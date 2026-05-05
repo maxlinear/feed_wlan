@@ -1,4 +1,4 @@
-From 42cf38fdd48d8ee2e96b5d6994e2aee53f2fcc2f Mon Sep 17 00:00:00 2001
+From 5793bba51b8d268a0a6e8c1624a8c013af180c46 Mon Sep 17 00:00:00 2001
 From: Jurijs Soloveckis <jsoloveckis@maxlinear.com>
 Date: Mon, 22 May 2023 11:42:49 +0200
 Subject: [PATCH] WLANRTSYS-55451: Beacon interval per AP

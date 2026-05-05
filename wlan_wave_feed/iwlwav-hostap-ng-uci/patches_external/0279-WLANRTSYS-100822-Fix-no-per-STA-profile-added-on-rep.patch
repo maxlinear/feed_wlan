@@ -1,0 +1,241 @@
+From c4505d9e0c9dc21935088cbcd536eb87e89e4015 Mon Sep 17 00:00:00 2001
+From: Nikita Chernikov <nchernikov@maxlinear.com>
+Date: Sun, 15 Mar 2026 10:00:28 +0200
+Subject: [PATCH] WLANRTSYS-100822 Fix no per-STA profile added on reporting
+ links during ML CSA and ECSA len not included
+
+Fixup to: WLANRTSYS-100621 MLO triband critical update changes
+
+Signed-off-by: Nikita Chernikov <nchernikov@maxlinear.com>
+---
+ src/ap/mxl_hostapd.c | 24 ++++++++++++------
+ src/ap/mxl_hostapd.h |  1 +
+ src/ap/mxl_mld.c     | 58 +++++++++++++++++++++++++++++++++++++++-----
+ src/ap/mxl_mld.h     |  4 ++-
+ 4 files changed, 73 insertions(+), 14 deletions(-)
+
+diff --git a/src/ap/mxl_hostapd.c b/src/ap/mxl_hostapd.c
+index 685eff6a0..e243be84f 100644
+--- a/src/ap/mxl_hostapd.c
++++ b/src/ap/mxl_hostapd.c
+@@ -2638,6 +2638,7 @@ void mxl_hostapd_alloc_bss_data(struct hostapd_data *hapd)
+ 	hapd->mxl_data.max_chan_sw_time_ie_add = false;
+ 	hapd->mxl_data.ml_ie_csa_ie_len_add = false;
+ 	hapd->mxl_data.ml_ie_csw_ie_len_add = false;
++	hapd->mxl_data.ml_ie_ecsa_ie_len_add = false;
+ 	hapd->mxl_data.ml_ie_max_chan_sw_time_ie_add = false;
+ 	hapd->mxl_data.ml_ie_max_chan_sw_time_ie_len_add = false;
+ 	hapd->mxl_data.bw_indication_ie_len_add = false;
+@@ -3072,6 +3073,12 @@ int mxl_switch_channel(struct hostapd_data *hapd, struct csa_settings *settings)
+ 	}
+ #endif /* CONFIG_IEEE80211BE_MXL_MLO */
+ 	if (hapd->iconf->ieee80211be) {
++#ifdef CONFIG_IEEE80211BE_MXL_MLO
++		if (mxl_ml_is_mlo_on_iface(iface)) {
++			iface->mxl_iface.ml_csa_in_progress = true;
++			mxl_set_csa_status_on_all_reporting_link(hapd, true);
++		}
++#endif /* CONFIG_IEEE80211BE_MXL_MLO */
+ 		mxl_hostapd_set_eht_punct_bitmap(hapd, hapd->iconf->punct_bitmap);
+ 
+ 		for (i = 1; i < iface->num_bss; i++) {
+@@ -3079,28 +3086,31 @@ int mxl_switch_channel(struct hostapd_data *hapd, struct csa_settings *settings)
+ #ifdef CONFIG_IEEE80211BE_MXL_MLO
+ 			if (hapd_csa->iconf->ieee80211be && mxl_is_mlo_enabled(hapd_csa->conf)) {
+ 				mxl_ml_increment_bss_param_change_count(hapd_csa);
+-				ret = mxl_ml_handle_csa_critical_update(hapd_csa, settings);
++				ret = mxl_ml_handle_csa_critical_update(hapd_csa, settings, op_class);
+ 				if (ret) {
+ 					wpa_printf(MSG_ERROR, "MXL_MLO: ML CSA critical update handling failed");
+-					return ret;
++					goto error;
+ 				}
+ 				mxl_ml_increment_bss_param_change_count(hapd_csa);
+ 				ret = mxl_ml_send_bss_critical_update_info(hapd_csa, BSS_CRITICAL_UPDATE_COMMON, 0, 0);
+ 				if (ret) {
+ 					wpa_printf(MSG_ERROR, "MXL_MLO: ML send BSS critical update failed");
+-					return ret;
++					goto error;
+ 				}
+ 			}
+ #endif /* CONFIG_IEEE80211BE_MXL_MLO */
+ 			mxl_hostapd_set_eht_punct_bitmap(hapd_csa, hapd->iconf->punct_bitmap);
+ 		}
+-#ifdef CONFIG_IEEE80211BE_MXL_MLO
+-		hapd->iface->mxl_iface.ml_csa_in_progress = true;
+-		mxl_set_csa_status_on_all_reporting_link(hapd, true);
+-#endif /* CONFIG_IEEE80211BE_MXL_MLO */
+ 	}
+ #endif /* defined(CONFIG_IEEE80211BE) */
+ 	return 0;
++
++#ifdef CONFIG_IEEE80211BE_MXL_MLO
++error:
++	iface->mxl_iface.ml_csa_in_progress = false;
++	mxl_set_csa_status_on_all_reporting_link(hapd, false);
++	return ret;
++#endif /* CONFIG_IEEE80211BE_MXL_MLO */
+ }
+ 
+ int mxl_hostapd_send_protected_deauth(struct hostapd_data *hapd, int reason)
+diff --git a/src/ap/mxl_hostapd.h b/src/ap/mxl_hostapd.h
+index 6fde223de..4e38f32fb 100644
+--- a/src/ap/mxl_hostapd.h
++++ b/src/ap/mxl_hostapd.h
+@@ -161,6 +161,7 @@ struct mxl_hostapd_data {
+ 	bool max_chan_sw_time_ie_add;
+ 	bool ml_ie_csa_ie_len_add;
+ 	bool ml_ie_csw_ie_len_add;
++	bool ml_ie_ecsa_ie_len_add;
+ 	bool ml_ie_max_chan_sw_time_ie_add;
+ 	bool ml_ie_max_chan_sw_time_ie_len_add;
+ 	bool bw_indication_ie_len_add;
+diff --git a/src/ap/mxl_mld.c b/src/ap/mxl_mld.c
+index 324ff9952..3ffe1b4b6 100644
+--- a/src/ap/mxl_mld.c
++++ b/src/ap/mxl_mld.c
+@@ -1347,6 +1347,25 @@ static bool mxl_ml_is_per_sta_profile_required(struct hostapd_data *hapd,
+ 	return false;
+ }
+ 
++static bool mxl_ml_skip_per_sta_profile(struct hostapd_data *hapd, enum multilink_type ml_type)
++{
++	bool skip = false;
++
++	switch (ml_type) {
++		case ML_BASIC:
++			/* Skip per-STA Profile for sibling link which is not doing CSA */
++			if (!hapd->iface->mxl_iface.ml_csa_in_progress)
++				skip = true;
++			break;
++		default:
++			/* Include per-STA Profile for all other types */
++			skip = false;
++			break;
++	}
++
++	return skip;
++}
++
+ static u8 * mxl_hostapd_eid_mld_staprof_bcn(struct hostapd_data *hapd, u8 *eid, u8 *fw_ie_len)
+ {
+ 	u8 fw_ie_len_calc = 0;
+@@ -1356,10 +1375,12 @@ static u8 * mxl_hostapd_eid_mld_staprof_bcn(struct hostapd_data *hapd, u8 *eid,
+ 
+ 	*fw_ie_len = 0;
+ 
+-	wpa_printf(MSG_INFO, "MXL_MLO: mld_staprof_bcn: ml_ie_max_chan_sw_time_ie_add %d\
+-			      ml_ie_csa_ie_len_add %d ml_ie_csw_ie_len_add %d ml_ie_max_chan_sw_time_ie_len_add %d",
+-			      hapd->mxl_data.ml_ie_max_chan_sw_time_ie_add, hapd->mxl_data.ml_ie_csa_ie_len_add,
+-			      hapd->mxl_data.ml_ie_csw_ie_len_add, hapd->mxl_data.ml_ie_max_chan_sw_time_ie_len_add);
++	wpa_printf(MSG_INFO, "MXL_MLO: %s mld_staprof_bcn: mcst_ie_add %d"
++				   " csa_ie_len_add %d csw_ie_len_add %d"
++				   " ecsa_ie_len_add %d mcst_ie_len_add %d", hapd->conf->iface,
++				   hapd->mxl_data.ml_ie_max_chan_sw_time_ie_add, hapd->mxl_data.ml_ie_csa_ie_len_add,
++				   hapd->mxl_data.ml_ie_csw_ie_len_add, hapd->mxl_data.ml_ie_ecsa_ie_len_add,
++				   hapd->mxl_data.ml_ie_max_chan_sw_time_ie_len_add);
+ 
+ 	if (hapd->mxl_data.ml_ie_max_chan_sw_time_ie_add &&
+ 	    !hapd->mxl_data.ml_ie_max_chan_sw_time_ie_len_add) {
+@@ -1374,6 +1395,10 @@ static u8 * mxl_hostapd_eid_mld_staprof_bcn(struct hostapd_data *hapd, u8 *eid,
+ 		fw_ie_len_calc += CSW_IE_LEN;
+ 	}
+ 
++	if (hapd->mxl_data.ml_ie_ecsa_ie_len_add) {
++		fw_ie_len_calc += ECSA_IE_LEN;
++	}
++
+ 	if (hapd->mxl_data.bw_indication_ie_len_add) {
+ 		if (hapd->iconf->punct_bitmap) {
+ 			fw_ie_len_calc += BWI_IE_LEN;
+@@ -1625,7 +1650,7 @@ u8 * mxl_hostapd_eid_multilink_common(struct hostapd_data *hapd, u8 *eid,
+ 			size_t total_len = 0;
+ 			size_t sta_info_len = 0;
+ 
+-			if ((ml_type == ML_BASIC) && !lhapd->iface->mxl_iface.ml_csa_in_progress)
++			if (mxl_ml_skip_per_sta_profile(lhapd, ml_type))
+ 				continue;
+ 
+ 			/* Build Per-STA profile */
+@@ -2744,7 +2769,7 @@ int mxl_ml_handle_critical_update(struct hostapd_data *hapd)
+ 	return 0;
+ }
+ 
+-int mxl_ml_handle_csa_critical_update(struct hostapd_data *hapd, struct csa_settings *settings)
++int mxl_ml_handle_csa_critical_update(struct hostapd_data *hapd, struct csa_settings *settings, u8 op_class)
+ {
+ 	struct hostapd_data *sibling_hapd;
+ 
+@@ -2774,6 +2799,9 @@ int mxl_ml_handle_csa_critical_update(struct hostapd_data *hapd, struct csa_sett
+ 
+ 		sibling_hapd->mxl_data.ml_ie_csa_ie_len_add = true;
+ 		sibling_hapd->mxl_data.ml_ie_max_chan_sw_time_ie_add = true;
++		if (op_class) {
++			sibling_hapd->mxl_data.ml_ie_ecsa_ie_len_add = true;
++		}
+ 
+ 		if (settings->freq_params.bandwidth > 20) {
+ 			sibling_hapd->mxl_data.ml_ie_csw_ie_len_add = true;
+@@ -2798,6 +2826,7 @@ int mxl_ml_handle_csa_critical_update(struct hostapd_data *hapd, struct csa_sett
+ 		sibling_hapd->mxl_data.ml_ie_csa_ie_len_add = false;
+ 		sibling_hapd->mxl_data.ml_ie_max_chan_sw_time_ie_add = false;
+ 		sibling_hapd->mxl_data.ml_ie_csw_ie_len_add = false;
++		sibling_hapd->mxl_data.ml_ie_ecsa_ie_len_add = false;
+ 		sibling_hapd->mxl_data.bw_indication_ie_len_add = false;
+ 	}
+ 	return 0;
+@@ -2851,6 +2880,23 @@ bool mxl_ml_is_mlo_on_tx_bss(struct hostapd_data *hapd)
+ 	return false;
+ }
+ 
++/* Check if there is any MLO configured on the iface */
++bool mxl_ml_is_mlo_on_iface(struct hostapd_iface *iface)
++{
++	struct p_ap_mld *mld = NULL;
++
++	if (!iface)
++		return false;
++
++	for (int i = 0; i < iface->num_bss; i++) {
++		mld = mxl_ml_get_ap_mld(iface->bss[i]);
++		if (mld)
++			return true;
++	}
++
++	return false;
++}
++
+ int mxl_mld_check_sibling_iface(struct hostapd_iface *iface)
+ {
+ 	struct hostapd_iface *other_iface;
+diff --git a/src/ap/mxl_mld.h b/src/ap/mxl_mld.h
+index c743dc01b..5bd0e7c25 100644
+--- a/src/ap/mxl_mld.h
++++ b/src/ap/mxl_mld.h
+@@ -114,6 +114,7 @@
+ #define CSA_IE_LEN                              5
+ #define MAX_CHAN_SWITCH_TIME_IE_LEN             6
+ #define CSW_IE_LEN                              7
++#define ECSA_IE_LEN                             6
+ #define BWI_IE_LEN                              9
+ #define BWI_IE_NO_DSB_LEN                       7
+ 
+@@ -329,13 +330,14 @@ void mxl_ml_increment_bss_param_change_count(struct hostapd_data *hapd);
+ int mxl_ml_send_bss_critical_update_info(struct hostapd_data *hapd,
+ 					 u8 flags, u8 op_class, u32 max_chan_switch_time);
+ int mxl_ml_handle_critical_update(struct hostapd_data *hapd);
+-int mxl_ml_handle_csa_critical_update(struct hostapd_data *hapd, struct csa_settings *settings);
++int mxl_ml_handle_csa_critical_update(struct hostapd_data *hapd, struct csa_settings *settings, u8 op_class);
+ bool mxl_is_sibling_hapd_init_completed(struct hostapd_iface *iface);
+ void mxl_ml_store_mld_config(struct hostapd_data *hapd, struct hostapd_config *oldconf,
+ 					   struct mxl_ml_mld_config *mld_config);
+ void mxl_ml_restore_mld_config(struct hostapd_data *hapd, struct mxl_ml_mld_config *mld_config);
+ void mxl_ml_iface_disabled(struct hostapd_data *hapd);
+ bool mxl_ml_is_mlo_on_tx_bss(struct hostapd_data *hapd);
++bool mxl_ml_is_mlo_on_iface(struct hostapd_iface *iface);
+ int mxl_mld_check_sibling_iface(struct hostapd_iface *iface);
+ #else
+ static inline bool mxl_is_ml_vap_configured(struct hostapd_iface *iface)
+-- 
+2.43.0
+

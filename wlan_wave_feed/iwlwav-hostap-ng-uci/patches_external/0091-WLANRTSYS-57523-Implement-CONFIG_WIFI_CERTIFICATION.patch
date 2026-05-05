@@ -1,4 +1,4 @@
-From 517338741c92f956ac24635362d52821cf1953b5 Mon Sep 17 00:00:00 2001
+From e9381852ed0cde4616762a085df0e46e5b2fbd2c Mon Sep 17 00:00:00 2001
 From: Jurijs Soloveckis <jsoloveckis@maxlinear.com>
 Date: Wed, 2 Aug 2023 16:07:59 +0200
 Subject: [PATCH] WLANRTSYS-57523: Implement CONFIG_WIFI_CERTIFICATION

@@ -1,0 +1,886 @@
+From 393b0fec82de5545e693c12552f5f2865c714e49 Mon Sep 17 00:00:00 2001
+From: Karthik D A <karthikda@maxlinear.com>
+Date: Wed, 13 Aug 2025 14:04:52 +0800
+Subject: [PATCH] WLANRTSYS-92508 iwlwav-hostapd-ng: MSCS Support
+
+Description: Implementation of the MSCS feature.
+
+Signed-off-by: Karthik D A <karthikda@maxlinear.com>
+---
+ hostapd/Makefile                 |   3 +
+ hostapd/mxl_config.c             |  10 ++
+ hostapd/mxl_ctrl_iface.c         |  34 +++++
+ hostapd/mxl_hostapd_cli.c        |   5 +
+ hostapd/mxl_hostapd_cli.h        |   3 +
+ src/ap/ieee802_11.c              |  19 ++-
+ src/ap/ieee802_11_shared.c       |   4 +
+ src/ap/mxl_config.h              |   3 +
+ src/ap/mxl_hostapd.c             |   6 +
+ src/ap/mxl_ieee802_11.c          |  47 +++++++
+ src/ap/mxl_ieee802_11.h          |   8 ++
+ src/ap/mxl_ieee802_11_shared.c   |  35 +++++
+ src/ap/mxl_sta_info.h            |   3 +
+ src/ap/mxl_wmm.c                 | 228 +++++++++++++++++++++++++++++--
+ src/ap/mxl_wmm.h                 |  12 +-
+ src/ap/sta_info.c                |   4 +
+ src/common/ieee802_11_common.c   |   6 +
+ src/common/ieee802_11_common.h   |   6 +
+ src/common/ieee802_11_defs.h     |  12 ++
+ src/common/mxl_ieee802_11_defs.h |  33 +++--
+ src/common/mxl_wpa_ctrl.h        |   5 +
+ src/common/vendor_cmds_copy.h    |  23 ++++
+ 22 files changed, 481 insertions(+), 28 deletions(-)
+
+diff --git a/hostapd/Makefile b/hostapd/Makefile
+index c21d7d7d5..9a531ae09 100644
+--- a/hostapd/Makefile
++++ b/hostapd/Makefile
+@@ -424,6 +424,9 @@ endif
+ ifdef CONFIG_SCS_MXL
+ CFLAGS += -DCONFIG_SCS_MXL
+ endif
++ifdef CONFIG_MSCS_MXL
++CFLAGS += -DCONFIG_MSCS_MXL
++endif
+ endif
+ endif
+ 
+diff --git a/hostapd/mxl_config.c b/hostapd/mxl_config.c
+index 437806cce..0519f8256 100644
+--- a/hostapd/mxl_config.c
++++ b/hostapd/mxl_config.c
+@@ -2008,6 +2008,16 @@ int mxl_hostapd_config_fill (struct hostapd_config *conf,
+ 		}
+ 		mxl_bss_conf->scs_enable = val;
+ #endif /* CONFIG_SCS_MXL */
++#ifdef CONFIG_MSCS_MXL
++	} else if (os_strcmp(buf, "mscs_enable") == 0) {
++		int val = atoi(pos);
++		if (!IS_VALID_BOOL_RANGE(val)) {
++			wpa_printf(MSG_ERROR, "Line %d: invalid val %d",
++					line, val);
++			return 0;
++		}
++		mxl_bss_conf->mscs_enable = val;
++#endif /* CONFIG_MSCS_MXL */
+ 	} else
+ 		return 0;
+ 
+diff --git a/hostapd/mxl_ctrl_iface.c b/hostapd/mxl_ctrl_iface.c
+index 05bffd789..f4d4e93fc 100644
+--- a/hostapd/mxl_ctrl_iface.c
++++ b/hostapd/mxl_ctrl_iface.c
+@@ -3135,6 +3135,35 @@ static int mxl_hostapd_ctrl_iface_get_scs_enable(struct hostapd_data *hapd, char
+ }
+ #endif
+ 
++#ifdef CONFIG_MSCS_MXL
++static int mxl_hostapd_drv_get_mscs_enable(struct hostapd_data *hapd, int *enabled)
++{
++	int ret;
++
++	ret = MXL_DRV_VENDOR_GET(LTQ_NL80211_VENDOR_SUBCMD_GET_MSCS_ENABLE, NULL, 0, enabled, sizeof(*enabled));
++	if (ret < 0)
++		wpa_printf(MSG_ERROR, "nl80211: sending GET_MSCS_ENABLE failed: %i (%s)", ret, strerror(-ret));
++	return ret;
++}
++
++static int mxl_hostapd_ctrl_iface_get_mscs_enable(struct hostapd_data *hapd, char *reply, size_t reply_size)
++{
++	int res = 0;
++	int enabled;
++
++	if (mxl_hostapd_drv_get_mscs_enable(hapd, &enabled))
++		return -1;
++
++	res = sprintf_s(reply, reply_size, "%d\n", enabled);
++	if (res <= 0) {
++		wpa_printf(MSG_ERROR, "%s: sprintf_s error %d", __func__, res);
++		return -1;
++	}
++
++	return res;
++}
++#endif /* CONFIG_MSCS_MXL */
++
+ int mxl_hostapd_ctrl_iface_receive_process(struct hostapd_data *hapd,
+ 					      char *buf, char *reply,
+ 					      int reply_size,
+@@ -3367,6 +3396,11 @@ int mxl_hostapd_ctrl_iface_receive_process(struct hostapd_data *hapd,
+ 		if (mxl_hostapd_ctrl_iface_get_scs_enable(hapd, reply, reply_size) < 0)
+ 			*reply_len = -1;
+ #endif /* CONFIG_SCS */
++#ifdef CONFIG_MSCS_MXL
++	} else if (os_strncmp(buf, "GET_MSCS_ENABLE", 15) == 0) {
++		if (mxl_hostapd_ctrl_iface_get_mscs_enable(hapd, reply, reply_size) < 0)
++			*reply_len = -1;
++#endif /* CONFIG_MSCS */
+ 	} else {
+ 		return 0;
+ 	}
+diff --git a/hostapd/mxl_hostapd_cli.c b/hostapd/mxl_hostapd_cli.c
+index b54914572..100e2b852 100644
+--- a/hostapd/mxl_hostapd_cli.c
++++ b/hostapd/mxl_hostapd_cli.c
+@@ -564,3 +564,8 @@ int mxl_hostapd_cli_cmd_get_scs_enable(struct wpa_ctrl *ctrl, int argc, char *ar
+ {
+ 	return mxl_wpa_ctrl_command(ctrl, "GET_SCS_ENABLE");
+ }
++
++int mxl_hostapd_cli_cmd_get_mscs_enable(struct wpa_ctrl *ctrl, int argc, char *argv[])
++{
++	return mxl_wpa_ctrl_command(ctrl, "GET_MSCS_ENABLE");
++}
+diff --git a/hostapd/mxl_hostapd_cli.h b/hostapd/mxl_hostapd_cli.h
+index 29007e8b1..9e8e1da72 100644
+--- a/hostapd/mxl_hostapd_cli.h
++++ b/hostapd/mxl_hostapd_cli.h
+@@ -109,6 +109,8 @@ int mxl_wpa_ctrl_command(struct wpa_ctrl *ctrl, const char *cmd);
+ 	  " = do reconf on all changed bss in radio"}, \
+ 	{ "get_scs_enable", mxl_hostapd_cli_cmd_get_scs_enable, NULL, \
+ 	  " = Get scs enable/disable status"}, \
++	{ "get_mscs_enable", mxl_hostapd_cli_cmd_get_mscs_enable, NULL, \
++	  " = Get mscs enable/disable status"}, \
+ 
+ #ifdef CONFIG_ACS
+ #define MXL_CLI_COMMANDS_ACS \
+@@ -190,6 +192,7 @@ int mxl_hostapd_cli_cmd_set_assocresp_elements(struct wpa_ctrl *ctrl, int argc,
+ int mxl_hostapd_cli_cmd_get_assocresp_elements(struct wpa_ctrl *ctrl, int argc, char *argv[]);
+ int mxl_hostapd_cli_cmd_bss_reconf(struct wpa_ctrl *ctrl, int argc, char *argv[]);
+ int mxl_hostapd_cli_cmd_get_scs_enable(struct wpa_ctrl *ctrl, int argc, char *argv[]);
++int mxl_hostapd_cli_cmd_get_mscs_enable(struct wpa_ctrl *ctrl, int argc, char *argv[]);
+ 
+ 
+ #endif /* MXL_HOSTAPD_CLI_H */
+diff --git a/src/ap/ieee802_11.c b/src/ap/ieee802_11.c
+index 32d89c97f..1b6f51f63 100644
+--- a/src/ap/ieee802_11.c
++++ b/src/ap/ieee802_11.c
+@@ -78,7 +78,6 @@
+ #include "mxl_mld.h"
+ #endif /* CONFIG_IEEE80211BE_MXL_MLO */
+ 
+-
+ #ifdef CONFIG_FILS
+ static struct wpabuf *
+ prepare_auth_resp_fils(struct hostapd_data *hapd,
+@@ -5099,6 +5098,11 @@ static int __check_assoc_ies(struct hostapd_data *hapd, struct sta_info *sta,
+ 	}
+ #endif /* CONFIG_FILS && CONFIG_OCV */
+ 
++#ifdef CONFIG_MSCS_MXL
++	mxl_set_sta_info_mscs_descriptor(hapd, sta, elems->mscs_descriptor,
++												elems->mscs_descriptor_len);
++#endif /* CONFIG_MSCS_MXL */
++
+ 	ap_copy_sta_supp_op_classes(sta, elems->supp_op_classes,
+ 				    elems->supp_op_classes_len);
+ 
+@@ -5927,6 +5931,9 @@ rsnxe_done:
+ 	p = mxl_hostapd_eid_legacy_multi_ap(hapd, ies, ies_len, p, buf + buflen - p);
+ #endif /* CONFIG_LEGACY_MULTI_AP_MXL */
+ 
++#ifdef CONFIG_MSCS_MXL
++		p = mxl_hostapd_eid_mscs(hapd, p, buf + buflen - p, sta->mxl_sta_info.sta_mscs_ie.mscs_status, sta);
++#endif
+ 	send_len += p - reply->u.assoc_resp.variable;
+ 
+ #ifdef CONFIG_FILS
+@@ -6633,6 +6640,10 @@ static void handle_assoc(struct hostapd_data *hapd,
+ 	}
+ #endif /* CONFIG_FILS */
+ 
++#ifdef CONFIG_MSCS_MXL
++	mxl_assoc_req_mscs_add(hapd, mgmt, sta, resp);
++#endif /* CONFIG_MSCS_MXL */
++
+ 	if (resp >= 0)
+ 		reply_res = send_assoc_resp(hapd,
+ 					    mld_addrs_not_translated ?
+@@ -7179,12 +7190,12 @@ static int handle_action(struct hostapd_data *hapd,
+ 	case WLAN_ACTION_SPECTRUM_MGMT:
+ 		mxl_hostapd_handle_spectrum_management(hapd, (const u8 *) mgmt, len);
+ 		return 1;
+-#ifdef CONFIG_SCS_MXL
++#if defined(CONFIG_SCS_MXL) || defined(CONFIG_MSCS_MXL)
+ 	case WLAN_ACTION_ROBUST_AV_STREAMING:
+ 		wpa_printf(MSG_DEBUG, "WLAN_ACTION_ROBUST_AV_STREAMING");
+-		mxl_hostapd_scs_action(hapd, mgmt, len);
++		mxl_hostapd_handle_robust_av_stream(hapd, mgmt, len);
+ 		return 1;
+-#endif /* CONFIG_SCS_MXL */
++#endif /* CONFIG_SCS_MXL  || CONFIG_MSCS_MXL */
+ #endif /* CONFIG_VENDOR_MXL */
+ 	}
+ 
+diff --git a/src/ap/ieee802_11_shared.c b/src/ap/ieee802_11_shared.c
+index f7b44db85..d93d7fb47 100644
+--- a/src/ap/ieee802_11_shared.c
++++ b/src/ap/ieee802_11_shared.c
+@@ -522,6 +522,10 @@ static void hostapd_ext_capab_byte(struct hostapd_data *hapd, u8 *pos, int idx,
+ 		if (mbssid_complete)
+ 			*pos |= 0x01; /* Bit 80 - Complete List of NonTxBSSID
+ 				       * Profiles */
++#ifdef CONFIG_MSCS_MXL
++		if (hapd->conf->mxl_bss_conf.mscs_enable)
++			*pos |= 0x20; /* Bit 85 - MSCS Supported */
++#endif
+ 		break;
+ 	case 11: /* Bits 88-95 */
+ #ifdef CONFIG_SAE_PK
+diff --git a/src/ap/mxl_config.h b/src/ap/mxl_config.h
+index 759b092dd..6fc713108 100644
+--- a/src/ap/mxl_config.h
++++ b/src/ap/mxl_config.h
+@@ -422,6 +422,9 @@ struct mxl_hostapd_bss_config {
+ #ifdef CONFIG_SCS_MXL
+ 	int scs_enable; /* CONFIG_SCS_MXL */
+ #endif
++#ifdef CONFIG_MSCS_MXL
++	int mscs_enable;
++#endif  /* CONFIG_MSCS_MXL */
+ };
+ 
+ struct hostapd_config;
+diff --git a/src/ap/mxl_hostapd.c b/src/ap/mxl_hostapd.c
+index 9df1425d1..c4847d3ce 100644
+--- a/src/ap/mxl_hostapd.c
++++ b/src/ap/mxl_hostapd.c
+@@ -1747,6 +1747,12 @@ int mxl_hostapd_setup_bss_pre(struct hostapd_data *hapd)
+ 			sizeof(hapd->conf->mxl_bss_conf.scs_enable)))
+ 		wpa_printf(MSG_WARNING, "Enable SCS Failed");
+ #endif
++#ifdef CONFIG_MSCS_MXL
++	if (MXL_DRV_VENDOR_SET(LTQ_NL80211_VENDOR_SUBCMD_SET_MSCS_ENABLE,
++			(u8*)&hapd->conf->mxl_bss_conf.mscs_enable,
++			sizeof(hapd->conf->mxl_bss_conf.mscs_enable)))
++		wpa_printf(MSG_WARNING, "Enable MSCS Failed");
++#endif
+ 
+ 	return 0;
+ }
+diff --git a/src/ap/mxl_ieee802_11.c b/src/ap/mxl_ieee802_11.c
+index 24653fbb6..eeb0ef5f9 100644
+--- a/src/ap/mxl_ieee802_11.c
++++ b/src/ap/mxl_ieee802_11.c
+@@ -71,6 +71,7 @@
+ #include "mxl_ieee802_11.h"
+ #include "mxl_csa.h"
+ #include "common/mxl_ieee802_11_common.h"
++#include "mxl_wmm.h"
+ #endif /* CONFIG_VENDOR_MXL */
+ #include "wpa_auth_i.h"
+ #include "mxl_sta_info.h"
+@@ -1145,4 +1146,50 @@ u8 * mxl_hostapd_eid_multi_ap(struct hostapd_data *hapd, struct sta_info *sta, u
+ 	return eid + add_multi_ap_ie(eid, len, &multi_ap);
+ }
+ 
++void mxl_ap_free_sta(struct hostapd_data *hapd, struct sta_info *sta)
++{
++#ifdef CONFIG_MSCS_MXL
++	os_free(sta->mxl_sta_info.sta_mscs_ie.mscs_descriptor);
++#endif /* CONFIG_MSCS_MXL */
++}
++
++#ifdef CONFIG_MSCS_MXL
++void mxl_set_sta_info_mscs_descriptor(struct hostapd_data *hapd, struct sta_info *sta,
++													const u8* elems_mscs_desc, size_t elems_mscs_len)
++{
++	if (!(hapd->conf->mxl_bss_conf.mscs_enable &&
++				elems_mscs_desc && elems_mscs_len))
++		return;
++
++	os_free(sta->mxl_sta_info.sta_mscs_ie.mscs_descriptor);
++	sta->mxl_sta_info.sta_mscs_ie.mscs_descriptor = os_memdup(elems_mscs_desc, elems_mscs_len);
++	if (sta->mxl_sta_info.sta_mscs_ie.mscs_descriptor)
++		sta->mxl_sta_info.sta_mscs_ie.mscs_descriptor_len = elems_mscs_len;
++	else
++		sta->mxl_sta_info.sta_mscs_ie.mscs_descriptor_len = 0;
++}
++
++void mxl_assoc_req_mscs_add(struct hostapd_data *hapd, const struct ieee80211_mgmt *mgmt,
++									 struct sta_info *sta, int resp)
++{
++	u8 *pos;
++	u8 len;
++
++	if ((sta) && (sta->mxl_sta_info.sta_mscs_ie.mscs_descriptor) &&
++			(sta->mxl_sta_info.sta_mscs_ie.mscs_descriptor_len)&&
++			(resp == WLAN_STATUS_SUCCESS)) {
++		pos = sta->mxl_sta_info.sta_mscs_ie.mscs_descriptor;
++		len = sta->mxl_sta_info.sta_mscs_ie.mscs_descriptor_len;
++		if ((*pos++ == 0) && (!sta->mxl_sta_info.sta_mscs_ie.mscs_active)) {/* pos = request type Add */
++			len--; /* subtract req_type len */
++			sta->mxl_sta_info.sta_mscs_ie.mscs_status = mxl_mscs_add_req(hapd, mgmt,pos,len);
++			if (sta->mxl_sta_info.sta_mscs_ie.mscs_status == WLAN_STATUS_SUCCESS)
++				sta->mxl_sta_info.sta_mscs_ie.mscs_active = true;
++		}
++		os_free(sta->mxl_sta_info.sta_mscs_ie.mscs_descriptor);
++		sta->mxl_sta_info.sta_mscs_ie.mscs_descriptor = NULL;
++		sta->mxl_sta_info.sta_mscs_ie.mscs_descriptor_len = 0;
++	}
++}
++#endif /* CONFIG_MSCS_MXL */
+ #endif /* CONFIG_NATIVE_WINDOWS */
+diff --git a/src/ap/mxl_ieee802_11.h b/src/ap/mxl_ieee802_11.h
+index c24031bd8..8fd71e78d 100644
+--- a/src/ap/mxl_ieee802_11.h
++++ b/src/ap/mxl_ieee802_11.h
+@@ -66,4 +66,12 @@ u8 * mxl_hostapd_eid_multi_ap(struct hostapd_data *hapd, struct sta_info *sta, u
+ u8 * mxl_hostapd_add_tpe_info(u8 *eid, u8 tx_pwr_count, enum max_tx_pwr_interpretation tx_pwr_intrpn, u8 tx_pwr_cat, u8 *tx_pwr);
+ 
+ int mxl_acs_find_center_chan(int freq, int width);
++
++#ifdef CONFIG_MSCS_MXL
++u8 * mxl_hostapd_eid_mscs(struct hostapd_data *hapd, u8 *eid, size_t len, u16 status, struct sta_info *sta);
++void mxl_assoc_req_mscs_add(struct hostapd_data *hapd, const struct ieee80211_mgmt *mgmt, struct sta_info *sta, int resp);
++void mxl_set_sta_info_mscs_descriptor(struct hostapd_data *hapd, struct sta_info *sta, const u8* elems_mscs_desc, size_t elems_mscs_len);
++#endif /* CONFIG_MSCS_MXL */
++
++void mxl_ap_free_sta(struct hostapd_data *hapd, struct sta_info *sta);
+ #endif /* MXL_IEEE802_11_H */
+diff --git a/src/ap/mxl_ieee802_11_shared.c b/src/ap/mxl_ieee802_11_shared.c
+index 94cb81604..deaa50cb4 100644
+--- a/src/ap/mxl_ieee802_11_shared.c
++++ b/src/ap/mxl_ieee802_11_shared.c
+@@ -135,3 +135,38 @@ u8 * mxl_hostapd_eid_wce(struct hostapd_data *hapd, u8 *eid, size_t len)
+ }
+ #endif /* CONFIG_SCS_MXL */
+ #endif /* CONFIG_IEEE80211BE_MXL_MLO */
++
++#ifdef CONFIG_MSCS_MXL
++u8 * mxl_hostapd_eid_mscs(struct hostapd_data *hapd, u8 *eid, size_t len, u16 status, struct sta_info *sta)
++{
++	u16 up_ctrl = 0;
++	u32 stream_timeout = 0;
++	u8 *pos = eid;
++	u8 elen = MSCS_IE_ASSOC_RESP_LEN;
++
++	if (!(hapd->conf->mxl_bss_conf.mscs_enable && sta &&
++				sta->mxl_sta_info.sta_mscs_ie.mscs_descriptor &&
++				sta->mxl_sta_info.sta_mscs_ie.mscs_descriptor_len &&
++				sta->mxl_sta_info.sta_mscs_ie.mscs_active))
++		return eid;
++
++	if (len < elen) {
++		wpa_printf(MSG_ERROR,"Not enough room in buffer MSCS Element IE: buf len = %zu", len);
++		return eid;
++	}
++
++	*pos++ = WLAN_EID_EXTENSION;
++	*pos++ = elen-2;
++	*pos++ = WLAN_EID_EXT_MSCS_DESCRIPTOR;
++	*pos++ = 0; /* request type ADD */
++	WPA_PUT_BE16(pos, up_ctrl);
++	pos += sizeof(u16); /* Len of up_ctrl */
++	WPA_PUT_BE32(pos, stream_timeout);
++	pos += sizeof(u32); /*Len of stream timeout */
++	*pos++ = MCSC_SUBELEM_STATUS; /*MSCS Subelement ID */ 
++	*pos++ = sizeof(u16); /*MSCS subelement len */
++	WPA_PUT_BE16(pos, status);
++	pos += sizeof(u16); /* Len of status */
++	return pos;
++}
++#endif
+diff --git a/src/ap/mxl_sta_info.h b/src/ap/mxl_sta_info.h
+index 0fdaa2a3a..352b2f6dd 100644
+--- a/src/ap/mxl_sta_info.h
++++ b/src/ap/mxl_sta_info.h
+@@ -46,6 +46,9 @@ struct mxl_sta_info {
+ #endif /* CONFIG_SCS_MXL */
+ 	u8 main_link_id;
+ #endif /* CONFIG_IEEE80211BE_MXL_MLO */
++#ifdef CONFIG_MSCS_MXL
++	struct mxl_sta_mscs_ie sta_mscs_ie;
++#endif
+ };
+ 
+ #ifdef CONFIG_IEEE80211BE_MXL_MLO
+diff --git a/src/ap/mxl_wmm.c b/src/ap/mxl_wmm.c
+index 4ac936b11..6ca9936e6 100644
+--- a/src/ap/mxl_wmm.c
++++ b/src/ap/mxl_wmm.c
+@@ -607,28 +607,236 @@ void mxl_handle_scs_req(struct hostapd_data *hapd,
+ 	}
+ 	mxl_send_scs_resp(hapd, mgmt, status_list, scs_count);
+ }
++#endif /* CONFIG_SCS_MXL */
++
++#ifdef CONFIG_MSCS_MXL
++int mxl_mscs_parse_tclas_mask_elems(const u8 *pos, struct mxl_mscs_add_req *mscs_add_req)
++{
++	u8 class_type;
++
++	if (*pos++ != WLAN_EID_EXT_TCLAS_MASK)
++		return WLAN_STATUS_UNSPECIFIED_FAILURE;
++	
++	if (*pos++ != CLASSIFIER_TYPE4) {
++		return WLAN_STATUS_UNSPECIFIED_FAILURE;
++	}
++
++	mscs_add_req->class_mask = *pos++;
++
++	return WLAN_STATUS_SUCCESS;
++}
++
++int mxl_mscs_add_req(struct hostapd_data *hapd, const struct ieee80211_mgmt *mgmt, const u8 *pos, size_t len)
++{
++	const u8 *end;
++	u8 eid, elen;
++	u16 up_ctrl;
++	struct sta_info *sta;
++	struct mxl_mscs_add_req mscs_add_req;
++
++	os_memset(&mscs_add_req, 0, sizeof(struct mxl_mscs_add_req));
++
++	if (!hapd->conf->mxl_bss_conf.mscs_enable) {
++		wpa_printf(MSG_ERROR, "MSCS: mxl_mscs_add_req - not enabled/supported");
++		return WLAN_STATUS_UNSPECIFIED_FAILURE;
++	}
++
++	sta = ap_get_sta(hapd, mgmt->sa);
++	if (sta == NULL) {
++		wpa_printf(MSG_ERROR, "MSCS: mxl_mscs_add_req - station not connected");
++		return WLAN_STATUS_UNSPECIFIED_FAILURE;
++	}
++
++	if (sta->mxl_sta_info.sta_mscs_ie.mscs_active) {
++		wpa_printf(MSG_ERROR, "MSCS: mxl_mscs_add_req - MSCS already active");
++		return WLAN_STATUS_UNSPECIFIED_FAILURE;
++	}
++
++	mscs_add_req.aid = sta->aid;
++
++	os_memcpy(&up_ctrl, pos, sizeof(u16));
++	up_ctrl = le_to_host16(up_ctrl);
++	pos += sizeof(u16);
++	mscs_add_req.up_bitmap = up_ctrl & 0xFF;
++	mscs_add_req.up_limit = (up_ctrl >> 8) & 0x07;
++
++	os_memcpy(&mscs_add_req.stream_timeout, pos, sizeof(u32));
++	pos += sizeof(u32);
++
++	len = len - (sizeof(u16) + sizeof(u32)); /* Remove len of up_ctrl, stream timeout */
++
++	end = pos + len;
++
++	while (pos + 2 <= end) {
++		eid = *pos++;
++		elen = *pos++;
++
++		if (end - pos < elen)
++			return WLAN_STATUS_UNSPECIFIED_FAILURE;
++
++		switch (eid) {
++			case WLAN_EID_EXTENSION:
++				if (mxl_mscs_parse_tclas_mask_elems(pos, &mscs_add_req)) {
++					return WLAN_STATUS_UNSPECIFIED_FAILURE;
++				}
++				break;
++			default:
++				return WLAN_STATUS_UNSPECIFIED_FAILURE;
++		}
++
++		pos += elen;
++	}
++
++	if (MXL_DRV_VENDOR_SET(LTQ_NL80211_VENDOR_SUBCMD_MSCS_ADD_REQ,
++				&mscs_add_req, sizeof(struct mxl_mscs_add_req))) {
++		return WLAN_STATUS_UNSPECIFIED_FAILURE;
++	}
++	sta->mxl_sta_info.sta_mscs_ie.mscs_active = true;
++	wpa_msg(hapd->msg_ctx, MSG_INFO, AP_STA_MSCS_ADD);
++	wpa_msg_no_global(hapd->msg_ctx_parent, MSG_INFO, AP_STA_MSCS_ADD);
++	return WLAN_STATUS_SUCCESS;
++}
++
++static void mxl_send_mscs_resp(struct hostapd_data *hapd,
++			const struct ieee80211_mgmt *mgmt, int status)
++{
++	u8 buf[256];
++	struct ieee80211_mgmt *mgmt_resp = (struct ieee80211_mgmt *) buf;
++	struct sta_info *sta;
++
++	sta = ap_get_sta(hapd, mgmt->sa);
++	if (sta == NULL) {
++		wpa_printf(MSG_ERROR, "MSCS: mxl_send_scs_resp - station not connected");
++		return;
++	}
++
++	wpa_printf(MSG_DEBUG, "handle_mscs_resp");
++	os_memset(buf, 0, sizeof(buf));
++	mgmt_resp->frame_control = IEEE80211_FC(WLAN_FC_TYPE_MGMT, WLAN_FC_STYPE_ACTION);
++	os_memcpy(mgmt_resp->da, mgmt->sa, ETH_ALEN);
++	os_memcpy(mgmt_resp->sa, hapd->own_addr, ETH_ALEN);
++	os_memcpy(mgmt_resp->bssid, hapd->own_addr, ETH_ALEN);
++
++	mgmt_resp->u.action.category = WLAN_ACTION_ROBUST_AV_STREAMING;
++	mgmt_resp->u.action.u.mscs_action_resp.action = ROBUST_AV_MSCS_RESP;
++	mgmt_resp->u.action.u.mscs_action_resp.dialog_token = mgmt->u.action.u.mscs_action_req.dialog_token;
++	mgmt_resp->u.action.u.mscs_action_resp.status = status;
++	if (hostapd_drv_send_mlme(hapd, mgmt_resp, IEEE80211_HDRLEN + sizeof(mgmt_resp->u.action.u.mscs_action_resp) +
++										sizeof(mgmt_resp->u.action.category), 0, NULL, 0, 0) < 0)
++		wpa_printf(MSG_DEBUG, "ROBUST AV scs_action_send_resp: send failed");
++}
++
++int mxl_mscs_remove_req(struct hostapd_data *hapd,
++		const struct ieee80211_mgmt *mgmt, size_t len)
++ {
++	struct sta_info *sta;
++	u16 aid;
+ 
+-void mxl_hostapd_scs_action(struct hostapd_data *hapd,
++	sta = ap_get_sta(hapd, mgmt->sa);
++	if (sta == NULL) {
++		wpa_printf(MSG_ERROR, "MSCS: mscs_rem_req - station not connected");
++		return WLAN_STATUS_UNSPECIFIED_FAILURE;
++	}
++
++	if (!sta->mxl_sta_info.sta_mscs_ie.mscs_active) {
++		wpa_printf(MSG_ERROR, "MSCS: mscs_rem_req - No active MSCS to remove");
++		return WLAN_STATUS_UNSPECIFIED_FAILURE;
++	}
++
++	aid = sta->aid;
++	if (MXL_DRV_VENDOR_SET(LTQ_NL80211_VENDOR_SUBCMD_MSCS_REM_REQ,
++	    &aid, sizeof(u16))) {
++		wpa_printf(MSG_ERROR, "send LTQ_NL80211_VENDOR_SUBCMD_SEND_MSCS_REM_REQ failed!!!");
++		//TODO: Modify the enum based on specification for varied failure reasons.
++		return WLAN_STATUS_UNSPECIFIED_FAILURE;
++	}
++	sta->mxl_sta_info.sta_mscs_ie.mscs_active = false;
++	wpa_msg(hapd->msg_ctx, MSG_INFO, AP_STA_MSCS_REM);
++	wpa_msg_no_global(hapd->msg_ctx_parent, MSG_INFO, AP_STA_MSCS_REM);
++	return WLAN_STATUS_TCLAS_PROCESSING_TERMINATED;
++}
++
++void mxl_handle_mscs_req(struct hostapd_data *hapd,
+ 			const struct ieee80211_mgmt *mgmt, size_t len)
+ {
+-	u8 *action = (u8 *) &mgmt->u.action.u;
++	int status;
+ 
+-	if (!hapd->conf->mxl_bss_conf.scs_enable) {
+-      wpa_printf(MSG_ERROR, "SCS: mxl_scs_add_req - not enabled/supported");
+-      return;
+-   }
++	const u8 *pos = mgmt->u.action.u.mscs_action_req.variable;
++	u8 req_type, ext_eid, eid, elen;
++
++	if (!hapd->conf->mxl_bss_conf.mscs_enable) {
++		wpa_printf(MSG_ERROR, "MSCS: mxl_handle_mscs_req - not enabled/supported");
++		return;
++	}
++
++	eid = *pos++;
++	if(eid != WLAN_EID_EXTENSION) {
++	  wpa_printf(MSG_ERROR, "MSCS: mxl_handle_mscs_req - MSCS Descriptor element is not present");
++	  return;
++	}
++
++	elen = *pos++;
++	ext_eid = *pos++;
++	if(ext_eid != WLAN_EID_EXT_MSCS_DESCRIPTOR) {
++		wpa_printf(MSG_ERROR, "MSCS: mxl_handle_mscs_req - MSCS Descriptor element is not present");
++		return;
++	}
++	elen --; /* Subtract ext eid */
++
++	req_type = *pos++;
++	elen --; /* Subtract req_type */
++
++	switch(req_type)
++	{
++		case MSCS_REQ_ADD:
++			status = mxl_mscs_add_req(hapd, mgmt, pos, elen);
++			mxl_send_mscs_resp(hapd, mgmt, status);
++			break;
++		case MSCS_REQ_REMOVE:
++			status = mxl_mscs_remove_req(hapd, mgmt, elen);
++			mxl_send_mscs_resp(hapd, mgmt, status);
++			break;
++		case MSCS_REQ_CHANGE:
++			status = mxl_mscs_remove_req(hapd, mgmt, elen);
++			if (status == WLAN_STATUS_TCLAS_PROCESSING_TERMINATED)
++				status = mxl_mscs_add_req(hapd, mgmt, pos, elen);
++			mxl_send_mscs_resp(hapd, mgmt, status);
++			break;
++		default:
++			hostapd_logger(hapd, mgmt->sa, HOSTAPD_MODULE_IEEE80211,
++			        HOSTAPD_LEVEL_DEBUG,
++			        "hostapd_mscs_req - unknown request type %d",
++			        req_type);
++			return;
++	}
++}
++#endif /* CONFIG_MSCS_MXL */
++
++#if defined(CONFIG_SCS_MXL) || defined(CONFIG_MSCS_MXL)
++void mxl_hostapd_handle_robust_av_stream(struct hostapd_data *hapd,
++			const struct ieee80211_mgmt *mgmt, size_t len)
++{
++	u8 *action = (u8 *) &mgmt->u.action.u;
+ 
+ 	switch (*action) {
+ 	case ROBUST_AV_SCS_REQ:
++#ifdef CONFIG_SCS_MXL
+ 		wpa_printf(MSG_DEBUG, "mxl_hostapd_scs_action: ROBUST_AV_SCS_REQ");
+ 		mxl_handle_scs_req(hapd, mgmt, len);
++#endif /* CONFIG_SCS_MXL */
+ 		break;
+-	default:
+-		hostapd_logger(hapd, mgmt->sa, HOSTAPD_MODULE_IEEE80211,
++	case ROBUST_AV_MSCS_REQ:
++#ifdef CONFIG_MSCS_MXL
++		wpa_printf(MSG_DEBUG, "mxl_hostapd_mscs_action: ROBUST_AV_MSCS_REQ");
++		mxl_handle_mscs_req(hapd, mgmt, len);
++#endif /* CONFIG_MSCS_MXL */
++		break;
++default:
++	hostapd_logger(hapd, mgmt->sa, HOSTAPD_MODULE_IEEE80211,
+ 				   HOSTAPD_LEVEL_DEBUG,
+-				   "mxl_hostapd_scs_action - unknown action code %d",
++				   "mxl_hostapd_handle_robust_av_stream - unknown action code %d",
+ 				   *action);
+ 		break;
+ 	}
+ }
+-#endif /* CONFIG_SCS_MXL */
++#endif /* CONFIG_SCS_MXL  || CONFIG_MSCS_MXL */
+diff --git a/src/ap/mxl_wmm.h b/src/ap/mxl_wmm.h
+index 359465af7..f7c5a2d6f 100644
+--- a/src/ap/mxl_wmm.h
++++ b/src/ap/mxl_wmm.h
+@@ -24,12 +24,22 @@ void mxl_hostapd_eht_protected(struct hostapd_data *hapd,
+ 
+ #endif /* CONFIG_EPCS_MXL */
+ 
++#if defined(CONFIG_SCS_MXL) || defined(CONFIG_MSCS_MXL)
++void mxl_hostapd_handle_robust_av_stream(struct hostapd_data *hapd, const struct ieee80211_mgmt *mgmt, size_t len);
++#endif /* CONFIG_SCS_MXL || CONFIG_MSCS_MXL */
++
+ #ifdef CONFIG_SCS_MXL
+-void mxl_hostapd_scs_action(struct hostapd_data *hapd, const struct ieee80211_mgmt *mgmt, size_t len);
+ void mxl_handle_scs_req(struct hostapd_data *hapd, const struct ieee80211_mgmt *mgmt, size_t len);
+ int mxl_scs_add_req(struct hostapd_data *hapd, const struct ieee80211_mgmt *mgmt, const u8 *pos, size_t len, u8 scsId);
+ int mxl_scs_remove_req(struct hostapd_data *hapd, const struct ieee80211_mgmt *mgmt, size_t len, u8 scsId);
+ int mxl_scs_parse_qos_characteristics_elems(const u8 *pos, struct mxl_scs_add_req *scs_add_req);
+ int mxl_scs_parse_tclas_elems(const u8 *pos, struct mxl_scs_add_req *scs_add_req, size_t len, u8 *elems_num);
+ #endif /* CONFIG_SCS_MXL */
++
++#ifdef CONFIG_MSCS_MXL
++void mxl_handle_mscs_req(struct hostapd_data *hapd, const struct ieee80211_mgmt *mgmt, size_t len);
++int mxl_mscs_add_req(struct hostapd_data *hapd, const struct ieee80211_mgmt *mgmt, const u8 *pos, size_t len);
++int mxl_mscs_remove_req(struct hostapd_data *hapd, const struct ieee80211_mgmt *mgmt, size_t len);
++int mxl_mscs_parse_tclas_mask_elems(const u8 *pos, struct mxl_mscs_add_req *mscs_add_req);
++#endif /* CONFIG_MSCS_MXL */
+ #endif /* MXL_WME_H */
+diff --git a/src/ap/sta_info.c b/src/ap/sta_info.c
+index c09f6157f..cf90bbcdb 100644
+--- a/src/ap/sta_info.c
++++ b/src/ap/sta_info.c
+@@ -526,6 +526,10 @@ void ap_free_sta(struct hostapd_data *hapd, struct sta_info *sta)
+ 	forced_memzero(sta->last_tk, WPA_TK_MAX_LEN);
+ #endif /* CONFIG_TESTING_OPTIONS */
+ 
++#ifdef CONFIG_VENDOR_MXL
++	mxl_ap_free_sta(hapd, sta);
++#endif /* CONFIG_VENDOR_MXL */
++
+ 	os_free(sta->last_assoc_req);
+ 
+ 	os_free(sta);
+diff --git a/src/common/ieee802_11_common.c b/src/common/ieee802_11_common.c
+index 1a5d95d01..641d9f814 100644
+--- a/src/common/ieee802_11_common.c
++++ b/src/common/ieee802_11_common.c
+@@ -478,6 +478,12 @@ static int ieee802_11_parse_extension(const u8 *pos, size_t elen,
+ 		elems->non_inheritance = pos;
+ 		elems->non_inheritance_len = elen;
+ 		break;
++#ifdef CONFIG_MSCS_MXL
++	case WLAN_EID_EXT_MSCS_DESCRIPTOR:
++	elems->mscs_descriptor = pos;
++	elems->mscs_descriptor_len = elen;
++	break;
++#endif /* CONFIG_MSCS_MXL */
+ #endif /* CONFIG_VENDOR_MXL */
+ 	default:
+ 		if (show_errors) {
+diff --git a/src/common/ieee802_11_common.h b/src/common/ieee802_11_common.h
+index 30ee7ab32..8a2442ab8 100644
+--- a/src/common/ieee802_11_common.h
++++ b/src/common/ieee802_11_common.h
+@@ -131,6 +131,9 @@ struct ieee802_11_elems {
+ 	const u8 *multilink_ie;
+ 	const u8 *non_inheritance;
+ 	const u8 *wfa_capability_elem;
++#ifdef CONFIG_MSCS_MXL
++	const u8 *mscs_descriptor;
++#endif /* CONFIG_MSCS_MXL */
+ #ifdef CONFIG_LEGACY_MULTI_AP_MXL
+ 	const u8 *intel_ie_4addr_mode;
+ 	const u8 *brcom_ie;
+@@ -212,6 +215,9 @@ struct ieee802_11_elems {
+ 	u8 multilink_ie_len;
+ 	u8 non_inheritance_len;
+ 	u8 wfa_capability_elem_len;
++#ifdef CONFIG_MSCS_MXL
++	u8 mscs_descriptor_len;
++#endif /* CONFIG_MSCS_MXL */
+ #endif /* CONFIG_VENDOR_MXL */
+ #ifdef CONFIG_LEGACY_MULTI_AP_MXL
+ 	u8 intel_ie_4addr_len;
+diff --git a/src/common/ieee802_11_defs.h b/src/common/ieee802_11_defs.h
+index e8742f878..14863edb2 100644
+--- a/src/common/ieee802_11_defs.h
++++ b/src/common/ieee802_11_defs.h
+@@ -1246,6 +1246,18 @@ struct ieee80211_mgmt {
+ 					u8 scs_status[];
+ 				}STRUCT_PACKED scs_action_resp;
+ #endif /* CONFIG_SCS_MXL */
++#ifdef CONFIG_MSCS_MXL
++				struct {
++					u8 action;
++					u8 dialog_token;
++					u8 variable[];
++				}STRUCT_PACKED mscs_action_req;
++				struct {
++					u8 action;
++					u8 dialog_token;
++					u16 status;
++				}STRUCT_PACKED mscs_action_resp;
++#endif /* CONFIG_MSCS_MXL */
+ 			} u;
+ 		} STRUCT_PACKED action;
+ 	} u;
+diff --git a/src/common/mxl_ieee802_11_defs.h b/src/common/mxl_ieee802_11_defs.h
+index eb665e362..d7709d79d 100644
+--- a/src/common/mxl_ieee802_11_defs.h
++++ b/src/common/mxl_ieee802_11_defs.h
+@@ -97,6 +97,9 @@ struct rnr_neighbor_ap_info {
+ #define WCE_IE_VENDOR_TYPE 0x506f9a23
+ #define WCE_OUI_TYPE 0x23
+ 
++#define CLASSIFIER_TYPE4	4
++#define CLASSIFIER_TYPE10	10
++
+ #ifdef CONFIG_SCS_MXL
+ #define QOS_CTRL_INFO_TID_MASK 0xf
+ #define QOS_CTRL_INFO_TID_SHIFT 2
+@@ -109,8 +112,6 @@ struct rnr_neighbor_ap_info {
+ #define SCS_INTRA_ACCESS_USER_PRIO_MASK 0x7
+ #define SCS_INTRA_ACCESS_ALTERNATE_QUEUE BIT(3)
+ #define SCS_INTRA_ACCESS_DROP_ELIGIBILITY BIT(4)
+-#define CLASSIFIER_TYPE4	4
+-#define CLASSIFIER_TYPE10	10
+ #define IPV4	4
+ #define IPV6	6
+ 
+@@ -143,17 +144,6 @@ enum wfa_capabilities_element{
+ 	WFA_QOS_MGMT_SCS_TRAFFIC_DESC = BIT(2),
+ };
+ 
+-enum classifier_type4_mask {
+-	CLASS_TYPE4_VERSION = 0,
+-	CLASS_TYPE4_SRC_IP = 1,
+-	CLASS_TYPE4_DST_IP = 2,
+-	CLASS_TYPE4_SRC_PORT = 3,
+-	CLASS_TYPE4_DST_PORT = 4,
+-	CLASS_TYPE4_DSCP = 5,
+-	CLASS_TYPE4_PROTO = 6,
+-	CLASS_TYPE4_FLOW_LABEL = 7,
+-};
+-
+ #endif /* CONFIG_SCS_MXL */
+ #ifdef CONFIG_IEEE80211BE_MXL_MLO
+ #define WLAN_CAPABILITY_ML_CRITICAL_UPDATE BIT(6)
+@@ -247,6 +237,23 @@ struct dmg_link_adaptation_ack {
+ 	le32 ref_timestamp;
+ } STRUCT_PACKED;
+ 
++#ifdef CONFIG_MSCS_MXL
++#define MSCS_IE_ASSOC_RESP_LEN 14
++
++enum mscs_request_type {
++   MSCS_REQ_ADD = 0,
++   MSCS_REQ_REMOVE = 1,
++   MSCS_REQ_CHANGE = 2,
++};
++
++struct mxl_sta_mscs_ie {
++	u8 *mscs_descriptor;
++   u8 mscs_descriptor_len;
++   u8 mscs_active;
++   u16 mscs_status;
++} STRUCT_PACKED;
++#endif
++
+ /* Spectrum Management Action codes */
+ #define WLAN_SPEC_MGMT_MEASUREMENT_REQUEST 0
+ #define WLAN_SPEC_MGMT_MEASUREMENT_REPORT 1
+diff --git a/src/common/mxl_wpa_ctrl.h b/src/common/mxl_wpa_ctrl.h
+index 200033acd..59f6014f0 100644
+--- a/src/common/mxl_wpa_ctrl.h
++++ b/src/common/mxl_wpa_ctrl.h
+@@ -28,6 +28,11 @@
+ #define AP_STA_SCS_REM "AP-STA-SCS-REM "
+ #endif /* CONFIG_SCS_MXL */
+ 
++#ifdef CONFIG_MSCS_MXL
++#define AP_STA_MSCS_ADD "AP-STA-MSCS-ADD "
++#define AP_STA_MSCS_REM "AP-STA-MSCS-REM "
++#endif /* CONFIG_MSCS_MXL */
++
+ /* Event to indicate Sogtblock drop */
+ #define LTQ_SOFTBLOCK_DROP "LTQ-SOFTBLOCK-DROP"
+ 
+diff --git a/src/common/vendor_cmds_copy.h b/src/common/vendor_cmds_copy.h
+index 018bb9018..843cc7063 100644
+--- a/src/common/vendor_cmds_copy.h
++++ b/src/common/vendor_cmds_copy.h
+@@ -428,6 +428,10 @@ enum ltq_nl80211_vendor_subcmds {
+   LTQ_NL80211_VENDOR_SUBCMD_SET_SCS_ENABLE,
+   LTQ_NL80211_VENDOR_SUBCMD_GET_SCS_ENABLE,
+   LTQ_NL80211_VENDOR_SUBCMD_GET_MAX_TX_POWER,
++  LTQ_NL80211_VENDOR_SUBCMD_SET_MSCS_ENABLE,
++  LTQ_NL80211_VENDOR_SUBCMD_GET_MSCS_ENABLE,
++  LTQ_NL80211_VENDOR_SUBCMD_MSCS_ADD_REQ,
++  LTQ_NL80211_VENDOR_SUBCMD_MSCS_REM_REQ,
+   /* add new iw sub commands here */
+ 
+   /* used to define LTQ_NL80211_VENDOR_SUBCMD_MAX below */
+@@ -713,6 +717,17 @@ struct mxl_ml_sta_add_param {
+ #define QOS_CTRL_INFO_UL        0x0
+ #define QOS_CTRL_INFO_DL        0x1
+ 
++enum classifier_type4_mask {
++  CLASS_TYPE4_VERSION = 0,
++  CLASS_TYPE4_SRC_IP = 1,
++  CLASS_TYPE4_DST_IP = 2,
++  CLASS_TYPE4_SRC_PORT = 3,
++  CLASS_TYPE4_DST_PORT = 4,
++  CLASS_TYPE4_DSCP = 5,
++  CLASS_TYPE4_PROTO = 6,
++  CLASS_TYPE4_FLOW_LABEL = 7,
++};
++
+ struct mxl_scs_tclas_info {
+   u8 tclasElemsUp;
+   u8 tclasLen;
+@@ -980,4 +995,12 @@ struct mxl_rx_measure_report {
+   u32 captures_rem;
+   u8 evm[4];
+ } __attribute__ ((packed));
++
++struct mxl_mscs_add_req {
++  u8  up_bitmap;
++  u8  up_limit;
++  u8  class_mask;
++  u16 aid;
++  u32 stream_timeout;
++}__attribute__ ((packed));
+ #endif /* _VENDOR_CMDS_H_ */
+-- 
+2.43.0
+

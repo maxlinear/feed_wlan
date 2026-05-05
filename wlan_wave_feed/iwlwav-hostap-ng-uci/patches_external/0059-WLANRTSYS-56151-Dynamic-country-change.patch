@@ -1,4 +1,4 @@
-From f91b1cfcfd4b1e05ba22e0777317f14bf7473cf1 Mon Sep 17 00:00:00 2001
+From c8f65e15c2abb35d556189bfb070ff471b7b1f4f Mon Sep 17 00:00:00 2001
 From: Dmitrijs Martinovs <dmartinovs@maxlinear.com>
 Date: Fri, 16 Jun 2023 15:42:38 +0200
 Subject: [PATCH] WLANRTSYS-56151: Dynamic country change

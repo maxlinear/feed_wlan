@@ -1,4 +1,4 @@
-From 795db03226ea91f7c8698a1e31423aecfcc1b67b Mon Sep 17 00:00:00 2001
+From 9609896655cc2db95bddbf7caeda1525722eef28 Mon Sep 17 00:00:00 2001
 From: nchernikov <nchernikov@maxlinear.com>
 Date: Mon, 1 Jan 2024 13:09:10 +0200
 Subject: [PATCH] WLANRTSYS-60786 Add option to configure retry limit of probe

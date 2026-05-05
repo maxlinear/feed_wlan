@@ -1,4 +1,4 @@
-From aa885b11d4cf9347da706f5842ed5b83842b51d9 Mon Sep 17 00:00:00 2001
+From 6804d325cebce7154ac7ed0a357e595cdb8ad561 Mon Sep 17 00:00:00 2001
 From: tchalivendra <tchalivendra@maxlinear.com>
 Date: Thu, 21 Nov 2024 12:27:52 +0530
 Subject: [PATCH] WLANRTSYS-85223 Hostapd is crashing during reboot/factory
