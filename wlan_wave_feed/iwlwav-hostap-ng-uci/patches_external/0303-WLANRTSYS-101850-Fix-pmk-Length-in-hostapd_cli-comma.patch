@@ -1,0 +1,31 @@
+From b33dffad314ff9cf48e50c62bacd3aec605037dc Mon Sep 17 00:00:00 2001
+From: hmgokhale <hmgokhale@maxlinear.com>
+Date: Wed, 29 Apr 2026 02:22:36 -0700
+Subject: [PATCH] WLANRTSYS-101850 Fix pmk Length in hostapd_cli command
+
+PMK_LEN is fixed 32 byte length but there is already entry->pmk_len
+as the AKM 24 may use 48 bytes of PMK (Suite-B-192)
+
+Fixup commit: WLANRTSYS-57523: Implement CONFIG_WIFI_CERTIFICATION
+
+Signed-off-by: hmgokhale <hmgokhale@maxlinear.com>
+---
+ src/ap/pmksa_cache_auth.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/src/ap/pmksa_cache_auth.c b/src/ap/pmksa_cache_auth.c
+index 0276e364c..8d7f96088 100644
+--- a/src/ap/pmksa_cache_auth.c
++++ b/src/ap/pmksa_cache_auth.c
+@@ -714,7 +714,7 @@ int pmk_cache_auth_list(struct rsn_pmksa_cache *pmksa, char *buf, size_t len)
+ 		if (os_snprintf_error(buf + len - pos, ret))
+ 			return pos - buf;
+ 		pos += ret;
+-		pos += wpa_snprintf_hex(pos, buf + len - pos, entry->pmk, PMK_LEN);
++		pos += wpa_snprintf_hex(pos, buf + len - pos, entry->pmk, entry->pmk_len);
+ 		ret = os_snprintf(pos, buf + len - pos, " %d %d\n",
+ 				(int) (entry->expiration - now.sec),
+ 				entry->opportunistic);
+-- 
+2.43.0
+

@@ -1,0 +1,42 @@
+From 60099b603a0930fa47d329f2dbd01b32a9e6b02c Mon Sep 17 00:00:00 2001
+From: Venkatasaiprudhvi Raj Sannidhi <vsannidhi@maxlinear.com>
+Date: Wed, 22 Apr 2026 02:50:33 -0700
+Subject: [PATCH] WLANRTSYS-101572 [UPDK][MLD] Facing association failure with
+ Airties repeater when it connects to MXL AP with status code (-1) Issue: When
+ Airties repeater tries to associate to MXL AP, the association is rejected
+ with status code (-1).
+
+RCA: Even though when AP is configured in legacy mode (11ax or older) and the
+Airties repeater/ any STA sends auth with Multilink IE, the STA is still marked as ML capable in the sta ext flags ( in mxl_auth_parse_ml_ie).
+Now when assoc request is received from repeater, hostapd validates if ML flag is set for this STA(repeater) and if yes, it checks for presence of ML IE.
+If ML IE is not present in assoc request , hostapd rejects it with status code -1 (WLAN_STATUS_UNSPECIFIED_FAILURE).
+
+Fix: Set the ML capability flag for STA only if the auth is received for
+the BSS affiliated to AP-MLD.
+
+Fixup to: WLANRTSYS-60843 MLO changes: AP MLD configuration
+
+Signed-off-by: Venkatasaiprudhvi Raj Sannidhi <vsannidhi@maxlinear.com>
+---
+ src/ap/mxl_ieee802_11.c | 5 +++++
+ 1 file changed, 5 insertions(+)
+
+diff --git a/src/ap/mxl_ieee802_11.c b/src/ap/mxl_ieee802_11.c
+index 29d597a03..a2a29e9c6 100644
+--- a/src/ap/mxl_ieee802_11.c
++++ b/src/ap/mxl_ieee802_11.c
+@@ -1017,6 +1017,11 @@ bool mxl_auth_parse_ml_ie(struct hostapd_data *hapd, const struct ieee80211_mgmt
+ 	struct ieee802_11_elems elems;
+ 	u8 non_ap_mld_addr[ETH_ALEN];
+ 
++	if (!mxl_is_mlo_enabled(hapd->conf)) {
++		wpa_printf(MSG_DEBUG, "Auth: Received Multi_Link IE for a non-ML VAP, Ignoring !!!");
++		return true;
++	}
++
+ 	ml_pos = mxl_auth_skip_fixed_fields(hapd, mgmt, len);
+ 	end = ((const u8 *) mgmt) + len;
+ 	if (ieee802_11_parse_elems(ml_pos, end - ml_pos, &elems, 1) == ParseFailed) {
+-- 
+2.43.0
+

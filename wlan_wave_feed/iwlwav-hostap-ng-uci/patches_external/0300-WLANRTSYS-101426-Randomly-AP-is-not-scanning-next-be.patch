@@ -1,0 +1,54 @@
+From 4a87ed5abd5dacdb4c3bdb129abe27bd6da77194 Mon Sep 17 00:00:00 2001
+From: "mujiburrahimank@maxlinear.com"
+ <mujiburrahimank@lvdocker7.lvsw.maxlinear.com>
+Date: Thu, 30 Apr 2026 00:47:52 -0700
+Subject: [PATCH] WLANRTSYS-101426 : Randomly AP is not scanning next best
+ channel after 1st radar detection
+
+The selection of second best channel triggers a BG CAC only if the
+second best channel is a DFS channel else if it is non DFS it won't
+trigger a scan
+
+In this case the second best channel is non DFS so scan is not
+triggered
+
+So certain logs which shows crucial info are made as info
+---
+ src/ap/mxl_acs.c | 10 +++++++---
+ 1 file changed, 7 insertions(+), 3 deletions(-)
+
+diff --git a/src/ap/mxl_acs.c b/src/ap/mxl_acs.c
+index e07215af3..5561ead2b 100644
+--- a/src/ap/mxl_acs.c
++++ b/src/ap/mxl_acs.c
+@@ -2885,12 +2885,12 @@ int mxl_do_bg_cac_with_second_best_channel(struct hostapd_iface *iface)
+ 		wpa_printf(MSG_DEBUG, "Unsupported width : %d", chwidth);
+ 		return -1;
+ 	}
+-	wpa_printf(MSG_DEBUG, "second best freq : %d", iface->mxl_iface.sec_best_ch.freq);
++	wpa_printf(MSG_INFO, "second best freq : %d", iface->mxl_iface.sec_best_ch.freq);
+ 
+ 	/* check non DFS channel */
+ 	if (!mxl_is_dfs_channel(iface->mxl_iface.sec_best_ch.primary, mxl_get_oper_width(iface->mxl_iface.sec_best_ch.width))) {
+ 		iface->mxl_iface.sec_best_ch.freq = 5000 + (iface->mxl_iface.sec_best_ch.primary * 5);
+-		wpa_printf(MSG_DEBUG, "non DFS channel for second best freq : %d", iface->mxl_iface.sec_best_ch.freq);
++		wpa_printf(MSG_INFO, "non DFS channel for second best freq : %d", iface->mxl_iface.sec_best_ch.freq);
+ 		return -1;
+ 	}
+ 
+@@ -4697,7 +4697,11 @@ bool mxl_get_second_best_channel_from_acs_table(struct hostapd_iface *iface)
+ 		iface->mxl_iface.sec_best_ch.width = candidate[iface->mxl_iface.sec_best_ch.second_rank_idx].width;
+ 		iface->mxl_iface.sec_best_ch.primary = candidate[iface->mxl_iface.sec_best_ch.second_rank_idx].primary;
+ 		iface->mxl_iface.sec_best_ch.secondary = candidate[iface->mxl_iface.sec_best_ch.second_rank_idx].secondary;
+-		wpa_printf(MSG_DEBUG, "ACS: second rank_cand_idx %d,  chan : %d, freq: %d", iface->mxl_iface.sec_best_ch.second_rank_idx, iface->mxl_iface.sec_best_ch.primary, iface->mxl_iface.sec_best_ch.freq);
++		wpa_printf(MSG_INFO, "ACS: second-best selected idx=%d chan=%d freq=%d width=%d",
++			iface->mxl_iface.sec_best_ch.second_rank_idx,
++			iface->mxl_iface.sec_best_ch.primary,
++			iface->mxl_iface.sec_best_ch.freq,
++			iface->mxl_iface.sec_best_ch.width);
+ 		return true;
+ 	} else {
+ 		return false;
+-- 
+2.43.0
+

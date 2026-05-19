@@ -1,0 +1,288 @@
+From 2abe3e80177693fcdd69cbaf291225ce2daff6b9 Mon Sep 17 00:00:00 2001
+From: Venkatasaiprudhvi Raj Sannidhi <vsannidhi@maxlinear.com>
+Date: Sat, 25 Apr 2026 01:34:06 -0700
+Subject: [PATCH] WLANRTSYS-101334 Fix Klocwork issues
+
+---
+ hostapd/mxl_config.c     | 21 +++++++++++++++++++--
+ hostapd/mxl_ctrl_iface.c | 12 ++++++++----
+ src/ap/mxl_acs.c         |  6 +++---
+ src/ap/mxl_dfs_common.c  |  3 +++
+ src/ap/mxl_events.c      |  7 ++++++-
+ src/ap/mxl_hostapd.c     | 22 +++++++++++++++++-----
+ src/ap/mxl_mld.c         |  2 +-
+ src/ap/mxl_wmm.c         |  4 ++++
+ 8 files changed, 61 insertions(+), 16 deletions(-)
+
+diff --git a/hostapd/mxl_config.c b/hostapd/mxl_config.c
+index 58c4dc8b6..03e699a89 100644
+--- a/hostapd/mxl_config.c
++++ b/hostapd/mxl_config.c
+@@ -927,11 +927,23 @@ static int mxl_hostapd_parse_qos_deny_mac_list(struct mxl_qos_deny_list **qos_he
+ 		if (mac[0] != '\0') {
+ 			if (mxl_parse_mac_str_to_hex(mac, sta_mac) != 0) {
+ 				wpa_printf(MSG_DEBUG, "(M)SCS DENY MAC Invalid MAC entry");
++				/* Free partially built list */
++				while (tmp) {
++					struct mxl_qos_deny_list *next = tmp->next;
++					os_free(tmp);
++					tmp = next;
++				}
+ 				return 0;
+ 			}
+ 
+ 			struct mxl_qos_deny_list *new = (struct mxl_qos_deny_list *)os_malloc(sizeof(struct mxl_qos_deny_list));
+ 			if (!new) {
++				/* Free partially built list */
++				while (tmp) {
++					struct mxl_qos_deny_list *next = tmp->next;
++					os_free(tmp);
++					tmp = next;
++				}
+ 				return 0;
+ 			}
+ 			new->next = NULL;
+@@ -2551,7 +2563,12 @@ static int hostapd_parse_opclass_ch_list(struct acs_exclude **op_list, char *val
+ 	char chlist[2048] = {'\0'};
+ 	char *pos, *end, *ch;
+ 
+-	if (sscanf(val, "%d %s", &count, chlist) != 2) {
++	if (sscanf(val, "%d %2047s", &count, chlist) != 2) {
++		return -1;
++	}
++
++	if (!IS_VALID_RANGE(count, 0 , ACS_MAX_CHANNELS - 1)) {
++		wpa_printf(MSG_ERROR,"Invalid channel count %d in ACS exclude list", count);
+ 		return -1;
+ 	}
+ 
+@@ -2663,7 +2680,7 @@ int mxl_config_check_smart_acs_config(struct hostapd_config *conf, struct hostap
+ 			int penalty, chan;
+ 
+ 			if (sscanf(cur_pos, "%d:%d", &chan, &penalty)) {
+-				if (!IS_VALID_RANGE(chan, 0 , ACS_MAX_CHANNELS)) {
++				if (!IS_VALID_RANGE(chan, 0 , ACS_MAX_CHANNELS - 1)) {
+ 					wpa_printf(MSG_ERROR, "Line %d: invalid ACS channel penalty, channel out of range", line);
+ 					return 0;
+ 				}
+diff --git a/hostapd/mxl_ctrl_iface.c b/hostapd/mxl_ctrl_iface.c
+index 4041bf8cd..e4fafefc9 100644
+--- a/hostapd/mxl_ctrl_iface.c
++++ b/hostapd/mxl_ctrl_iface.c
+@@ -3300,7 +3300,7 @@ static int mxl_hostapd_ctrl_iface_scs_add_rule(struct hostapd_data *hapd, char *
+ 		return -1;
+ 	}
+ 
+-	n_args = sscanf(buf, " %63s %u %[^\n]", mac_str, &scsId, hex_str);
++	n_args = sscanf(buf, " %63s %u %1023[^\n]", mac_str, &scsId, hex_str);
+ 	if (n_args != 3) {
+ 		wpa_printf(MSG_ERROR, "Parse error: expected 3 tokens, got %d\n", n_args);
+ 		return -1;
+@@ -3473,7 +3473,7 @@ static int mxl_hostapd_ctrl_iface_mscs_add_rule(struct hostapd_data *hapd, char
+ 		return -1;
+ 	}
+ 
+-	n_args = sscanf(buf, " %63s %[^\n]", mac_str, hex_str);
++	n_args = sscanf(buf, " %63s %1023[^\n]", mac_str, hex_str);
+ 	if (n_args != 2) {
+ 		wpa_printf(MSG_ERROR, "Parse error: expected 2 tokens, got %d\n", n_args);
+ 		return -1;
+@@ -4686,15 +4686,19 @@ static int mxl_hostapd_ctrl_iface_acs_ex_op_list(struct hostapd_data *hapd,
+ 	struct mxl_hostapd_config *mxl_conf = &hapd->iface->conf->mxl_conf;
+ 	struct acs_exclude **op_list = &mxl_conf->acs_exclude_opclass_ch_list;
+ 	struct acs_exclude *list;
+-	int count=0;
++	int count = 0;
+ 	int iter = 0;
+ 	char *pos, *end, *ch;
+ 
+-	if (sscanf(buf, " %d %s", &count, chlist) != 2) {
++	if (sscanf(buf, " %d %2047s", &count, chlist) != 2) {
+ 		wpa_printf(MSG_ERROR, "ACS Invalid exclude opclass channel list");
+ 		goto fail;
+ 	}
+ 
++	if (!IS_VALID_RANGE(count, 0 , ACS_MAX_CHANNELS - 1)) {
++		wpa_printf(MSG_ERROR, "ACS Invalid channel count %d in exclude list", count);
++		goto fail;
++	}
+ 
+ 	if (os_strncmp(chlist, "0", 1) == 0) {
+ 		if (*op_list != NULL) {
+diff --git a/src/ap/mxl_acs.c b/src/ap/mxl_acs.c
+index bc5479a29..e07215af3 100644
+--- a/src/ap/mxl_acs.c
++++ b/src/ap/mxl_acs.c
+@@ -3297,7 +3297,7 @@ static int mxl_acs_get_chan_id_freq_range_sec_tx(struct hostapd_iface *iface, in
+ 
+ static void mxl_acs_tx_power_update(struct hostapd_iface *iface)
+ {
+-	int i, sub_freq;
++	int i, sub_freq = 0;
+ 	struct acs_candidate_table *candidates = iface->mxl_iface.candidates;
+ 
+ 	for (i = 0; (i < iface->mxl_iface.num_candidates && i < MAX_CANDIDATES); i++) {
+@@ -4885,13 +4885,13 @@ int mxl_hostapd_acs_completed(struct hostapd_iface *iface, int err, int set_chan
+ 		 * and bandwidth < 40 for 2G.
+ 		 */
+ 		int ch_width = mxl_hostapd_get_num_width(hostapd_get_oper_chwidth(iface->conf), iface->conf->secondary_channel);
+-		if (WAVE_FREQ_IS_5G(chan->freq) || WAVE_FREQ_IS_6G(chan->freq)) {
++		if (chan && (WAVE_FREQ_IS_5G(chan->freq) || WAVE_FREQ_IS_6G(chan->freq))) {
+ 			if (ch_width < 160) {
+ 				wpa_printf(MSG_ERROR, "WHM-ACS, Selected a lower bandwidth %d for %s band",
+ 					ch_width, (WAVE_FREQ_IS_5G(chan->freq) ? "5G" : "6G"));
+ 				hostapd_handle_acs_whm_warning(iface);
+ 			}
+-		} else if (chan->freq < WAVE_FIRST_5G_FREQ) {
++		} else if (chan && chan->freq < WAVE_FIRST_5G_FREQ) {
+ 			if (ch_width < 40) {
+ 				wpa_printf(MSG_ERROR,"WHM-ACS, Selected a lower bandwidth %d for 2G band", ch_width);
+ 				hostapd_handle_acs_whm_warning(iface);
+diff --git a/src/ap/mxl_dfs_common.c b/src/ap/mxl_dfs_common.c
+index 7523f1f1b..ba135656c 100644
+--- a/src/ap/mxl_dfs_common.c
++++ b/src/ap/mxl_dfs_common.c
+@@ -536,6 +536,9 @@ int mxl_hapd_get_chan_idx(struct hostapd_hw_modes *mode, int freq)
+ 	struct hostapd_channel_data *channel;
+ 	int res = 0;
+ 
++	if (!mode)
++		return -1;
++
+ 	for (int i = 0; i < mode->num_channels; i++) {
+ 		channel = &mode->channels[i];
+ 		if (channel->freq == freq) {
+diff --git a/src/ap/mxl_events.c b/src/ap/mxl_events.c
+index b3bd76cf0..45e21aa81 100644
+--- a/src/ap/mxl_events.c
++++ b/src/ap/mxl_events.c
+@@ -186,8 +186,13 @@ static int mxl_hostapd_event_6ghz_regdb_update_info(struct hostapd_data *hapd, u
+          * SP mode; otherwise, it remains in LPI mode. Indoor Standard Power also requires this update
+          * because the driver will trigger this event once it recieves AFC infomation, and ACS needs to run.
+          */
++	if (!hapd->iface->conf) {
++		wpa_printf(MSG_ERROR, "%s: iface->conf is NULL", __func__);
++		return -1;
++	}
++
+ 	wpa_printf(MSG_INFO,"%s: Reg Update event received, Configured_mode: %s, Current op_power_mode: %s",
+-		   hapd->iface->conf ? hapd->iface->conf->bss[0]->iface : "N/A",
++		   hapd->iface->conf->bss[0]->iface,
+ 		   mxl_he_6ghz_pwr_mode_text(hapd->iface->conf->he_6ghz_reg_pwr_type),
+ 		   mxl_he_6ghz_pwr_mode_text(hapd->iface->mxl_iface.he_6ghz_reg_pwr_mode));
+ 
+diff --git a/src/ap/mxl_hostapd.c b/src/ap/mxl_hostapd.c
+index ca83911ed..e53aebadb 100644
+--- a/src/ap/mxl_hostapd.c
++++ b/src/ap/mxl_hostapd.c
+@@ -265,7 +265,7 @@ int mxl_hostapd_get_aid(struct hostapd_data *hapd, struct sta_info *sta)
+ 				ml_sta_info.aid = sta->aid;
+ 				if (MXL_DRV_VENDOR_SET(LTQ_NL80211_VENDOR_SUBCMD_SET_ML_SID, &ml_sta_info, sizeof(ml_sta_info))) {
+ 					wpa_printf(MSG_ERROR, "SET_ML_SID failed");
+-					return res;
++					return -1;
+ 				}
+ 				/* set SID for the affiliated STA */
+ 				assoc_hapd = hapd;
+@@ -283,7 +283,7 @@ int mxl_hostapd_get_aid(struct hostapd_data *hapd, struct sta_info *sta)
+ 					if (MXL_DRV_VENDOR_SET(LTQ_NL80211_VENDOR_SUBCMD_SET_ML_SID, &ml_sta_info,
+ 								sizeof(ml_sta_info))) {
+ 						wpa_printf(MSG_ERROR, "SET_ML_SID failed for affiliated STA on link id %d", link_id);
+-						return res;
++						return -1;
+ 					}
+ 				}
+ 			}
+@@ -1866,11 +1866,19 @@ int mxl_hostapd_drv_get_vendor_data_at_least(struct hostapd_data *hapd,
+ 	int ret;
+ 	errno_t err;
+ 	struct wpabuf *rsp;
+-	size_t data_size = *in_out_data_size;
++	size_t data_size;
+ 
+-	if (!out_data || !in_out_data_size || (data_size == 0)) {
++	if (!out_data || !in_out_data_size) {
+ 		wpa_printf(MSG_ERROR, "subcmd id: %d "
+-			"out_data %p in_out_data %p in_out_data_size %zu", subcmd, out_data, in_out_data_size, data_size);
++			"out_data %p in_out_data %p", subcmd, out_data, in_out_data_size);
++		return -ENOBUFS;
++	}
++
++	data_size = *in_out_data_size;
++
++	if (data_size == 0) {
++		wpa_printf(MSG_ERROR, "subcmd id: %d "
++			"in_out_data_size %zu", subcmd, data_size);
+ 		return -ENOBUFS;
+ 	}
+ 
+@@ -3023,6 +3031,10 @@ void mxl_mlo_hostapd_interface_deinit_free(struct hostapd_iface *iface)
+ 	hostapd_stop_setup_timers(iface);
+ 	eloop_cancel_timeout(ap_ht2040_timeout, iface, NULL);
+ #endif /* NEED_AP_MLME */
++	if (!iface->bss) {
++		hostapd_interface_free(iface);
++		return;
++	}
+ 	driver = iface->bss[0]->driver;
+ 	drv_priv = iface->bss[0]->drv_priv;
+ 	wpa_printf(MSG_DEBUG, "%s: driver=%p drv_priv=%p -> hapd_deinit",
+diff --git a/src/ap/mxl_mld.c b/src/ap/mxl_mld.c
+index c9c37cb17..672fc75bc 100644
+--- a/src/ap/mxl_mld.c
++++ b/src/ap/mxl_mld.c
+@@ -490,6 +490,7 @@ struct _mxl_vendor_mld_info * mxl_mlo_create_mld_vendor_info(struct hostapd_data
+ 			wpa_printf(MSG_ERROR, "MXL_MLO: mxl_setup_link invalid freq %d for mld_id %d iface %s mld_mac = "MACSTR,
+ 																aff_hapd->iface->freq, mld_info->mld_id,
+ 																aff_hapd->conf->iface, MAC2STR(mld_info->ap_mld_mac));
++			os_free(mld_info);
+ 			return NULL;
+ 		}
+ 		wpa_printf(MSG_ERROR, "%s: mld_info->sibling_vap_ids[%d] = %d", __func__, sib_link, mld_info->sibling_vap_ids[sib_link]);
+@@ -670,7 +671,6 @@ static int mxl_setup_link(struct p_ap_mld *mld)
+ 
+ 	mld_link_info = mxl_mlo_create_mld_link_info(mld);
+ 	if (mld_link_info == NULL) {
+-		os_free(mld_info);
+ 		goto err;
+ 	}
+ 
+diff --git a/src/ap/mxl_wmm.c b/src/ap/mxl_wmm.c
+index a619febb0..2c9a920f6 100644
+--- a/src/ap/mxl_wmm.c
++++ b/src/ap/mxl_wmm.c
+@@ -312,6 +312,7 @@ int mxl_set_qos_deny_mac_list(struct hostapd_data *hapd, char *mac_str, bool is_
+ 			if (mxl_parse_mac_str_to_hex(mac, sta_mac) != 0) {
+ 				wpa_printf(MSG_ERROR, "ERR: invalid mac");
+ 				mxl_qos_deny_mac_free(ref_deny_list);
++				mxl_qos_deny_mac_free(tmp_deny_list);
+ 				return -1;
+ 			}
+ 
+@@ -319,6 +320,7 @@ int mxl_set_qos_deny_mac_list(struct hostapd_data *hapd, char *mac_str, bool is_
+ 			if (!qos_new_list) {
+ 				wpa_printf(MSG_ERROR, "ERR: memory allocation issue");
+ 				mxl_qos_deny_mac_free(ref_deny_list);
++				mxl_qos_deny_mac_free(tmp_deny_list);
+ 				return -1;
+ 			}
+ 			qos_new_list->next = NULL;
+@@ -1052,6 +1054,7 @@ int mxl_northbound_scs_add_req(struct hostapd_data *hapd, char *mac_str, unsigne
+ 	/* scs add request hook to driver */
+ 	mxl_handle_scs_req(hapd, mgmt, mgmt_len, true);
+ 
++	os_free(mgmt_buf);
+ 	return res;
+ }
+ #endif /* CONFIG_SCS_MXL */
+@@ -1456,6 +1459,7 @@ int mxl_northbound_mscs_add_req(struct hostapd_data *hapd, char *mac_str, char *
+ 	/* mscs add request hook to driver */
+ 	mxl_handle_mscs_req(hapd, mgmt, mgmt_len, true);
+ 
++	os_free(mgmt_buf);
+ 	return res;
+ }
+ #endif /* CONFIG_MSCS_MXL */
+-- 
+2.43.0
+

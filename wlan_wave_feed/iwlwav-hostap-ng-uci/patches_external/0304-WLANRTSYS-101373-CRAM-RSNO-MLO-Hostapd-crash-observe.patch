@@ -1,0 +1,117 @@
+From 219ce604d682156d2a09d6d4316c844c85f4fb07 Mon Sep 17 00:00:00 2001
+From: Venkatasaiprudhvi Raj Sannidhi <vsannidhi@maxlinear.com>
+Date: Thu, 7 May 2026 01:55:30 -0700
+Subject: [PATCH] WLANRTSYS-101373 [CRAM][RSNO][MLO] Hostapd crash observed in
+ CRAM test Issue: hostapd-ng crashes with SIGSEGV during MLO link teardown
+ when rsn_override_key_mgmt is configured without FT key management(which is
+ default setting).
+
+Root cause:
+hostapd_wpa_auth_conf() unconditionally assigned wconf->r0kh_list
+to &conf->r0kh_list regardless of whether FT was configured,
+making the existing NULL-check in wpa_ft_deinit_rkh_tmp() dead code.
+In the MLO teardown path, mxl_mlo_sibling_links_delete() re-entrantly called
+hostapd_disable_iface() on a sibling already being torn down,
+causing hapd->conf to be freed before wpa_ft_deinit() ran.
+Dereferencing the resulting dangling r0kh_list pointer caused
+the SIGSEGV.
+
+Fix:
+- Skip hostapd_disable_iface() on sibling interfaces already being disabled.
+- Assign r0kh_list/r1kh_list only when FT is enabled.
+- Do nothing the wpa_ft_deinit_seq() and  wpa_ft_deinit_rkh_tmp() when FT is disabled.
+
+Fixup to : WLANRTSYS-96596 MLO: Triband MLD Support
+
+Unit test: Passed the CRAM WPA3-PCM test (MLO and RSNO enabled case).
+Signed-off-by: Venkatasaiprudhvi Raj Sannidhi <vsannidhi@maxlinear.com>
+---
+ src/ap/mxl_mld.c       | 11 ++++++++---
+ src/ap/wpa_auth_ft.c   | 16 ++++++++++++++++
+ src/ap/wpa_auth_glue.c | 11 +++++++++++
+ 3 files changed, 35 insertions(+), 3 deletions(-)
+
+diff --git a/src/ap/mxl_mld.c b/src/ap/mxl_mld.c
+index ac0758067..9106188d8 100644
+--- a/src/ap/mxl_mld.c
++++ b/src/ap/mxl_mld.c
+@@ -2589,10 +2589,15 @@ static void mxl_mlo_sibling_links_delete(struct hostapd_data *hapd)
+ 
+ 		if (mxl_hostapd_is_mbssid_tx_bss(aff_hapd)) {
+ 			struct hostapd_iface *sib_iface = aff_hapd->iface;
+-			wpa_printf(MSG_ERROR, "MXL_MLO: proceed to disable affiliated links iface %s",
+-				   sib_iface->conf->bss[0]->iface);
+-			hostapd_disable_iface(sib_iface);
++
++			if (sib_iface->mxl_iface.disabled_by_sibling) {
++				wpa_printf(MSG_ERROR, "MXL_MLO: Skip iface %s already being disabled by sibling", sib_iface->conf->bss[0]->iface);
++				continue;
++			}
++			wpa_printf(MSG_ERROR, "MXL_MLO: proceed to disable affiliated links iface %s", sib_iface->conf->bss[0]->iface);
++
+ 			sib_iface->mxl_iface.disabled_by_sibling = 1;
++			hostapd_disable_iface(sib_iface);
+ 		} else {
+ 			/* Delete interface from driver */
+ 			wpa_printf(MSG_ERROR, "MXL_MLO: proceed to remove affiliated link %s", aff_hapd->conf->iface);
+diff --git a/src/ap/wpa_auth_ft.c b/src/ap/wpa_auth_ft.c
+index 8fb7688a4..ef664f2d2 100644
+--- a/src/ap/wpa_auth_ft.c
++++ b/src/ap/wpa_auth_ft.c
+@@ -1838,6 +1838,14 @@ static void wpa_ft_deinit_seq(struct wpa_authenticator *wpa_auth)
+ 
+ 	eloop_cancel_timeout(wpa_ft_rrb_seq_timeout, wpa_auth, ELOOP_ALL_CTX);
+ 
++#ifdef CONFIG_VENDOR_MXL
++	if (!wpa_key_mgmt_ft(wpa_auth->conf.wpa_key_mgmt) &&
++		!wpa_key_mgmt_ft(wpa_auth->conf.rsn_override_key_mgmt) &&
++		!wpa_key_mgmt_ft(wpa_auth->conf.rsn_override_key_mgmt_2)) {
++		wpa_printf(MSG_DEBUG, "%s: FT not configured, skipping r0kh/r1kh deinit", __func__);
++		return;
++	}
++#endif /* CONFIG_VENDOR_MXL */
+ 	if (wpa_auth->conf.r0kh_list)
+ 		r0kh = *wpa_auth->conf.r0kh_list;
+ 	else
+@@ -1869,6 +1877,14 @@ static void wpa_ft_deinit_rkh_tmp(struct wpa_authenticator *wpa_auth)
+ 	struct ft_remote_r0kh *r0kh, *r0kh_next, *r0kh_prev = NULL;
+ 	struct ft_remote_r1kh *r1kh, *r1kh_next, *r1kh_prev = NULL;
+ 
++#ifdef CONFIG_VENDOR_MXL
++	if (!wpa_key_mgmt_ft(wpa_auth->conf.wpa_key_mgmt) &&
++		!wpa_key_mgmt_ft(wpa_auth->conf.rsn_override_key_mgmt) &&
++		!wpa_key_mgmt_ft(wpa_auth->conf.rsn_override_key_mgmt_2)) {
++		wpa_printf(MSG_DEBUG, "%s: FT not configured, skipping r0kh/r1kh deinit", __func__);
++		return;
++	}
++#endif /* CONFIG_VENDOR_MXL */
+ 	if (wpa_auth->conf.r0kh_list)
+ 		r0kh = *wpa_auth->conf.r0kh_list;
+ 	else
+diff --git a/src/ap/wpa_auth_glue.c b/src/ap/wpa_auth_glue.c
+index 2b6e5c433..f2e90dada 100644
+--- a/src/ap/wpa_auth_glue.c
++++ b/src/ap/wpa_auth_glue.c
+@@ -184,8 +184,19 @@ static void hostapd_wpa_auth_conf(struct hostapd_iface *iface,
+ 	wconf->rkh_neg_timeout = conf->rkh_neg_timeout;
+ 	wconf->rkh_pull_timeout = conf->rkh_pull_timeout;
+ 	wconf->rkh_pull_retries = conf->rkh_pull_retries;
++#ifdef CONFIG_VENDOR_MXL
++	/* Store the r0kh/r1kh list pointers only if FT key management is configured.
++	 * to avoid dangling pointers into hapd->conf when FT is disabled */
++	if (wpa_key_mgmt_ft(wconf->wpa_key_mgmt) ||
++		wpa_key_mgmt_ft(wconf->rsn_override_key_mgmt) ||
++		wpa_key_mgmt_ft(wconf->rsn_override_key_mgmt_2)) {
++		wconf->r0kh_list = &conf->r0kh_list;
++		wconf->r1kh_list = &conf->r1kh_list;
++	}
++#else
+ 	wconf->r0kh_list = &conf->r0kh_list;
+ 	wconf->r1kh_list = &conf->r1kh_list;
++#endif /* CONFIG_VENDOR_MXL */
+ 	wconf->pmk_r1_push = conf->pmk_r1_push;
+ 	wconf->ft_over_ds = conf->ft_over_ds;
+ 	wconf->ft_psk_generate_local = conf->ft_psk_generate_local;
+-- 
+2.43.0
+

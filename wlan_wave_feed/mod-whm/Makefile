@@ -9,7 +9,7 @@ include $(TOPDIR)/rules.mk
 -include $(STAGING_DIR)/components.config
 
 PKG_NAME:=mod-whm
-PKG_REV:=c81fc870bdd37fa854023acc851a52239cf35050
+PKG_REV:=c4df6dbac11cb6c22b2a7bdbd893646fcdf540e9
 PKG_VERSION:=v3.0
 PKG_RELEASE:=$(PKG_REV)
 
@@ -18,9 +18,9 @@ PKG_PROJECT:=maxlinear
 PKG_SOURCE_NAME:=mod_whm.git
 CONFIG_UGW_PKG_SOURCE_URL:=https://github.com
 PKG_SOURCE_URL:=$(CONFIG_UGW_PKG_SOURCE_URL)/$(PKG_PROJECT)/$(PKG_SOURCE_NAME)
-PKG_SOURCE_VERSION:=r1830
+PKG_SOURCE_VERSION:=r1840+a+28
 PKG_SOURCE_PROTO:=git
-PKG_MIRROR_HASH:=747e27defd2ffaaf323e7db200ec0245e0f2fbbced4410a7eaa533159263e6b9
+PKG_MIRROR_HASH:=1b51ebdaa0bd13a5432475853a6fa3d1c35eed8ac0b64dc3069effde906227a8
 PKG_BUILD_DIR:=$(BUILD_DIR)/$(PKG_NAME)-$(BUILD_VARIANT)/$(PKG_NAME)-$(PKG_VERSION)
 SHORT_DESCRIPTION:=Mxl vendor module for wireless hardware manager
 
@@ -49,10 +49,14 @@ endif
 ifeq ($(CONFIG_DEFAULT_WIRELESS_CONFIGURATION_TYPE),"mesh")
 	CUSTOM_VAPS_ODL:=32_wld-custom-vaps-mesh.odl.uc
 	CUSTOM_RADS_ODL:=22_wld-custom-rads-mesh.odl.uc
+	CUSTOM_MLD_ODL:=33_wld-custom-mld-mesh.odl.uc
+	CUSTOM_MLD_BH_ODL:=34_wld-custom-mld-backhaul-mesh.odl.uc
 	DELETE_ODLS:=*gw.odl.uc
 else # default is CONFIG_DEFAULT_WIRELESS_CONFIGURATION_TYPE="gw"
 	CUSTOM_VAPS_ODL:=32_wld-custom-vaps-gw.odl.uc
 	CUSTOM_RADS_ODL:=22_wld-custom-rads-gw.odl.uc
+	CUSTOM_MLD_ODL:=33_wld-custom-mld-gw.odl.uc
+	CUSTOM_MLD_BH_ODL:=34_wld-custom-mld-backhaul-gw.odl.uc
 	DELETE_ODLS:=*mesh.odl.uc
 endif
 
@@ -118,6 +122,8 @@ define Package/$(PKG_NAME)/install
 	$(CP) $(PKG_INSTALL_DIR)/* $(1)/
 	mv $(1)/etc/amx/wld/wld_defaults/$(CUSTOM_VAPS_ODL)  $(1)/etc/amx/wld/wld_defaults/32_wld-custom-vaps.odl.uc
 	mv $(1)/etc/amx/wld/wld_defaults/$(CUSTOM_RADS_ODL)  $(1)/etc/amx/wld/wld_defaults/22_wld-custom-rads.odl.uc
+	mv $(1)/etc/amx/wld/wld_defaults/$(CUSTOM_MLD_ODL)  $(1)/etc/amx/wld/wld_defaults/33_wld-custom-mld.odl.uc
+	mv $(1)/etc/amx/wld/wld_defaults/$(CUSTOM_MLD_BH_ODL)  $(1)/etc/amx/wld/wld_defaults/34_wld-custom-mld-backhaul.odl.uc
 	mv $(1)/etc/amx/wld/wld_defaults/$(CUSTOM_VENDOR_ODL)  $(1)/etc/amx/wld/wld_defaults/13_wld-custom-vendor.odl.uc
 	rm $(1)/etc/amx/wld/wld_defaults/$(DELETE_ODLS)
 	rm $(1)/etc/amx/wld/wld_defaults/$(DELETE_VARIANT_ODL)
