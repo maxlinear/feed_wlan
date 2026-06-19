@@ -1,0 +1,70 @@
+From b9cef834065677c86429ea95d6632b620700cc61 Mon Sep 17 00:00:00 2001
+From: Venkatasaiprudhvi Raj Sannidhi <vsannidhi@maxlinear.com>
+Date: Thu, 28 May 2026 03:24:31 -0700
+Subject: [PATCH] WLANRTSYS-102170 hostapd crashes when WLAN radio configs
+ applied
+
+Issue:
+Hostapd crashes with a segfault during MLD teardown when a beacon
+rebuild is triggered on an affiliated link immediately after one of
+its MLD siblings is deinitialized.
+
+Root cause:
+mxl_hostapd_deinit_mld_params() cleared only the hapd's own
+sibling_hapd[] array but did not clear the corresponding pointer in
+the sibling's sibling_hapd[] array. This left the sibling hapd holding
+a dangling pointer to the already freed hapd.
+
+When hostapd_refresh_all_iface_beacons() or mxl_update_rnr_check()
+subsequently triggered a beacon rebuild on the sibling hapd,
+mxl_create_rnr_mld() dereferenced the dangling pointer, causing the
+segfault.
+
+Fix:
+In mxl_hostapd_deinit_mld_params(), clear the pointer to the hapd
+under removal in each sibling's sibling_hapd[].
+
+Unit test: Passed. No segfault observed.
+
+Fixup to : WLANRTSYS-96596 MLO: Triband MLD Support
+
+Signed-off-by: Venkatasaiprudhvi Raj Sannidhi <vsannidhi@maxlinear.com>
+---
+ src/ap/mxl_hostapd.c | 18 ++++++++++++++++--
+ 1 file changed, 16 insertions(+), 2 deletions(-)
+
+diff --git a/src/ap/mxl_hostapd.c b/src/ap/mxl_hostapd.c
+index e53aebadb..6c1e26707 100644
+--- a/src/ap/mxl_hostapd.c
++++ b/src/ap/mxl_hostapd.c
+@@ -3066,11 +3066,25 @@ void mxl_mlo_hostapd_cleanup_cca_params(struct hostapd_data *hapd)
+ 
+ void mxl_hostapd_deinit_mld_params(struct hostapd_data *hapd)
+ {
++	struct hostapd_data *sib_hapd = NULL;
++
+ 	hapd->conf->mxl_bss_conf.ml_ie_add = 0;
+ 	hapd->conf->mld_id = INVALID_MLD_ID;
+ 
+-	for (int link = LINK1; link < MAX_SIBLING_LINKS; link++)
+-		hapd->mxl_data.sibling_hapd[link] = NULL;
++	mxl_mld_for_each_sibling_link(sib_hapd, hapd) {
++		for (int sib_link = LINK1; sib_link < MAX_SIBLING_LINKS; sib_link++) {
++			if (sib_hapd->mxl_data.sibling_hapd[sib_link] == hapd) {
++				wpa_printf(MSG_DEBUG,
++						"MXL_MLO: %s: cleared stale pointer from sibling %s to hapd %s which is being deinited", __func__,
++						sib_hapd->conf ? sib_hapd->conf->iface : "N/A",
++						hapd->conf ? hapd->conf->iface : "N/A");
++				sib_hapd->mxl_data.sibling_hapd[sib_link] = NULL;
++				break;
++			}
++		}
++	}
++
++	os_memset(hapd->mxl_data.sibling_hapd, 0, sizeof(hapd->mxl_data.sibling_hapd));
+ }
+ #endif /* CONFIG_IEEE80211BE_MXL_MLO */
+ 
+-- 
+2.43.0
+
