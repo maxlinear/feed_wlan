@@ -1,0 +1,52 @@
+diff -Naur b/odl/mod-whm-mxl.odl z/odl/mod-whm-mxl.odl
+--- b/odl/mod-whm-mxl.odl	2026-06-11 19:16:29.478860372 +0200
++++ z/odl/mod-whm-mxl.odl	2026-06-11 19:30:25.033738226 +0200
+@@ -5,27 +5,27 @@
+         pre-init-script = "modules/${module}/init.sh"
+     };
+ 
+-    mod-trace-zones = {"mxlCsi" = 400,
+-                       "mxlEvt" = 300,
+-                       "mxlMain" = 400,
+-                       "mxlMod" = 400,
+-                       "mxlMon" = 400,
+-                       "mxlPars" = 300,
+-                       "mxlRad" = 400,
+-                       "mxlRadI" = 400,
+-                       "mxlVap" = 300,
+-                       "mxlHpdC" = 300,
+-                       "mxlSupC" = 300,
+-                       "mxlAct" = 300,
+-                       "mxlEp" = 400,
+-                       "mxlZwd" = 400,
+-                       "mxlWmm" = 300,
+-                       "mxlDmgr" = 300,
+-                       "mxlMlo" = 300,
+-                       "mxlFsm" = 300,
+-                       "mxlRcfM" = 300,
+-                       "mxlLck" = 300,
+-                       "mxlNlA" = 300
++    mod-trace-zones = {"mxlCsi" = 200,
++                       "mxlEvt" = 200,
++                       "mxlMain" = 200,
++                       "mxlMod" = 200,
++                       "mxlMon" = 200,
++                       "mxlPars" = 200,
++                       "mxlRad" = 200,
++                       "mxlRadI" = 200,
++                       "mxlVap" = 200,
++                       "mxlHpdC" = 200,
++                       "mxlSupC" = 200,
++                       "mxlAct" = 200,
++                       "mxlEp" = 200,
++                       "mxlZwd" = 200,
++                       "mxlWmm" = 200,
++                       "mxlDmgr" = 200,
++                       "mxlMlo" = 200,
++                       "mxlFsm" = 200,
++                       "mxlRcfM" = 200,
++                       "mxlLck" = 200,
++                       "mxlNlA" = 200
+                       };
+ 
+ }

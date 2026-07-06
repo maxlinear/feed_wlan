@@ -1,0 +1,16 @@
+diff --git a/src/whm_mxl_vap.c b/src/whm_mxl_vap.c
+index d3489aa..b7d8bbc 100644
+--- a/src/whm_mxl_vap.c
++++ b/src/whm_mxl_vap.c
+@@ -438,10 +438,10 @@ static void s_startSyncOnEnable(T_AccessPoint* pAP) {
+ 
+ int whm_mxl_vap_enable(T_AccessPoint* pAP, int enable, int set) {
+     int ret;
+-    SAH_TRACEZ_WARNING(ME, "%s: vap enable %d --> %d - Set:%d", pAP->alias, pAP->enable, enable, set);
+     CALL_NL80211_FTA_RET(ret, mfn_wvap_enable, pAP, enable, set);
+     ASSERTS_FALSE(ret < 0, ret, ME, "%s: fail to enable AP flag 0x%x val %d", pAP->name, set, enable);
+     if(set & SET) {
++        SAH_TRACEZ_INFO(ME, "%s: vap enable %d --> %d - Set:%d", pAP->alias, pAP->enable, enable, set);
+         pAP->enable = enable;
+         T_Radio* pRad = (T_Radio*) pAP->pRadio;
+         bool dumVapEnable = s_hasEnabledRealVap(pRad);

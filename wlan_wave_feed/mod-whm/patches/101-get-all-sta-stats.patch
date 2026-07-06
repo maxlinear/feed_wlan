@@ -1,0 +1,62 @@
+diff -Naur b/src/whm_mxl_vap.c c/src/whm_mxl_vap.c
+--- b/src/whm_mxl_vap.c	2026-06-11 19:26:56.840004504 +0200
++++ c/src/whm_mxl_vap.c	2026-06-17 09:41:26.372623923 +0200
+@@ -283,6 +283,17 @@
+     return rc;
+ }
+ 
++static swl_rc_ne s_getSingleStationStatsExt(T_AssociatedDevice* pAD) {
++    swl_rc_ne rc;
++    rc = s_getDevDiagResults3(pAD);
++    ASSERT_FALSE(rc < SWL_RC_OK, rc, ME, "fail to get station info %s", pAD->Name);
++
++    rc = s_getPeerFlowStatus(pAD);
++    ASSERT_FALSE(rc < SWL_RC_OK, rc, ME, "fail to get peer flow status %s", pAD->Name);
++
++    return rc;
++}
++
+ swl_rc_ne whm_mxl_vap_getSingleStationStats(T_AssociatedDevice* pAD) {
+     ASSERT_NOT_NULL(pAD, SWL_RC_INVALID_PARAM, ME, "NULL");
+     T_AccessPoint* pAP = wld_ap_fromObj(amxd_object_get_parent(amxd_object_get_parent(pAD->object)));
+@@ -294,31 +305,28 @@
+ 
+     CALL_NL80211_FTA_RET(rc, mfn_wvap_get_single_station_stats, pAD);
+     ASSERT_FALSE(rc < SWL_RC_OK, rc, ME, "fail in generic call");
++    ASSERTI_EQUALS(rc, SWL_RC_OK, rc, ME, "%s: no new stats for %s (ret:%d)", pAP->alias, pAD->Name, rc);
+     ASSERTI_TRUE(pAD->Active, SWL_RC_OK, ME, "%s: assocdev no more active", pAD->Name);
+ 
+-    rc = s_getDevDiagResults3(pAD);
+-    ASSERT_FALSE(rc < SWL_RC_OK, rc, ME, "fail to get station info %s", pAD->Name);
+-
+-    rc = s_getPeerFlowStatus(pAD);
+-    ASSERT_FALSE(rc < SWL_RC_OK, rc, ME, "fail to get peer flow status %s", pAD->Name);
+-
+-    return rc;
++    return s_getSingleStationStatsExt(pAD);
+ }
+ 
+ swl_rc_ne whm_mxl_vap_getStationStats(T_AccessPoint* pAP) {
+     SAH_TRACEZ_IN(ME);
+     ASSERT_NOT_NULL(pAP, SWL_RC_INVALID_PARAM, ME, "NULL");
++    swl_rc_ne rc = SWL_RC_OK;
++
++    CALL_NL80211_FTA_RET(rc, mfn_wvap_get_station_stats, pAP);
++    ASSERT_FALSE(rc < SWL_RC_OK, rc, ME, "%s: fail in generic call", pAP->alias);
+ 
+     for(int i = 0; i < pAP->AssociatedDeviceNumberOfEntries; i++) {
+         T_AssociatedDevice* pAD = pAP->AssociatedDevice[i];
+-        if(!pAD) {
+-            SAH_TRACEZ_ERROR(ME, "nullpointer! %p", pAD);
+-            return SWL_RC_ERROR;
++        if(pAD && pAD->Active) {
++            s_getSingleStationStatsExt(pAD);
+         }
+-        whm_mxl_vap_getSingleStationStats(pAD);
+     }
+ 
+-    return SWL_RC_OK;
++    return rc;
+ }
+ 
+ static swl_rc_ne s_getTr181WlanStatsApCb(swl_rc_ne rc, struct nlmsghdr* nlh, void* priv) {
