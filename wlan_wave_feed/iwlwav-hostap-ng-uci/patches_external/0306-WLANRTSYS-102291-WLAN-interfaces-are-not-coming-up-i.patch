@@ -1,0 +1,47 @@
+From cb6d8831f0306a8b8f4f3bccff49bfc5bad889c8 Mon Sep 17 00:00:00 2001
+From: Sathyananda Reddy <kmsreddy@maxlinear.com>
+Date: Mon, 15 Jun 2026 22:38:48 -0700
+Subject: [PATCH] WLANRTSYS-102291 WLAN interfaces are not coming up
+ intermittently after reboot
+
+Ignore stale DFS CAC completion events for non-operating channels
+when interface is already enabled to avoid invalid channel setup.
+
+Fixup : WLANRTSYS-50839 MXL DFS debug channel simulation
+---
+ src/ap/dfs.c | 19 ++++++++++++++++++-
+ 1 file changed, 18 insertions(+), 1 deletion(-)
+
+diff --git a/src/ap/dfs.c b/src/ap/dfs.c
+index 76e23667c..cafe34bf5 100644
+--- a/src/ap/dfs.c
++++ b/src/ap/dfs.c
+@@ -1390,7 +1390,24 @@ int hostapd_dfs_complete_cac(struct hostapd_iface *iface, int success, int freq,
+ 				iface->cac_started = 0;
+ 			}
+ #ifdef CONFIG_VENDOR_MXL
+-			else mxl_hostapd_handle_sb_dfs(iface);
++			else {
++				/*
++				 * If the interface is already operational and the CAC completed
++				 * event is for a different channel than the current operating
++				 * channel, it is likely a stale event. Ignore it to prevent
++				 * invalid channel definitions from being sent to the kernel.
++				 */
++				if (iface->state == HAPD_IFACE_ENABLED &&
++				    freq != iface->freq) {
++					wpa_printf(MSG_DEBUG,
++						   "DFS: CAC completed on freq %d MHz, "
++						   "different from operating freq %d MHz - "
++						   "ignoring stale event",
++						   freq, iface->freq);
++				} else {
++					mxl_hostapd_handle_sb_dfs(iface);
++				}
++			}
+ #endif /* CONFIG_VENDOR_MXL */
+ 		}
+ 	} else if (hostapd_dfs_is_background_event(iface, freq)) {
+-- 
+2.43.0
+
