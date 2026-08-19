@@ -1,0 +1,52 @@
+From 2ba2fd740c96e9cd9706dfadacc51dbeea615f9e Mon Sep 17 00:00:00 2001
+From: pvaish <pvaish@maxlinear.com>
+Date: Thu, 16 Jul 2026 03:19:46 -0700
+Subject: [PATCH] WLANRTSYS-102982 Correctly updated the channel freq params
+ which were missed due to early return from the subroutine.
+
+Signed-off-by: pvaish <pvaish@maxlinear.com>
+---
+ src/ap/mxl_acs.c        | 4 +---
+ src/ap/mxl_dfs_common.c | 4 ----
+ 2 files changed, 1 insertion(+), 7 deletions(-)
+
+diff --git a/src/ap/mxl_acs.c b/src/ap/mxl_acs.c
+index 5561ead2b..b374ac891 100644
+--- a/src/ap/mxl_acs.c
++++ b/src/ap/mxl_acs.c
+@@ -4676,7 +4676,6 @@ bool mxl_acs_is_smart(struct hostapd_iface *iface)
+ 
+ bool mxl_get_second_best_channel_from_acs_table(struct hostapd_iface *iface)
+ {
+-	struct csa_settings settings;
+ 	struct hostapd_channel_data *channel = NULL;
+ 	int secondary_channel;
+ 	int sec_best_freq;
+@@ -4686,8 +4685,7 @@ bool mxl_get_second_best_channel_from_acs_table(struct hostapd_iface *iface)
+ 	struct acs_candidate_table *candidate = iface->mxl_iface.candidates;
+ 
+ 	iface->mxl_iface.sec_best_ch.flag = true;
+-	os_memset(&settings, 0, sizeof(settings));
+-	channel = mxl_dfs_get_channel_dynamic_failsafe(iface, &secondary_channel, &vht_oper_centr_freq_seg0_idx, &vht_oper_centr_freq_seg1_idx, false, false, &settings.freq_params);
++	channel = mxl_dfs_get_channel_dynamic_failsafe(iface, &secondary_channel, &vht_oper_centr_freq_seg0_idx, &vht_oper_centr_freq_seg1_idx, false, false, NULL);
+ 
+ 	if (channel) {
+ 		hostapd_get_op_class(candidate[iface->mxl_iface.sec_best_ch.second_rank_idx].primary, candidate[iface->mxl_iface.sec_best_ch.second_rank_idx].width, &sec_op_class);
+diff --git a/src/ap/mxl_dfs_common.c b/src/ap/mxl_dfs_common.c
+index ba135656c..0d9ba76f8 100644
+--- a/src/ap/mxl_dfs_common.c
++++ b/src/ap/mxl_dfs_common.c
+@@ -193,10 +193,6 @@ mxl_dfs_get_channel_dynamic_failsafe(struct hostapd_iface *iface,
+ 		return NULL;
+ 	}
+ 
+-	if (mxl_conf->dynamic_failsafe == dfs_failsafe_second_best_zwdfs) {
+-		return channel;
+-	}
+-
+ 	cf1 = failsafe->freq + failsafe->width / 2 - 10;
+ 	ieee80211_freq_to_chan(cf1, vht_oper_centr_freq_seg0_idx);
+ 	*secondary_channel = mxl_hostapd_get_secondary_offset(channel->chan, failsafe->width, *vht_oper_centr_freq_seg0_idx);
+-- 
+2.43.0
+

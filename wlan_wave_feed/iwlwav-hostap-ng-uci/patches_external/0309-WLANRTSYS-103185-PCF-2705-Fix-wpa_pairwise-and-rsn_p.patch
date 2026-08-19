@@ -1,0 +1,33 @@
+From dfc4d7ec9eb387c8064df183ab020e7351c1893e Mon Sep 17 00:00:00 2001
+From: pvaish <pvaish@maxlinear.com>
+Date: Tue, 28 Jul 2026 04:31:20 -0700
+Subject: [PATCH] WLANRTSYS-103185 [PCF-2705] Fix wpa_pairwise and rsn_pairwise
+ validation for MLO.
+
+Signed-off-by: pvaish <pvaish@maxlinear.com>
+---
+ src/ap/mxl_mld.c | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/src/ap/mxl_mld.c b/src/ap/mxl_mld.c
+index 9106188d8..bcdf9e0a2 100644
+--- a/src/ap/mxl_mld.c
++++ b/src/ap/mxl_mld.c
+@@ -381,12 +381,12 @@ static bool mxl_hostapd_verify_mld_config(struct p_ap_mld *mld)
+ 			goto fail;
+ 		}
+ 
+-		if (sibling_hapd->conf->wpa_pairwise != first_hapd->conf->wpa_pairwise) {
++		if (!(sibling_hapd->conf->wpa_pairwise & first_hapd->conf->wpa_pairwise)) {
+ 			fail_reason = "wpa_pairwise";
+ 			goto fail;
+ 		}
+ 
+-		if (sibling_hapd->conf->rsn_pairwise != first_hapd->conf->rsn_pairwise) {
++		if (!(sibling_hapd->conf->rsn_pairwise & first_hapd->conf->rsn_pairwise)) {
+ 			fail_reason = "rsn_pairwise";
+ 			goto fail;
+ 		}
+-- 
+2.43.0
+

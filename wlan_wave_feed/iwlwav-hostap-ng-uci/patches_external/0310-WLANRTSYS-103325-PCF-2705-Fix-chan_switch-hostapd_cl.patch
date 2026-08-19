@@ -1,0 +1,39 @@
+From aa7cd0903019d6b82b323588896d6f2394d46eea Mon Sep 17 00:00:00 2001
+From: pvaish <pvaish@maxlinear.com>
+Date: Tue, 4 Aug 2026 08:09:47 -0700
+Subject: [PATCH] WLANRTSYS-103325 [PCF-2705] Fix chan_switch hostapd_cli
+ command when DFS-CAC is already running.
+
+Signed-off-by: pvaish <pvaish@maxlinear.com>
+---
+ hostapd/ctrl_iface.c | 14 --------------
+ 1 file changed, 14 deletions(-)
+
+diff --git a/hostapd/ctrl_iface.c b/hostapd/ctrl_iface.c
+index bab30bed2..31f1583cf 100644
+--- a/hostapd/ctrl_iface.c
++++ b/hostapd/ctrl_iface.c
+@@ -3257,20 +3257,6 @@ static int hostapd_ctrl_iface_chan_switch(struct hostapd_iface *iface,
+ 	iface->block_tx = false;
+ #endif /* CONFIG_VENDOR_MXL */
+ 	if (dfs_range) {
+-#ifdef CONFIG_IEEE80211BE_MXL_MLO
+-		struct hostapd_data *hapd = NULL;
+-		int j, mlo_enable = 0;
+-		for (j = 0; j < iface->num_bss; j++) {
+-			hapd = iface->bss[j];
+-			if (hapd->conf->mxl_bss_conf.mlo_enable) {
+-				mlo_enable = 1;
+-				break;
+-			}
+-		}
+-		if (mlo_enable) {
+-			switch_type_zwdfs = true;
+-		}
+-#endif /* CONFIG_IEEE80211BE_MXL_MLO */
+ 		ret = ieee80211_freq_to_chan(settings.freq_params.freq, &chan);
+ 		if (ret == NUM_HOSTAPD_MODES) {
+ 			wpa_printf(MSG_ERROR,
+-- 
+2.43.0
+
