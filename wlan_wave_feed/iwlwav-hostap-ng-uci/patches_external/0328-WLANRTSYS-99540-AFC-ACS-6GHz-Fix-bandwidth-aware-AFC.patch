@@ -1,0 +1,254 @@
+From de2b6d3b00100eb352bae03a10027e64d04ae1ef Mon Sep 17 00:00:00 2001
+From: "mujiburrahimank@maxlinear.com"
+ <mujiburrahimank@lvdocker7.lvsw.maxlinear.com>
+Date: Wed, 3 Jun 2026 00:49:21 -0700
+Subject: [PATCH] WLANRTSYS-99540 [AFC][ACS][6GHz] Fix bandwidth-aware AFC rule
+ selection in ACS power parsing
+
+Issue:
+mxl_acs_is_freq_rule_present_parse_power() matched the first AFC
+frequency rule whose range covered the requested channel, without
+requiring rule_bw >= requested_bw. This caused ACS to assign the
+power limit of a narrower (e.g., 20 MHz) rule to wider channels
+(40/80/160 MHz), inconsistent with the driver's regulatory limit
+and resulting in incorrect TX power for SP mode ACS selection.
+
+Fix:
+Update mxl_acs_is_freq_rule_present_parse_power() to mirror the
+driver's BW-aware AFC rule selection: skip rules with rule_bw <
+requested_bw, then among covering rules pick the narrowest one,
+breaking ties by lower EIRP. This ensures ACS assigns the correct
+per-bandwidth AFC power limit consistent with driver behavior.
+
+FIXUP to WLANRTSYS-83162 Ported afcd and composite mode changes from legacy hostapd
+---
+ src/ap/afc.c         |  2 --
+ src/ap/hostapd.h     |  1 -
+ src/ap/mxl_acs.c     | 79 +++++++++++++++++++++++++++++++++++---------
+ src/ap/mxl_afc.c     |  6 ++--
+ src/ap/mxl_hostapd.c |  4 ---
+ 5 files changed, 65 insertions(+), 27 deletions(-)
+
+diff --git a/src/ap/afc.c b/src/ap/afc.c
+index d5779156f..d5b78c295 100644
+--- a/src/ap/afc.c
++++ b/src/ap/afc.c
+@@ -1009,8 +1009,6 @@ static void hostapd_afc_lpi_timeout_handler(void *eloop_ctx, void *timeout_ctx)
+ 			iface->conf->he_6ghz_reg_pwr_type = iface->afc.he_6ghz_reg_pwr_type;
+ 			mxl_hostapd_afc_clear_and_load_lpi(iface);
+ 			mxl_hostap_afc_construct_regrule_from_afc_data(iface);
+-			hostapd_set_state(iface, HAPD_IFACE_ACS);
+-			iface->afc.acs_pwr_mode_6g = 1;
+ 			mxl_hostapd_interface_update_power_regd(iface->bss[0], iface->afc.he_6ghz_reg_pwr_type);
+ #endif /* CONFIG_AFC */
+ 		}
+diff --git a/src/ap/hostapd.h b/src/ap/hostapd.h
+index c259411cb..2c777390c 100644
+--- a/src/ap/hostapd.h
++++ b/src/ap/hostapd.h
+@@ -831,7 +831,6 @@ struct hostapd_iface {
+ 		int timeout;
+ 		int retry_count;
+ 		u8 he_6ghz_reg_pwr_type;
+-		int acs_pwr_mode_6g;
+ 		unsigned int num_freq_range;
+ 		struct afc_freq_range_elem {
+ 			int low_freq;
+diff --git a/src/ap/mxl_acs.c b/src/ap/mxl_acs.c
+index fd72b6130..c9c01cfa8 100644
+--- a/src/ap/mxl_acs.c
++++ b/src/ap/mxl_acs.c
+@@ -1635,6 +1635,7 @@ void mxl_acs_smart_process_bsses(struct hostapd_iface *iface, struct wpa_scan_re
+ 	acs_fclose(fp, "ACS history file");
+ 
+ 	mxl_acs_update_radar(iface);
++	wpa_printf(MSG_DEBUG, "ACS RECALC: Switch Reason : SWR_INITIAL");
+ 	res = mxl_acs_recalc_ranks_and_set_chan(iface, SWR_INITIAL);
+ 
+ 	/* hostapd_setup_interface_complete() will return -1 on failure and 0 on success */
+@@ -1681,6 +1682,7 @@ void mxl_acs_bg_scan_complete(struct hostapd_iface *iface)
+ 
+ 	acs_fclose(fp, "ACS history file");
+ 
++	wpa_printf(MSG_DEBUG, "ACS RECALC: Switch Reason : SWR_BG_SCAN");
+ 	if (mxl_acs_recalc_ranks_and_set_chan(iface, SWR_BG_SCAN) > 0) {
+ 		if (mxl_acs_do_switch_channel(iface, 0) < 0) {
+ 			/* back out with channel switch */
+@@ -3252,17 +3254,61 @@ static bool mxl_acs_is_chan_rule_present_parse_power(struct hostapd_iface *iface
+ }
+ 
+ static bool mxl_acs_is_freq_rule_present_parse_power(struct hostapd_iface *iface, int start_freq, int end_freq, int bw, int *tx) {
+-	int afc_bw =0;
++	int best_bw = INT_MAX;
++	int best_eirp = INT_MAX;
++	bool found = false;
++	int best_freq_idx = -1;
++
+ 	for (int freq_idx = 0; freq_idx < iface->afc.num_freq_range; freq_idx++) {
+-		afc_bw = iface->afc.freq_range[freq_idx].high_freq - iface->afc.freq_range[freq_idx].low_freq;
++		int afc_bw = iface->afc.freq_range[freq_idx].high_freq - iface->afc.freq_range[freq_idx].low_freq;
++		int eirp;
++
+ 		if (!afc_bw)
+ 			continue;
+-		if(start_freq >= iface->afc.freq_range[freq_idx].low_freq && end_freq <= iface->afc.freq_range[freq_idx].high_freq && bw == afc_bw) {
+-			*tx = mxl_afc_calculate_psd_to_eirp(iface->afc.freq_range[freq_idx].max_psd,afc_bw);
+-			return true;
++
++		if (start_freq < iface->afc.freq_range[freq_idx].low_freq ||
++		    end_freq > iface->afc.freq_range[freq_idx].high_freq)
++			continue;
++
++		/*
++		 * Match driver BW-aware AFC selection:
++		 * choose the narrowest covering rule with max_bw >= requested BW,
++		 * and for same BW choose the lower EIRP.
++		 */
++		if (afc_bw < bw)
++			continue;
++
++		eirp = (int)mxl_afc_calculate_psd_to_eirp(iface->afc.freq_range[freq_idx].max_psd, afc_bw);
++		wpa_printf(MSG_DEBUG,
++			"AFC-BW: candidate rule idx=%d req_bw=%d rule_bw=%d req=[%d,%d] rule=[%d,%d] eirp=%d",
++			freq_idx, bw, afc_bw, start_freq, end_freq,
++			iface->afc.freq_range[freq_idx].low_freq,
++			iface->afc.freq_range[freq_idx].high_freq,
++			eirp);
++		if (!found || afc_bw < best_bw || (afc_bw == best_bw && eirp < best_eirp)) {
++			best_bw = afc_bw;
++			best_eirp = eirp;
++			found = true;
++			best_freq_idx = freq_idx;
++			wpa_printf(MSG_DEBUG,
++				"AFC-BW: best rule updated idx=%d selected_bw=%d selected_eirp=%d",
++				best_freq_idx, best_bw, best_eirp);
+ 		}
+ 	}
+-	return false;
++
++	if (found) {
++		wpa_printf(MSG_DEBUG,
++			"AFC-BW: final selection idx=%d req_bw=%d selected_bw=%d selected_eirp=%d",
++			best_freq_idx, bw, best_bw, best_eirp);
++		*tx = best_eirp;
++	}
++	else {
++		wpa_printf(MSG_DEBUG,
++			"AFC-BW: no matching freq rule req_bw=%d req_range=[%d,%d]",
++			bw, start_freq, end_freq);
++	}
++
++	return found;
+ }
+ 
+ static void mxl_acs_if_afc_rule_present_parse_power(struct hostapd_iface *iface, int center_chan_idx, int bw_start, int bw_end, int bw, int *tx)
+@@ -3314,6 +3360,8 @@ static void mxl_acs_tx_power_update(struct hostapd_iface *iface)
+ 
+ 	for (i = 0; (i < iface->mxl_iface.num_candidates && i < MAX_CANDIDATES); i++) {
+ 		int new_power;
++		/* Seed per-candidate secondary lookup to avoid carrying stale value across candidates. */
++		sub_freq = candidates[i].freq;
+ 		if (candidates[i].width ==  320) {
+ 			candidates[i].tx_power[SEC_MAX_160] = mxl_acs_get_chan_id_freq_range_sec_tx(iface, candidates[i].freq, candidates[i].primary, 160, &sub_freq);
+ 			candidates[i].tx_power[SEC_MAX_160] += 9; /* compensation factor eight channels */
+@@ -3336,7 +3384,7 @@ static void mxl_acs_tx_power_update(struct hostapd_iface *iface)
+ 			if ((new_power = mxl_acs_get_chan_id_freq_range_sec_tx(iface, sub_freq, candidates[i].primary, 20, &sub_freq)) != 0) candidates[i].tx_power[SEC_20] = new_power;
+ 		}
+ 		if (candidates[i].width ==  40) {
+-			if ((new_power = mxl_acs_get_chan_id_freq_range_sec_tx(iface, sub_freq, candidates[i].primary, 20, &sub_freq)) != 0) candidates[i].tx_power[SEC_20] = new_power;
++			if ((new_power = mxl_acs_get_chan_id_freq_range_sec_tx(iface, candidates[i].freq, candidates[i].primary, 20, &sub_freq)) != 0) candidates[i].tx_power[SEC_20] = new_power;
+ 		}
+ 		if ((new_power = mxl_acs_if_afc_rule_present_parse_power_pri20(iface, candidates[i].primary)) != 0) candidates[i].tx_power[PRI_20] = new_power;
+ 	}
+@@ -3832,19 +3880,15 @@ int mxl_acs_recalc_ranks_and_set_chan (struct hostapd_iface *iface, int switch_r
+ 
+ 	}
+ 
+-#ifdef CONFIG_AFC
+-	if (!iface->mxl_iface.sec_best_ch.flag && !iface->afc.acs_pwr_mode_6g) {
+-#else /* CONFIG_AFC */
+ 	if (!iface->mxl_iface.sec_best_ch.flag) {
+-#endif /* CONFIG_AFC */
+-		if ((!iface->conf->mxl_conf.acs_bg_scan_do_switch && (SWR_BG_SCAN == switch_reason)) ||
+-		    iface->mxl_iface.cac_required || !(iface->conf->mxl_conf.acs_init_done)) {
+-			wpa_printf(MSG_DEBUG, "ACS: stay on channel reason SWR_BG_SCAN switch not enabled or cac required or acs init not done");
++		if (!iface->conf->mxl_conf.acs_update_do_switch && (SWR_UPDATE == switch_reason)) {
++			wpa_printf(MSG_DEBUG, "ACS: stay on channel reason SWR_UPDATE switch not enabled");
+ 			goto stay_on_chan;
+ 		}
+ 
+-		if (!iface->conf->mxl_conf.acs_update_do_switch && (SWR_UPDATE == switch_reason)) {
+-			wpa_printf(MSG_DEBUG, "ACS: stay on channel reason SWR_UPDATE switch not enabled");
++		if ((!iface->conf->mxl_conf.acs_bg_scan_do_switch && (SWR_BG_SCAN == switch_reason)) ||
++		    iface->mxl_iface.cac_required || !(iface->conf->mxl_conf.acs_init_done)) {
++			wpa_printf(MSG_DEBUG, "ACS: stay on channel reason SWR_BG_SCAN switch not enabled or cac required or acs init not done");
+ 			goto stay_on_chan;
+ 		}
+ 	}
+@@ -4228,6 +4272,7 @@ void mxl_hostapd_update_channel_data(struct hostapd_iface *iface, const u8 *data
+ 
+ 		acs_push_chandef(iface, &cur_chan);
+ 
++		wpa_printf(MSG_DEBUG, "ACS RECALC: Switch Reason : SWR_UPDATE");
+ 		if (mxl_acs_recalc_ranks_and_set_chan(iface, SWR_UPDATE) > 0) {
+ 			if (mxl_acs_do_switch_channel(iface, 0) < 0) {
+ 				/* back out with channel switch */
+@@ -4287,6 +4332,7 @@ void mxl_acs_radar_switch(struct hostapd_iface *iface)
+ 
+ 	acs_push_chandef(iface, &cur_chan);
+ 
++	wpa_printf(MSG_DEBUG, "ACS RECALC: Switch Reason : SWR_RADAR");
+ 	ret = mxl_acs_recalc_ranks_and_set_chan(iface, SWR_RADAR);
+ 
+ 	mxl_hostapd_channel_switch_reason_set(iface, HAPD_CHAN_SWITCH_RADAR_DETECTED);
+@@ -5014,6 +5060,7 @@ void mxl_event_scan_results(struct hostapd_data *hapd, union wpa_event_data *dat
+ 		hapd->iface->scan_cb(hapd->iface);
+ 
+ 	if (hapd->iface->conf->acs && mxl_acs_is_smart(hapd->iface) && !hapd->iface->conf->mxl_conf.acs_init_done) {
++		wpa_printf(MSG_DEBUG, "ACS RECALC: Switch Reason : SWR_BG_SCAN2");
+ 		mxl_acs_recalc_ranks_and_set_chan(hapd->iface, SWR_BG_SCAN);
+ 
+ 		if (hapd->iface->mxl_iface.acs_restart_on_country_change) {
+diff --git a/src/ap/mxl_afc.c b/src/ap/mxl_afc.c
+index 8deb21231..d39f8d4ab 100644
+--- a/src/ap/mxl_afc.c
++++ b/src/ap/mxl_afc.c
+@@ -360,7 +360,6 @@ int mxl_hostapd_afc_get_valid_rule_and_set_power(struct hostapd_iface *iface, in
+ 			}
+ 		}
+ 	}
+-	iface->afc.acs_pwr_mode_6g = 0;
+ 	iface->afc.he_6ghz_reg_pwr_type = val;
+ 	if (iface->afc.data_valid) {
+ 		iface->conf->he_6ghz_reg_pwr_type = val;
+@@ -372,10 +371,9 @@ int mxl_hostapd_afc_get_valid_rule_and_set_power(struct hostapd_iface *iface, in
+ 			wpa_printf(MSG_ERROR, "AFC request failed retrying in few seconds");
+ 			return -1;
+ 		}
+-		/* AFC request successfull trigger ACS and Switch channel */
+-		hostapd_set_state(iface, HAPD_IFACE_ACS);
+-		iface->afc.acs_pwr_mode_6g = 1;
++
+ 		/* Update power */
++		iface->conf->he_6ghz_reg_pwr_type = val;
+ 		mxl_hostapd_interface_update_power_regd(iface->bss[0], val);
+ 	}
+ 
+diff --git a/src/ap/mxl_hostapd.c b/src/ap/mxl_hostapd.c
+index 0670d97e6..7362ab4cf 100644
+--- a/src/ap/mxl_hostapd.c
++++ b/src/ap/mxl_hostapd.c
+@@ -2909,10 +2909,6 @@ int mxl_hostapd_no_ir_channel_list_updated(struct hostapd_iface *iface)
+ 			iface->conf->channel = 0;
+ 		}
+ 	}
+-	if (iface->state == HAPD_IFACE_ACS) {
+-		iface->freq = 0;
+-		iface->conf->channel = 0;
+-	}
+ 	mxl_setup_interface2(iface);
+ 	return 0;
+ }
+-- 
+2.43.0
+

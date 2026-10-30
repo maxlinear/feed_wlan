@@ -1,0 +1,48 @@
+From 7eced0e23d6769f863581b6aac553b75176a3417 Mon Sep 17 00:00:00 2001
+From: Lior Ben Ishay <liorbi@maxlinear.com>
+Date: Wed, 29 Jul 2026 13:04:20 +0300
+Subject: [PATCH] WLANRTSYS-102141 Mirror
+ LTQ_NL80211_VENDOR_SUBCMD_*_ZWDFS_NOISE_SUPPRESS
+
+Issue:
+Part of adding iw enable/threshold control for ZWDFS packet-noise radar
+suppression. vendor_cmds_copy.h is an unversioned enum copied across 6
+repos; if this copy drifts from the others, every subcmd after it silently
+mis-dispatches.
+
+Fix:
+Mirror the two new SET/GET_ZWDFS_NOISE_SUPPRESS entries at the same
+ordinal position as the other 5 copies.
+
+Test:
+Diffed all 6 copies against each other to confirm matching position.
+
+AI code review: Yes
+---
+ src/common/vendor_cmds_copy.h | 3 +++
+ 1 file changed, 3 insertions(+)
+
+diff --git a/src/common/vendor_cmds_copy.h b/src/common/vendor_cmds_copy.h
+index b44f5aa05..1f8f99934 100644
+--- a/src/common/vendor_cmds_copy.h
++++ b/src/common/vendor_cmds_copy.h
+@@ -424,6 +424,8 @@ enum ltq_nl80211_vendor_subcmds {
+   LTQ_NL80211_VENDOR_SUBCMD_GET_VW_TEST_MODE,
+   LTQ_NL80211_VENDOR_SUBCMD_SET_MRU_TX_POWER_ENABLE,
+   LTQ_NL80211_VENDOR_SUBCMD_GET_MRU_TX_POWER_ENABLE,
++  LTQ_NL80211_VENDOR_SUBCMD_SET_ZWDFS_NOISE_SUPPRESS,
++  LTQ_NL80211_VENDOR_SUBCMD_GET_ZWDFS_NOISE_SUPPRESS,
+   LTQ_NL80211_VENDOR_SUBCMD_SET_PBAC,
+   LTQ_NL80211_VENDOR_SUBCMD_SET_AQM_STA_EN,
+   LTQ_NL80211_VENDOR_SUBCMD_GET_AQM_STA_EN,
+@@ -483,6 +485,7 @@ struct mxl_ml_sta_info {
+ 
+ /* Maximum possible number of antennas for statistics in driver */
+ #define WAVE_STAT_MAX_ANTENNAS                5
++#define ZWDFS_NOISE_SUPPRESS_MAX_PACKET_TH    65535
+ #define INTEL_CSA_DEAUTH_TX_TIME_ARR_SIZE     2
+ #define INTEL_CSA_DEAUTH_TX_TIME_UC_IDX       0
+ #define INTEL_CSA_DEAUTH_TX_TIME_MC_IDX       1
+-- 
+2.43.0
+

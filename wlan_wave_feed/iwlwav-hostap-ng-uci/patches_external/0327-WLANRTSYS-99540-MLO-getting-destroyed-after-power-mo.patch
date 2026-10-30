@@ -1,0 +1,28 @@
+From a4baa54d61a04e1cf185b2850ea1a126bfac1a5e Mon Sep 17 00:00:00 2001
+From: "mujiburrahimank@maxlinear.com"
+ <mujiburrahimank@lvdocker7.lvsw.maxlinear.com>
+Date: Thu, 18 Jun 2026 02:40:30 -0700
+Subject: [PATCH] WLANRTSYS-99540 MLO getting destroyed after power mode change
+
+Fixes for MLO not formed after power mode set
+
+Fixup to : WLANRTSYS-96596 MLO: Triband MLD Support
+---
+ src/ap/mxl_hostapd.c | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/src/ap/mxl_hostapd.c b/src/ap/mxl_hostapd.c
+index 3b48d4d1a..0670d97e6 100644
+--- a/src/ap/mxl_hostapd.c
++++ b/src/ap/mxl_hostapd.c
+@@ -3074,6 +3074,7 @@ void mxl_hostapd_deinit_mld_params(struct hostapd_data *hapd)
+ 
+ 	mxl_mld_for_each_sibling_link(sib_hapd, hapd) {
+ 		for (int sib_link = LINK1; sib_link < MAX_SIBLING_LINKS; sib_link++) {
++			sib_hapd->beacon_set_done = false;
+ 			if (sib_hapd->mxl_data.sibling_hapd[sib_link] == hapd) {
+ 				wpa_printf(MSG_DEBUG,
+ 						"MXL_MLO: %s: cleared stale pointer from sibling %s to hapd %s which is being deinited", __func__,
+-- 
+2.43.0
+

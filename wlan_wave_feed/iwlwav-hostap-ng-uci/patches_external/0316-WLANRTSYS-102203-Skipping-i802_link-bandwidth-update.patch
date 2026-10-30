@@ -1,0 +1,32 @@
+From 0267e728c7563659e3ff6a8c4f9e5f2257921253 Mon Sep 17 00:00:00 2001
+From: Sathyananda Reddy <kmsreddy@maxlinear.com>
+Date: Fri, 29 May 2026 02:41:57 -0700
+Subject: [PATCH] WLANRTSYS-102203 Skipping i802_link bandwidth update when
+ receiving channel switch event The i802_link bandwidth update in
+ mlme_event_ch_switch() causes a false bandwidth match in
+ wpa_driver_nl80211_set_ap(), preventing nl80211_set_channel() from being
+ called. Leave i802_link bandwidth update to wpa_driver_nl80211_set_ap().
+
+---
+ src/drivers/driver_nl80211_event.c | 2 ++
+ 1 file changed, 2 insertions(+)
+
+diff --git a/src/drivers/driver_nl80211_event.c b/src/drivers/driver_nl80211_event.c
+index 4bf05472d..c9c5f2e89 100644
+--- a/src/drivers/driver_nl80211_event.c
++++ b/src/drivers/driver_nl80211_event.c
+@@ -1337,9 +1337,11 @@ static void mlme_event_ch_switch(struct wpa_driver_nl80211_data *drv,
+ 					data.ch_switch.ch_width);
+ 		} else {
+ 			bss->flink->freq = data.ch_switch.freq;
++#ifndef CONFIG_VENDOR_MXL
+ 			if (bw)
+ 				bss->flink->bandwidth = channel_width_to_int(
+ 					data.ch_switch.ch_width);
++#endif /* CONFIG_VENDOR_MXL */
+ 		}
+ 	}
+ 
+-- 
+2.43.0
+

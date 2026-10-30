@@ -9,7 +9,7 @@
 include $(TOPDIR)/rules.mk
 
 PKG_NAME:=iwlwav-driver-uci
-PKG_REV:=8dac1265fab8504a6c7f101650a300abadfae365
+PKG_REV:=40c0a9289e29d32b3fae86873ed2100f05c885c8
 PKG_VERSION:=6.1.0
 PKG_RELEASE:=$(PKG_REV)
 
@@ -18,9 +18,9 @@ PKG_PROJECT:=maxlinear
 PKG_SOURCE_NAME:=iwlwav-dev.git
 CONFIG_UGW_PKG_SOURCE_URL:=https://github.com
 PKG_SOURCE_URL:=$(CONFIG_UGW_PKG_SOURCE_URL)/$(PKG_PROJECT)/$(PKG_SOURCE_NAME)
-PKG_SOURCE_VERSION:=r1840+a+50
+PKG_SOURCE_VERSION:=r2359
 PKG_SOURCE_PROTO:=git
-PKG_MIRROR_HASH:=d779d7e10babdfbe3c9709dbbfa28b0996a1643459f9b818df88dd2bf9fbdcd2
+PKG_MIRROR_HASH:=d408830177c48a4861fd7dc6cdbcb915de2a3f2b2dae6cf8d8263f029d19632f
 
 PKG_MAINTAINER:=MaxLinear
 PKG_LICENSE:=BSD-2-Clause,GPLv2
@@ -107,7 +107,6 @@ define KernelPackage/$(PKG_NAME)
     CONFIG_WLAN_VENDOR_ZYDAS=y \
     CONFIG_CRYPTO_ARC4=y
 
-ifeq ($(CONFIG_LINUX_5_15),y)
  FILES:= \
         $(PKG_BUILD_DIR)/compat/compat.ko \
 	$(PKG_BUILD_DIR)/net/mac80211/mac80211.ko \
@@ -115,14 +114,6 @@ ifeq ($(CONFIG_LINUX_5_15),y)
 	$(PKG_BUILD_DIR)/drivers/net/wireless/intel/iwlwav/mtlk.ko \
 	$(PKG_BUILD_DIR)/drivers/net/wireless/intel/iwlwav/tools/mtlkroot/mtlkroot.ko \
 	$(LINUX_DIR)/lib/crypto/libarc4.ko
-else
- FILES:= \
-        $(PKG_BUILD_DIR)/compat/compat.ko \
-	$(PKG_BUILD_DIR)/net/mac80211/mac80211.ko \
-	$(PKG_BUILD_DIR)/net/wireless/cfg80211.ko \
-	$(PKG_BUILD_DIR)/drivers/net/wireless/intel/iwlwav/mtlk.ko \
-	$(PKG_BUILD_DIR)/drivers/net/wireless/intel/iwlwav/tools/mtlkroot/mtlkroot.ko
-endif
 
  AUTOLOAD:=$(call AutoProbe,compat mac80211 cfg80211 mtlkroot mtlk)
  MODPARAMS.mtlk:= \
@@ -137,6 +128,18 @@ define KernelPackage/iwlwav-driver-uci/description
 endef
 
 IFX_CFLAGS += -O2 -D_FORTIFY_SOURCE=2 -Wformat -Wformat-security -Werror=format-security -Wall -fPIE -Wl,-strip-debug
+
+ifeq ($(CONFIG_TARGET_arm_a55_haps),y)
+IFX_CFLAGS += -DCONFIG_TOPAZ_PLATFORM_FPGA
+define InstallCalibSymlinks
+endef
+else
+define InstallCalibSymlinks
+	cd $(1)/lib/firmware && ln -sf ../../tmp/wlanconfig/cal_wlan0.bin
+	cd $(1)/lib/firmware && ln -sf ../../tmp/wlanconfig/cal_wlan2.bin
+	cd $(1)/lib/firmware && ln -sf ../../tmp/wlanconfig/cal_wlan4.bin
+endef
+endif
 
 ifeq ($(CONFIG_USE_WAVE600_2_EMULATOR),y)
 IFX_CFLAGS += -DCONFIG_WAVE_NO_TX_BSS_MONITOR
@@ -161,12 +164,14 @@ IFX_CFLAGS += -DCONFIG_WAVE_DEBUG
 CONFIG_SUFFIX:=-debug
 endif
 
+IWLWAV_BUILD_ARCH := $(if $(filter arm64,$(LINUX_KARCH)),$(LINUX_KARCH),$(ARCH))
+
 define Build/Compile
 	@echo "Config files use: $(CONFIG_FILE)"
 	$(SED) '1s/.*/BACKPORTS_VERSION="v$(LINUX_VERSION)"/' $(PKG_BUILD_DIR)/versions
 	$(CP) $(CONFIG_FOLDER)/$(CONFIG_FILE)$(CONFIG_SUFFIX) $(PKG_BUILD_DIR)/defconfigs/iwlwav
 	$(MAKE) -C $(PKG_BUILD_DIR) CFLAGS="$(IFX_CFLAGS)" defconfig-iwlwav KLIB_BUILD=$(LINUX_DIR) KLIB=$(TARGET_DIR)/$(TARGET_MODULES_DIR)
-	$(KERNEL_MAKE) $(JOBS) -C $(PKG_BUILD_DIR) CFLAGS="$(IFX_CFLAGS)" CROSS_COMPILE=$(CROSS_COMPILE) ARCH=$(ARCH) KLIB_BUILD=$(LINUX_DIR) KLIB=$(TARGET_DIR)/$(TARGET_MODULES_DIR) UGW_DRIVER_VERSION="$(PKG_VERSION).$(PKG_REV)"
+	$(KERNEL_MAKE) $(JOBS) -C $(PKG_BUILD_DIR) CFLAGS="$(IFX_CFLAGS)" CROSS_COMPILE=$(CROSS_COMPILE) ARCH=$(IWLWAV_BUILD_ARCH) KLIB_BUILD=$(LINUX_DIR) KLIB=$(TARGET_DIR)/$(TARGET_MODULES_DIR) UGW_DRIVER_VERSION="$(PKG_VERSION).$(PKG_REV)"
 	$(CP) $(PKG_BUILD_DIR)/include/uapi/linux/nl80211.h $(TOOLCHAIN_DIR)/include/linux/nl80211.h
 endef
 
@@ -176,9 +181,7 @@ define KernelPackage/iwlwav-driver-uci/install
 	$(INSTALL_DIR) $(1)/lib/preinit
 	echo -e "iwlwav_driver_hash=\"$(PKG_REV)\"\niwlwav_driver_tag=\"$(PKG_REV)\"" > $(1)/etc/iwlwav_driver.ver
 	$(INSTALL_DATA) ./files/91_wireless_calib $(1)/lib/preinit
-	cd $(1)/lib/firmware && ln -sf ../../tmp/wlanconfig/cal_wlan0.bin
-	cd $(1)/lib/firmware && ln -sf ../../tmp/wlanconfig/cal_wlan2.bin
-	cd $(1)/lib/firmware && ln -sf ../../tmp/wlanconfig/cal_wlan4.bin
+	$(call InstallCalibSymlinks,$(1))
 endef
 
 KernelPackage/iwlwav-driver-uci-debug/install = $(KernelPackage/iwlwav-driver-uci/install)

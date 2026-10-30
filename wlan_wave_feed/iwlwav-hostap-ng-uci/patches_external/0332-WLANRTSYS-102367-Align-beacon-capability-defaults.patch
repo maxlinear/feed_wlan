@@ -1,0 +1,159 @@
+From c0b543f99ae4fc3ab3f50d2918f2e337c4386999 Mon Sep 17 00:00:00 2001
+From: "mujiburrahimank@maxlinear.com"
+ <mujiburrahimank@lvdocker7.lvsw.maxlinear.com>
+Date: Mon, 8 Jun 2026 21:01:13 -0700
+Subject: [PATCH] WLANRTSYS-102367 Align beacon capability defaults
+
+---
+ hostapd/mxl_config.c             | 26 +++++++++++++++++++++++++-
+ src/ap/ap_config.c               |  2 +-
+ src/ap/mxl_config.h              |  1 +
+ src/ap/mxl_hostapd.c             | 26 ++++++++++++++++++++++++--
+ src/common/mxl_ieee802_11_defs.h |  3 ++-
+ 5 files changed, 53 insertions(+), 5 deletions(-)
+
+diff --git a/hostapd/mxl_config.c b/hostapd/mxl_config.c
+index f8a7391cc..22c826174 100644
+--- a/hostapd/mxl_config.c
++++ b/hostapd/mxl_config.c
+@@ -1251,6 +1251,10 @@ mxl_conf_fill_eht_phy_capab_info(struct mxl_hostapd_config *conf, const char *bu
+ 		cap_idx->eht_phy_rx_4096_qam_wider_bw_dl_ofdma = 1;
+ 		eht_phy_capab_info[EHT_PHYCAP_CAP8_IDX] |= set_he_cap(atoi(pos),
+ 						EHT_PHY_CAP8_RX_4096_QAM_WIDER_BW_DL_OFDMA);
++	} else if (os_strcmp(buf, "eht_phy_20mhz_only_limit_cap_support") == 0) {
++		cap_idx->eht_phy_20mhz_only_limit_cap_support = 1;
++		eht_phy_capab_info[EHT_PHYCAP_CAP8_IDX] |= set_he_cap(atoi(pos),
++						EHT_PHY_CAP8_20MHZ_ONLY_LIMIT_CAP_SUPPORT);
+ 	} else
+ 		return 0;
+ 
+@@ -2281,8 +2285,28 @@ int mxl_hostapd_config_defaults(struct hostapd_config *conf)
+ 	mxl_conf->is_client_mode = false;
+ 	mxl_conf->event_cache_interval = 1;
+ 
++#ifdef CONFIG_IEEE80211AX
++	mxl_conf->override_hw_capab.he_phy_ppe_thresholds_present = 1;
++	mxl_conf->override_hw_capab.he_phy_dcm_max_bw = 1;
++	mxl_conf->override_hw_capab.he_phy_longer_than_16_he_sigb_ofdm_sym_support = 1;
++	mxl_conf->he_capab_dbg.he_phy_capab_info[HE_PHYCAP_CAP8_IDX] |=
++		set_he_cap(3, HE_PHY_CAP8_DCM_MAX_BW);
++#endif /* CONFIG_IEEE80211AX */
++
+ #ifdef CONFIG_IEEE80211BE
+-	mxl_conf->basic_eht_mcs_nss_set[0] = set_he_cap(1, EHT_MCS_NSS_FOR_1SS);
++	mxl_conf->basic_eht_mcs_nss_set[0] = 0x11;
++	mxl_conf->eht_override_hw_capab.eht_mac_max_mpdu_len = 1;
++	mxl_conf->eht_override_hw_capab.eht_phy_ppe_thresholds_present = 1;
++	mxl_conf->eht_override_hw_capab.eht_phy_mu_beamformer_bw_160_mhz = 1;
++	mxl_conf->eht_override_hw_capab.eht_phy_mu_beamformer_bw_320_mhz = 1;
++	mxl_conf->eht_override_hw_capab.eht_phy_rx_4096_qam_wider_bw_dl_ofdma = 1;
++	mxl_conf->eht_override_hw_capab.eht_phy_20mhz_only_limit_cap_support = 1;
++	((u8 *) &mxl_conf->eht_capab_dbg.mac_cap)[EHT_MACCAP_CAP0_IDX] |=
++		set_he_cap(2, EHT_MAC_CAP0_MAX_MPDU_LEN);
++	mxl_conf->eht_capab_dbg.phy_cap[EHT_PHYCAP_CAP7_IDX] |=
++		set_he_cap(1, EHT_PHY_CAP7_MU_BF_BW_EQUAL_160);
++	mxl_conf->eht_capab_dbg.phy_cap[EHT_PHYCAP_CAP7_IDX] |=
++		set_he_cap(1, EHT_PHY_CAP7_MU_BF_BW_EQUAL_320);
+ #endif /* CONFIG_IEEE80211BE */
+ #ifdef CONFIG_IEEE80211BE_MXL_MLO
+ 	mxl_conf->max_chan_switch_time = MAX_CHAN_SWITCH_TIME_DEFAULT;
+diff --git a/src/ap/ap_config.c b/src/ap/ap_config.c
+index eaa7d9e7d..b6f034cbd 100644
+--- a/src/ap/ap_config.c
++++ b/src/ap/ap_config.c
+@@ -399,7 +399,7 @@ struct hostapd_config * hostapd_config_defaults(void)
+ 	conf->reg_def_cli_eirp_psd = -1;
+ 	conf->reg_sub_cli_eirp_psd = -1;
+ 	conf->reg_def_cli_eirp = -1;
+-	conf->he_oper_max_co_hosted_bssid_ind = 5;
++	conf->he_oper_max_co_hosted_bssid_ind = 3;
+ 	conf->he_oper_cohosted_bss = 1;
+ 	conf->bss_color_change_timeout  = BSS_COLOR_CHANGE_TIMEOUT_DEFAULT;
+ 	conf->num_bss_color_coll_thresh = NUM_BSS_COLOR_COLL_THRESH_DEFAULT;
+diff --git a/src/ap/mxl_config.h b/src/ap/mxl_config.h
+index 22e904547..7dad9cf61 100644
+--- a/src/ap/mxl_config.h
++++ b/src/ap/mxl_config.h
+@@ -250,6 +250,7 @@ struct eht_override_hw_capab {
+ 	int eht_phy_tb_sounding_feedback_rate_limit;
+ 	int eht_phy_rx_1024_qam_wider_bw_dl_ofdma;
+ 	int eht_phy_rx_4096_qam_wider_bw_dl_ofdma;
++	int eht_phy_20mhz_only_limit_cap_support;
+ 	int eht_mcs_map_less_than_or_equal_80_mhz_rx_max_nss_eht_mcs_0_9;
+ 	int eht_mcs_map_less_than_or_equal_80_mhz_tx_max_nss_eht_mcs_0_9;
+ 	int eht_mcs_map_less_than_or_equal_80_mhz_rx_max_nss_eht_mcs_10_11;
+diff --git a/src/ap/mxl_hostapd.c b/src/ap/mxl_hostapd.c
+index 7362ab4cf..905ac72c0 100644
+--- a/src/ap/mxl_hostapd.c
++++ b/src/ap/mxl_hostapd.c
+@@ -902,6 +902,20 @@ mxl_hostapd_set_debug_he_ppe_thresholds(u8 *debug_he_ppet, u8 *conf_he_ppet,
+ 			conf_he_ppet[HE_PPE_CAP12_IDX], HE_PPE_CAP12_PPET8_FOR_NSS4_FOR_RU3);
+ }
+ 
++static bool mxl_hostapd_has_cap_override(const void *override_data,
++					 size_t override_len)
++{
++	const u8 *override_bytes = override_data;
++	size_t index;
++
++	for (index = 0; index < override_len; index++) {
++		if (override_bytes[index])
++			return true;
++	}
++
++	return false;
++}
++
+ static void mxl_hostapd_set_debug_mode_he_cap (struct hostapd_data *hapd)
+ {
+ 	struct he_capabilities *hw = NULL;
+@@ -917,7 +931,9 @@ static void mxl_hostapd_set_debug_mode_he_cap (struct hostapd_data *hapd)
+ 
+ 	hw = &hapd->iface->current_mode->he_capab[mode];
+ 
+-	if (hapd->iconf->mxl_conf.enable_he_debug_mode) {
++	if (hapd->iconf->mxl_conf.enable_he_debug_mode ||
++	    mxl_hostapd_has_cap_override(override_cap_idx,
++					     sizeof(*override_cap_idx))) {
+ 		mxl_hostapd_set_debug_he_mac_capab_info(hw->mac_cap,
+ 				conf->he_mac_capab_info, override_cap_idx);
+ 		mxl_hostapd_set_debug_he_phy_capab_info(hw->phy_cap,
+@@ -1258,6 +1274,10 @@ mxl_hostapd_set_debug_eht_phy_capab_info(u8 *debug_eht_phy, u8 *conf_eht_phy,
+ 	if (cap_idx->eht_phy_rx_4096_qam_wider_bw_dl_ofdma)
+ 		mxl_clr_set_he_cap(&debug_eht_phy[EHT_PHYCAP_CAP8_IDX],
+ 		    conf_eht_phy[EHT_PHYCAP_CAP8_IDX], EHT_PHY_CAP8_RX_4096_QAM_WIDER_BW_DL_OFDMA);
++
++	if (cap_idx->eht_phy_20mhz_only_limit_cap_support)
++		mxl_clr_set_he_cap(&debug_eht_phy[EHT_PHYCAP_CAP8_IDX],
++		    conf_eht_phy[EHT_PHYCAP_CAP8_IDX], EHT_PHY_CAP8_20MHZ_ONLY_LIMIT_CAP_SUPPORT);
+ }
+ 
+ static void
+@@ -1544,7 +1564,9 @@ mxl_hostapd_set_debug_mode_eht_cap(struct hostapd_data *hapd)
+ 
+ 	hw = &hapd->iface->current_mode->eht_capab[mode];
+ 
+-	if (hapd->iconf->mxl_conf.enable_eht_debug_mode) {
++	if (hapd->iconf->mxl_conf.enable_eht_debug_mode ||
++	    mxl_hostapd_has_cap_override(override_cap_idx,
++					     sizeof(*override_cap_idx))) {
+ 		mxl_hostapd_set_debug_eht_mac_capab_info((u8*)&hw->mac_cap, (u8*)&conf->mac_cap, override_cap_idx);
+ 		mxl_hostapd_set_debug_eht_phy_capab_info(hw->phy_cap, conf->phy_cap, override_cap_idx);
+ 		mxl_hostapd_set_debug_eht_txrx_mcs_support(hw->mcs, conf->optional, override_cap_idx);
+diff --git a/src/common/mxl_ieee802_11_defs.h b/src/common/mxl_ieee802_11_defs.h
+index 65293d1d9..a3de5846e 100644
+--- a/src/common/mxl_ieee802_11_defs.h
++++ b/src/common/mxl_ieee802_11_defs.h
+@@ -537,7 +537,8 @@ enum multi_link_support_e {
+ #define EHT_PHYCAP_CAP8_IDX 8
+ #define EHT_PHY_CAP8_RX_1024_QAM_WIDER_BW_DL_OFDMA          ((u8) BIT(0))
+ #define EHT_PHY_CAP8_RX_4096_QAM_WIDER_BW_DL_OFDMA          ((u8) BIT(1))
+-/* B66..B71 - Reserved */
++#define EHT_PHY_CAP8_20MHZ_ONLY_LIMIT_CAP_SUPPORT           ((u8) BIT(2))
++/* B67..B71 - Reserved */
+ 
+ /* EHT PPE Thresholds field */
+ #define EHT_PPE_CAP0_IDX 0
+-- 
+2.43.0
+

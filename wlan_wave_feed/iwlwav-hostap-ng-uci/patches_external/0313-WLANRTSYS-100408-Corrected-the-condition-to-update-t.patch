@@ -1,0 +1,28 @@
+From 9164f0c789c978d2f5a2b1fa77230828fb45652f Mon Sep 17 00:00:00 2001
+From: pvaish <pvaish@maxlinear.com>
+Date: Wed, 27 May 2026 22:09:07 -0700
+Subject: [PATCH] WLANRTSYS-100408 Corrected the condition to update the punct
+ bitmap in hostapd context.
+
+Signed-off-by: pvaish <pvaish@maxlinear.com>
+---
+ src/ap/hostapd.c | 3 +++
+ 1 file changed, 3 insertions(+)
+
+diff --git a/src/ap/hostapd.c b/src/ap/hostapd.c
+index df5436d6a..25e64b767 100644
+--- a/src/ap/hostapd.c
++++ b/src/ap/hostapd.c
+@@ -6315,6 +6315,9 @@ static int hostapd_change_config_freq(struct hostapd_data *hapd,
+ 	hostapd_set_oper_centr_freq_seg1_idx(conf, seg1);
+ 
+ #ifdef CONFIG_IEEE80211BE
++#ifdef CONFIG_VENDOR_MXL
++	if (old_params)
++#endif
+ 	conf->punct_bitmap = params->punct_bitmap;
+ #endif /* CONFIG_IEEE80211BE */
+ 
+-- 
+2.43.0
+

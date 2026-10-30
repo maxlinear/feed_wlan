@@ -1,0 +1,199 @@
+From b288b464cd90e7c11244e52d9526b44bb12ee0ee Mon Sep 17 00:00:00 2001
+From: "mujiburrahimank@maxlinear.com"
+ <mujiburrahimank@lvdocker7.lvsw.maxlinear.com>
+Date: Thu, 23 Apr 2026 05:45:10 -0700
+Subject: [PATCH] WLANRTSYS-101566 Restore original DFS chandef after NOP
+ expiry
+
+Radar-triggered channel fallback could leave AP operating on the temporary second best fallback chandef even after non-occupancy period completion. This caused long-lived bandwidth degradation (for example, remaining on a reduced-width operating channel) and inconsistent recovery behavior versus expected DFS lifecycle.
+
+This change adds explicit original chandef recovery handling in DFS flow:
+
+Save original operating chandef on relevant radar detection path.
+Re-evaluate original chandef availability when NOP finishes.
+If original chandef is no longer unavailable, restore it and re-enable interface to resume normal DFS/CAC progression.
+Clear stored revert state once restore is completed or no longer needed.
+The goal is to make post-NOP behavior deterministic and recover AP back to intended operating configuration without manual intervention.
+
+Fixup : WLANRTSYS-50839 MXL DFS debug channel simulation
+---
+ src/ap/dfs.c         | 120 +++++++++++++++++++++++++++++++++++++++++++
+ src/ap/mxl_hostapd.h |  11 ++++
+ 2 files changed, 131 insertions(+)
+
+diff --git a/src/ap/dfs.c b/src/ap/dfs.c
+index 76e23667c..4609d8ae1 100644
+--- a/src/ap/dfs.c
++++ b/src/ap/dfs.c
+@@ -1710,6 +1710,102 @@ int mxl_dfs_check_chans_radar(struct hostapd_iface *iface, int start_chan_idx, i
+ 	{ return dfs_check_chans_radar(iface, start_chan_idx, n_chans); }
+ int mxl_dfs_check_chans_available(struct hostapd_iface *iface, int start_chan_idx, int n_chans)
+ 	{ return dfs_check_chans_available(iface, start_chan_idx, n_chans); }
++
++static void mxl_dfs_store_revert_chandef(struct hostapd_iface *iface)
++{
++	struct mxl_dfs_revert_chandef *revert = &iface->mxl_iface.dfs_revert_chandef;
++
++	if (revert->valid)
++		return;
++
++	revert->channel = iface->conf->channel;
++	revert->freq = iface->freq;
++	revert->secondary_channel = iface->conf->secondary_channel;
++	revert->oper_chwidth = hostapd_get_oper_chwidth(iface->conf);
++	revert->oper_centr_freq_seg0_idx = hostapd_get_oper_centr_freq_seg0_idx(iface->conf);
++	revert->oper_centr_freq_seg1_idx = hostapd_get_oper_centr_freq_seg1_idx(iface->conf);
++	revert->valid = true;
++
++	wpa_printf(MSG_DEBUG,
++		   "DFS: stored revert chandef ch=%d freq=%d width=%d seg0=%d seg1=%d",
++		   revert->channel, revert->freq, revert->oper_chwidth,
++		   revert->oper_centr_freq_seg0_idx, revert->oper_centr_freq_seg1_idx);
++}
++
++static bool mxl_dfs_revert_chandef_unavailable(struct hostapd_iface *iface)
++{
++	struct mxl_dfs_revert_chandef *revert = &iface->mxl_iface.dfs_revert_chandef;
++	u8 cur_channel;
++	int cur_freq;
++	int cur_secondary_channel;
++	u8 cur_oper_chwidth;
++	u8 cur_seg0;
++	u8 cur_seg1;
++	int start_chan_idx, start_chan_idx1, n_chans, n_chans1;
++	int res = 1;
++
++	if (!revert->valid)
++		return true;
++
++	cur_channel = iface->conf->channel;
++	cur_freq = iface->freq;
++	cur_secondary_channel = iface->conf->secondary_channel;
++	cur_oper_chwidth = hostapd_get_oper_chwidth(iface->conf);
++	cur_seg0 = hostapd_get_oper_centr_freq_seg0_idx(iface->conf);
++	cur_seg1 = hostapd_get_oper_centr_freq_seg1_idx(iface->conf);
++
++	iface->conf->channel = revert->channel;
++	iface->freq = revert->freq;
++	iface->conf->secondary_channel = revert->secondary_channel;
++	hostapd_set_oper_chwidth(iface->conf, revert->oper_chwidth);
++	hostapd_set_oper_centr_freq_seg0_idx(iface->conf, revert->oper_centr_freq_seg0_idx);
++	hostapd_set_oper_centr_freq_seg1_idx(iface->conf, revert->oper_centr_freq_seg1_idx);
++
++	start_chan_idx = dfs_get_start_chan_idx(iface, &start_chan_idx1);
++	if (start_chan_idx >= 0) {
++		n_chans = dfs_get_used_n_chans(iface, &n_chans1);
++		res = dfs_check_chans_unavailable(iface, start_chan_idx, n_chans);
++		if (!res && start_chan_idx1 >= 0 && n_chans1 > 0)
++			res = dfs_check_chans_unavailable(iface, start_chan_idx1, n_chans1);
++	}
++
++	iface->conf->channel = cur_channel;
++	iface->freq = cur_freq;
++	iface->conf->secondary_channel = cur_secondary_channel;
++	hostapd_set_oper_chwidth(iface->conf, cur_oper_chwidth);
++	hostapd_set_oper_centr_freq_seg0_idx(iface->conf, cur_seg0);
++	hostapd_set_oper_centr_freq_seg1_idx(iface->conf, cur_seg1);
++
++	return !!res;
++}
++
++static void mxl_dfs_apply_revert_chandef(struct hostapd_iface *iface)
++{
++	struct mxl_dfs_revert_chandef *revert = &iface->mxl_iface.dfs_revert_chandef;
++
++	iface->conf->channel = revert->channel;
++	iface->freq = revert->freq;
++	iface->conf->secondary_channel = revert->secondary_channel;
++	hostapd_set_oper_chwidth(iface->conf, revert->oper_chwidth);
++	hostapd_set_oper_centr_freq_seg0_idx(iface->conf, revert->oper_centr_freq_seg0_idx);
++	hostapd_set_oper_centr_freq_seg1_idx(iface->conf, revert->oper_centr_freq_seg1_idx);
++}
++
++static bool mxl_dfs_check_nop_status(struct hostapd_iface *iface)
++{
++	struct mxl_dfs_revert_chandef *revert = &iface->mxl_iface.dfs_revert_chandef;
++
++	/* Check if current configuration differs from stored revert configuration */
++	if (iface->conf->channel != revert->channel ||
++	    iface->freq != revert->freq ||
++	    iface->conf->secondary_channel != revert->secondary_channel ||
++	    hostapd_get_oper_chwidth(iface->conf) != revert->oper_chwidth ||
++	    hostapd_get_oper_centr_freq_seg0_idx(iface->conf) != revert->oper_centr_freq_seg0_idx ||
++	    hostapd_get_oper_centr_freq_seg1_idx(iface->conf) != revert->oper_centr_freq_seg1_idx)
++		return true;
++
++	return false;
++}
+ #endif /* CONFIG_VENDOR_MXL */
+ 
+ int hostapd_dfs_radar_detected(struct hostapd_iface *iface, int freq,
+@@ -1756,6 +1852,10 @@ int hostapd_dfs_radar_detected(struct hostapd_iface *iface, int freq,
+ 		return 0;
+ 
+ #ifdef CONFIG_VENDOR_MXL
++	if (!mxl_hostapd_dfs_is_background_event(iface, freq, cf1) &&
++	    dfs_are_channels_overlapped(iface, freq, chan_width, cf1, cf2))
++		mxl_dfs_store_revert_chandef(iface);
++
+ 	mxl_hostapd_dfs_file_radar(iface);
+ 
+ 	if (mxl_hostapd_handle_background_radar(iface, freq, cf1, chan_width))
+@@ -1806,6 +1906,26 @@ int hostapd_dfs_nop_finished(struct hostapd_iface *iface, int freq,
+ 
+ #ifdef CONFIG_VENDOR_MXL
+ 	mxl_hostapd_dfs_file_update(iface, false);
++
++	if (iface->mxl_iface.dfs_revert_chandef.valid) {
++		if (!mxl_dfs_revert_chandef_unavailable(iface)) {
++			if (mxl_dfs_check_nop_status(iface)) {
++				wpa_printf(MSG_INFO,
++					   "DFS: NOP finished on %d MHz, restoring original chandef ch=%d freq=%d width=%d",
++					   freq,
++					   iface->mxl_iface.dfs_revert_chandef.channel,
++					   iface->mxl_iface.dfs_revert_chandef.freq,
++					   iface->mxl_iface.dfs_revert_chandef.oper_chwidth);
++				mxl_dfs_apply_revert_chandef(iface);
++				iface->mxl_iface.dfs_revert_chandef.valid = false;
++				hostapd_disable_iface(iface);
++				hostapd_enable_iface(iface);
++				return 0;
++			}
++
++			iface->mxl_iface.dfs_revert_chandef.valid = false;
++		}
++	}
+ #endif /* CONFIG_VENDOR_MXL */
+ 
+ 	if (iface->state == HAPD_IFACE_DFS && !iface->cac_started) {
+diff --git a/src/ap/mxl_hostapd.h b/src/ap/mxl_hostapd.h
+index 1bf25e5c9..326c77bd4 100644
+--- a/src/ap/mxl_hostapd.h
++++ b/src/ap/mxl_hostapd.h
+@@ -95,12 +95,23 @@ struct acs_second_best_channel_params {
+ 	bool sec_channel_cac;
+ };
+ 
++struct mxl_dfs_revert_chandef {
++	bool valid;
++	u8 channel;
++	int freq;
++	int secondary_channel;
++	u8 oper_chwidth;
++	u8 oper_centr_freq_seg0_idx;
++	u8 oper_centr_freq_seg1_idx;
++};
++
+ struct mxl_hostapd_iface {
+ 	u32 sta_aid_link[MXL_AID_WORDS];
+ 	s8 stas_free_reason; /* the reason for all stations remove */
+ 	unsigned int acs_update_in_progress:1;
+ 	unsigned int cac_required:1;
+ 	int in_scan;
++	struct mxl_dfs_revert_chandef dfs_revert_chandef;
+ 	struct acs_second_best_channel_params sec_best_ch;
+ 
+ #ifdef CONFIG_ACS
+-- 
+2.43.0
+
