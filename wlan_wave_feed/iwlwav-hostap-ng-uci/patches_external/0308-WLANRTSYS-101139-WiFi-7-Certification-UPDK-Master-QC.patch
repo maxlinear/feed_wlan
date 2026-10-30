@@ -1,0 +1,73 @@
+From 4ac027fe2cc26c9a04532526cba7b6447f70421d Mon Sep 17 00:00:00 2001
+From: Venkatasaiprudhvi Raj Sannidhi <vsannidhi@maxlinear.com>
+Date: Wed, 29 Apr 2026 02:45:24 -0700
+Subject: [PATCH] WLANRTSYS-101139 [WiFi-7 Certification][UPDK][Master] QCA STA
+ failed to connect to AP Issue: In Wifi7 R1 certification tests , the Qualcomm
+ and Intel clients fail to associate to the MXL AP.
+
+RCA: Currently hostap-ng includes the MLO Link KDEs for all the affiliated links
+in the EAPOL M3 irrespective of the STA's no of links.
+Thereby the testbed QCA STA which associates in single link (no
+per STA profile observed in Association request) sends deauth to MXL AP.
+
+Fix: For certification, in case of single link association, donot include the sibling BSS's
+MLO Link KDE.
+
+Fixup commit: WLANRTSYS-57523: Implement CONFIG_WIFI_CERTIFICATION
+
+Signed-off-by: Venkatasaiprudhvi Raj Sannidhi <vsannidhi@maxlinear.com>
+---
+ src/ap/mxl_wpa_auth.c | 16 ++++++++++++++++
+ 1 file changed, 16 insertions(+)
+
+diff --git a/src/ap/mxl_wpa_auth.c b/src/ap/mxl_wpa_auth.c
+index 644e11fd2..90d7edc44 100644
+--- a/src/ap/mxl_wpa_auth.c
++++ b/src/ap/mxl_wpa_auth.c
+@@ -423,6 +423,13 @@ static size_t mxl_ml_wpa_auth_kdes_len(struct wpa_state_machine *sm)
+ 	if (rsn_is_snonce_cookie(sm->SNonce)) {
+ 		kde_len += wpa_auth_ml_rsno_kde_len(sm, sm->wpa_auth, wpa_ie, wpa_ie_len);
+ 	}
++#ifdef CONFIG_WIFI_CERTIFICATION
++	if (!mxl_wpa_is_multi_link_sta(sm)) {
++		/* For Wi-Fi 7 R1 certification, for single link STA, include only link specific KDE */
++		goto group_kdes;
++	}
++#endif /* CONFIG_WIFI_CERTIFICATION */
++
+ 	/* MLO link RSN KDE is consturcted for all affiliated links */
+ 	mxl_wpa_for_each_sibling_wpa_auth(sibling_wpa_auth, sm->wpa_auth) {
+ 		if (!sibling_wpa_auth)
+@@ -435,6 +442,7 @@ static size_t mxl_ml_wpa_auth_kdes_len(struct wpa_state_machine *sm)
+ 		}
+ 	}
+ 
++group_kdes:
+ 	/* MLO Group KDEs len */
+ 	kde_len += mxl_ml_wpa_auth_group_kdes_len(sm);
+ 
+@@ -464,6 +472,13 @@ static u8 * mxl_ml_wpa_auth_kdes(struct wpa_state_machine *sm, u8 *pos)
+ 		if (!pos)
+ 			return NULL;
+ 	}
++#ifdef CONFIG_WIFI_CERTIFICATION
++	if (!mxl_wpa_is_multi_link_sta(sm)) {
++		/* For Wi-Fi 7 R1 certification, for single link STA, include only link specific KDE */
++		goto group_kdes;
++	}
++#endif /* CONFIG_WIFI_CERTIFICATION */
++
+ 	/* MLO link RSN/RSNX KDEs is consturcted for all affiliated links */
+ 	mxl_wpa_for_each_sibling_wpa_auth(sibling_wpa_auth, sm->wpa_auth) {
+ 		if (!sibling_wpa_auth)
+@@ -480,6 +495,7 @@ static u8 * mxl_ml_wpa_auth_kdes(struct wpa_state_machine *sm, u8 *pos)
+ 		}
+ 	}
+ 
++group_kdes:
+ 	/* MLO Group KDEs */
+ 	pos = mxl_wpa_auth_ml_group_kdes(sm, pos);
+ 
+-- 
+2.43.0
+

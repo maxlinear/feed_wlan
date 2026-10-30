@@ -1,0 +1,55 @@
+From c6660bd17029eb736f10f126132079edf28c3338 Mon Sep 17 00:00:00 2001
+From: Venkatasaiprudhvi Raj Sannidhi <vsannidhi@maxlinear.com>
+Date: Fri, 15 May 2026 03:23:16 -0700
+Subject: [PATCH] WLANRTSYS-101334 Hostap-ng Fix Klocwork issues Fix new issues
+ reported by external KW tool
+
+Fixup to: WLANRTSYS-101334 Fix Klocwork issues
+Signed-off-by: Venkatasaiprudhvi Raj Sannidhi <vsannidhi@maxlinear.com>
+---
+ src/ap/mxl_wpa_auth.c | 8 ++++++++
+ 1 file changed, 8 insertions(+)
+
+diff --git a/src/ap/mxl_wpa_auth.c b/src/ap/mxl_wpa_auth.c
+index c44f0270a..644e11fd2 100644
+--- a/src/ap/mxl_wpa_auth.c
++++ b/src/ap/mxl_wpa_auth.c
+@@ -285,6 +285,8 @@ u8 * mxl_wpa_auth_ml_group_kdes(struct wpa_state_machine *sm, u8 *pos)
+ 	os_memset(&igtk_hdr[2], 0, PN_LENGTH);
+ 	igtk_hdr[8] = (sm->wpa_auth->mlo_conf.wpa_link_conf.link_id << 4);
+ 	len = wpa_cipher_key_len(sm->wpa_auth->conf.group_mgmt_cipher);
++	if (gsm->GN_igtk < 4 || gsm->GN_igtk > 5)
++		return NULL;
+ 	memcpy_s(&igtk_hdr[9], len, gsm->IGTK[gsm->GN_igtk - 4], len);
+ 	pos = wpa_add_kde(pos, RSN_KEY_DATA_MLO_IGTK, igtk_hdr, 2 + PN_LENGTH + 1 + len, NULL, 0);
+ 	/* IGTK for sibling links */
+@@ -300,6 +302,8 @@ u8 * mxl_wpa_auth_ml_group_kdes(struct wpa_state_machine *sm, u8 *pos)
+ 		igtk_hdr[1] = 0;
+ 		os_memset(&igtk_hdr[2], 0, PN_LENGTH);
+ 		igtk_hdr[8] = (sibling_wpa_auth->mlo_conf.wpa_link_conf.link_id << 4);
++		if (sib_gsm->GN_igtk < 4 || sib_gsm->GN_igtk > 5)
++			continue;
+ 		memcpy_s(&igtk_hdr[9], len, sib_gsm->IGTK[sib_gsm->GN_igtk - 4], len);
+ 		pos = wpa_add_kde(pos, RSN_KEY_DATA_MLO_IGTK, igtk_hdr, 2 + PN_LENGTH + 1 + len, NULL, 0);
+ 	}
+@@ -323,6 +327,8 @@ u8 * mxl_wpa_auth_ml_group_kdes(struct wpa_state_machine *sm, u8 *pos)
+ 			memcpy_s(&bigtk_hdr[2], PN_LENGTH, rsc, PN_LENGTH);
+ 
+ 		bigtk_hdr[8] = (sm->wpa_auth->mlo_conf.wpa_link_conf.link_id << 4);
++		if (gsm->GN_bigtk < 6 || gsm->GN_bigtk > 7)
++			return NULL;
+ 		memcpy_s(&bigtk_hdr[9], len, gsm->BIGTK[gsm->GN_bigtk - 6], len);
+ 		pos = wpa_add_kde(pos, RSN_KEY_DATA_MLO_BIGTK, bigtk_hdr, 2 + PN_LENGTH + 1 + len, NULL, 0);
+ 	}
+@@ -352,6 +358,8 @@ u8 * mxl_wpa_auth_ml_group_kdes(struct wpa_state_machine *sm, u8 *pos)
+ 			memcpy_s(&bigtk_hdr[2], PN_LENGTH, rsc, PN_LENGTH);
+ 
+ 		bigtk_hdr[8] = (sibling_wpa_auth->mlo_conf.wpa_link_conf.link_id << 4);
++		if (sib_gsm->GN_bigtk < 6 || sib_gsm->GN_bigtk > 7)
++			continue;
+ 		memcpy_s(&bigtk_hdr[9], len, sib_gsm->BIGTK[sib_gsm->GN_bigtk - 6], len);
+ 		pos = wpa_add_kde(pos, RSN_KEY_DATA_MLO_BIGTK, bigtk_hdr, 2 + PN_LENGTH + 1 + len, NULL, 0);
+ 	}
+-- 
+2.43.0
+

@@ -1,0 +1,54 @@
+From f4272c7e209dbfcde01ee97a5b7121bb50b49743 Mon Sep 17 00:00:00 2001
+From: "mujiburrahimank@maxlinear.com"
+ <mujiburrahimank@lvdocker7.lvsw.maxlinear.com>
+Date: Fri, 10 Jul 2026 03:59:08 -0700
+Subject: [PATCH] WLANRTSYS-102143 : Add Missing MXL vendor flag in MBSSID
+ function
+
+Fixup: WLANRTSYS-53245: Add support for MBSSID
+---
+ src/ap/ieee802_11_shared.c | 2 ++
+ src/ap/wpa_auth_ie.c       | 2 ++
+ 2 files changed, 4 insertions(+)
+
+diff --git a/src/ap/ieee802_11_shared.c b/src/ap/ieee802_11_shared.c
+index 8bd66adff..42a29bf44 100644
+--- a/src/ap/ieee802_11_shared.c
++++ b/src/ap/ieee802_11_shared.c
+@@ -1755,11 +1755,13 @@ u8 * hostapd_eid_multiple_bssid(struct hostapd_data *hapd, u8 *eid, bool is_beac
+ 		if (bss->conf->wpa_ie_required_for_mbss) {
+ 			/* create wpa_auth_conf from bss configuration */
+ 			hostapd_wpa_auth_conf(hapd->iface, bss->conf, bss->iconf, wpa_auth_conf);
++#ifdef CONFIG_VENDOR_MXL
+ 			if (wpa_auth_conf_gen_multibss_wpa_ie(wpa_auth_conf, &wpa_ie, &wpa_ie_len) < 0) {
+ 				wpa_printf(MSG_ERROR,"Multibss WPA-IE create failed !!!");
+ 				eid = NULL;
+ 				goto end;
+ 			}
++#endif /* CONFIG_VENDOR_MXL */
+ 
+ 			if (wpa_ie && wpa_ie_len) {
+ 				wpa_hexdump(MSG_DEBUG," Non-transmit BSS (MultiBSSID) wpa_ie dump", wpa_ie, wpa_ie_len);
+diff --git a/src/ap/wpa_auth_ie.c b/src/ap/wpa_auth_ie.c
+index 455d0a89c..64ae2cda9 100644
+--- a/src/ap/wpa_auth_ie.c
++++ b/src/ap/wpa_auth_ie.c
+@@ -1617,6 +1617,7 @@ bool wpa_auth_write_fd_rsn_info(struct wpa_authenticator *wpa_auth,
+ 
+ #endif /* CONFIG_FILS */
+ 
++#ifdef CONFIG_VENDOR_MXL
+ int wpa_auth_conf_gen_multibss_wpa_ie(struct wpa_auth_config *conf, u8 **wpa_ie, size_t *wpa_ie_len)
+ {
+ 	u8 *pos, buf[WPA_IE_MAX_LEN + WPA_RSNO_IE_EXTRA_LEN] = {0};
+@@ -1688,6 +1689,7 @@ int wpa_auth_conf_gen_multibss_wpa_ie(struct wpa_auth_config *conf, u8 **wpa_ie,
+ 	}
+ 	return -1;
+ }
++#endif /* CONFIG_VENDOR_MXL */
+ 
+ #ifdef CONFIG_WDS_WPA
+ /**
+-- 
+2.43.0
+

@@ -1,0 +1,42 @@
+From 45ba65c3fcad50c2328e8b18d20207b686e344de Mon Sep 17 00:00:00 2001
+From: Sathyananda Reddy <kmsreddy@maxlinear.com>
+Date: Fri, 12 Jun 2026 04:44:59 -0700
+Subject: [PATCH] WLANRTSYS-101775 Fix for missing FILS and UPR in MLO-enabled
+ mode Removed MLO enable guard which caused an early return when MLO is
+ enabled, resulting in FilsDiscoveryMaxInterval and
+ UnsolBcastProbeRespInterval not being applied. Fixup to:WLANRTSYS-60843 MLO
+ changes: AP MLD configuration
+
+---
+ src/ap/beacon.c | 8 --------
+ 1 file changed, 8 deletions(-)
+
+diff --git a/src/ap/beacon.c b/src/ap/beacon.c
+index a5f34514f..335287987 100644
+--- a/src/ap/beacon.c
++++ b/src/ap/beacon.c
+@@ -2157,10 +2157,6 @@ u8 * hostapd_unsol_bcast_probe_resp(struct hostapd_data *hapd,
+ 				    struct unsol_bcast_probe_resp *ubpr)
+ {
+ 	struct probe_resp_params probe_params;
+-#ifdef CONFIG_IEEE80211BE_MXL_MLO
+-	if (mxl_is_mlo_enabled(hapd->conf))
+-		return NULL;
+-#endif /* CONFIG_IEEE80211BE_MXL_MLO */
+ 
+ 	if (!is_6ghz_op_class(hapd->iconf->op_class))
+ 		return NULL;
+@@ -2523,10 +2519,6 @@ static u8 * hostapd_gen_fils_discovery(struct hostapd_data *hapd, size_t *len)
+ static u8 * hostapd_fils_discovery(struct hostapd_data *hapd,
+ 				   struct wpa_driver_ap_params *params)
+ {
+-#ifdef CONFIG_IEEE80211BE_MXL_MLO
+-	if (mxl_is_mlo_enabled(hapd->conf))
+-		return NULL;
+-#endif /* CONFIG_IEEE80211BE_MXL_MLO */
+ 	params->fd_max_int = hapd->conf->fils_discovery_max_int;
+ 	if (is_6ghz_op_class(hapd->iconf->op_class) &&
+ 	    params->fd_max_int > FD_MAX_INTERVAL_6GHZ)
+-- 
+2.43.0
+

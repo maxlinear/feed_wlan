@@ -1,0 +1,429 @@
+From 1cec098e1e7d6668a8abed36564bbf1c1f860f9f Mon Sep 17 00:00:00 2001
+From: Nikita Chernikov <nchernikov@maxlinear.com>
+Date: Tue, 2 Jun 2026 11:21:59 +0300
+Subject: [PATCH] WLANRTSYS-101987 MLO: Single Link MLD Support
+
+- Single Link MLD configuration support
+- Handle and add MLD enabled disabled events
+- MBSSID ML IE non-inheritence
+
+Fixup to: WLANRTSYS-96596 MLO: Triband MLD Support
+
+Signed-off-by: Nikita Chernikov <nchernikov@maxlinear.com>
+---
+ src/ap/ieee802_11_shared.c         | 13 +++++
+ src/ap/mxl_config.h                |  2 +-
+ src/ap/mxl_events.c                | 79 ++++++++++++++++++++++++++++++
+ src/ap/mxl_hostapd.c               | 21 ++++++++
+ src/ap/mxl_hostapd.h               |  1 +
+ src/ap/mxl_mld.c                   |  8 ++-
+ src/common/mxl_vendor.h            |  2 +
+ src/common/mxl_wpa_ctrl.h          |  5 ++
+ src/common/vendor_cmds_copy.h      | 11 +++++
+ src/drivers/driver_nl80211_event.c |  6 +++
+ src/drivers/mxl_driver_nl80211.c   | 14 ++++++
+ src/drivers/mxl_driver_nl80211.h   |  2 +
+ 12 files changed, 162 insertions(+), 2 deletions(-)
+
+diff --git a/src/ap/ieee802_11_shared.c b/src/ap/ieee802_11_shared.c
+index 46883d305..8bd66adff 100644
+--- a/src/ap/ieee802_11_shared.c
++++ b/src/ap/ieee802_11_shared.c
+@@ -1499,6 +1499,9 @@ static int get_non_tx_bss_len(struct hostapd_data *bss, bool is_beacon,
+ 	bool non_inherit_ie_for_twt = false;
+ #endif
+ 	bool non_inherit_ie_for_owe = false;
++#ifdef CONFIG_IEEE80211BE_MXL_MLO
++	bool non_inherit_ie_for_ml = false;
++#endif /* CONFIG_IEEE80211BE_MXL_MLO */
+ 	/* ssid length check */
+ 	if (!bss->conf->ignore_broadcast_ssid) {
+ 		len = len + bss->conf->ssid.ssid_len;
+@@ -1526,11 +1529,17 @@ static int get_non_tx_bss_len(struct hostapd_data *bss, bool is_beacon,
+ 		hostapd_can_send_btwt_config(bss->iface->bss[tx_bss_idx]));
+ #endif /* CONFIG_IEEE80211AX */
+ 	non_inherit_ie_for_owe = mxl_hostapd_check_non_inherit_rsnxe(bss);
++#ifdef CONFIG_IEEE80211BE_MXL_MLO
++	non_inherit_ie_for_ml = mxl_hostapd_check_non_inherit_ml_ie(bss);
++#endif /* CONFIG_IEEE80211BE_MXL_MLO */
+ 
+ 	if (!(
+ #ifdef CONFIG_IEEE80211AX
+ 		non_inherit_ie_for_twt ||
+ #endif /* CONFIG_IEEE80211AX */
++#ifdef CONFIG_IEEE80211BE_MXL_MLO
++		non_inherit_ie_for_ml ||
++#endif /* CONFIG_IEEE80211BE_MXL_MLO */
+ 		non_inherit_ie_for_owe))
+ 		return len;
+ 
+@@ -1541,6 +1550,10 @@ static int get_non_tx_bss_len(struct hostapd_data *bss, bool is_beacon,
+ #endif /* CONFIG_IEEE80211AX */
+ 	if (non_inherit_ie_for_owe)
+ 		len = len + 1;
++#ifdef CONFIG_IEEE80211BE_MXL_MLO
++	if (non_inherit_ie_for_ml)
++		len = len + 1;
++#endif /* CONFIG_IEEE80211BE_MXL_MLO */
+ #endif /* CONFIG_IEEE80211AX */
+ 	return len;
+ }
+diff --git a/src/ap/mxl_config.h b/src/ap/mxl_config.h
+index 59bd1d711..22e904547 100644
+--- a/src/ap/mxl_config.h
++++ b/src/ap/mxl_config.h
+@@ -344,7 +344,7 @@ typedef struct colocated_6g_ap_info {
+ #define MLO_MEDIUM_SYNC_OFDMED_THRESH_MAX 10
+ #define MLO_MEDIUM_SYNC_MAXTXOP_MAX 15
+ 
+-#define LINKS_PER_AP_MLD_MIN   2
++#define LINKS_PER_AP_MLD_MIN   1
+ #define LINKS_PER_AP_MLD_MAX   3
+ 
+ typedef u8 macaddr[ETH_ALEN];
+diff --git a/src/ap/mxl_events.c b/src/ap/mxl_events.c
+index 45e21aa81..25f88e705 100644
+--- a/src/ap/mxl_events.c
++++ b/src/ap/mxl_events.c
+@@ -14,6 +14,7 @@
+ #include "utils/includes.h"
+ #include "utils/common.h"
+ #include "hostapd.h"
++#include "common/mxl_wpa_ctrl.h"
+ #include "mxl_hostapd.h"
+ #include "mxl_dfs_common.h"
+ #include "mxl_wds.h"
+@@ -27,6 +28,8 @@ enum mxl_event_type {
+ 	EVENT_MXL_WDS_CONNECT,
+ 	EVENT_MXL_WDS_DISCONNECT,
+ 	EVENT_MXL_REGDB_UPDATE,
++	EVENT_MXL_NEW_MLD_VAP,
++	EVENT_MXL_DEL_MLD_VAP,
+ };
+ 
+ union mxl_event_data {
+@@ -63,6 +66,16 @@ union mxl_event_data {
+ 	} wds_sta_info_data;
+ 
+ 	struct mxl_update_power_reg_info regdb_status;
++
++	struct new_mld_vap {
++		const u8 *data;
++		size_t data_len;
++	} new_mld_vap;
++
++	struct del_mld_vap {
++		const u8 *data;
++		size_t data_len;
++	} del_mld_vap;
+ };
+ 
+ static const char * mxl_event_to_string(enum mxl_event_type event)
+@@ -77,6 +90,8 @@ static const char * mxl_event_to_string(enum mxl_event_type event)
+ 	E2S(MXL_WDS_CONNECT);
+ 	E2S(MXL_WDS_DISCONNECT);
+ 	E2S(MXL_REGDB_UPDATE);
++	E2S(MXL_NEW_MLD_VAP);
++	E2S(MXL_DEL_MLD_VAP);
+ 	}
+ 
+ 	return "UNKNOWN";
+@@ -212,6 +227,46 @@ static int mxl_hostapd_event_6ghz_regdb_update_info(struct hostapd_data *hapd, u
+ 	return 0;
+ }
+ 
++static void mxl_event_new_mld_vap(struct hostapd_data *hapd, const u8 *data, size_t data_len)
++{
++#ifdef CONFIG_IEEE80211BE_MXL_MLO
++	struct hostapd_iface *iface = hapd->iface;
++	struct mxl_new_mld_vap *msg_new_mld_vap = (struct mxl_new_mld_vap*)data;
++
++	if (data_len != sizeof(struct mxl_new_mld_vap)) {
++		wpa_printf(MSG_ERROR, "wrong new mld vap data event, size %zu expected %zu",
++			   data_len, sizeof(struct mxl_new_mld_vap));
++		return;
++	}
++	wpa_msg(iface->bss[0]->msg_ctx, MSG_INFO, MLD_AP_ENABLED "mld_mac=" MACSTR " num_links=%d",
++		   MAC2STR(msg_new_mld_vap->mld_addr), msg_new_mld_vap->num_of_links);
++#else
++	(void)data;
++	(void)data_len;
++	wpa_printf(MSG_WARNING, "%s: Unexpected MLD AP enabled event", hapd->conf->iface);
++#endif /* CONFIG_IEEE80211BE_MXL_MLO */
++}
++
++static void mxl_event_del_mld_vap(struct hostapd_data *hapd, const u8 *data, size_t data_len)
++{
++#ifdef CONFIG_IEEE80211BE_MXL_MLO
++	struct hostapd_iface *iface = hapd->iface;
++	struct mxl_del_mld_vap *msg_del_mld_vap = (struct mxl_del_mld_vap*)data;
++
++	if (data_len != sizeof(struct mxl_del_mld_vap)) {
++		wpa_printf(MSG_ERROR, "wrong del mld vap data event, size %zu expected %zu",
++			   data_len, sizeof(struct mxl_del_mld_vap));
++		return;
++	}
++	wpa_msg(iface->bss[0]->msg_ctx, MSG_INFO, MLD_AP_DISABLED "mld_mac="MACSTR,
++		   MAC2STR(msg_del_mld_vap->mld_addr));
++#else
++	(void)data;
++	(void)data_len;
++	wpa_printf(MSG_WARNING, "%s: Unexpected MLD AP disabled event", hapd->conf->iface);
++#endif /* CONFIG_IEEE80211BE_MXL_MLO */
++}
++
+ static void mxl_process_event(void *ctx, enum mxl_event_type event,
+ 			  union mxl_event_data *data)
+ {
+@@ -254,6 +309,12 @@ static void mxl_process_event(void *ctx, enum mxl_event_type event,
+ 						     data->regdb_status.flags,
+ 						     data->regdb_status.curr_power_mode);
+ 		break;
++	case EVENT_MXL_NEW_MLD_VAP:
++		mxl_event_new_mld_vap(hapd, data->new_mld_vap.data, data->new_mld_vap.data_len);
++		break;
++	case EVENT_MXL_DEL_MLD_VAP:
++		mxl_event_del_mld_vap(hapd, data->del_mld_vap.data, data->del_mld_vap.data_len);
++		break;
+ 	default:
+ 		wpa_printf(MSG_ERROR, "Unknown MXL event %d", event);
+ 		break;
+@@ -279,6 +340,24 @@ void mxl_drv_event_chan_data(void *ctx, const u8 *data, size_t data_len)
+ 	mxl_process_event(ctx, EVENT_MXL_CHAN_DATA, &event);
+ }
+ 
++void mxl_drv_event_new_mld_vap(void *ctx, const u8 *data, size_t data_len)
++{
++	union mxl_event_data event;
++	os_memset(&event, 0, sizeof(event));
++	event.new_mld_vap.data = data;
++	event.new_mld_vap.data_len = data_len;
++	mxl_process_event(ctx, EVENT_MXL_NEW_MLD_VAP, &event);
++}
++
++void mxl_drv_event_del_mld_vap(void *ctx, const u8 *data, size_t data_len)
++{
++	union mxl_event_data event;
++	os_memset(&event, 0, sizeof(event));
++	event.del_mld_vap.data = data;
++	event.del_mld_vap.data_len = data_len;
++	mxl_process_event(ctx, EVENT_MXL_DEL_MLD_VAP, &event);
++}
++
+ void mxl_drv_event_radar(void *ctx, const u8 *data, size_t data_len)
+ {
+ 	union mxl_event_data event;
+diff --git a/src/ap/mxl_hostapd.c b/src/ap/mxl_hostapd.c
+index 69c34c4bd..53780697c 100644
+--- a/src/ap/mxl_hostapd.c
++++ b/src/ap/mxl_hostapd.c
+@@ -3108,6 +3108,11 @@ void mxl_set_csa_status_on_all_reporting_link(struct hostapd_iface *iface, bool
+ 		}
+ 	}
+ }
++
++bool mxl_hostapd_check_non_inherit_ml_ie(struct hostapd_data *hapd)
++{
++	return (mxl_ml_is_mlo_on_tx_bss(hapd) && !mxl_is_mlo_enabled(hapd->conf));
++}
+ #endif /* CONFIG_IEEE80211BE_MXL_MLO */
+ 
+ int mxl_switch_channel(struct hostapd_data *hapd, struct csa_settings *settings)
+@@ -3315,6 +3320,9 @@ u8 * mxl_hostapd_eid_non_inheritance(struct hostapd_data *hapd, u8 *eid, bool is
+ {
+ 	bool non_inherit_ie_for_twt = false;
+ 	bool non_inherit_ie_for_owe = false;
++#ifdef CONFIG_IEEE80211BE_MXL_MLO
++	bool non_inherit_ie_for_ml = false;
++#endif /* CONFIG_IEEE80211BE_MXL_MLO */
+ 	u8 *pos = eid;
+ 	u8 eid_len = 0, eid_ext_len = 0;
+ 	u8 *eid_len_ptr, *eid_ext_len_ptr, *ie_len_ptr, *data_pos;
+@@ -3324,11 +3332,17 @@ u8 * mxl_hostapd_eid_non_inheritance(struct hostapd_data *hapd, u8 *eid, bool is
+ 		hostapd_can_send_btwt_config(hapd->iface->bss[tx_bss_idx]));
+ #endif /* CONFIG_IEEE80211AX */
+ 	non_inherit_ie_for_owe = mxl_hostapd_check_non_inherit_rsnxe(hapd);
++#ifdef CONFIG_IEEE80211BE_MXL_MLO
++	non_inherit_ie_for_ml = mxl_hostapd_check_non_inherit_ml_ie(hapd);
++#endif /* CONFIG_IEEE80211BE_MXL_MLO */
+ 
+ 	if (!(
+ #ifdef CONFIG_IEEE80211AX
+ 	non_inherit_ie_for_twt ||
+ #endif /* CONFIG_IEEE80211AX */
++#ifdef CONFIG_IEEE80211BE_MXL_MLO
++	non_inherit_ie_for_ml ||
++#endif /* CONFIG_IEEE80211BE_MXL_MLO */
+ 	non_inherit_ie_for_owe))
+ 		return pos;
+ 
+@@ -3355,6 +3369,13 @@ u8 * mxl_hostapd_eid_non_inheritance(struct hostapd_data *hapd, u8 *eid, bool is
+ 	eid_ext_len_ptr = pos;
+ 	*pos++ = 0;
+ 
++#ifdef CONFIG_IEEE80211BE_MXL_MLO
++	if (non_inherit_ie_for_ml) {
++		*pos++ = WLAN_EID_EXT_MULTI_LINK;
++		eid_ext_len++;
++	}
++#endif /* CONFIG_IEEE80211BE_MXL_MLO */
++
+ 	*eid_ext_len_ptr = eid_ext_len;
+ 	*ie_len_ptr = pos - data_pos;
+ 
+diff --git a/src/ap/mxl_hostapd.h b/src/ap/mxl_hostapd.h
+index 326c77bd4..5710c1970 100644
+--- a/src/ap/mxl_hostapd.h
++++ b/src/ap/mxl_hostapd.h
+@@ -385,6 +385,7 @@ void mxl_hostapd_deinit_mld_params(struct hostapd_data *hapd);
+ void mxl_mlo_hostapd_cleanup_cs_params(struct hostapd_data *hapd);
+ void mxl_mlo_hostapd_cleanup_cca_params(struct hostapd_data *hapd);
+ void mxl_set_csa_status_on_all_reporting_link(struct hostapd_iface *iface, bool status);
++bool mxl_hostapd_check_non_inherit_ml_ie(struct hostapd_data *hapd);
+ #endif /* CONFIG_IEEE80211BE_MXL_MLO */
+ void mxl_parse_rnr(struct ieee802_11_elems *elems, struct dl_list *rnr_scan_6g_ap_info);
+ void mxl_hostapd_check_limit_reached(struct hostapd_data *hapd, const u8 *sta_addr, u16 *resp);
+diff --git a/src/ap/mxl_mld.c b/src/ap/mxl_mld.c
+index f0814b6c8..df9b76941 100644
+--- a/src/ap/mxl_mld.c
++++ b/src/ap/mxl_mld.c
+@@ -313,6 +313,10 @@ static bool mxl_hostapd_verify_mld_config(struct p_ap_mld *mld)
+ 	bool is_invalid_mld_id = false;
+ 	bool is_rsno_enabled = false;
+ 
++	if (mxl_mlo_is_single_band_mld(mld)) {
++		return true;
++	}
++
+ 	if (!mxl_mld_check_rsno_config(mld)) {
+ 		wpa_printf(MSG_ERROR, "MXL_MLO: Invalid RSNO config");
+ 		return false;
+@@ -807,7 +811,7 @@ int mxl_mld_setup_interfaces(struct hapd_interfaces *interfaces)
+ 	struct p_ap_mld *mld = NULL;
+ 	int num6ghz_mld_vaps = 0;
+ 
+-	if (interfaces->count <= 1)
++	if (interfaces->count < 1)
+ 		return 0;
+ 
+ 	for (int i = 0; i < MAX_SUPPORTED_MLDS; i++) {
+@@ -2366,6 +2370,8 @@ static u16 mxl_mld_handle_wds_pending_assoc(struct hostapd_data *hapd, struct st
+ 		return WLAN_STATUS_SUCCESS;
+ 	}
+ 
++	/* Consider as single link initially - until RNR is parsed */
++	new_wds->num_of_links = ML_NUM_OF_LINKS_SINGLE_LINK;
+ 	/* Parse RNR to learn about other ML Links from which to expect WDS event from */
+ 	if (mxl_mld_parse_wds_ml_rnr(hapd, new_wds, ies, ies_len) != WLAN_STATUS_SUCCESS) {
+ 		wpa_printf(MSG_ERROR, "MXL_MLO: Failed to parse WDS ML RNR");
+diff --git a/src/common/mxl_vendor.h b/src/common/mxl_vendor.h
+index e125fe970..0f722fd1f 100644
+--- a/src/common/mxl_vendor.h
++++ b/src/common/mxl_vendor.h
+@@ -48,5 +48,7 @@ MXL_EXPORT_HOSTAPD_EVENT_API(mxl_drv_event_softblock_drop)
+ MXL_EXPORT_HOSTAPD_EVENT_API(mxl_drv_event_wds_connect)
+ MXL_EXPORT_HOSTAPD_EVENT_API(mxl_drv_event_wds_disconnect)
+ MXL_EXPORT_HOSTAPD_EVENT_API(mxl_drv_event_regdb_update)
++MXL_EXPORT_HOSTAPD_EVENT_API(mxl_drv_event_new_mld_vap)
++MXL_EXPORT_HOSTAPD_EVENT_API(mxl_drv_event_del_mld_vap)
+ 
+ #endif /* MXL_VENDOR_H */
+diff --git a/src/common/mxl_wpa_ctrl.h b/src/common/mxl_wpa_ctrl.h
+index 59f6014f0..fb614a96b 100644
+--- a/src/common/mxl_wpa_ctrl.h
++++ b/src/common/mxl_wpa_ctrl.h
+@@ -52,4 +52,9 @@
+ #define RRM_EVENT_STA_STATISTICS_REQUEST_RXED \
+ 	"RRM-STA-STATISTICS-REQUEST-RECEIVED "
+ 
++#ifdef CONFIG_IEEE80211BE_MXL_MLO
++#define MLD_AP_ENABLED "MLD-AP-ENABLED "
++#define MLD_AP_DISABLED "MLD-AP-DISABLED "
++#endif /* CONFIG_IEEE80211BE_MXL_MLO */
++
+ #endif /* MXL_WPA_CTRL_H */
+diff --git a/src/common/vendor_cmds_copy.h b/src/common/vendor_cmds_copy.h
+index 5582c342b..b44f5aa05 100644
+--- a/src/common/vendor_cmds_copy.h
++++ b/src/common/vendor_cmds_copy.h
+@@ -462,6 +462,8 @@ enum ltq_nl80211_vendor_events {
+   LTQ_NL80211_VENDOR_EVENT_DYNAMIC_WMM_UPDATE  = 17,
+   LTQ_NL80211_VENDOR_EVENT_REGDB_INFO_UPDATE   = 18,
+   LTQ_NL80211_VENDOR_EVENT_RX_MEASURE          = 19,
++  LTQ_NL80211_VENDOR_EVENT_NEW_MLD_VAP         = 20,
++  LTQ_NL80211_VENDOR_EVENT_DEL_MLD_VAP         = 21,
+ };
+ 
+ 
+@@ -1066,4 +1068,13 @@ struct mxl_mscs_add_req {
+   u16 aid;
+   u32 stream_timeout;
+ }__attribute__ ((packed));
++
++struct mxl_new_mld_vap {
++  u8 mld_addr[ETH_ALEN];
++  u8 num_of_links;
++} __attribute__ ((packed));
++
++struct mxl_del_mld_vap {
++  u8 mld_addr[ETH_ALEN];
++} __attribute__ ((packed));
+ #endif /* _VENDOR_CMDS_H_ */
+diff --git a/src/drivers/driver_nl80211_event.c b/src/drivers/driver_nl80211_event.c
+index c9c5f2e89..80b165006 100644
+--- a/src/drivers/driver_nl80211_event.c
++++ b/src/drivers/driver_nl80211_event.c
+@@ -3548,6 +3548,12 @@ static void nl80211_vendor_event_mxl(struct wpa_driver_nl80211_data *drv,
+ 		case LTQ_NL80211_VENDOR_EVENT_DYNAMIC_WMM_UPDATE:
+ 			ltq_nl80211_handle_wmm(bss, data, len);
+ 			break;
++		case LTQ_NL80211_VENDOR_EVENT_NEW_MLD_VAP:
++			mxl_nl80211_handle_new_mld_vap(drv, data, len);
++			break;
++		case LTQ_NL80211_VENDOR_EVENT_DEL_MLD_VAP:
++			mxl_nl80211_handle_del_mld_vap(drv, data, len);
++			break;
+ 		default:
+ 			wpa_printf(MSG_DEBUG, "nl80211: Ignore unsupported MXL vendor event %u", subcmd);
+ 			break;
+diff --git a/src/drivers/mxl_driver_nl80211.c b/src/drivers/mxl_driver_nl80211.c
+index 06b598236..a5ace0a59 100644
+--- a/src/drivers/mxl_driver_nl80211.c
++++ b/src/drivers/mxl_driver_nl80211.c
+@@ -250,6 +250,20 @@ void mxl_nl80211_handle_chan_data(struct wpa_driver_nl80211_data *drv, const u8
+ 	return;
+ }
+ 
++void mxl_nl80211_handle_new_mld_vap(struct wpa_driver_nl80211_data *drv, const u8 *data, size_t len)
++{
++	wpa_printf(MSG_DEBUG, "nl80211: Receive MXL vendor event: new MLD VAP, ctx=%p", drv->ctx);
++	mxl_drv_event_new_mld_vap(drv->ctx, data, len);
++	return;
++}
++
++void mxl_nl80211_handle_del_mld_vap(struct wpa_driver_nl80211_data *drv, const u8 *data, size_t len)
++{
++	wpa_printf(MSG_DEBUG, "nl80211: Receive MXL vendor event: delete MLD VAP, ctx=%p", drv->ctx);
++	mxl_drv_event_del_mld_vap(drv->ctx, data, len);
++	return;
++}
++
+ bool mxl_is_ap_interface(struct wpa_driver_nl80211_data *drv) {
+ 	return is_ap_interface(drv->nlmode);
+ }
+diff --git a/src/drivers/mxl_driver_nl80211.h b/src/drivers/mxl_driver_nl80211.h
+index e12855a75..78b60a95e 100644
+--- a/src/drivers/mxl_driver_nl80211.h
++++ b/src/drivers/mxl_driver_nl80211.h
+@@ -45,6 +45,8 @@ int mxl_do_process_drv_event(struct i802_bss *bss, int cmd, struct nlattr **tb);
+ void mxl_wpa_driver_nl80211_scan_abort_timeout(void *eloop_ctx, void *timeout_ctx);
+ 
+ void mxl_nl80211_handle_chan_data(struct wpa_driver_nl80211_data *drv, const u8 *data, size_t len);
++void mxl_nl80211_handle_new_mld_vap(struct wpa_driver_nl80211_data *drv, const u8 *data, size_t len);
++void mxl_nl80211_handle_del_mld_vap(struct wpa_driver_nl80211_data *drv, const u8 *data, size_t len);
+ void mxl_set_timeout(int *timeout, struct mxl_scan_info scan_info);
+ bool mxl_is_ap_interface(struct wpa_driver_nl80211_data *drv);
+ void mxl_nl80211_set_param_scan_timeout(char **pos, const char *param, struct i802_bss *bss);
+-- 
+2.43.0
+
