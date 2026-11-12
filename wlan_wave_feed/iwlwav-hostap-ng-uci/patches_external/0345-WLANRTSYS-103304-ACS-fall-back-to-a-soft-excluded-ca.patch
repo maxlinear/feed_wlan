@@ -1,0 +1,123 @@
+From 54ec1cfb23867152ccc21d9a6bf3680a94169762 Mon Sep 17 00:00:00 2001
+From: hmgokhale <hmgokhale@maxlinear.com>
+Date: Fri, 7 Aug 2026 03:22:56 -0700
+Subject: [PATCH] WLANRTSYS-103304 ACS: fall back to a soft-excluded candidate
+ instead of dropping bandwidth tier when acs_force_fixed_bw is disabled
+
+Signed-off-by: hmgokhale <hmgokhale@maxlinear.com>
+---
+ hostapd/mxl_config.c |  8 ++++++++
+ src/ap/mxl_acs.c     | 31 +++++++++++++++++++++++++++----
+ src/ap/mxl_config.h  |  1 +
+ 3 files changed, 36 insertions(+), 4 deletions(-)
+
+diff --git a/hostapd/mxl_config.c b/hostapd/mxl_config.c
+index 1c3e3a953..60145520d 100644
+--- a/hostapd/mxl_config.c
++++ b/hostapd/mxl_config.c
+@@ -2823,6 +2823,13 @@ int mxl_config_check_smart_acs_config(struct hostapd_config *conf, struct hostap
+ 			return 0;
+ 		}
+ 		mxl_conf->acs_bw_comparison = val;
++	} else if (os_strcmp(buf, "acs_force_fixed_bw") == 0) {
++		int val = atoi(pos);
++		if(!IS_VALID_BOOL_RANGE(val)) {
++			wpa_printf(MSG_ERROR, "Line %d: invalid ACS force fixed BW value %d, range is 0..1", line, val);
++			return 0;
++		}
++		mxl_conf->acs_force_fixed_bw = val;
+ 	} else if ((os_strcmp(buf, "acs_6g_opt_ch_list") == 0) && is_6ghz_op_class(conf->op_class)) {
+ 		if (hostapd_parse_opt_ch_list(&mxl_conf->acs_6g_opt_ch_list, pos, &mxl_conf->acs_6g_opt_ch_count, conf->op_class)) {
+ 			wpa_printf(MSG_ERROR, "Line %d: Invalid acs_6g_opt_ch_list value", line);
+@@ -2985,6 +2992,7 @@ int mxl_hostapd_acs_config_defaults(struct hostapd_config *conf)
+ 	mxl_conf->acs_policy = 0;
+ 	mxl_conf->acs_switch_thresh = 35;
+ 	mxl_conf->acs_bw_comparison  =  1;
++	mxl_conf->acs_force_fixed_bw = 1;
+ 
+ 	goto continue_no_fail;
+ 
+diff --git a/src/ap/mxl_acs.c b/src/ap/mxl_acs.c
+index 008779325..f207cca25 100644
+--- a/src/ap/mxl_acs.c
++++ b/src/ap/mxl_acs.c
+@@ -3755,12 +3755,23 @@ int mxl_acs_recalc_ranks_and_set_chan (struct hostapd_iface *iface, int switch_r
+ 				continue;
+ 			}
+ 		}
++		/* CWI is an operator-tunable noise threshold, not standards-mandated
++		 * (unlike OVERLAP_VHT_HE/INTOLERANT/OVERLAP40/RADAR/DISABLED, which
++		 * must remain hard exclusions always). When acs_force_fixed_bw is
++		 * enabled, the user wants ACS to stay on the configured bandwidth, so
++		 * a CWI-only exclusion shouldn't invalidate the whole tier - it's
++		 * tracked as an ex_rank fallback candidate instead (see below). Note:
++		 * this is independent of acs_bw_comparison, which governs the
++		 * separate utilization-based tier-to-tier comparison below. */
++		bool acsFixedBwFallbackEligible = iface->conf->mxl_conf.acs_force_fixed_bw &&
++			(candidates[i].exclude_reason == ACS_EXCLUDE_CWI);
+ 
+ 		/* Do not calculate rank for channels to be excluded, special case for
+ 		 * not in chanlist candidates (ACS_EXCLUDE_DISABLED), for them rank always
+ 		 * should be calculted, but they should be skipped after rank calculation */
+ 		if ((candidates[i].exclude_reason == ACS_NO_EXCLUSION) ||
+-		    (candidates[i].exclude_reason == ACS_EXCLUDE_DISABLED)) {
++		    (candidates[i].exclude_reason == ACS_EXCLUDE_DISABLED) ||
++		    acsFixedBwFallbackEligible) {
+ 			tx_power_rank = acs_apply_penalty_factor(iface, K_TX_POWER,
+ 					MIN(100, ((iface->mxl_iface.max_tx_power - candidates[i].tx_power[PRI_20]) * 10 / 8)));
+ 			wpa_printf(MSG_DEBUG, "ACS calc rank for tx power(%d) and max tx power(%d): %d",
+@@ -3874,7 +3885,8 @@ int mxl_acs_recalc_ranks_and_set_chan (struct hostapd_iface *iface, int switch_r
+ 		acs_print_cand_no_file(fp, iface, i);
+ 
+ 		if (candidates[i].exclude_reason != ACS_NO_EXCLUSION &&
+-		    candidates[i].exclude_reason != ACS_EXCLUDE_LOW_PRIMARY_UTIL)
++		    candidates[i].exclude_reason != ACS_EXCLUDE_LOW_PRIMARY_UTIL &&
++		    !acsFixedBwFallbackEligible)
+ 			continue;
+ 
+ 		/* select calibration group */
+@@ -3899,7 +3911,8 @@ int mxl_acs_recalc_ranks_and_set_chan (struct hostapd_iface *iface, int switch_r
+ 			assert(0);
+ 		}
+ 
+-		if (candidates[i].exclude_reason == ACS_EXCLUDE_LOW_PRIMARY_UTIL) {
++		if ((candidates[i].exclude_reason == ACS_EXCLUDE_LOW_PRIMARY_UTIL) ||
++		    acsFixedBwFallbackEligible) {
+ 			if ((candidates[i].rank_util_primary > cg[cg_idx].ex_rank_util_primary) ||
+ 			    ((candidates[i].rank_util_primary == cg[cg_idx].ex_rank_util_primary) &&
+ 			     (candidates[i].rank < cg[cg_idx].ex_rank))) {
+@@ -3954,8 +3967,18 @@ int mxl_acs_recalc_ranks_and_set_chan (struct hostapd_iface *iface, int switch_r
+ 		}
+ 
+ 		rank = (int)cg[grp_map[prio]].rank;
+-		if (rank == -1)
++		if (rank == -1) {
++			/* No valid rank in this tier; use worst-case fallback instead of
++			 * narrowing when acs_force_fixed_bw is enabled. */
++			if (iface->conf->mxl_conf.acs_force_fixed_bw &&
++			    (UINT32_MAX != cg[grp_map[prio]].ex_rank)) {
++				min_rank_cand_idx = cg[grp_map[prio]].ex_cand_idx;
++				wpa_printf(MSG_INFO, "ACS: grp %d has no eligible candidate, using worst-case fallback idx %d (acs_force_fixed_bw enabled)",
++					   grp_map[prio], min_rank_cand_idx);
++				goto set_chan;
++			}
+ 			continue;
++		}
+ 
+ 		min_rank_cand_idx = cg[grp_map[prio]].cand_idx;
+ 		bw_comp_util = candidates[min_rank_cand_idx].bw_comp_util;
+diff --git a/src/ap/mxl_config.h b/src/ap/mxl_config.h
+index 6cca57ff6..42cc6885a 100644
+--- a/src/ap/mxl_config.h
++++ b/src/ap/mxl_config.h
+@@ -401,6 +401,7 @@ struct mxl_hostapd_config {
+ 	int acs_policy;
+ 	int acs_switch_thresh;
+ 	int acs_bw_comparison;
++	int acs_force_fixed_bw; /* default 1: stay on configured BW instead of narrowing */
+ 	int acs_use24overlapped;
+ 	int acs_bg_scan_do_switch;
+ 	int acs_update_do_switch;
+-- 
+2.43.0
+

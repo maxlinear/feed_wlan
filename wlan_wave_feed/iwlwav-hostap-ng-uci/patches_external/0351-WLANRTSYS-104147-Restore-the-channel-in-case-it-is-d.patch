@@ -1,0 +1,245 @@
+From a8457c2b226e060771f7b6d64c4dc6db72d993ed Mon Sep 17 00:00:00 2001
+From: hmgokhale <hmgokhale@maxlinear.com>
+Date: Wed, 23 Sep 2026 03:13:10 -0700
+Subject: [PATCH] WLANRTSYS-104147 Restore the channel in case it is decided
+ not to do channel switch
+
+Signed-off-by: hmgokhale <hmgokhale@maxlinear.com>
+---
+ src/ap/dfs.c            | 14 ++++++++++++++
+ src/ap/mxl_acs.c        | 24 ++++++++++++++++++++++++
+ src/ap/mxl_dfs_common.c | 34 ++++++++++++++++++++++++++++++++++
+ src/ap/mxl_hostapd.c    | 26 ++++++++++++++++++++++++++
+ src/ap/mxl_hostapd.h    | 14 ++++++++++++++
+ 5 files changed, 112 insertions(+)
+
+diff --git a/src/ap/dfs.c b/src/ap/dfs.c
+index 6731724e3..adbd4162a 100644
+--- a/src/ap/dfs.c
++++ b/src/ap/dfs.c
+@@ -1993,6 +1993,12 @@ int hostapd_dfs_nop_finished(struct hostapd_iface *iface, int freq,
+ 					wpa_printf(MSG_INFO,
+ 						   "DFS: background CAC started for restored chandef ch=%d freq=%d",
+ 						   iface->conf->channel, iface->freq);
++					/* Not switched yet - remember the candidate separately
++					 * and put iface->conf/freq back on the channel we are
++					 * actually still operating on for the CAC's duration.
++					 */
++					mxl_hostapd_set_cac_candidate_from_conf(iface);
++					acs_pop_chandef(iface, &cur_chan);
+ 					iface->mxl_iface.dfs_revert_chandef.valid = false;
+ 					return 0;
+ 				}
+@@ -2015,6 +2021,14 @@ int hostapd_dfs_nop_finished(struct hostapd_iface *iface, int freq,
+ 					int ret = mxl_hostapd_dfs_switch_to_iface_chandef(iface);
+ 					if (ret >= 0)
+ 						mxl_acs_arm_csa_watchdog(iface, &cur_chan, false);
++					else
++						/* Genuine synchronous failure (bad freq params) -
++						 * no CSA was scheduled and no watchdog got armed,
++						 * so nothing else will ever undo the iface->conf
++						 * write from mxl_dfs_apply_revert_chandef() above.
++						 * Restore the chandef we are actually still on.
++						 */
++						acs_pop_chandef(iface, &cur_chan);
+ 					return ret;
+ 				}
+ 			}
+diff --git a/src/ap/mxl_acs.c b/src/ap/mxl_acs.c
+index 9108edc1a..3a501af11 100644
+--- a/src/ap/mxl_acs.c
++++ b/src/ap/mxl_acs.c
+@@ -1636,6 +1636,17 @@ void mxl_acs_smart_process_bsses(struct hostapd_iface *iface, struct wpa_scan_re
+ 
+ 	mxl_acs_update_radar(iface);
+ 	wpa_printf(MSG_DEBUG, "ACS RECALC: Switch Reason : SWR_INITIAL");
++
++	/* If this ACS run was triggered while the interface was already
++	 * enabled and beaconing (mxl_acs_check_bgscan() sets
++	 * acs_reenable_iface before starting it), snapshot the real,
++	 * currently-operating chandef before the recalc below overwrites
++	 * iface->conf with the new candidate - mxl_hostapd_acs_completed()'s
++	 * acs_reenable_iface branch needs this to restore on switch failure.
++	 */
++	if (iface->mxl_iface.acs_reenable_iface)
++		acs_push_chandef(iface, &iface->mxl_iface.acs_reenable_orig_chandef);
++
+ 	res = mxl_acs_recalc_ranks_and_set_chan(iface, SWR_INITIAL);
+ 
+ 	/* hostapd_setup_interface_complete() will return -1 on failure and 0 on success */
+@@ -4623,6 +4634,13 @@ void mxl_acs_radar_switch(struct hostapd_iface *iface)
+ 		wpa_printf(MSG_INFO,
+ 			   "ACS radar switch: background CAC started for ch=%d freq=%d",
+ 			   iface->conf->channel, iface->freq);
++		/* Candidate is only being background-CAC'd, not switched to yet -
++		 * remember it separately and put iface->conf/freq back on the
++		 * channel we are actually still operating on for the CAC's
++		 * duration, so status queries don't report the untested candidate.
++		 */
++		mxl_hostapd_set_cac_candidate_from_conf(iface);
++		acs_pop_chandef(iface, &cur_chan);
+ 		return;
+ 	}
+ 
+@@ -5293,6 +5311,10 @@ out:
+ 		}
+ 
+ 		ret = mxl_acs_do_switch_channel(iface, 0);
++		if (ret < 0)
++			acs_pop_chandef(iface, &iface->mxl_iface.acs_reenable_orig_chandef);
++		else
++			mxl_acs_arm_csa_watchdog(iface, &iface->mxl_iface.acs_reenable_orig_chandef, false);
+ 		iface->mxl_iface.acs_reenable_iface = 0;
+ 		return ret;
+ 	}
+@@ -5694,6 +5716,8 @@ void mxl_acs_bootup_non_dfs_timer_cb(void *eloop_data, void *user_ctx)
+ 		/* Safe to arm even if already recovered - watchdog no-ops if no switch is pending. */
+ 		if (mxl_hostapd_dfs_switch_to_iface_chandef(iface) >= 0)
+ 			mxl_acs_arm_csa_watchdog(iface, &cur_chan, false);
++		else
++			acs_pop_chandef(iface, &cur_chan);
+ 	} else {
+ 		wpa_printf(MSG_INFO,
+ 			   "%s: acs_bootup_non_dfs re-evaluation: staying on current channel",
+diff --git a/src/ap/mxl_dfs_common.c b/src/ap/mxl_dfs_common.c
+index 1d6ce2094..57b4b3de4 100644
+--- a/src/ap/mxl_dfs_common.c
++++ b/src/ap/mxl_dfs_common.c
+@@ -651,10 +651,34 @@ int mxl_hostapd_dfs_exclusion_switch(struct hostapd_data *hapd)
+ 						     iface->mxl_iface.sec_best_ch.width,
+ 						     hapd->iface->freq, acs_sel_width)) {
+ 					ch_switch = true;
++				} else {
++					/* Newly selected candidate is neither the channel we're
++					 * currently on nor the already-staged sec_best_ch - it's
++					 * untested and needs CAC before we can use it. Request a
++					 * background CAC for it (same as the no-sec-best-ch case
++					 * below) instead of leaving iface->conf/freq committed to
++					 * an unswitched, un-CAC'd candidate.
++					 */
++					wpa_printf(MSG_INFO,
++						   "ACS: exclusion update selected candidate ch=%d freq=%d "
++						   "overlaps neither current (freq=%d) nor sec_best_ch (freq=%d), "
++						   "requesting background CAC",
++						   iface->conf->channel, iface->freq,
++						   oper_freq, iface->mxl_iface.sec_best_ch.freq);
++					iface->mxl_iface.acs_bgscan_enable = 1;
++					mxl_acs_request_background_cac(iface);
++					mxl_hostapd_set_cac_candidate_from_conf(iface);
++					acs_pop_chandef(iface, &cur_chan);
+ 				}
+ 			} else {
+ 				iface->mxl_iface.acs_bgscan_enable = 1;
+ 				mxl_acs_request_background_cac(iface);
++				/* Not switched yet - remember the candidate separately and
++				 * put iface->conf/freq back on the channel we are actually
++				 * still operating on for the CAC's duration.
++				 */
++				mxl_hostapd_set_cac_candidate_from_conf(iface);
++				acs_pop_chandef(iface, &cur_chan);
+ 			}
+ 		} else {
+ 			ch_switch = true;
+@@ -668,6 +692,16 @@ int mxl_hostapd_dfs_exclusion_switch(struct hostapd_data *hapd)
+ 				mxl_acs_arm_csa_watchdog(iface, &cur_chan, false);
+ 			}
+ 		}
++	} else {
++		/* No switch decided (or none possible) - the recalc above can
++		 * still have reset iface->mxl_iface.selected_candidate to -1
++		 * as a side effect even though iface->conf itself is unchanged,
++		 * leaving the ACS ranking engine's own bookkeeping out of sync
++		 * with the real, still-current channel. Restore the full
++		 * pushed chandef (a no-op for the RF fields, but re-syncs
++		 * selected_candidate) rather than assuming nothing needs it.
++		 */
++		acs_pop_chandef(iface, &cur_chan);
+ 	}
+ 
+ 	return ret;
+diff --git a/src/ap/mxl_hostapd.c b/src/ap/mxl_hostapd.c
+index 57524ce91..bfc4cf96e 100644
+--- a/src/ap/mxl_hostapd.c
++++ b/src/ap/mxl_hostapd.c
+@@ -3509,6 +3509,32 @@ void mxl_hostapd_snapshot_last_good_chandef(struct hostapd_iface *iface)
+ 	iface->mxl_iface.last_good_chandef.valid = true;
+ }
+ 
++/* Snapshot whatever channel iface->conf/freq currently hold into
++ * mxl_iface.cac_candidate - call this right before restoring iface->conf
++ * back to the real operating channel, so the candidate a background CAC is
++ * testing is still available (for logging/inspection) without needing
++ * iface->conf to keep pointing at it for the whole CAC duration.
++ */
++void mxl_hostapd_set_cac_candidate_from_conf(struct hostapd_iface *iface)
++{
++	struct hostapd_hw_modes *cmode = iface->current_mode;
++
++	hostapd_set_freq_params(&iface->mxl_iface.cac_candidate.freq_params,
++				iface->conf->hw_mode, iface->freq,
++				iface->conf->channel, iface->conf->enable_edmg,
++				iface->conf->edmg_channel, iface->conf->ieee80211n,
++				iface->conf->ieee80211ac, iface->conf->ieee80211ax,
++				iface->conf->ieee80211be,
++				iface->conf->secondary_channel,
++				hostapd_get_oper_chwidth(iface->conf),
++				hostapd_get_oper_centr_freq_seg0_idx(iface->conf),
++				hostapd_get_oper_centr_freq_seg1_idx(iface->conf),
++				cmode ? cmode->vht_capab : 0,
++				cmode ? &cmode->he_capab[IEEE80211_MODE_AP] : NULL,
++				cmode ? &cmode->eht_capab[IEEE80211_MODE_AP] : NULL);
++	iface->mxl_iface.cac_candidate.valid = true;
++}
++
+ void mxl_hostapd_update_user_conf_cw(struct hostapd_iface *iface)
+ {
+ 	/* Align MXL Proprietary ch_width (4 - 320MHz) according to hostapd (9 - 320MHz) */
+diff --git a/src/ap/mxl_hostapd.h b/src/ap/mxl_hostapd.h
+index b05d32781..41dd98cd8 100644
+--- a/src/ap/mxl_hostapd.h
++++ b/src/ap/mxl_hostapd.h
+@@ -114,6 +114,14 @@ struct mxl_last_good_chandef {
+ 	struct hostapd_freq_params freq_params;
+ };
+ 
++/* The channel a background CAC is currently testing, tracked separately from
++ * iface->conf/freq so the latter can stay on the real operating channel for
++ * the whole CAC duration instead of showing the untested candidate. */
++struct mxl_cac_candidate_chandef {
++	bool valid;
++	struct hostapd_freq_params freq_params;
++};
++
+ struct mxl_hostapd_iface {
+ 	u32 sta_aid_link[MXL_AID_WORDS];
+ 	s8 stas_free_reason; /* the reason for all stations remove */
+@@ -122,6 +130,7 @@ struct mxl_hostapd_iface {
+ 	int in_scan;
+ 	struct mxl_dfs_revert_chandef dfs_revert_chandef;
+ 	struct mxl_last_good_chandef last_good_chandef;
++	struct mxl_cac_candidate_chandef cac_candidate;
+ 	struct acs_second_best_channel_params sec_best_ch;
+ 
+ #ifdef CONFIG_ACS
+@@ -159,6 +168,10 @@ struct mxl_hostapd_iface {
+ 	bool acs_bgscan_enable;
+ 	bool acs_bootup_non_dfs_done;
+ 	int acs_reenable_iface;
++	/* iface->conf snapshot taken right before a live (already-enabled)
++	 * ACS re-run commits a new candidate, for acs_reenable_iface's switch
++	 * attempt in mxl_hostapd_acs_completed() to restore on failure. */
++	mxl_acs_chandef acs_reenable_orig_chandef;
+ 	int dfs_dbg_need_cac;
+ 	int dfs_dbg_in_cac;
+ 
+@@ -396,6 +409,7 @@ void mxl_hostapd_sta_ext_capab_set(struct hostapd_data *hapd, struct sta_info *s
+ int mxl_switch_channel(struct hostapd_data *hapd, struct csa_settings *settings);
+ void mxl_hostapd_set_conf_from_freq_params(struct hostapd_iface *iface, const struct hostapd_freq_params *freq_params);
+ void mxl_hostapd_snapshot_last_good_chandef(struct hostapd_iface *iface);
++void mxl_hostapd_set_cac_candidate_from_conf(struct hostapd_iface *iface);
+ int mxl_check_linked_sta_assoc_ies(struct hostapd_data *hapd, struct sta_info *sta,
+ 				struct ieee802_11_elems *elems, int reassoc);
+ #ifdef CONFIG_IEEE80211BE_MXL_MLO
+-- 
+2.43.0
+

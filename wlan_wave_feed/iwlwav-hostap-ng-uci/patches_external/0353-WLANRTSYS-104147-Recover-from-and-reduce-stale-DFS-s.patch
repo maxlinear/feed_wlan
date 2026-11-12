@@ -1,0 +1,66 @@
+From cfef5af4f50d41032f79303b001e76ed1ae26a61 Mon Sep 17 00:00:00 2001
+From: hmgokhale <hmgokhale@maxlinear.com>
+Date: Wed, 23 Sep 2026 03:32:03 -0700
+Subject: [PATCH] WLANRTSYS-104147 Recover from and reduce stale-DFS-state
+ channel switch failures
+
+Signed-off-by: hmgokhale <hmgokhale@maxlinear.com>
+---
+ src/ap/hostapd.c      | 13 +++++++++++++
+ src/ap/mxl_dfs_file.c | 15 ++++++++++++++-
+ 2 files changed, 27 insertions(+), 1 deletion(-)
+
+diff --git a/src/ap/hostapd.c b/src/ap/hostapd.c
+index 089d8bf73..bc3047ca8 100644
+--- a/src/ap/hostapd.c
++++ b/src/ap/hostapd.c
+@@ -3803,7 +3803,20 @@ static int hostapd_setup_interface_complete_sync(struct hostapd_iface *iface,
+ 							settings.freq_params.bandwidth,
+ 							settings.freq_params.center_freq1,
+ 							settings.freq_params.center_freq2);
++#ifdef CONFIG_VENDOR_MXL
++					/* iface->conf already holds the intended target (built into
++					 * settings.freq_params above) - rather than leaving the AP stuck
++					 * disabled on a failed channel switch here, recover by restarting
++					 * the interface so it goes through a fresh bring-up/ACS cycle
++					 * instead of a dead end. */
++					wpa_printf(MSG_ERROR,
++						   "Restarting interface after failed channel switch");
++					hostapd_disable_iface(iface);
++					hostapd_enable_iface(iface);
++					return 0;
++#else /* CONFIG_VENDOR_MXL */
+ 					goto fail;
++#endif /* CONFIG_VENDOR_MXL */
+ 				}
+ 			}
+ 			hostapd_set_state(iface, HAPD_IFACE_ENABLED);
+diff --git a/src/ap/mxl_dfs_file.c b/src/ap/mxl_dfs_file.c
+index 0bba4043c..88d9cf5b1 100644
+--- a/src/ap/mxl_dfs_file.c
++++ b/src/ap/mxl_dfs_file.c
+@@ -191,7 +191,20 @@ int mxl_hostapd_send_dfs_channel_state(struct hostapd_iface *iface)
+ 			if (channel->flag & HOSTAPD_CHAN_RADAR) {
+ 				if (((channel->flag & HOSTAPD_CHAN_DFS_MASK) == HOSTAPD_CHAN_DFS_AVAILABLE) &&
+ 						(iface->dfs_domain == HOSTAPD_DFS_REGION_ETSI)) {
+-					mxl_hostapd_set_chan_dfs_state(iface, NL80211_DFS_AVAILABLE, channel->freq, 0, 0);
++					/* This "available" belief comes from a file persisted
++					 * across restarts, not a CAC that actually ran this
++					 * session - if the driver/kernel won't accept it (its
++					 * own dfs_state was reset by the restart), don't leave
++					 * our local cache claiming available when the kernel
++					 * disagrees; that mismatch has no other log trace and
++					 * only surfaces later as a failed channel switch. */
++					if (mxl_hostapd_set_chan_dfs_state(iface, NL80211_DFS_AVAILABLE, channel->freq, 0, 0)) {
++						wpa_printf(MSG_ERROR,
++							   "Failed to sync restored AVAILABLE dfs state to driver for freq %d - reverting to USABLE (CAC required)",
++							   channel->freq);
++						channel->flag &= ~HOSTAPD_CHAN_DFS_MASK;
++						channel->flag |= HOSTAPD_CHAN_DFS_USABLE;
++					}
+ 				}
+ 				if ((channel->flag & HOSTAPD_CHAN_DFS_MASK) == HOSTAPD_CHAN_DFS_UNAVAILABLE) {
+ 					mxl_hostapd_set_chan_dfs_state(iface, NL80211_DFS_UNAVAILABLE, channel->freq, channel->mxl_chan_data.nop_time_passed_min, 0);
+-- 
+2.43.0
+

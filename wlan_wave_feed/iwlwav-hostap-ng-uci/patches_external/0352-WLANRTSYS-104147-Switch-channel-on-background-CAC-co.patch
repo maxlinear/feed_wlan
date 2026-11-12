@@ -1,0 +1,94 @@
+From 8fbc26931dacfe8902c122086dfb3207f9b83e03 Mon Sep 17 00:00:00 2001
+From: hmgokhale <hmgokhale@maxlinear.com>
+Date: Wed, 23 Sep 2026 03:25:46 -0700
+Subject: [PATCH] WLANRTSYS-104147 Switch channel on background CAC completion
+
+Signed-off-by: hmgokhale <hmgokhale@maxlinear.com>
+---
+ src/ap/dfs.c            | 13 ++++---------
+ src/ap/mxl_dfs_common.c | 10 ++++++++--
+ src/ap/mxl_dfs_common.h |  2 +-
+ 3 files changed, 13 insertions(+), 12 deletions(-)
+
+diff --git a/src/ap/dfs.c b/src/ap/dfs.c
+index adbd4162a..9e681bdac 100644
+--- a/src/ap/dfs.c
++++ b/src/ap/dfs.c
+@@ -1396,19 +1396,14 @@ int hostapd_dfs_complete_cac(struct hostapd_iface *iface, int success, int freq,
+ 			mxl_hostapd_dfs_file_update(iface, true);
+ #endif /* CONFIG_VENDOR_MXL */
+ 
++#ifndef CONFIG_VENDOR_MXL
+ 			/*
+ 			 * Radar event from background chain for the selected
+ 			 * channel. Perform CSA, move the main chain to the
+ 			 * selected channel and configure the background chain
+ 			 * to a new DFS channel.
+ 			 */
+-#ifndef CONFIG_VENDOR_MXL
+-			if (hostapd_dfs_is_background_event(iface, freq))
+-#else /* CONFIG_VENDOR_MXL */
+-			if (hostapd_dfs_is_background_event(iface, freq) &&
+-			    !iface->mxl_iface.dfs_revert_bgcac_override)
+-#endif /* CONFIG_VENDOR_MXL */
+-			{
++			if (hostapd_dfs_is_background_event(iface, freq)) {
+ 				iface->radar_background.cac_started = 0;
+ 				if (!iface->radar_background.temp_ch)
+ 					return 0;
+@@ -1416,6 +1411,7 @@ int hostapd_dfs_complete_cac(struct hostapd_iface *iface, int success, int freq,
+ 				iface->radar_background.temp_ch = 0;
+ 				return hostapd_dfs_start_channel_switch_background(iface);
+ 			}
++#endif /* CONFIG_VENDOR_MXL */
+ 
+ 			/*
+ 			 * Just mark the channel available when CAC completion
+@@ -1461,8 +1457,7 @@ int hostapd_dfs_complete_cac(struct hostapd_iface *iface, int success, int freq,
+ 	iface->radar_detected = false;
+ #ifdef CONFIG_VENDOR_MXL
+ 	/* In case of CAC completion in ZWDFS antenna/interface, set CAC cleared channel to operational 5G vaps.*/
+-	if (mxl_validate_second_best_chan(iface) &&
+-	    !iface->mxl_iface.dfs_revert_bgcac_override) {
++	if (mxl_validate_second_best_chan(iface, freq)) {
+ 		wpa_printf(MSG_DEBUG, "second best channel CAC completed");
+ 		return 0;
+ 	}
+diff --git a/src/ap/mxl_dfs_common.c b/src/ap/mxl_dfs_common.c
+index 57b4b3de4..de0e3d358 100644
+--- a/src/ap/mxl_dfs_common.c
++++ b/src/ap/mxl_dfs_common.c
+@@ -830,9 +830,15 @@ void mxl_dfs_restore_original_cw(struct hostapd_iface *iface)
+ 	hostapd_set_oper_chwidth(iface->conf, iface->mxl_iface.current_oper_chwidth);
+ }
+ 
+-bool mxl_validate_second_best_chan(struct hostapd_iface *iface)
++bool mxl_validate_second_best_chan(struct hostapd_iface *iface, int freq)
+ {
+-	if (iface->mxl_iface.sec_best_ch.bg_cac) {
++	/* sec_best_ch.bg_cac stays true indefinitely once a standby is
++	 * validated - match against this specific completion's freq too,
++	 * otherwise it would also wrongly swallow a later, unrelated
++	 * candidate's completion (e.g. a NOP-revert) that happens to arrive
++	 * while a second-best channel is still marked validated. */
++	if (iface->mxl_iface.sec_best_ch.bg_cac &&
++	    iface->mxl_iface.sec_best_ch.freq == (u32) freq) {
+ 		iface->mxl_iface.sec_best_ch.sec_channel_cac = 0;
+ 		return true;
+ 	}
+diff --git a/src/ap/mxl_dfs_common.h b/src/ap/mxl_dfs_common.h
+index 22b2e3bfc..cf0978b59 100644
+--- a/src/ap/mxl_dfs_common.h
++++ b/src/ap/mxl_dfs_common.h
+@@ -83,7 +83,7 @@ mxl_dfs_get_channel_dynamic_failsafe(struct hostapd_iface *iface, int *secondary
+ 				     bool skip_usable, bool only_unii_5_7, struct hostapd_freq_params* freq_params);
+ void mxl_dfs_cut_cw_by_half(struct hostapd_iface *iface, bool backup);
+ void mxl_dfs_restore_original_cw(struct hostapd_iface *iface);
+-bool mxl_validate_second_best_chan(struct hostapd_iface *iface);
++bool mxl_validate_second_best_chan(struct hostapd_iface *iface, int freq);
+ bool mxl_switch_second_best_channel(struct hostapd_iface *iface, int chan_width);
+ bool mxl_switch_to_sec_best_channel_if_enabled(struct hostapd_iface *iface, int chan_width);
+ int mxl_hostapd_dfs_exclusion_switch(struct hostapd_data *hapd);
+-- 
+2.43.0
+

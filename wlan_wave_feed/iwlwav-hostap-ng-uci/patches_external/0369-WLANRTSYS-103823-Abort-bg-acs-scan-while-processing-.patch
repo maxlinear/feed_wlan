@@ -1,0 +1,52 @@
+From 54d2cb60f6c1ec54d1ae6f31d9f4e559ee03d61b Mon Sep 17 00:00:00 2001
+From: Dhaval Kolhe <dkolhe@maxlinear.com>
+Date: Wed, 2 Sep 2026 04:34:31 -0700
+Subject: [PATCH] WLANRTSYS-103823 Abort bg acs scan while processing bss
+ reconf
+
+Signed-off-by: Dhaval Kolhe <dkolhe@maxlinear.com>
+---
+ src/ap/hostapd.c |  4 +++-
+ src/ap/mxl_acs.c | 11 +++++++----
+ 2 files changed, 10 insertions(+), 5 deletions(-)
+
+diff --git a/src/ap/hostapd.c b/src/ap/hostapd.c
+index 9700ab9da..29d5f53fe 100644
+--- a/src/ap/hostapd.c
++++ b/src/ap/hostapd.c
+@@ -5148,7 +5148,9 @@ static int hostapd_add_bss(struct hostapd_iface *iface,
+ 	/* Set up BSS will be done after interface enabled */
+ 	if (iface->state != HAPD_IFACE_ENABLED) {
+ #ifdef CONFIG_VENDOR_MXL
+-		return mxl_acs_check(iface);
++		if(!mxl_acs_check(iface)){
++			return 0;
++		}
+ #endif /* CONFIG_VENDOR_MXL */
+ 		return 0;
+ 	}
+diff --git a/src/ap/mxl_acs.c b/src/ap/mxl_acs.c
+index 674e61dde..c1b809a3f 100644
+--- a/src/ap/mxl_acs.c
++++ b/src/ap/mxl_acs.c
+@@ -5794,10 +5794,13 @@ void mxl_disable_scan(struct hostapd_iface *iface)
+ int mxl_acs_check(struct hostapd_iface *iface)
+ {
+ #ifdef CONFIG_ACS
+-	/* In case non-initial ACS is running: do reconf (which will
+-	 * cancel ACS scan), and after scan aborted restart the ACS again */
+-	if (iface->mxl_iface.acs_bgscan)
+-		iface->mxl_iface.retrigger_acs = true;
++	if (!iface->mxl_iface.acs_bgscan)
++		return 0;
++
++	if (!mxl_hostapd_check_and_abort_scan(iface) && iface->state == HAPD_IFACE_ACS) {
++		hostapd_set_state(iface, HAPD_IFACE_ENABLED);
++		return 1;
++	}
+ #endif /* CONFIG_ACS */
+ 	return 0;
+ }
+-- 
+2.43.0
+

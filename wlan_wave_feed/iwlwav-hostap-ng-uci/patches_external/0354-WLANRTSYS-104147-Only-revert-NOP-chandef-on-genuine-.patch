@@ -1,0 +1,79 @@
+From 09ff24be755b5c996f73775f8ffb634fc48c6b10 Mon Sep 17 00:00:00 2001
+From: hmgokhale <hmgokhale@maxlinear.com>
+Date: Wed, 23 Sep 2026 03:35:05 -0700
+Subject: [PATCH] WLANRTSYS-104147 Only revert NOP chandef on genuine width
+ gain, restore bgCAC override on radar abort
+
+Signed-off-by: hmgokhale <hmgokhale@maxlinear.com>
+---
+ src/ap/dfs.c            | 24 ++++++++----------------
+ src/ap/mxl_dfs_common.c | 11 ++++++++++-
+ 2 files changed, 18 insertions(+), 17 deletions(-)
+
+diff --git a/src/ap/dfs.c b/src/ap/dfs.c
+index 9e681bdac..a362ed1b8 100644
+--- a/src/ap/dfs.c
++++ b/src/ap/dfs.c
+@@ -1851,21 +1851,6 @@ static void mxl_dfs_apply_revert_chandef(struct hostapd_iface *iface)
+ 	hostapd_set_oper_centr_freq_seg1_idx(iface->conf, revert->oper_centr_freq_seg1_idx);
+ }
+ 
+-static bool mxl_dfs_check_nop_status(struct hostapd_iface *iface)
+-{
+-	struct mxl_dfs_revert_chandef *revert = &iface->mxl_iface.dfs_revert_chandef;
+-
+-	/* Check if current configuration differs from stored revert configuration */
+-	if (iface->conf->channel != revert->channel ||
+-	    iface->freq != revert->freq ||
+-	    iface->conf->secondary_channel != revert->secondary_channel ||
+-	    hostapd_get_oper_chwidth(iface->conf) != revert->oper_chwidth ||
+-	    hostapd_get_oper_centr_freq_seg0_idx(iface->conf) != revert->oper_centr_freq_seg0_idx ||
+-	    hostapd_get_oper_centr_freq_seg1_idx(iface->conf) != revert->oper_centr_freq_seg1_idx)
+-		return true;
+-
+-	return false;
+-}
+ #endif /* CONFIG_VENDOR_MXL */
+ 
+ int hostapd_dfs_radar_detected(struct hostapd_iface *iface, int freq,
+@@ -1969,7 +1954,14 @@ int hostapd_dfs_nop_finished(struct hostapd_iface *iface, int freq,
+ 
+ 	if (iface->mxl_iface.dfs_revert_chandef.valid) {
+ 		if (!mxl_dfs_revert_chandef_unavailable(iface)) {
+-			if (mxl_dfs_check_nop_status(iface)) {
++			/* Only move if the recorded (pre-radar) chandef is wider than
++			 * what we are operating on now - never revert just because it
++			 * differs in some other way (e.g. a different primary channel
++			 * at the same or narrower width). If the current width already
++			 * matches or beats the recorded one, staying put is at least as
++			 * good, so there is nothing to gain by switching.
++			 */
++			if (hostapd_get_oper_chwidth(iface->conf) < iface->mxl_iface.dfs_revert_chandef.oper_chwidth) {
+ 				mxl_acs_chandef cur_chan;
+ 
+ 				wpa_printf(MSG_INFO,
+diff --git a/src/ap/mxl_dfs_common.c b/src/ap/mxl_dfs_common.c
+index de0e3d358..4b389123d 100644
+--- a/src/ap/mxl_dfs_common.c
++++ b/src/ap/mxl_dfs_common.c
+@@ -584,7 +584,16 @@ bool mxl_hostapd_handle_background_radar(struct hostapd_iface *iface, int freq,
+ 		mxl_acs_update_radar(iface);
+ 
+ 		if (iface->mxl_iface.sec_best_ch.zwdfs_is_primary_cac) {
+-			/* This was CAC-ing the primary channel, not second-best - skip re-select. */
++			/* This was CAC-ing the primary channel, not second-best - skip re-select.
++			 * Restore any background-CAC settings override synchronously here rather
++			 * than waiting for the CAC-completion event (which may arrive later, or
++			 * not at all for this abort) - otherwise mxl_acs_radar_switch(), called
++			 * right after this returns, sees acs_bgscan_enable still true and treats
++			 * this urgent radar-forced re-rank as a routine background rescan,
++			 * suppressing the "switch regardless of threshold" behavior a real radar
++			 * hit should force.
++			 */
++			mxl_restore_revert_bgcac_override(iface);
+ 			wpa_printf(MSG_INFO, "ZWDFS: primary channel CAC hit radar, not re-selecting second best");
+ 			return false;
+ 		}
+-- 
+2.43.0
+

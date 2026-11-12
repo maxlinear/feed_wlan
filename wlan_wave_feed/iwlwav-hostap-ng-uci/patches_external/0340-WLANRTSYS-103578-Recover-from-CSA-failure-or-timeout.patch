@@ -1,0 +1,312 @@
+From a8df4b358296205c9a2e60f2fe34f9b163fd8538 Mon Sep 17 00:00:00 2001
+From: hmgokhale <hmgokhale@maxlinear.com>
+Date: Sat, 1 Aug 2026 08:02:33 -0700
+Subject: [PATCH] WLANRTSYS-103578 Recover from CSA failure or timeout
+
+Restore frequency and op_class on CSA failure
+
+Signed-off-by: hmgokhale <hmgokhale@maxlinear.com>
+---
+ src/ap/dfs.c            |  13 +++++-
+ src/ap/drv_callbacks.c  |   5 ++
+ src/ap/mxl_acs.c        | 100 ++++++++++++++++++++++++++++++++++++++--
+ src/ap/mxl_acs.h        |   6 +++
+ src/ap/mxl_dfs_common.c |  10 +++-
+ src/ap/mxl_hostapd.h    |   9 ++++
+ 6 files changed, 135 insertions(+), 8 deletions(-)
+
+diff --git a/src/ap/dfs.c b/src/ap/dfs.c
+index 86177c164..66f14ba43 100644
+--- a/src/ap/dfs.c
++++ b/src/ap/dfs.c
+@@ -1947,12 +1947,16 @@ int hostapd_dfs_nop_finished(struct hostapd_iface *iface, int freq,
+ 	if (iface->mxl_iface.dfs_revert_chandef.valid) {
+ 		if (!mxl_dfs_revert_chandef_unavailable(iface)) {
+ 			if (mxl_dfs_check_nop_status(iface)) {
++				mxl_acs_chandef cur_chan;
++
+ 				wpa_printf(MSG_INFO,
+ 					   "DFS: NOP finished on %d MHz, restoring original chandef ch=%d freq=%d width=%d",
+ 					   freq,
+ 					   iface->mxl_iface.dfs_revert_chandef.channel,
+ 					   iface->mxl_iface.dfs_revert_chandef.freq,
+ 					   iface->mxl_iface.dfs_revert_chandef.oper_chwidth);
++			/* Save the temporary channel so we can fall back if this switch fails. */
++			acs_push_chandef(iface, &cur_chan);
+ 			mxl_dfs_apply_revert_chandef(iface);
+ 			{
+ 				int cac_res = mxl_dfs_try_background_cac_if_required(iface);
+@@ -1977,7 +1981,14 @@ int hostapd_dfs_nop_finished(struct hostapd_iface *iface, int freq,
+ 				wpa_printf(MSG_INFO,
+ 					   "DFS: triggering channel switch flow for restored chandef ch=%d freq=%d",
+ 					   iface->conf->channel, iface->freq);
+-				return mxl_hostapd_dfs_switch_to_iface_chandef(iface);
++				{
++					/* Safe to arm even on the "failed but already
++					 * recovered" case - see mxl_acs_bootup_non_dfs_timer_cb(). */
++					int ret = mxl_hostapd_dfs_switch_to_iface_chandef(iface);
++					if (ret >= 0)
++						mxl_acs_arm_csa_watchdog(iface, &cur_chan, false);
++					return ret;
++				}
+ 			}
+ 
+ 			iface->mxl_iface.dfs_revert_chandef.valid = false;
+diff --git a/src/ap/drv_callbacks.c b/src/ap/drv_callbacks.c
+index dea494817..b39e54a95 100644
+--- a/src/ap/drv_callbacks.c
++++ b/src/ap/drv_callbacks.c
+@@ -1471,6 +1471,11 @@ void hostapd_event_ch_switch(struct hostapd_data *hapd, int freq, int ht,
+ 	if (!finished)
+ 		return;
+ 
++#ifdef CONFIG_VENDOR_MXL
++	/* Switch confirmed - stop the CSA watchdog, if one is running. */
++	mxl_acs_disarm_csa_watchdog(hapd->iface);
++#endif /* CONFIG_VENDOR_MXL */
++
+ #ifdef CONFIG_VENDOR_MXL
+ 	if ((hapd->csa_in_progress && freq == hapd->cs_freq_params.freq) ||
+ 		(hapd->iface->drv_flags & WPA_DRIVER_FLAGS_DFS_OFFLOAD)) {
+diff --git a/src/ap/mxl_acs.c b/src/ap/mxl_acs.c
+index 59444ad6d..7a389fe78 100644
+--- a/src/ap/mxl_acs.c
++++ b/src/ap/mxl_acs.c
+@@ -1687,6 +1687,8 @@ void mxl_acs_bg_scan_complete(struct hostapd_iface *iface)
+ 		if (mxl_acs_do_switch_channel(iface, 0) < 0) {
+ 			/* back out with channel switch */
+ 			acs_pop_chandef(iface, &cur_chan);
++		} else {
++			mxl_acs_arm_csa_watchdog(iface, &cur_chan, false);
+ 		}
+ 	}
+ 
+@@ -4111,6 +4113,8 @@ void acs_push_chandef(struct hostapd_iface *iface, mxl_acs_chandef *chan)
+ 	chan->chwidth = hostapd_get_oper_chwidth(iface->conf);
+ 	chan->cent_freq = hostapd_get_oper_centr_freq_seg0_idx(iface->conf);
+ 	chan->sel_cand = iface->mxl_iface.selected_candidate;
++	chan->freq = iface->freq;
++	chan->op_class = iface->conf->op_class;
+ }
+ 
+ void acs_pop_chandef(struct hostapd_iface *iface, mxl_acs_chandef *chan)
+@@ -4120,6 +4124,82 @@ void acs_pop_chandef(struct hostapd_iface *iface, mxl_acs_chandef *chan)
+ 	hostapd_set_oper_chwidth(iface->conf,chan->chwidth);
+ 	hostapd_set_oper_centr_freq_seg0_idx(iface->conf,chan->cent_freq);
+ 	iface->mxl_iface.selected_candidate = chan->sel_cand;
++	iface->freq = chan->freq;
++	iface->conf->op_class = chan->op_class;
++}
++
++/* How long to wait for the driver to confirm a CSA before we give up on it. */
++#define MXL_CSA_WATCHDOG_TIMEOUT_SECS 5
++
++/* Start the watchdog right after a CSA is sent to the driver.
++ * orig_chan.pri is kept only for logging if the driver never confirms it. */
++void mxl_acs_arm_csa_watchdog(struct hostapd_iface *iface, mxl_acs_chandef *orig_chan,
++			      bool is_radar_vacate)
++{
++	iface->mxl_iface.csa_watchdog_orig_pri = orig_chan->pri;
++	iface->mxl_iface.csa_watchdog_target_channel = iface->conf->channel;
++	iface->mxl_iface.csa_watchdog_target_freq = iface->freq;
++	iface->mxl_iface.csa_watchdog_is_radar_vacate = is_radar_vacate;
++	iface->mxl_iface.csa_watchdog_pending = true;
++
++	eloop_cancel_timeout(mxl_acs_csa_watchdog_cb, iface, NULL);
++	eloop_register_timeout(MXL_CSA_WATCHDOG_TIMEOUT_SECS, 0,
++				mxl_acs_csa_watchdog_cb, iface, NULL);
++
++	wpa_printf(MSG_DEBUG,
++		   "ACS: CSA watchdog armed - orig_chan=%d target_chan=%d (%d MHz), "
++		   "radar_vacate=%d, expect completion within %ds",
++		   orig_chan->pri, iface->conf->channel, iface->freq,
++		   is_radar_vacate, MXL_CSA_WATCHDOG_TIMEOUT_SECS);
++}
++
++/* Stop the watchdog once the driver confirms the switch worked.
++ * Safe to call even if no watchdog is running. */
++void mxl_acs_disarm_csa_watchdog(struct hostapd_iface *iface)
++{
++	if (!iface->mxl_iface.csa_watchdog_pending)
++		return;
++
++	eloop_cancel_timeout(mxl_acs_csa_watchdog_cb, iface, NULL);
++	iface->mxl_iface.csa_watchdog_pending = false;
++}
++
++/* Runs if a CSA we started was never confirmed by the driver in time.
++ * Clears CSA state and restarts the iface to force the driver back in sync with conf. */
++void mxl_acs_csa_watchdog_cb(void *eloop_data, void *user_ctx)
++{
++	struct hostapd_iface *iface = (struct hostapd_iface *) eloop_data;
++	unsigned int i;
++
++	if (!iface->mxl_iface.csa_watchdog_pending)
++		return;
++
++	iface->mxl_iface.csa_watchdog_pending = false;
++
++	if (!hostapd_csa_in_progress(iface)) {
++		/* Already confirmed some other way. Nothing to do. */
++		return;
++	}
++
++	wpa_printf(MSG_ERROR,
++		   "ACS: CSA WATCHDOG TIMEOUT after %ds - driver never confirmed "
++		   "channel switch %d -> %d (%d MHz), radar_vacate=%d. hostapd "
++		   "config/beacon HT/VHT Operation elements may still show channel "
++		   "%d while the radio never left channel %d (compare against "
++		   "'iw dev' / actual beacons). Restarting iface to force a resync.",
++		   MXL_CSA_WATCHDOG_TIMEOUT_SECS,
++		   iface->mxl_iface.csa_watchdog_orig_pri,
++		   iface->mxl_iface.csa_watchdog_target_channel,
++		   iface->mxl_iface.csa_watchdog_target_freq,
++		   iface->mxl_iface.csa_watchdog_is_radar_vacate,
++		   iface->mxl_iface.csa_watchdog_target_channel,
++		   iface->mxl_iface.csa_watchdog_orig_pri);
++
++	for (i = 0; i < iface->num_bss; i++)
++		hostapd_cleanup_cs_params(iface->bss[i]);
++
++	hostapd_disable_iface(iface);
++	hostapd_enable_iface(iface);
+ }
+ 
+ 
+@@ -4182,6 +4262,8 @@ void mxl_hostapd_update_channel_data(struct hostapd_iface *iface, const u8 *data
+ 
+ 						hostapd_disable_iface(iface);
+ 						hostapd_enable_iface(iface);
++					} else {
++						mxl_acs_arm_csa_watchdog(iface, &orig_chan, false);
+ 					}
+ 				}
+ 			}
+@@ -4320,6 +4402,8 @@ void mxl_hostapd_update_channel_data(struct hostapd_iface *iface, const u8 *data
+ 			if (mxl_acs_do_switch_channel(iface, 0) < 0) {
+ 				/* back out with channel switch */
+ 				acs_pop_chandef(iface, &cur_chan);
++			} else {
++				mxl_acs_arm_csa_watchdog(iface, &cur_chan, false);
+ 			}
+ 		}
+ 	}
+@@ -4385,6 +4469,8 @@ void mxl_acs_radar_switch(struct hostapd_iface *iface)
+ 		acs_pop_chandef(iface, &cur_chan);
+ 		hostapd_disable_iface(iface);
+ 		wpa_printf(MSG_ERROR, "Unable to switch channel on radar detection !");
++	} else {
++		mxl_acs_arm_csa_watchdog(iface, &cur_chan, true);
+ 	}
+ }
+ 
+@@ -4825,6 +4911,10 @@ int mxl_acs_switch_to_unii_5_7_channel(struct hostapd_iface *iface)
+ 					&vht_oper_centr_freq_seg1_idx, false, true, &settings.freq_params);
+ 	iface->mxl_iface.sec_best_ch.flag = false;
+ 	if (channel) {
++		/* Save the old channel before changing conf below, so we can revert on failure. */
++		mxl_acs_chandef cur_chan;
++		acs_push_chandef(iface, &cur_chan);
++
+ 		can_idx = iface->mxl_iface.sec_best_ch.second_rank_idx;
+ 		iface->conf->channel = candidate[can_idx].primary;
+ 		iface->freq = hostapd_hw_get_freq(iface->bss[0], iface->conf->channel);
+@@ -4833,10 +4923,6 @@ int mxl_acs_switch_to_unii_5_7_channel(struct hostapd_iface *iface)
+ 		acs_smart_adjust_center_freq(iface, candidate[can_idx].chan);
+ 		wpa_printf(MSG_DEBUG, "ACS: UNII_5_7 channel idx %d,  chan : %d, freq : %d", can_idx, candidate[can_idx].primary, iface->freq);
+ 
+-		/* Set channel and switch */
+-		mxl_acs_chandef cur_chan;
+-		acs_push_chandef(iface, &cur_chan);
+-
+ 		mxl_hostapd_channel_switch_reason_set(iface, HAPD_CHAN_SWITCH_OTHER);
+ 
+ 		if (mxl_acs_do_switch_channel(iface, 0) < 0) {
+@@ -4845,6 +4931,8 @@ int mxl_acs_switch_to_unii_5_7_channel(struct hostapd_iface *iface)
+ 			wpa_printf(MSG_ERROR, "ACS Unable to switch to UNII_5_7 channel");
+ 			return -1;
+ 		}
++
++		mxl_acs_arm_csa_watchdog(iface, &cur_chan, false);
+ 	}
+ 	else {
+ 		wpa_printf(MSG_ERROR, "ACS failed to get UNII_5_7 channel");
+@@ -5400,7 +5488,9 @@ void mxl_acs_bootup_non_dfs_timer_cb(void *eloop_data, void *user_ctx)
+ 			wpa_printf(MSG_INFO,
+ 				   "DFS: bgCAC needed for acs_bootup_non_dfs but could not start, falling back to channel switch");
+ 		}
+-		mxl_hostapd_dfs_switch_to_iface_chandef(iface);
++		/* Safe to arm even if already recovered - watchdog no-ops if no switch is pending. */
++		if (mxl_hostapd_dfs_switch_to_iface_chandef(iface) >= 0)
++			mxl_acs_arm_csa_watchdog(iface, &cur_chan, false);
+ 	} else {
+ 		wpa_printf(MSG_INFO,
+ 			   "%s: acs_bootup_non_dfs re-evaluation: staying on current channel",
+diff --git a/src/ap/mxl_acs.h b/src/ap/mxl_acs.h
+index f6218c3a1..59b8c3cec 100644
+--- a/src/ap/mxl_acs.h
++++ b/src/ap/mxl_acs.h
+@@ -184,6 +184,8 @@ typedef struct {
+ 	u8 chwidth;
+ 	u8 cent_freq;
+ 	int sel_cand;
++	int freq;
++	u8 op_class;
+ } mxl_acs_chandef;
+ 
+ /* declarations for wrapper functions to make static open source functions accesible to MXL code */
+@@ -214,6 +216,10 @@ void mxl_acs_start_bootup_non_dfs_timer(struct hostapd_data *hapd);
+ int mxl_hostapd_acs_completed(struct hostapd_iface *iface, int err, int set_channel);
+ void acs_push_chandef(struct hostapd_iface *iface, mxl_acs_chandef *chan);
+ void acs_pop_chandef(struct hostapd_iface *iface, mxl_acs_chandef *chan);
++void mxl_acs_arm_csa_watchdog(struct hostapd_iface *iface, mxl_acs_chandef *orig_chan,
++			      bool is_radar_vacate);
++void mxl_acs_disarm_csa_watchdog(struct hostapd_iface *iface);
++void mxl_acs_csa_watchdog_cb(void *eloop_data, void *user_ctx);
+ bool mxl_get_second_best_channel_from_acs_table(struct hostapd_iface *iface);
+ void hostapd_get_op_class(int chan, int width, int *op_class);
+ bool channels_overlap(u32 freq1, u32 width1, u32 freq2, u32 width2);
+diff --git a/src/ap/mxl_dfs_common.c b/src/ap/mxl_dfs_common.c
+index 72d794857..735ed9db8 100644
+--- a/src/ap/mxl_dfs_common.c
++++ b/src/ap/mxl_dfs_common.c
+@@ -639,8 +639,14 @@ int mxl_hostapd_dfs_exclusion_switch(struct hostapd_data *hapd)
+ 			ch_switch = true;
+ 		}
+ 
+-		if (ch_switch && mxl_acs_do_switch_channel(iface, 0) < 0)
+-			acs_pop_chandef(iface, &cur_chan);
++		if (ch_switch) {
++			if (mxl_acs_do_switch_channel(iface, 0) < 0) {
++				/* back out with channel switch */
++				acs_pop_chandef(iface, &cur_chan);
++			} else {
++				mxl_acs_arm_csa_watchdog(iface, &cur_chan, false);
++			}
++		}
+ 	}
+ 
+ 	return ret;
+diff --git a/src/ap/mxl_hostapd.h b/src/ap/mxl_hostapd.h
+index 9dd290e53..6f90e76ca 100644
+--- a/src/ap/mxl_hostapd.h
++++ b/src/ap/mxl_hostapd.h
+@@ -151,6 +151,15 @@ struct mxl_hostapd_iface {
+ 	int acs_reenable_iface;
+ 	int dfs_dbg_need_cac;
+ 	int dfs_dbg_in_cac;
++
++	/* True while waiting for the driver to confirm a CSA we started. */
++	bool csa_watchdog_pending;
++	/* True if we were leaving a channel because radar was found there.
++	 * Logging context only - the timeout action is the same either way. */
++	bool csa_watchdog_is_radar_vacate;
++	u8 csa_watchdog_orig_pri;
++	int csa_watchdog_target_channel;
++	int csa_watchdog_target_freq;
+ #endif /* CONFIG_ACS */
+ 
+ 	int allow_scan_during_cac;
+-- 
+2.43.0
+

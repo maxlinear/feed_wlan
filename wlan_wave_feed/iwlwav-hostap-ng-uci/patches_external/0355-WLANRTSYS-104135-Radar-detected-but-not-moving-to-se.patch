@@ -1,0 +1,135 @@
+From 420415e6a803ed6bf30a71bc4a30a5c5c8095403 Mon Sep 17 00:00:00 2001
+From: "mujiburrahimank@maxlinear.com"
+ <mujiburrahimank@lvdocker7.lvsw.maxlinear.com>
+Date: Wed, 23 Sep 2026 22:15:05 -0700
+Subject: [PATCH] WLANRTSYS-104135 : Radar detected but not moving to second
+ best channel
+
+Issue
+Radar hit on the operational (primary) channel can bring the interface down
+because channel switch does not move to a valid fallback channel.
+
+RCA
+After exclusion-list push, when the newly selected DFS channel overlaps with the current subband,
+the flow performs interface restart without ACS. In this restart path, second-best channel data
+gets cleared. After setup, second-best may resolve to the same channel as the current primary.
+Later, on radar detection at primary, switch logic cannot move to a distinct safe channel, causing
+switch failure and interface-down behavior.
+
+Fix
+Use a dedicated interface-restart flow for exclusion-list overlap cases that preserves and restores
+second-best channel data across restart. This ensures second-best remains different from the active
+primary channel, so radar-triggered channel switch can move to a safe fallback instead of staying on
+the same channel.
+---
+ src/ap/dfs.c         | 20 +++++++++++++++++---
+ src/ap/mxl_acs.c     |  3 +--
+ src/ap/mxl_hostapd.c |  4 ++++
+ src/ap/mxl_zwdfs.c   |  6 ++++++
+ 4 files changed, 28 insertions(+), 5 deletions(-)
+
+diff --git a/src/ap/dfs.c b/src/ap/dfs.c
+index a362ed1b8..b78a15f14 100644
+--- a/src/ap/dfs.c
++++ b/src/ap/dfs.c
+@@ -1423,12 +1423,27 @@ int hostapd_dfs_complete_cac(struct hostapd_iface *iface, int success, int freq,
+ 			 * CAC completion event could have been propagated from
+ 			 * another radio.
+ 			 */
++#ifndef CONFIG_VENDOR_MXL
+ 			if (iface->state != HAPD_IFACE_ENABLED &&
+ 			    hostapd_is_dfs_chan_available(iface)) {
+ 				hostapd_setup_interface_complete(iface, 0);
+ 				iface->cac_started = 0;
+ 			}
+-#ifdef CONFIG_VENDOR_MXL
++#else /* CONFIG_VENDOR_MXL */
++			if (iface->state != HAPD_IFACE_ENABLED && mxl_is_iface_acs_bgscan(iface) &&
++				 freq != iface->freq) {
++				wpa_printf(MSG_DEBUG,
++					   "DFS: CAC completed on freq %d MHz, "
++					   "different from operating freq %d MHz - "
++					   "ignoring stale event during acs bgscan",
++					   freq, iface->freq);
++				return 0;
++			}
++			else if (iface->state != HAPD_IFACE_ENABLED &&
++			    hostapd_is_dfs_chan_available(iface)) {
++				hostapd_setup_interface_complete(iface, 0);
++				iface->cac_started = 0;
++			}
+ 			else {
+ 				/*
+ 				 * If the interface is already operational and the CAC completed
+@@ -1440,8 +1455,7 @@ int hostapd_dfs_complete_cac(struct hostapd_iface *iface, int success, int freq,
+ 				    freq != iface->freq) {
+ 					wpa_printf(MSG_DEBUG,
+ 						   "DFS: CAC completed on freq %d MHz, "
+-						   "different from operating freq %d MHz - "
+-						   "ignoring stale event",
++						   "different from operating freq %d MHz - ", 
+ 						   freq, iface->freq);
+ 				} else {
+ 					mxl_hostapd_handle_sb_dfs(iface);
+diff --git a/src/ap/mxl_acs.c b/src/ap/mxl_acs.c
+index 3a501af11..396d23d4a 100644
+--- a/src/ap/mxl_acs.c
++++ b/src/ap/mxl_acs.c
+@@ -2617,8 +2617,7 @@ int mxl_acs_do_switch_channel(struct hostapd_iface *iface, int block_tx)
+ 		   (channel->flag & HOSTAPD_CHAN_RADAR) &&
+ 		   ((channel->flag & HOSTAPD_CHAN_DFS_MASK) != HOSTAPD_CHAN_DFS_AVAILABLE)) {
+ 			iface->freq = channel->freq;
+-			mxl_hostapd_restart_iface(iface);
+-			return 0;
++			return mxl_hostapd_restart_iface(iface);
+ 		}
+ 	}
+ 
+diff --git a/src/ap/mxl_hostapd.c b/src/ap/mxl_hostapd.c
+index bfc4cf96e..ccb4bff55 100644
+--- a/src/ap/mxl_hostapd.c
++++ b/src/ap/mxl_hostapd.c
+@@ -3980,12 +3980,16 @@ int mxl_hostapd_restart_iface(struct hostapd_iface *iface)
+ {
+         int res;
+         int acs = iface->conf->acs;
++        struct acs_second_best_channel_params sec_best_ch = iface->mxl_iface.sec_best_ch;
+ 
+         iface->whm_if_fail = false;
+         iface->conf->acs = 0;
+         hostapd_disable_iface(iface);
++        iface->mxl_iface.sec_best_ch = sec_best_ch;
+         res = hostapd_enable_iface(iface);
+         iface->conf->acs = acs;
++        if (acs)
++            mxl_acs_set_bgscan_int(iface->bss[0]);
+ 
+         return res;
+ }
+diff --git a/src/ap/mxl_zwdfs.c b/src/ap/mxl_zwdfs.c
+index edc9addff..6aab368b1 100644
+--- a/src/ap/mxl_zwdfs.c
++++ b/src/ap/mxl_zwdfs.c
+@@ -161,6 +161,9 @@ int mxl_hostapd_start_background_cac(struct hostapd_iface *iface, const struct c
+ 			iface->radar_background.channel = data_freq->channel;
+ 			iface->radar_background.freq = data_freq->freq;
+ 
++			/* Keep in sync with radar_background above, so hostapd_dfs_is_background_event() (dfs.c) doesn't drop this completion as stale. */
++			iface->conf->enable_background_radar = true;
++
+ 			if (settings->freq_params.bandwidth == 20) {
+ 				centr_freq_seg0_idx = data_freq->channel;
+ 			} else {
+@@ -835,6 +838,9 @@ int mxl_acs_request_background_cac(struct hostapd_iface *iface)
+ 
+ 	/* check if background dfs cac enabled */
+ 	if (!iface->mxl_iface.acs_bgscan_enable) {
++		/* if zwdfs antenna is disabled then set background radar to false. */
++		wpa_printf(MSG_ERROR, "DFS: acs_bgscan is not enabed so setting bgscan radar to false");
++		iface->conf->enable_background_radar = false;
+ 		return 0;
+ 	}
+ 
+-- 
+2.43.0
+

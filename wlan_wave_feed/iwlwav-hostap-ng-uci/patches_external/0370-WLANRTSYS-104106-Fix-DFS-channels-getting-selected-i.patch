@@ -1,0 +1,241 @@
+From 16df0156bd30641021438e9e85e40e793406c447 Mon Sep 17 00:00:00 2001
+From: Dhaval Kolhe <dkolhe@maxlinear.com>
+Date: Wed, 23 Sep 2026 23:34:48 -0700
+Subject: [PATCH] WLANRTSYS-104106 Fix DFS channels getting selected in 15mins
+ NDFS window
+
+Signed-off-by: Dhaval Kolhe <dkolhe@maxlinear.com>
+---
+ src/ap/mxl_acs.c     | 95 ++++++++++++++++++++++++++++++++++++++++----
+ src/ap/mxl_hostapd.c | 46 ++++++++++++++-------
+ src/ap/mxl_hostapd.h |  2 +
+ 3 files changed, 122 insertions(+), 21 deletions(-)
+
+diff --git a/src/ap/mxl_acs.c b/src/ap/mxl_acs.c
+index c1b809a3f..f827c5650 100644
+--- a/src/ap/mxl_acs.c
++++ b/src/ap/mxl_acs.c
+@@ -495,6 +495,8 @@ mxl_acs_chan g_channels320_2_6G[NUM_CHAN_PAIRS_320_6G] =
+ 	{ 191, 221, 217, STARTING_6G_FREQ_IN_MHZ + 161*5 },
+ };
+ 
++static bool mxl_acs_bootup_non_dfs_deadline_elapsed(struct hostapd_iface *iface, int *secs_left);
++
+ /* Defines to parse 6GHz HE Oper IE or FILS frames from neighbor BSSes */
+ #define HE_OPER_CHANWIDTH_20	0
+ #define HE_OPER_CHANWIDTH_40	1
+@@ -3800,6 +3802,24 @@ int mxl_acs_recalc_ranks_and_set_chan (struct hostapd_iface *iface, int switch_r
+ 
+ 	os_get_reltime(&now);
+ 
++	/* ACS may have been disabled and re-enabled while the bootup non-DFS
++	 * window was still open, losing the eloop timeout that would have set
++	 * acs_bootup_non_dfs_done - re-derive it from the recorded deadline so
++	 * DFS candidates aren't excluded forever. */
++	if ((iface->conf->mxl_conf.acs_bootup_non_dfs ||
++	     iface->conf->mxl_conf.acs_bootup_non_dfs_allow_exclusion) &&
++	    !iface->mxl_iface.acs_bootup_non_dfs_done &&
++	    mxl_acs_bootup_non_dfs_deadline_elapsed(iface, NULL)) {
++		wpa_printf(MSG_INFO, "ACS: bootup_non_dfs window elapsed while ACS was disabled, re-enabling DFS candidates");
++
++		/* Allow DFS channels from this point onwards */
++		iface->mxl_iface.acs_bootup_non_dfs_done = true;
++
++		/* Reset second-best state so it is freshly computed with DFS candidates */
++		iface->mxl_iface.sec_best_ch.flag = false;
++		iface->mxl_iface.sec_best_ch.bg_cac = false;
++	}
++
+ #ifdef CONFIG_AFC
+ 	if (he_reg_is_sp(iface->conf->he_6ghz_reg_pwr_type) && is_6ghz_op_class(iface->conf->op_class))
+ 		mxl_acs_tx_power_update(iface);
+@@ -5618,7 +5638,6 @@ void mxl_acs_bgscan_timer_cb(void *eloop_data, void *user_ctx)
+ 	}
+ 	if (interval) {
+ 		 /* Set values to initiate a bg scan */
+-		hapd->iface->mxl_iface.acs_bootup_non_dfs_done = true;
+ 		hapd->iface->mxl_iface.acs_bgscan_enable = true;
+ 		ret = mxl_acs_check_bgscan(hapd->iface);
+ 		if (ret == 0) {
+@@ -5678,7 +5697,6 @@ void mxl_acs_stop_bgscan_timer_interval(struct hostapd_data *hapd)
+ void mxl_acs_stop_bootup_non_dfs_timer(struct hostapd_data *hapd)
+ {
+ 	if (eloop_is_timeout_registered(mxl_acs_bootup_non_dfs_timer_cb, hapd, NULL)) {
+-		hapd->iface->mxl_iface.acs_bootup_non_dfs_done = true;
+ 		wpa_printf(MSG_INFO,
+ 			   "%s: acs_bootup_non_dfs: cancel timer because ACS is disabled",
+ 			   hapd->conf->iface);
+@@ -5764,14 +5782,77 @@ void mxl_acs_bootup_non_dfs_timer_cb(void *eloop_data, void *user_ctx)
+ 
+ }
+ 
++/*
++ * mxl_acs_bootup_non_dfs_deadline_elapsed - Compare now against a previously
++ * recorded acs_bootup_non_dfs_expected_expiry. secs_left may be NULL if the
++ * caller only needs the elapsed/not-elapsed verdict.
++ *
++ * No deadline recorded yet (fresh arm): *secs_left = full window, returns false.
++ * Deadline already in the past (e.g. iface was re-armed after a restart that
++ * lost the eloop timeout): *secs_left = 0, returns true.
++ * Otherwise: *secs_left = time still remaining, returns false.
++ */
++static bool mxl_acs_bootup_non_dfs_deadline_elapsed(struct hostapd_iface *iface, int *secs_left)
++{
++	struct os_reltime now;
++	os_time_t expiry = iface->mxl_iface.acs_bootup_non_dfs_expected_expiry;
++
++	if (!expiry) {
++		if (secs_left)
++			*secs_left = ACS_BOOTUP_NON_DFS_TIMER_SECS;
++		return false;
++	}
++
++	os_get_reltime(&now);
++
++	if (now.sec >= expiry) {
++		if (secs_left)
++			*secs_left = 0;
++		return true;
++	}
++
++	if (secs_left)
++		*secs_left = (int)(expiry - now.sec);
++	return false;
++}
++
+ void mxl_acs_start_bootup_non_dfs_timer(struct hostapd_data *hapd)
+ {
+-	if (!eloop_is_timeout_registered(mxl_acs_bootup_non_dfs_timer_cb, hapd, NULL)) {
+-		wpa_printf(MSG_INFO,
+-			   "%s: acs_bootup_non_dfs: scheduling 15-min DFS re-evaluation timer",
++	struct hostapd_iface *iface = hapd->iface;
++	struct os_reltime now;
++	int secs_left = 0;
++
++	if (eloop_is_timeout_registered(mxl_acs_bootup_non_dfs_timer_cb, hapd, NULL))
++		return;
++
++	/* iface may be re-armed after a restart that lost the eloop timeout
++	 * while the previously recorded deadline already passed - don't
++	 * grant a fresh 15-min window, just declare the phase over */
++	if (mxl_acs_bootup_non_dfs_deadline_elapsed(iface, &secs_left)) {
++		wpa_printf(MSG_INFO, "%s: acs_bootup_non_dfs: recorded deadline already elapsed, marking done without re-arming timer",
+ 			   hapd->conf->iface);
+-		eloop_register_timeout(ACS_BOOTUP_NON_DFS_TIMER_SECS, 0,
+-					      mxl_acs_bootup_non_dfs_timer_cb, hapd, NULL);
++
++		/* Invoke ndfs_timer_cb to handle scenario where deadline had not elapsed
++		 * before ACS recalc but expired during the post-setup interface phase */
++		if(!iface->mxl_iface.acs_bootup_non_dfs_done)
++			eloop_register_timeout(30, 0, mxl_acs_bootup_non_dfs_timer_cb, hapd, NULL);
++		return;
++	}
++
++	/* If the deadline is close to expiring, add a buffer to avoid immediate
++	 * expiration and back-to-back ACS re-evaluations */
++	if (secs_left <= 30)
++		secs_left += 60;
++	wpa_printf(MSG_INFO, "%s: acs_bootup_non_dfs: scheduling DFS re-evaluation timer for %d sec(s)",
++		   hapd->conf->iface, secs_left);
++	eloop_register_timeout(secs_left, 0, mxl_acs_bootup_non_dfs_timer_cb, hapd, NULL);
++
++	if (!iface->mxl_iface.acs_bootup_non_dfs_expected_expiry) {
++		os_get_reltime(&now);
++		iface->mxl_iface.acs_bootup_non_dfs_expected_expiry = now.sec + secs_left;
++		wpa_printf(MSG_INFO,
++			"%s: acs_bootup_non_dfs: DFS re-evaluation deadline at uptime %ld",
++			hapd->conf->iface, (long)iface->mxl_iface.acs_bootup_non_dfs_expected_expiry);
+ 	}
+ }
+ 
+diff --git a/src/ap/mxl_hostapd.c b/src/ap/mxl_hostapd.c
+index cbc46773f..e6a166834 100644
+--- a/src/ap/mxl_hostapd.c
++++ b/src/ap/mxl_hostapd.c
+@@ -1858,19 +1858,7 @@ void mxl_hostapd_setup_interface_post(struct hostapd_iface *iface)
+ 		}
+ 	}
+ 
+-	if (iface->conf->acs && mxl_conf->acs_bootup_non_dfs &&
+-	    !mxl_conf->acs_bootup_non_dfs_allow_exclusion &&
+-	    WAVE_FREQ_IS_5G(iface->freq) &&
+-	    !iface->mxl_iface.acs_bootup_non_dfs_done) {
+-		wpa_printf(MSG_DEBUG,
+-			   "TIMER_START: starting bootup_non_dfs timer with non_dfs=%d allow_excl=%d done=%d",
+-			   mxl_conf->acs_bootup_non_dfs,
+-			   mxl_conf->acs_bootup_non_dfs_allow_exclusion,
+-			   iface->mxl_iface.acs_bootup_non_dfs_done);
+-		mxl_acs_start_bootup_non_dfs_timer(hapd);
+-	} else if (iface->conf->acs) {
+-		mxl_acs_set_bgscan_interval(hapd);
+-	}
++	mxl_acs_start_bgscan_or_bootup_timer(hapd);
+ 
+ 	/* Set AP retry limit only if user configured this */
+ 	ap_retry_limit_cfg[0] = mxl_conf->ap_retry_limit;
+@@ -3989,11 +3977,41 @@ int mxl_hostapd_restart_iface(struct hostapd_iface *iface)
+         res = hostapd_enable_iface(iface);
+         iface->conf->acs = acs;
+         if (acs)
+-            mxl_acs_set_bgscan_int(iface->bss[0]);
++            mxl_acs_start_bgscan_or_bootup_timer(iface->bss[0]);
+ 
+         return res;
+ }
+ 
++/*
++ * acs_bootup_non_dfs=1: start 15-min timer; bgscan deferred until it fires.
++ *   After timer: DFS re-enabled, second-best CAC runs, exclusion switches
++ *   allowed, normal bgscan starts.
++ *
++ * acs_bootup_non_dfs_allow_exclusion=1: start 60-min timer; bgscan starts
++ *   immediately; exclusion-list switches ARE allowed during the 60-min phase
++ *   (but only to non-DFS channels - DFS rank-filter still active).
++ *   After 60-min timer: DFS re-enabled, second-best CAC runs, full normal op.
++ *
++ * Otherwise: arm the regular periodic bgACS timer directly.
++ */
++void mxl_acs_start_bgscan_or_bootup_timer(struct hostapd_data *hapd)
++{
++	struct hostapd_iface *iface = hapd->iface;
++	struct mxl_hostapd_config *mxl_conf = &hapd->iconf->mxl_conf;
++
++	if (iface->conf->acs && mxl_conf->acs_bootup_non_dfs && !mxl_conf->acs_bootup_non_dfs_allow_exclusion &&
++	    WAVE_FREQ_IS_5G(iface->freq) && !iface->mxl_iface.acs_bootup_non_dfs_done) {
++		wpa_printf(MSG_INFO, "TIMER_START: starting bootup_non_dfs timer with non_dfs=%d allow_excl=%d done=%d",
++		    mxl_conf->acs_bootup_non_dfs, mxl_conf->acs_bootup_non_dfs_allow_exclusion, iface->mxl_iface.acs_bootup_non_dfs_done);
++		mxl_acs_start_bootup_non_dfs_timer(hapd);
++	} else if (iface->conf->acs) {
++		wpa_printf(MSG_INFO, "TIMER_START: starting timer. Conditions: acs=%d non_dfs=%d allow_excl=%d 5g=%d done=%d",
++		    iface->conf->acs, mxl_conf->acs_bootup_non_dfs, mxl_conf->acs_bootup_non_dfs_allow_exclusion,
++		    WAVE_FREQ_IS_5G(iface->freq), iface->mxl_iface.acs_bootup_non_dfs_done);
++		mxl_acs_set_bgscan_interval(hapd);
++	}
++}
++
+ void mxl_acs_clear_second_bg_cac_param(struct hostapd_iface *iface)
+ {
+ 	memset(&iface->mxl_iface.sec_best_ch, 0, sizeof(iface->mxl_iface.sec_best_ch));
+diff --git a/src/ap/mxl_hostapd.h b/src/ap/mxl_hostapd.h
+index 759750055..2f37a040e 100644
+--- a/src/ap/mxl_hostapd.h
++++ b/src/ap/mxl_hostapd.h
+@@ -167,6 +167,7 @@ struct mxl_hostapd_iface {
+ 	bool acs_bgscan;
+ 	bool acs_bgscan_enable;
+ 	bool acs_bootup_non_dfs_done;
++	os_time_t acs_bootup_non_dfs_expected_expiry; /* Absolute time (epoch secs) the bootup non-DFS timer is due to fire, 0 if not armed */
+ 	int acs_reenable_iface;
+ 	/* iface->conf snapshot taken right before a live (already-enabled)
+ 	 * ACS re-run commits a new candidate, for acs_reenable_iface's switch
+@@ -434,6 +435,7 @@ struct hostapd_data *mxl_hostapd_get_setup_mbssid_bss(struct hostapd_iface *ifac
+ size_t mxl_hostapd_get_mbssid_tx_bss_idx(struct hostapd_iface *iface);
+ struct hostapd_data *mxl_hostapd_mbssid_get_tx_bss(struct hostapd_data *hapd);
+ bool mxl_hostapd_is_mbssid_tx_bss(struct hostapd_data *hapd);
++void mxl_acs_start_bgscan_or_bootup_timer(struct hostapd_data *hapd);
+ void mxl_acs_clear_second_bg_cac_param(struct hostapd_iface *iface);
+ void mxl_acs_clear_stale_second_bg_cac_candidate(struct hostapd_iface *iface);
+ void mxl_hostapd_restore_user_configured_cw(struct hostapd_iface *iface, struct hostapd_config *oldconf);
+-- 
+2.43.0
+

@@ -1,0 +1,57 @@
+From e09e76373b6ad08a9a50c3dc87d4aedcb00fd29c Mon Sep 17 00:00:00 2001
+From: ragavan <rramasamy@maxlinear.com>
+Date: Mon, 22 Jun 2026 06:20:50 -0700
+Subject: [PATCH] WLANRTSYS-102520 Restrict prune_sta to MLO-enabled BSS and ML
+ STAs only
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+The function mxl_clean_exiting_sta_entry_by_mac(), called from
+mxl_hostapd_prune_sta(), was iterating over all BSSes and removing
+any existing STA entry matching the incoming MAC address — regardless
+of whether the BSS had MLO enabled or whether the STA was an ML STA.
+
+This caused a unexpected AP_STA_DISCONNECTED event for legacy (non-MLD)
+STAs when they sent an Auth Request after receiving a
+BSS Transition Management Request (BTM_REQ). The prune path would
+forcefully remove the legacy STA.
+
+Fix this by adding two guards in mxl_clean_exiting_sta_entry_by_mac():
+  - Skip any BSS that does not have MLO enabled.
+  - Skip the STA removal if the STA is not an ML STA.
+
+This restricts the prune logic to its intended scope — cleaning up
+stale MLD STA entries across affiliated links during MLO reassociation
+— and prevents it from incorrectly evicting legacy STAs that are
+undergoing BSS transition steered by the AP.
+
+Signed-off-by: ragavan <rramasamy@maxlinear.com>
+---
+ src/ap/mxl_utils.c | 5 ++++-
+ 1 file changed, 4 insertions(+), 1 deletion(-)
+
+diff --git a/src/ap/mxl_utils.c b/src/ap/mxl_utils.c
+index 72e96fcc2..e2e7e106c 100644
+--- a/src/ap/mxl_utils.c
++++ b/src/ap/mxl_utils.c
+@@ -89,12 +89,15 @@ static int mxl_clean_exiting_sta_entry_by_mac(struct hostapd_iface *iface, void
+ 	for (j = 0; j < iface->num_bss; j++) {
+ 		hapd = iface->bss[j];
+ 
++		if (!mxl_is_mlo_enabled(hapd->conf))
++			continue;
+ 		sta = ap_get_sta(hapd, data->addr);
+ 		if (!sta)
+ 			sta = mxl_ap_get_sta_by_non_ap_mld_mac(hapd, data->addr);
+ 
+ 		if (sta && sta != data->new_sta_entry) {
+-
++			if (!mxl_mlo_is_ml_sta(sta))
++				continue;
+ 			if (hapd->conf->wpa && mxl_check_sa_query(hapd, sta, 0))
+ 				return 1;
+ 
+-- 
+2.43.0
+

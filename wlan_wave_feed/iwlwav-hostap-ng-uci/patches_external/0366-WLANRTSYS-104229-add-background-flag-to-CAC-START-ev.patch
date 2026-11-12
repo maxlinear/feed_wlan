@@ -1,0 +1,61 @@
+From ff6bb8601d0b751bd46fea2939d8afcad68647ef Mon Sep 17 00:00:00 2001
+From: ragavan <rramasamy@maxlinear.com>
+Date: Sun, 18 Oct 2026 07:55:03 -0700
+Subject: [PATCH] WLANRTSYS-104229 :add background flag to CAC-START events
+
+Issue:
+Background (ZWDFS) CAC start events generated through certain DFS code
+paths were reported without the "(background)" suffix. Consequently,
+mod-whm could not identify them as background CAC events and forwarded
+them to pWHM, resulting in duplicate ChannelChange DM entries.
+
+Root Cause:
+DFS_EVENT_CAC_START notifications from hostapd_handle_dfs()  did not
+include the background CAC indicator.
+
+Fix:
+Add the conditional "(background)" suffix to DFS_EVENT_CAC_START
+messages in  code path so mod-whm can recognize background CAC
+events and return before forwarding them to pWHM.
+
+Signed-off-by: ragavan <rramasamy@maxlinear.com>
+---
+ src/ap/dfs.c | 15 ++++++++++++++-
+ 1 file changed, 14 insertions(+), 1 deletion(-)
+
+diff --git a/src/ap/dfs.c b/src/ap/dfs.c
+index d07f44160..eea4ff5f4 100644
+--- a/src/ap/dfs.c
++++ b/src/ap/dfs.c
+@@ -1006,14 +1006,27 @@ int hostapd_handle_dfs(struct hostapd_iface *iface)
+ 	hostapd_set_state(iface, HAPD_IFACE_DFS);
+ 	wpa_printf(MSG_DEBUG, "DFS start CAC on %d MHz%s", iface->freq,
+ 		   dfs_use_radar_background(iface) ? " (background)" : "");
++#ifdef CONFIG_VENDOR_MXL
+ 	wpa_msg(iface->bss[0]->msg_ctx, MSG_INFO, DFS_EVENT_CAC_START
+-		"freq=%d chan=%d sec_chan=%d, width=%d, seg0=%d, seg1=%d, cac_time=%ds",
++		"freq=%d chan=%d sec_chan=%d, width=%d, seg0=%d, seg1=%d, cac_time=%ds%s",
+ 		iface->freq,
+ 		iface->conf->channel, iface->conf->secondary_channel,
+ 		hostapd_get_oper_chwidth(iface->conf),
+ 		hostapd_get_oper_centr_freq_seg0_idx(iface->conf),
+ 		hostapd_get_oper_centr_freq_seg1_idx(iface->conf),
++		iface->dfs_cac_ms / 1000,
++		dfs_use_radar_background(iface) ? " (background)" : "");
++#else
++	wpa_msg(iface->bss[0]->msg_ctx, MSG_INFO, DFS_EVENT_CAC_START
++		"freq=%d chan=%d sec_chan=%d, width=%d, seg0=%d, seg1=%d, cac_time=%ds",
++		iface->freq,
++		iface->conf->channel,
++		iface->conf->secondary_channel,
++		hostapd_get_oper_chwidth(iface->conf),
++		hostapd_get_oper_centr_freq_seg0_idx(iface->conf),
++		hostapd_get_oper_centr_freq_seg1_idx(iface->conf),
+ 		iface->dfs_cac_ms / 1000);
++#endif /* CONFIG_VENDOR_MXL */
+ 
+ #ifdef CONFIG_VENDOR_MXL
+ 	res = mxl_acs_request_background_cac(iface);
+-- 
+2.43.0
+

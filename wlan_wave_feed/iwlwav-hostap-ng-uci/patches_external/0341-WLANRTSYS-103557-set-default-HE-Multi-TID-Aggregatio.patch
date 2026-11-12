@@ -1,0 +1,35 @@
+From afbc61dbd09331dd52a8d3a61e4ec34a032fb135 Mon Sep 17 00:00:00 2001
+From: Sathyananda Reddy <kmsreddy@maxlinear.com>
+Date: Wed, 19 Aug 2026 02:50:39 -0700
+Subject: [PATCH] WLANRTSYS-103557 set default HE Multi-TID Aggregation TX
+ Support to 0 Enable the default HE capability override for Multi-TID
+ Aggregation TX Support and set the advertised capability field to 0. This
+ prevents the driver-provided default capability from being advertised in
+ Beacon HE capabilities. Fixup:WLANRTSYS-102367 Align beacon capability
+ defaults
+
+---
+ hostapd/mxl_config.c | 5 +++++
+ 1 file changed, 5 insertions(+)
+
+diff --git a/hostapd/mxl_config.c b/hostapd/mxl_config.c
+index cc44a22e1..1c3e3a953 100644
+--- a/hostapd/mxl_config.c
++++ b/hostapd/mxl_config.c
+@@ -2289,8 +2289,13 @@ int mxl_hostapd_config_defaults(struct hostapd_config *conf)
+ 	mxl_conf->override_hw_capab.he_phy_ppe_thresholds_present = 1;
+ 	mxl_conf->override_hw_capab.he_phy_dcm_max_bw = 1;
+ 	mxl_conf->override_hw_capab.he_phy_longer_than_16_he_sigb_ofdm_sym_support = 1;
++	mxl_conf->override_hw_capab.he_mac_multi_tid_aggregation_tx_support = 1;
+ 	mxl_conf->he_capab_dbg.he_phy_capab_info[HE_PHYCAP_CAP8_IDX] |=
+ 		set_he_cap(3, HE_PHY_CAP8_DCM_MAX_BW);
++	mxl_conf->he_capab_dbg.he_mac_capab_info[HE_MACCAP_CAP4_IDX] |=
++		set_he_cap(0, HE_MAC_CAP4_MULTI_TID_AGGR_TX_SUPPORT);
++	mxl_conf->he_capab_dbg.he_mac_capab_info[HE_MACCAP_CAP5_IDX] |=
++		set_he_cap(0, HE_MAC_CAP5_MULTI_TID_AGGR_TX_SUPPORT);
+ #endif /* CONFIG_IEEE80211AX */
+ 
+ #ifdef CONFIG_IEEE80211BE
+-- 
+2.43.0
+

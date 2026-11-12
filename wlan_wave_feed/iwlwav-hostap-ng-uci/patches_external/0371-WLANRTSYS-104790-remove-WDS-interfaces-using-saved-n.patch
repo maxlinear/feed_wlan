@@ -1,0 +1,86 @@
+From 538e34ddffb6e540243b31676615dd8557761996 Mon Sep 17 00:00:00 2001
+From: ragavan <rramasamy@maxlinear.com>
+Date: Sun, 1 Nov 2026 22:03:26 -0800
+Subject: [PATCH] WLANRTSYS-104790 : remove WDS interfaces using saved names
+
+Problem:
+Hostapd attempts to remove wlan4.8.sta0 instead of the actual WDS
+interface (for example, wlan4.8.sta192), causing the real WDS interface
+to remain attached to the bridge.
+
+Root Cause:
+In MXL builds, the station AID is released before WDS cleanup. As a
+result, the driver rebuilds the WDS interface name using AID 0 rather
+than the original interface name.
+
+Resolution:
+Use the saved WDS interface name during MXL teardown instead of
+reconstructing it from the station AID. Preserve the existing behavior
+for non-MXL builds.
+
+System Impact:
+Ensures the correct WDS interface is removed from br-lan, preventing
+stale interface leakage and allowing proper reconnect handling and VLAN
+interface recreation.
+
+Fixup : WLANRTSYS-57048: Integrate WDS commits
+
+Signed-off-by: ragavan <rramasamy@maxlinear.com>
+---
+ src/ap/sta_info.c            |  4 ++++
+ src/drivers/driver_nl80211.c | 16 ++++++++++++++++
+ 2 files changed, 20 insertions(+)
+
+diff --git a/src/ap/sta_info.c b/src/ap/sta_info.c
+index bdc9cc16e..9d77e9b96 100644
+--- a/src/ap/sta_info.c
++++ b/src/ap/sta_info.c
+@@ -265,7 +265,11 @@ void ap_free_sta(struct hostapd_data *hapd, struct sta_info *sta)
+ 	     (hapd->conf->multi_ap & BACKHAUL_BSS) &&
+ 	     hapd->conf->wds_sta &&
+ 	     !(sta->flags & WLAN_STA_WPS)))
++#ifdef CONFIG_VENDOR_MXL
++		hostapd_set_wds_sta(hapd, sta->ifname_wds, sta->addr, sta->aid, 0);
++#else
+ 		hostapd_set_wds_sta(hapd, NULL, sta->addr, sta->aid, 0);
++#endif /* CONFIG_VENDOR_MXL */
+ 
+ 	if (sta->ipaddr)
+ 		hostapd_drv_br_delete_ip_neigh(hapd, 4, (u8 *) &sta->ipaddr);
+diff --git a/src/drivers/driver_nl80211.c b/src/drivers/driver_nl80211.c
+index e847a7a22..b6daa958b 100644
+--- a/src/drivers/driver_nl80211.c
++++ b/src/drivers/driver_nl80211.c
+@@ -8939,6 +8939,21 @@ static int i802_set_wds_sta(void *priv, const u8 *addr, int aid, int val,
+ 	bool add_br = false;
+ 	int ret;
+ 
++#ifdef CONFIG_VENDOR_MXL
++	if (!val && ifname_wds && ifname_wds[0]) {
++		os_strlcpy(name, ifname_wds, sizeof(name));
++	} else {
++		ret = os_snprintf(name, sizeof(name), "%s.sta%d", bss->ifname, aid);
++		if (ret >= (int) sizeof(name))
++			wpa_printf(MSG_WARNING,
++				   "nl80211: WDS interface name was truncated");
++		else if (ret < 0)
++			return ret;
++
++		if (ifname_wds)
++			os_strlcpy(ifname_wds, name, IFNAMSIZ + 1);
++}
++#else
+ 	ret = os_snprintf(name, sizeof(name), "%s.sta%d", bss->ifname, aid);
+ 	if (ret >= (int) sizeof(name))
+ 		wpa_printf(MSG_WARNING,
+@@ -8948,6 +8963,7 @@ static int i802_set_wds_sta(void *priv, const u8 *addr, int aid, int val,
+ 
+ 	if (ifname_wds)
+ 		os_strlcpy(ifname_wds, name, IFNAMSIZ + 1);
++#endif /* CONFIG_VENDOR_MXL */
+ 
+ 	wpa_printf(MSG_DEBUG, "nl80211: Set WDS STA addr=" MACSTR
+ 		   " aid=%d val=%d name=%s", MAC2STR(addr), aid, val, name);
+-- 
+2.43.0
+

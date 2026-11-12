@@ -1,0 +1,56 @@
+From 429cd0bba82afc3975022e3c284b248f8b347db8 Mon Sep 17 00:00:00 2001
+From: ragavan <rramasamy@maxlinear.com>
+Date: Sun, 18 Oct 2026 08:07:31 -0700
+Subject: [PATCH] WLANRTSYS-104029 prevent beacon setup for start_disabled BSS
+
+Issue:
+BSSes configured with start_disabled=1 could still start beaconing
+through various beacon update paths, despite being intended to remain
+disabled.
+
+Root Cause:
+Beacon updates from multiple subsystems eventually reached
+__ieee802_11_set_beacon(). Some callers did not verify the
+start_disabled state before triggering beacon programming, allowing a
+disabled BSS to beacon.
+
+Fix:
+Add a start_disabled guard in __ieee802_11_set_beacon(), the common
+entry point for all beacon programming paths. Skip beacon setup for
+disabled BSSes, clear stale beacon_set_done state, and return success
+without programming a beacon.
+
+This provides a single enforcement point ensuring that BSSes
+configured with start_disabled=1 never beacon, regardless of which
+subsystem triggers the beacon update.
+
+Signed-off-by: ragavan <rramasamy@maxlinear.com>
+---
+ src/ap/beacon.c | 11 +++++++++++
+ 1 file changed, 11 insertions(+)
+
+diff --git a/src/ap/beacon.c b/src/ap/beacon.c
+index 335287987..75fb1de48 100644
+--- a/src/ap/beacon.c
++++ b/src/ap/beacon.c
+@@ -3160,6 +3160,17 @@ static int __ieee802_11_set_beacon(struct hostapd_data *hapd)
+ 		wpa_printf(MSG_ERROR, "Interface is disabled");
+ 		return -1;
+ 	}
++#ifdef CONFIG_VENDOR_MXL
++	/* Central guard: never (re)arm the beacon for a BSS that must stay
++	 * disabled, regardless of which caller reached this function. */
++	if (hapd->conf->start_disabled) {
++		wpa_printf(MSG_DEBUG,
++			   "%s: Skip beacon set - BSS is start_disabled",
++			   hapd->conf->iface);
++		hapd->beacon_set_done = 0;
++		return 0;
++	}
++#endif /* CONFIG_VENDOR_MXL */
+ 
+ #ifdef CONFIG_VENDOR_MXL
+ 	/* TODO COLOR: During Reconfig, the BSS removed and hence these states cleaned up.
+-- 
+2.43.0
+

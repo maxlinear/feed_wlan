@@ -1,0 +1,46 @@
+From eb80c9f45fc32b53fc0746d7afc38dab0178a7bb Mon Sep 17 00:00:00 2001
+From: hmgokhale <hmgokhale@maxlinear.com>
+Date: Mon, 12 Oct 2026 02:48:23 -0700
+Subject: [PATCH] WLANRTSYS-104441 Handle CSA driver failure in hostapd using
+ CSA watchdog
+
+Signed-off-by: hmgokhale <hmgokhale@maxlinear.com>
+---
+ src/ap/dfs.c     | 3 +++
+ src/ap/hostapd.c | 6 ++++++
+ 2 files changed, 9 insertions(+)
+
+diff --git a/src/ap/dfs.c b/src/ap/dfs.c
+index b78a15f14..d07f44160 100644
+--- a/src/ap/dfs.c
++++ b/src/ap/dfs.c
+@@ -1443,6 +1443,9 @@ int hostapd_dfs_complete_cac(struct hostapd_iface *iface, int success, int freq,
+ 			    hostapd_is_dfs_chan_available(iface)) {
+ 				hostapd_setup_interface_complete(iface, 0);
+ 				iface->cac_started = 0;
++				/* Already fully handled - avoid a redundant, doomed-to-fail
++				 * second switch attempt via the ZWDFS tail below. */
++				return 0;
+ 			}
+ 			else {
+ 				/*
+diff --git a/src/ap/hostapd.c b/src/ap/hostapd.c
+index bc3047ca8..402509d42 100644
+--- a/src/ap/hostapd.c
++++ b/src/ap/hostapd.c
+@@ -3820,6 +3820,12 @@ static int hostapd_setup_interface_complete_sync(struct hostapd_iface *iface,
+ 				}
+ 			}
+ 			hostapd_set_state(iface, HAPD_IFACE_ENABLED);
++#ifdef CONFIG_VENDOR_MXL
++			mxl_acs_chandef cur_chan;
++
++			acs_push_chandef(iface, &cur_chan);
++			mxl_acs_arm_csa_watchdog(iface, &cur_chan, false);
++#endif /* CONFIG_VENDOR_MXL */
+ 			/* After calling hostapd_switch_channel
+ 			 * hostapd_setup_bss/ieee802_11_set_beacon will fail with:
+ 			 * "Cannot set beacons during CSA period", because hostapd_switch_channel
+-- 
+2.43.0
+

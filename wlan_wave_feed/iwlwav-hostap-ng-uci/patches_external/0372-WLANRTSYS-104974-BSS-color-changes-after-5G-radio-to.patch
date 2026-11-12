@@ -1,0 +1,50 @@
+From 253f484aab048f61fc44fc0e8366a01bac8b0f24 Mon Sep 17 00:00:00 2001
+From: "mujiburrahimank@maxlinear.com"
+ <mujiburrahimank@lvdocker7.lvsw.maxlinear.com>
+Date: Sun, 1 Nov 2026 20:52:40 -0800
+Subject: [PATCH] WLANRTSYS-104974 BSS color changes after 5G radio toggle,
+ client ping fails
+
+Problem : After a 5GHz radio disable/enable with a connected client, the
+client reconnects but ping fails because the BSS color in the beacon is
+different from the one configured before the toggle.
+
+Root Cause : A config reload received while the 5GHz interface is
+disabled fails with a false HT capability error. The reload exits
+before the old BSS color is restored, so a random color is used when
+the interface is enabled again.
+
+Resolution :
+- Keep the old config if a reload fails, so a half-applied config is
+  never used.
+
+System Impact : Config reload with a disabled interface, HE BSS color
+
+Validation : 5GHz radio toggle with connected client and continuous
+ping; BSS color unchanged and ping continues
+
+Fixup : WLANRTSYS-55139 HE BSS color
+---
+ src/ap/hostapd.c | 6 ++++++
+ 1 file changed, 6 insertions(+)
+
+diff --git a/src/ap/hostapd.c b/src/ap/hostapd.c
+index 29d5f53fe..7bc131f67 100644
+--- a/src/ap/hostapd.c
++++ b/src/ap/hostapd.c
+@@ -381,6 +381,12 @@ int hostapd_reload_config(struct hostapd_iface *iface)
+ 	if (mxl_hostapd_prepare_reload_config(iface) < 0) {
+ 		wpa_printf(MSG_ERROR,
+ 				   "Failed to prepare config for reload");
++		/* Roll back: keep using the old config. Leaving iface->conf
++		 * pointing at newconf would make the next interface enable use
++		 * a config that never got he_op (BSS color) etc. restored from
++		 * the old one, i.e. a different random BSS color. */
++		iface->conf = oldconf;
++		hostapd_config_free(newconf);
+ 		return -1;
+ 	}
+ 	/* Restoring user configured cw on reload */
+-- 
+2.43.0
+

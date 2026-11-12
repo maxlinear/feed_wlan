@@ -117,7 +117,7 @@ USR_INC_DIR:=$(wildcard $(STAGING_DIR)/usr/include)
 
 IFX_CFLAGS += -I$(USR_INC_DIR)/include -DHAVE_C99=1
 IFX_LDFLAGS += -L$(STAGING_DIR)/usr/lib -lnl-3 -L$(LIBRT_DIR)/lib -lrt -lsafec-3.3 -lcurl -ljson-c
-IFX_CFLAGS += -fstack-protector-strong -O2 -D_FORTIFY_SOURCE=2 -Wformat -Wformat-security -Werror=format-security -Wall -Wtype-limits -fPIE -Wl,-strip-debug
+IFX_CFLAGS += -fstack-protector-strong -O2 -D_FORTIFY_SOURCE=2 -Wformat -Wformat-security -Werror=format-security -Wall -Wtype-limits -fPIE
 IFX_LDFLAGS_AFC = $(IFX_LDFLAGS)
 IFX_LDFLAGS_AFC += -Wl,-z,noexecstack -Wl,-z,now -Wl,-z,relro -no-pie
 IFX_LDFLAGS += -Wl,-z,noexecstack -Wl,-z,now -Wl,-z,relro -pie
