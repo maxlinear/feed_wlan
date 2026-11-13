@@ -1,0 +1,50 @@
+From f71b47a11d2c1af337be6719227f6b35d0617beb Mon Sep 17 00:00:00 2001
+From: "mujiburrahimank@maxlinear.com"
+ <mujiburrahimank@lvdocker7.lvsw.maxlinear.com>
+Date: Wed, 23 Sep 2026 23:53:13 -0700
+Subject: [PATCH] WLANRTSYS-104138 Fix stale ACS scan complete during iface
+ teardown
+
+Root cause : ACS bgscan completion could run after the iface was already being
+torn down or reconfigured. In that state, a stale scan-complete callback could
+still invoke the ACS re-ranking path using invalid iface context. This led to a
+use-after-teardown / stale current_mode access while evaluating candidate exclusions
+during ACS scan processing.
+
+Resolution : Below are the list fixes made to avoid a crash due to stale
+scan complete
+- drop stale ACS scan-complete callbacks when the iface is no longer valid or is being disabled
+- guard ACS re-evaluation against iface teardown / disabled state
+- ensure ACS update state is not left active across stale callbacks
+- keep ACS scan completion path aligned with the active iface lifecycle
+
+Sytem Impact: Foreground & Background ACS
+
+Fixup : WLANRTSYS-50170 MXL Smart ACS implementation
+---
+ src/ap/mxl_acs.c | 9 +++++++++
+ 1 file changed, 9 insertions(+)
+
+diff --git a/src/ap/mxl_acs.c b/src/ap/mxl_acs.c
+index c75b2369a..5978437e0 100644
+--- a/src/ap/mxl_acs.c
++++ b/src/ap/mxl_acs.c
+@@ -3733,6 +3733,15 @@ int mxl_acs_recalc_ranks_and_set_chan (struct hostapd_iface *iface, int switch_r
+ 	bool all_candidates_util_below_thresh = true;
+ 	bool current_chandef_available = false;
+ 	int current_chandef_cand_idx = -1;
++	const char *ifname = (iface->conf && iface->conf->bss && iface->conf->bss[0]) ?
++		iface->conf->bss[0]->iface : (iface->phy[0] ? iface->phy : "N/A");
++
++	if (!iface->current_mode) {
++		wpa_printf(MSG_DEBUG,
++				"ACS: recalc skipped, iface %s has no current_mode (mid teardown/reinit)",
++				ifname);
++		return -1;
++	}
+ 
+ 	fp = fopen(iface->conf->mxl_conf.acs_smart_info_file, "w");
+ 	if (!fp) {
+-- 
+2.43.0
+

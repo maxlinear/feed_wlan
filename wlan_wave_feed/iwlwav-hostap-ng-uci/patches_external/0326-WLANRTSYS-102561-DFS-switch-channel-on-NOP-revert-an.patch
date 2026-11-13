@@ -1,0 +1,332 @@
+From 9b2bb70bddc9a107adaa6f678b6958f058bcb6e4 Mon Sep 17 00:00:00 2001
+From: "mujiburrahimank@maxlinear.com"
+ <mujiburrahimank@lvdocker7.lvsw.maxlinear.com>
+Date: Fri, 19 Jun 2026 08:29:08 -0700
+Subject: [PATCH] WLANRTSYS-102561 DFS switch channel on NOP-revert and trigger
+ bgCAC when needed
+
+Radar NOP-expiry revert path restored original chandef by disabling and enabling
+the interface. This restart-based path is disruptive and can delay recovery.
+
+Update revert handling to use DFS channel-switch flow and include background CAC
+handling:
+
+Keep original chandef restore logic on NOP completion.
+Trigger DFS channel switch after restore instead of iface disable/enable.
+Attempt background CAC for restored chandef when required/possible.
+Fall back to DFS channel-switch path if bgCAC cannot be started.
+Result:
+
+Revert behavior is aligned with DFS channel-switch handling.
+Reduces unnecessary interface restart during NOP recovery.
+Preserves CAC requirements via bgCAC path where applicable.
+
+Fixup to : WLANRTSYS-50839 MXL DFS debug channel simulation
+---
+ src/ap/dfs.c            |  54 +++++++++++++---
+ src/ap/dfs.h            |   6 ++
+ src/ap/hw_features.c    |   3 +
+ src/ap/mxl_dfs_common.c | 133 ++++++++++++++++++++++++++++++++++++++++
+ src/ap/mxl_dfs_common.h |   4 ++
+ src/ap/mxl_hostapd.h    |   4 ++
+ 6 files changed, 197 insertions(+), 7 deletions(-)
+
+diff --git a/src/ap/dfs.c b/src/ap/dfs.c
+index 6b94afb7e..86177c164 100644
+--- a/src/ap/dfs.c
++++ b/src/ap/dfs.c
+@@ -1097,12 +1097,21 @@ static void hostapd_handle_acs_dfs_failure(struct hostapd_iface *iface)
+ #endif /* CONFIG_VENDOR_MXL */
+ 
+ 
++#ifndef CONFIG_VENDOR_MXL
+ static int hostapd_dfs_request_channel_switch(struct hostapd_iface *iface,
+ 					      int channel, int freq,
+ 					      int secondary_channel,
+ 					      u8 current_vht_oper_chwidth,
+ 					      u8 oper_centr_freq_seg0_idx,
+ 					      u8 oper_centr_freq_seg1_idx)
++#else /* CONFIG_VENDOR_MXL */
++int hostapd_dfs_request_channel_switch(struct hostapd_iface *iface,
++					      int channel, int freq,
++					      int secondary_channel,
++					      u8 current_vht_oper_chwidth,
++					      u8 oper_centr_freq_seg0_idx,
++					      u8 oper_centr_freq_seg1_idx)
++#endif /* CONFIG_VENDOR_MXL */
+ {
+ 	struct hostapd_hw_modes *cmode = iface->current_mode;
+ 	int ieee80211_mode = IEEE80211_MODE_AP, err;
+@@ -1365,7 +1374,13 @@ int hostapd_dfs_complete_cac(struct hostapd_iface *iface, int success, int freq,
+ 			 * selected channel and configure the background chain
+ 			 * to a new DFS channel.
+ 			 */
+-			if (hostapd_dfs_is_background_event(iface, freq)) {
++#ifndef CONFIG_VENDOR_MXL
++			if (hostapd_dfs_is_background_event(iface, freq))
++#else /* CONFIG_VENDOR_MXL */
++			if (hostapd_dfs_is_background_event(iface, freq) &&
++			    !iface->mxl_iface.dfs_revert_bgcac_override)
++#endif /* CONFIG_VENDOR_MXL */
++			{
+ 				iface->radar_background.cac_started = 0;
+ 				if (!iface->radar_background.temp_ch)
+ 					return 0;
+@@ -1418,11 +1433,16 @@ int hostapd_dfs_complete_cac(struct hostapd_iface *iface, int success, int freq,
+ 	iface->radar_detected = false;
+ #ifdef CONFIG_VENDOR_MXL
+ 	/* In case of CAC completion in ZWDFS antenna/interface, set CAC cleared channel to operational 5G vaps.*/
+-	if (mxl_validate_second_best_chan(iface)) {
++	if (mxl_validate_second_best_chan(iface) &&
++	    !iface->mxl_iface.dfs_revert_bgcac_override) {
+ 		wpa_printf(MSG_DEBUG, "second best channel CAC completed");
+ 		return 0;
+ 	}
+-	return mxl_hostapd_handle_zwdfs_switch(iface, success, freq, chan_width, cf1, cf2);
++	{
++		int ret = mxl_hostapd_handle_zwdfs_switch(iface, success, freq, chan_width, cf1, cf2);
++		mxl_restore_revert_bgcac_override(iface);
++		return ret;
++	}
+ #endif /* CONFIG_VENDOR_MXL */
+ 	return 0;
+ }
+@@ -1933,11 +1953,31 @@ int hostapd_dfs_nop_finished(struct hostapd_iface *iface, int freq,
+ 					   iface->mxl_iface.dfs_revert_chandef.channel,
+ 					   iface->mxl_iface.dfs_revert_chandef.freq,
+ 					   iface->mxl_iface.dfs_revert_chandef.oper_chwidth);
+-				mxl_dfs_apply_revert_chandef(iface);
++			mxl_dfs_apply_revert_chandef(iface);
++			{
++				int cac_res = mxl_dfs_try_background_cac_if_required(iface);
++				if (cac_res > 0) {
++					/* bgCAC successfully started, return and wait for CAC completion */
++					wpa_printf(MSG_INFO,
++						   "DFS: background CAC started for restored chandef ch=%d freq=%d",
++						   iface->conf->channel, iface->freq);
++					iface->mxl_iface.dfs_revert_chandef.valid = false;
++					return 0;
++				}
++				/* cac_res == 0: CAC not required; cac_res < 0: bgCAC failed, both allow fallback to channel switch */
++				if (cac_res == 0) {
++					wpa_printf(MSG_INFO,
++						   "DFS: restored chandef does not require CAC, proceeding with channel switch");
++				} else {
++					wpa_printf(MSG_INFO,
++						   "DFS: bgCAC needed but could not start, falling back to channel switch");
++				}
++			}
+ 				iface->mxl_iface.dfs_revert_chandef.valid = false;
+-				hostapd_disable_iface(iface);
+-				hostapd_enable_iface(iface);
+-				return 0;
++				wpa_printf(MSG_INFO,
++					   "DFS: triggering channel switch flow for restored chandef ch=%d freq=%d",
++					   iface->conf->channel, iface->freq);
++				return mxl_hostapd_dfs_switch_to_iface_chandef(iface);
+ 			}
+ 
+ 			iface->mxl_iface.dfs_revert_chandef.valid = false;
+diff --git a/src/ap/dfs.h b/src/ap/dfs.h
+index f0c541a35..044cb0c03 100644
+--- a/src/ap/dfs.h
++++ b/src/ap/dfs.h
+@@ -43,6 +43,12 @@ enum dfs_channel_type {
+ int dfs_chan_range_available(struct hostapd_hw_modes *mode,
+ 							 int first_chan_idx, int num_chans, enum dfs_channel_type type);
+ int hostapd_dfs_start_channel_switch(struct hostapd_iface *iface);
++int hostapd_dfs_request_channel_switch(struct hostapd_iface *iface,
++					      int channel, int freq,
++					      int secondary_channel,
++					      u8 current_vht_oper_chwidth,
++					      u8 oper_centr_freq_seg0_idx,
++					      u8 oper_centr_freq_seg1_idx);
+ #endif /* CONFIG_VENDOR_MXL */
+ 
+ #endif /* DFS_H */
+diff --git a/src/ap/hw_features.c b/src/ap/hw_features.c
+index 8d1287f12..b1227f7d1 100644
+--- a/src/ap/hw_features.c
++++ b/src/ap/hw_features.c
+@@ -384,6 +384,9 @@ static void ieee80211n_check_scan(struct hostapd_iface *iface)
+ 	 * allowed per IEEE Std 802.11-2012, 10.15.3.2 */
+ 
+ 	iface->scan_cb = NULL;
++#ifdef CONFIG_VENDOR_MXL
++	iface->mxl_iface.in_scan = 0;
++#endif /* CONFIG_VENDOR_MXL */
+ 
+ 	scan_res = hostapd_driver_get_scan_results(iface->bss[0]);
+ 	if (scan_res == NULL) {
+diff --git a/src/ap/mxl_dfs_common.c b/src/ap/mxl_dfs_common.c
+index ba135656c..576dba11b 100644
+--- a/src/ap/mxl_dfs_common.c
++++ b/src/ap/mxl_dfs_common.c
+@@ -893,3 +893,136 @@ bool mxl_switch_to_sec_best_channel_if_enabled(struct hostapd_iface *iface, int
+ 	return (dfs_failsafe_mode == dfs_failsafe_second_best_zwdfs &&
+ 			mxl_switch_second_best_channel(iface, chan_width));
+ }
++
++void mxl_restore_revert_bgcac_override(struct hostapd_iface *iface)
++{
++	if (!iface->mxl_iface.dfs_revert_bgcac_override)
++		return;
++
++	iface->mxl_iface.acs_bgscan_enable = iface->mxl_iface.dfs_revert_prev_acs_bgscan_enable;
++	iface->conf->mxl_conf.background_cac = iface->mxl_iface.dfs_revert_prev_background_cac;
++	iface->conf->enable_background_radar = iface->mxl_iface.dfs_revert_prev_enable_background_radar;
++	iface->mxl_iface.dfs_revert_bgcac_override = false;
++	iface->mxl_iface.dfs_revert_prev_acs_bgscan_enable = false;
++	iface->mxl_iface.dfs_revert_prev_background_cac = false;
++	iface->mxl_iface.dfs_revert_prev_enable_background_radar = false;
++
++	wpa_printf(MSG_INFO,
++		   "DFS: restored background settings after revert bgCAC completion (acs_bgscan_enable=%d background_cac=%d enable_background_radar=%d)",
++		   iface->mxl_iface.acs_bgscan_enable,
++		   iface->conf->mxl_conf.background_cac,
++		   iface->conf->enable_background_radar);
++}
++
++bool mxl_dfs_cac_required_for_current_chandef(struct hostapd_iface *iface)
++{
++	int start_chan_idx, start_chan_idx1;
++	int n_chans, n_chans1;
++	int radar_required;
++	int all_available;
++
++	start_chan_idx = dfs_get_start_chan_idx(iface, &start_chan_idx1);
++	if (start_chan_idx < 0)
++		return false;
++
++	n_chans = dfs_get_used_n_chans(iface, &n_chans1);
++
++	radar_required = mxl_dfs_check_chans_radar(iface, start_chan_idx, n_chans);
++	if (!radar_required)
++		return false;
++
++	if (start_chan_idx1 >= 0 && n_chans1 > 0) {
++		radar_required = mxl_dfs_check_chans_radar(iface, start_chan_idx1, n_chans1);
++		if (!radar_required)
++			return false;
++	}
++
++	all_available = mxl_dfs_check_chans_available(iface, start_chan_idx, n_chans);
++	if (start_chan_idx1 >= 0 && n_chans1 > 0)
++		all_available = all_available && mxl_dfs_check_chans_available(iface, start_chan_idx1, n_chans1);
++
++	return !all_available;
++}
++
++/**
++ * mxl_dfs_try_background_cac_if_required - Check if CAC is required and attempt background CAC.
++ * @iface: Pointer to hostapd_iface structure.
++ *
++ * This function checks whether CAC is required for the current channel definition.
++ * If CAC is not required, it returns 0 (no action needed).
++ * If CAC is required and the driver supports background CAC via radar_background,
++ * this function temporarily enables the necessary settings, requests background CAC,
++ * and tracks the revert override state. If background CAC is successfully started,
++ * returns > 0. If CAC is required but background CAC cannot be started, restores
++ * the temporary overrides and returns < 0 (indicating fallback to channel switch).
++ * If CAC is required but driver does not support background CAC, returns < 0.
++ *
++ * Return codes:
++ *  > 0: Background CAC was successfully requested
++ *    0: CAC not required for current chandef
++ *  < 0: CAC required but background CAC could not start (fallback needed)
++ */
++int mxl_dfs_try_background_cac_if_required(struct hostapd_iface *iface)
++{
++	int bg_cac_res;
++
++	if (!mxl_dfs_cac_required_for_current_chandef(iface)) {
++		wpa_printf(MSG_INFO,
++			   "DFS: Current chandef does not require CAC");
++		return 0;
++	}
++
++	if (!(iface->drv_flags2 & WPA_DRIVER_FLAGS2_RADAR_BACKGROUND)) {
++		wpa_printf(MSG_DEBUG,
++			   "DFS: CAC required but driver does not support radar background, fallback needed");
++		return -1;
++	}
++
++	/* Temporarily enable background CAC settings if not already enabled */
++	if (!mxl_dfs_use_radar_background(iface) || !iface->mxl_iface.acs_bgscan_enable) {
++		iface->mxl_iface.dfs_revert_prev_acs_bgscan_enable = iface->mxl_iface.acs_bgscan_enable;
++		iface->mxl_iface.dfs_revert_prev_background_cac = iface->conf->mxl_conf.background_cac;
++		iface->mxl_iface.dfs_revert_prev_enable_background_radar = iface->conf->enable_background_radar;
++
++		iface->mxl_iface.acs_bgscan_enable = true;
++		iface->conf->mxl_conf.background_cac = true;
++		iface->conf->enable_background_radar = true;
++		iface->mxl_iface.dfs_revert_bgcac_override = true;
++
++		wpa_printf(MSG_INFO,
++			   "DFS: Temporarily enabled background CAC settings (acs_bgscan_enable=%d background_cac=%d enable_background_radar=%d)",
++			   iface->mxl_iface.acs_bgscan_enable,
++			   iface->conf->mxl_conf.background_cac,
++			   iface->conf->enable_background_radar);
++	}
++
++	wpa_printf(MSG_INFO,
++		   "DFS: Current chandef requires CAC, attempting background CAC");
++	bg_cac_res = mxl_acs_request_background_cac(iface);
++
++	if (bg_cac_res > 0) {
++		wpa_printf(MSG_INFO,
++			   "DFS: Background CAC successfully requested for chandef ch=%d freq=%d",
++			   iface->conf->channel, iface->freq);
++		return bg_cac_res;
++	}
++
++	/* bgCAC request failed, restore temporary overrides and return fallback code */
++	mxl_restore_revert_bgcac_override(iface);
++	wpa_printf(MSG_INFO,
++		   "DFS: Background CAC request failed (res=%d), fallback to channel switch needed",
++		   bg_cac_res);
++	return -1;
++}
++
++int mxl_hostapd_dfs_switch_to_iface_chandef(struct hostapd_iface *iface)
++{
++	return hostapd_dfs_request_channel_switch(
++		iface,
++		iface->conf->channel,
++		iface->freq,
++		iface->conf->secondary_channel,
++		hostapd_get_oper_chwidth(iface->conf),
++		hostapd_get_oper_centr_freq_seg0_idx(iface->conf),
++		hostapd_get_oper_centr_freq_seg1_idx(iface->conf));
++}
+diff --git a/src/ap/mxl_dfs_common.h b/src/ap/mxl_dfs_common.h
+index 7528a750b..303c603f3 100644
+--- a/src/ap/mxl_dfs_common.h
++++ b/src/ap/mxl_dfs_common.h
+@@ -86,4 +86,8 @@ void mxl_dfs_restore_original_cw(struct hostapd_iface *iface);
+ bool mxl_validate_second_best_chan(struct hostapd_iface *iface);
+ bool mxl_switch_second_best_channel(struct hostapd_iface *iface, int chan_width);
+ bool mxl_switch_to_sec_best_channel_if_enabled(struct hostapd_iface *iface, int chan_width);
++void mxl_restore_revert_bgcac_override(struct hostapd_iface *iface);
++bool mxl_dfs_cac_required_for_current_chandef(struct hostapd_iface *iface);
++int mxl_dfs_try_background_cac_if_required(struct hostapd_iface *iface);
++int mxl_hostapd_dfs_switch_to_iface_chandef(struct hostapd_iface *iface);
+ #endif /* MXL_DFS_COMMON_H */
+diff --git a/src/ap/mxl_hostapd.h b/src/ap/mxl_hostapd.h
+index c987b8608..e02b3bcc9 100644
+--- a/src/ap/mxl_hostapd.h
++++ b/src/ap/mxl_hostapd.h
+@@ -174,6 +174,10 @@ struct mxl_hostapd_iface {
+ 	u8 current_oper_chwidth;
+ 	u8 coc_BW;
+ 	u8 autococ_background_cac_running;
++	bool dfs_revert_bgcac_override;
++	bool dfs_revert_prev_acs_bgscan_enable;
++	bool dfs_revert_prev_background_cac;
++	bool dfs_revert_prev_enable_background_radar;
+ #ifdef CONFIG_IEEE80211BE_MXL_MLO
+ 	bool ml_csa_in_progress; /* Indicates CSA is in progress on this interface */
+ 	u8 disabled_by_sibling;
+-- 
+2.43.0
+

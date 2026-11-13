@@ -8,15 +8,15 @@ include $(INCLUDE_DIR)/kernel.mk
 
 PKG_NAME:=ltq-wlan-wave_6x-uci
 PKG_VERSION:=06.01.00
-PKG_REV:=992e3a2662215e3e9bef558ddf8bbd67090c17b4
+PKG_REV:=016c6760e2af7c6e3c29853180bb63b5f6d2b706
 PKG_BUILD_DIR:=$(BUILD_DIR)/ltq-wlan-wave_6x-uci-$(BUILD_VARIANT)/ltq-wlan-wave_6x-uci-$(PKG_VERSION)
 PKG_PROJECT:=maxlinear
 PKG_SOURCE_NAME:=wave_bin.git
 CONFIG_UGW_PKG_SOURCE_URL:=https://github.com
 PKG_SOURCE_URL:=$(CONFIG_UGW_PKG_SOURCE_URL)/$(PKG_PROJECT)/$(PKG_SOURCE_NAME)
-PKG_SOURCE_VERSION:=r1840+a+115
+PKG_SOURCE_VERSION:=r2438
 PKG_SOURCE_PROTO:=git
-PKG_MIRROR_HASH:=4de46cd759c7cc9d149718f6c0906534b327a20495381c0dc37fa5b6e23688c5
+PKG_MIRROR_HASH:=f80fe0d1a76a9fc59bd7f94cf28cd88f4af4d0184d67530daf9adc78106faa12
 PKG_SOURCE:=$(PKG_NAME)-$(PKG_VERSION)-$(PKG_SOURCE_VERSION).tar.gz
 
 PKG_MAINTAINER:=MaxLinear
@@ -27,12 +27,24 @@ FW_BIN_FOLDER:=$(PKG_BUILD_DIR)/fw/bin
 PROGMODEL_BIN_FOLDER:=$(PKG_BUILD_DIR)/progmodel/bin
 PSD_BIN_FOLDER:=$(PKG_BUILD_DIR)/psd/bin
 REGULATORY_BIN_FOLDER:=$(PKG_BUILD_DIR)/regulatory/bin
+CALIBRATION_BIN_FOLDER:=$(PKG_BUILD_DIR)/calibration/bin
 
 BIN_FOLDER:=opt/intel/bin
 SBIN_FOLDER:=opt/intel/sbin
 include $(INCLUDE_DIR)/package.mk
 -include $(INCLUDE_DIR)/package-version-override.mk
 
+PRPLMESH_DWPAL_DEP:=+!(PACKAGE_mod-whm||PACKAGE_mod-whm-debug||TARGET_arm_a55_haps):prplmesh-dwpal
+
+# Remove unused firmware binaries for arm_a55_haps target due to limited rootfs size.
+ifeq ($(CONFIG_TARGET_arm_a55_haps),y)
+define PruneGenFirmware
+	find $(1)/lib/firmware/ -name '*gen7*' ! -name '*gen7b*' -delete
+endef
+else
+define PruneGenFirmware
+endef
+endif
 
 define Package/ltq-wlan-wave_6x-uci/default
 	SECTION:=utils
@@ -56,7 +68,7 @@ define Package/ltq-wlan-wave_6x-uci/default
 		@+PACKAGE_libuuid \
 		@+PACKAGE_uuidgen \
 		@+PACKAGE_udev \
-		+!(PACKAGE_mod-whm||PACKAGE_mod-whm-debug):prplmesh-dwpal
+		$(PRPLMESH_DWPAL_DEP)
 	URL:=http://www.maxlinear.com
 	MAINTAINER:=MaxLinear Inc
 	MENU:=1
@@ -167,6 +179,8 @@ define Package/ltq-wlan-wave_6x-uci/install
 	$(if $(WLAN_BUILD_VERSION), \
 	echo -e "wave_release_minor=\"$(PKG_VERSION)$(if $(WLAN_BUILD_VERSION),.$(WLAN_BUILD_VERSION))\"" >> $(1)/etc/wave_components.ver;\
 	)
+	$(if $(CONFIG_TARGET_arm_a55_haps),$(CP) $(CALIBRATION_BIN_FOLDER)/* $(1)/lib/firmware/)
+	$(call PruneGenFirmware,$(1))
 endef
 
 Package/ltq-wlan-wave_6x-uci-debug/install = $(Package/ltq-wlan-wave_6x-uci/install)

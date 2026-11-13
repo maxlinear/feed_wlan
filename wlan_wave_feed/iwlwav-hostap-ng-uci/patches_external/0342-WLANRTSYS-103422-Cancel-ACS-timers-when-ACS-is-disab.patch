@@ -1,0 +1,93 @@
+From e3f9236a83784953650d4efe6ea459319a2d18b9 Mon Sep 17 00:00:00 2001
+From: hmgokhale <hmgokhale@maxlinear.com>
+Date: Thu, 30 Jul 2026 05:48:54 -0700
+Subject: [PATCH] WLANRTSYS-103422 Cancel ACS timers when ACS is disabled
+
+Signed-off-by: hmgokhale <hmgokhale@maxlinear.com>
+(cherry picked from commit ef384005c5ebe6ed09b4888d9fde967de5d3cb54)
+---
+ src/ap/mxl_acs.c     | 31 ++++++++++++++++++++++++++++---
+ src/ap/mxl_hostapd.c |  2 +-
+ 2 files changed, 29 insertions(+), 4 deletions(-)
+
+diff --git a/src/ap/mxl_acs.c b/src/ap/mxl_acs.c
+index 7a389fe78..3f5b97fee 100644
+--- a/src/ap/mxl_acs.c
++++ b/src/ap/mxl_acs.c
+@@ -5392,6 +5392,10 @@ void mxl_acs_bgscan_timer_cb(void *eloop_data, void *user_ctx)
+ 	interval *= 60;
+ 
+ 	wpa_printf(MSG_DEBUG, "%s : acs_bgscan Interval secs %d", hapd->conf->iface, interval);
++	if (!hapd->iface->conf->acs) {
++		wpa_printf(MSG_DEBUG, "%s : acs_bgscan not rescheduled, ACS is disabled (static channel)", hapd->conf->iface);
++		return;
++	}
+ 	if (interval) {
+ 		 /* Set values to initiate a bg scan */
+ 		hapd->iface->mxl_iface.acs_bootup_non_dfs_done = true;
+@@ -5418,11 +5422,15 @@ void mxl_acs_set_bgscan_int(struct hostapd_data *hapd)
+ 	int interval = mxl_conf->acs_bgscan_interval;
+ 	interval *= 60;
+ 
+-	if (iface->conf->acs && mxl_conf->acs_bootup_non_dfs &&
+-	    !mxl_conf->acs_bootup_non_dfs_allow_exclusion &&
++	if (!iface->conf->acs) {
++		wpa_printf(MSG_DEBUG, "%s : acs_bgscan not started, ACS is disabled (static channel)", hapd->conf->iface);
++		return;
++	}
++
++	if (mxl_conf->acs_bootup_non_dfs && !mxl_conf->acs_bootup_non_dfs_allow_exclusion &&
+ 	    WAVE_FREQ_IS_5G(iface->freq) &&
+ 	    !iface->mxl_iface.acs_bootup_non_dfs_done) {
+-		return;
++		return; /* bgscan deferred until bootup non-DFS timer fires */
+ 	}
+ 
+ 	if (interval != 0) {
+@@ -5440,6 +5448,11 @@ void mxl_acs_stop_bgscan_timer_interval(struct hostapd_data *hapd)
+ 		wpa_printf(MSG_DEBUG, "%s : acs_bgscan removing existing timer handler", hapd->conf->iface);
+ 		eloop_cancel_timeout(mxl_acs_bgscan_timer_cb, hapd, NULL);
+ 	}
++
++	if (eloop_is_timeout_registered(mxl_acs_bootup_non_dfs_timer_cb, hapd, NULL)) {
++		wpa_printf(MSG_DEBUG, "%s : acs_bgscan removing pending bootup_non_dfs timer", hapd->conf->iface);
++		eloop_cancel_timeout(mxl_acs_bootup_non_dfs_timer_cb, hapd, NULL);
++	}
+ }
+ 
+ void mxl_acs_stop_bootup_non_dfs_timer(struct hostapd_data *hapd)
+@@ -5459,6 +5472,18 @@ void mxl_acs_bootup_non_dfs_timer_cb(void *eloop_data, void *user_ctx)
+ 	struct hostapd_iface *iface = hapd->iface;
+ 	mxl_acs_chandef cur_chan;
+ 
++	if (!iface->conf->acs) {
++		wpa_printf(MSG_DEBUG, "%s: acs_bootup_non_dfs timer fired but ACS is disabled (static channel), skipping re-evaluation",
++			   hapd->conf->iface);
++		return;
++	}
++
++	if ((iface->state != HAPD_IFACE_ENABLED) && (iface->state != HAPD_IFACE_ACS_DONE)) {
++		wpa_printf(MSG_DEBUG, "%s: acs_bootup_non_dfs timer fired but interface state %d is not ready, skipping re-evaluation",
++			   hapd->conf->iface, iface->state);
++		return;
++	}
++
+ 	wpa_printf(MSG_INFO,
+ 		   "%s: acs_bootup_non_dfs timer expired - re-enabling DFS channels for ACS re-evaluation",
+ 		   hapd->conf->iface);
+diff --git a/src/ap/mxl_hostapd.c b/src/ap/mxl_hostapd.c
+index 3e82bff61..11ae9a8e1 100644
+--- a/src/ap/mxl_hostapd.c
++++ b/src/ap/mxl_hostapd.c
+@@ -1868,7 +1868,7 @@ void mxl_hostapd_setup_interface_post(struct hostapd_iface *iface)
+ 			   mxl_conf->acs_bootup_non_dfs_allow_exclusion,
+ 			   iface->mxl_iface.acs_bootup_non_dfs_done);
+ 		mxl_acs_start_bootup_non_dfs_timer(hapd);
+-	} else {
++	} else if (iface->conf->acs) {
+ 		mxl_acs_set_bgscan_interval(hapd);
+ 	}
+ 
+-- 
+2.43.0
+

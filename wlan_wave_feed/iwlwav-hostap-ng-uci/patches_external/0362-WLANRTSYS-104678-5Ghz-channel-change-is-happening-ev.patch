@@ -1,0 +1,41 @@
+From 8815e548eee5a36df0042cee90b42654a5cbfb7d Mon Sep 17 00:00:00 2001
+From: "mujiburrahimank@maxlinear.com"
+ <mujiburrahimank@lvdocker7.lvsw.maxlinear.com>
+Date: Tue, 13 Oct 2026 03:55:12 -0700
+Subject: [PATCH] WLANRTSYS-104678 5Ghz channel change is happening every scan
+ interval
+
+Problem : 5Ghz channel change is happening every scan interval
+
+Root Cause : After each bgscan completion without any threshold check
+channel is getting changed for 5G. The reason for the channel change on
+each bgscan is due to missing check to consider threshold even on bgscan
+
+Resolution : Threshold check is ensured even during bscan to avoid
+unwanted channel switch even though threshold is valid.
+
+System Impact : ACS bgscan & CSA
+
+Validation : Sanity on Foreground and Background ACS
+
+Fixup : WLANRTSYS-50170 [MXL] Smart ACS implementation
+---
+ src/ap/mxl_acs.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/src/ap/mxl_acs.c b/src/ap/mxl_acs.c
+index 7188a4ee5..6512dc962 100644
+--- a/src/ap/mxl_acs.c
++++ b/src/ap/mxl_acs.c
+@@ -2890,7 +2890,7 @@ static bool mxl_acs_check_new_chan_is_ok(struct hostapd_iface *iface, int min_ra
+ 	if (((iface->mxl_iface.selected_candidate < 0) || /* if previously selected candidate is not known - switch */
+ 	    (switch_reason == SWR_RADAR) || (switch_reason == SWR_INITIAL) || /* in these cases, switch regardless of threshold */
+ 	    (candidates[iface->mxl_iface.selected_candidate].rank == -1)) && (!bg_scan ||
+-		  (switch_reason != SWR_RADAR) || (switch_reason != SWR_EX_OP_UPDATE))) { /* If previously selected candidates rank is now invalid, switch regardless of threshold*/
++		 (bg_scan && (switch_reason == SWR_RADAR)) || (bg_scan && (switch_reason == SWR_EX_OP_UPDATE)))) { /* If previously selected candidates rank is now invalid, switch regardless of threshold*/
+ 		wpa_printf(MSG_DEBUG, "ACS going from candidate regardless of threshold %d to %d", iface->mxl_iface.selected_candidate, min_rank_cand_idx);
+ 		wpa_printf(MSG_INFO, "%s : ACS switching channel regardless of threshold", iface->bss[0]->conf->iface);
+ 		acs_print_info_header(MSG_DEBUG);
+-- 
+2.43.0
+

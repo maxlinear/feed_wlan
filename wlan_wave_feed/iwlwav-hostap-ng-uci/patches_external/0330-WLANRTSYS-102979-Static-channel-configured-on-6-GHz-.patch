@@ -1,0 +1,114 @@
+From 860c6ac3ddc55670276771e1123452e60e055c52 Mon Sep 17 00:00:00 2001
+From: "mujiburrahimank@maxlinear.com"
+ <mujiburrahimank@lvdocker7.lvsw.maxlinear.com>
+Date: Tue, 14 Jul 2026 20:28:07 -0700
+Subject: [PATCH] WLANRTSYS-102979 : Static channel configured on 6 GHz getting
+ changed during longevity tests.
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Issue : 6GHz channel is changes even though the static channel is configured
+
+RCA   : A race occurred when background channel-evaluation was enabled and the
+        system switched to a fixed/manual channel; a previously triggered scan
+        could still complete later and be treated as an active ACS outcome,
+        causing false “ACS not enabled” events.
+
+Fix   : On fixed-channel transition, periodic background ACS triggering is stopped,
+        and any late/stale ACS scan completion is ignored so no ACS action is taken after ACS is disabled.
+
+Fixup : WLANRTSYS-50170 MXL Smart ACS implementation
+---
+ hostapd/ctrl_iface.c | 22 +++++++++++++++++++++-
+ src/ap/mxl_acs.c     | 13 +++++++++++++
+ 2 files changed, 34 insertions(+), 1 deletion(-)
+
+diff --git a/hostapd/ctrl_iface.c b/hostapd/ctrl_iface.c
+index 79d14f2dc..86fddfb1f 100644
+--- a/hostapd/ctrl_iface.c
++++ b/hostapd/ctrl_iface.c
+@@ -77,6 +77,8 @@
+ #include "common/mxl_ieee802_11_common.h"
+ #include "ap/ieee802_11_auth.h"
+ #include "ap/mxl_dfs_common.h"
++#include "ap/mxl_zwdfs.h"
++#include "ap/mxl_hostapd.h"
+ #include "ap/hw_features.h"
+ 
+ #ifdef CONFIG_RADIUS_GREYLIST
+@@ -1547,6 +1549,10 @@ static void hostapd_ctrl_iface_config_update(struct hostapd_config *conf, char*
+ 	if (str) {
+ 		str += sizeof("channel=") - 1;
+ 		conf->channel = strtol(str, NULL, 10);
++#ifdef CONFIG_VENDOR_MXL
++		/* Keep ACS state consistent with channel semantics (0 => ACS). */
++		conf->acs = conf->channel == 0;
++#endif /* CONFIG_VENDOR_MXL */
+ 	}
+ 
+ 	str = os_strstr(reload_opts, "sec_chan=");
+@@ -1692,7 +1698,13 @@ static int hostapd_ctrl_iface_update_reload(struct hostapd_data *hapd, char *cmd
+ 		iface->bss[j]->conf->start_disabled = 0;
+ 	}
+ 
+-	return hostapd_ctrl_iface_enable(iface);
++	int res = hostapd_ctrl_iface_enable(iface);
++
++	if (res == 0 && !conf->acs) {
++		mxl_acs_unset_bgscan(iface);
++		mxl_acs_stop_bgscan_timer(iface->bss[0]);
++	}
++	return res;
+ }
+ #endif /* CONFIG_VENDOR_MXL */
+ 
+@@ -3309,6 +3321,10 @@ static int hostapd_ctrl_iface_chan_switch(struct hostapd_iface *iface,
+ 		iface->is_ch_switch_dfs = true;
+ #ifdef CONFIG_VENDOR_MXL
+ 		mxl_disable_acs(iface);
++		if (!iface->conf->acs) {
++			mxl_acs_unset_bgscan(iface);
++			mxl_acs_stop_bgscan_timer(iface->bss[0]);
++		}
+ 		if (!iface->cac_started && switch_type_scan)
+ 			iface->block_tx = true;
+ #endif /* CONFIG_VENDOR_MXL */
+@@ -3346,6 +3362,10 @@ static int hostapd_ctrl_iface_chan_switch(struct hostapd_iface *iface,
+ 	}
+ 
+ 	mxl_disable_acs(iface);
++	if (!iface->conf->acs) {
++		mxl_acs_unset_bgscan(iface);
++		mxl_acs_stop_bgscan_timer(iface->bss[0]);
++	}
+ #endif /* CONFIG_VENDOR_MXL */
+ 	return (iface->num_bss == num_err) ? ret : 0;
+ #else /* NEED_AP_MLME */
+diff --git a/src/ap/mxl_acs.c b/src/ap/mxl_acs.c
+index de43ce482..587391bf8 100644
+--- a/src/ap/mxl_acs.c
++++ b/src/ap/mxl_acs.c
+@@ -5052,6 +5052,19 @@ void mxl_event_scan_results(struct hostapd_data *hapd, union wpa_event_data *dat
+ 		return;
+ 	}
+ 
++	/* A previously triggered ACS/bgscan may finish after a manual fixed-channel
++	 * transition. Drop stale ACS callbacks to avoid false ACS events/switches.
++	 */
++	if (!hapd->iface->conf->acs && hapd->iface->scan_cb &&
++		(hapd->iface->scan_cb == mxl_acs_bg_scan_complete ||
++		 hapd->iface->scan_cb == mxl_smart_acs_scan_complete)) {
++		wpa_printf(MSG_DEBUG,
++				"ACS: Ignore stale scan result callback in fixed channel mode");
++		hapd->iface->scan_cb = NULL;
++		hapd->iface->mxl_iface.acs_bgscan_enable = false;
++		return;
++	}
++
+ 	if (data->scan_info.aborted) {
+ 		wpa_printf(MSG_INFO, "ACS: Ignoring aborted scan results to avoid faulty ACS");
+ 		return;
+-- 
+2.43.0
+

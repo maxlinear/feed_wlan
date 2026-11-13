@@ -1,0 +1,76 @@
+From cadeec2c96aa107b7d21592cdfd991ae1ef20f28 Mon Sep 17 00:00:00 2001
+From: hmgokhale <hmgokhale@maxlinear.com>
+Date: Thu, 30 Jul 2026 00:56:42 -0700
+Subject: [PATCH] WLANRTSYS-103277 Cleanup the interface object upon failure
+
+Signed-off-by: hmgokhale <hmgokhale@maxlinear.com>
+---
+ src/ap/hostapd.c | 31 +++++++++++++++++++++++++++++++
+ 1 file changed, 31 insertions(+)
+
+diff --git a/src/ap/hostapd.c b/src/ap/hostapd.c
+index 25e64b767..50be70046 100644
+--- a/src/ap/hostapd.c
++++ b/src/ap/hostapd.c
+@@ -85,6 +85,10 @@ static int setup_interface2(struct hostapd_iface *iface);
+ static void channel_list_update_timeout(void *eloop_ctx, void *timeout_ctx);
+ static void hostapd_interface_setup_failure_handler(void *eloop_ctx,
+ 						    void *timeout_ctx);
++#ifdef CONFIG_VENDOR_MXL
++static void hostapd_setup_failure_deinit_driver_handler(void *eloop_ctx,
++							void *timeout_ctx);
++#endif /* CONFIG_VENDOR_MXL */
+ #ifdef CONFIG_IEEE80211AX
+ static void hostapd_switch_color_timeout_handler(void *eloop_data,
+ 						 void *user_ctx);
+@@ -937,6 +941,10 @@ static void hostapd_cleanup_iface(struct hostapd_iface *iface)
+ #endif /* CONFIG_VENDOR_MXL */
+ 	eloop_cancel_timeout(hostapd_interface_setup_failure_handler, iface,
+ 			     NULL);
++#ifdef CONFIG_VENDOR_MXL
++	eloop_cancel_timeout(hostapd_setup_failure_deinit_driver_handler,
++			     iface, NULL);
++#endif /* CONFIG_VENDOR_MXL */
+ 
+ 	hostapd_cleanup_iface_partial(iface);
+ #ifdef CONFIG_VENDOR_MXL
+@@ -4147,6 +4155,13 @@ int hostapd_setup_interface_complete(struct hostapd_iface *iface, int err)
+ 
+ 		hostapd_set_state(iface, HAPD_IFACE_DISABLED);
+ 		wpa_msg(hapd->msg_ctx, MSG_INFO, AP_EVENT_DISABLED);
++#ifdef CONFIG_VENDOR_MXL
++		/* hapd->drv_priv is left stale here; release it on next tick (may be mid driver event dispatch now). */
++		if (hapd->drv_priv)
++			eloop_register_timeout(0, 0,
++						hostapd_setup_failure_deinit_driver_handler,
++						iface, NULL);
++#endif /* CONFIG_VENDOR_MXL */
+ 		if (interfaces && interfaces->terminate_on_error)
+ 			eloop_terminate();
+ 		return -1;
+@@ -4916,6 +4931,22 @@ static void hostapd_refresh_all_iface_beacons(struct hostapd_iface *hapd_iface)
+ 	}
+ }
+ 
++#ifdef CONFIG_VENDOR_MXL
++/* Deferred drv_priv release for the async setup-failure path; avoids tearing down the driver mid its own event dispatch. */
++static void hostapd_setup_failure_deinit_driver_handler(void *eloop_ctx,
++							void *timeout_ctx)
++{
++	struct hostapd_iface *iface = eloop_ctx;
++
++	if (iface->num_bss < 1 || !iface->bss || !iface->bss[0])
++		return;
++	if (!iface->bss[0]->drv_priv)
++		return;
++
++	hostapd_disable_iface(iface);
++}
++#endif /* CONFIG_VENDOR_MXL */
++
+ 
+ int hostapd_enable_iface(struct hostapd_iface *hapd_iface)
+ {
+-- 
+2.43.0
+

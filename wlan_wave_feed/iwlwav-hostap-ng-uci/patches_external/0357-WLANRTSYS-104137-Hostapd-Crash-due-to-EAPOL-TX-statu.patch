@@ -1,0 +1,57 @@
+From 4f932e444875d7b0c2432151fa483016a7fbd3de Mon Sep 17 00:00:00 2001
+From: "mujiburrahimank@maxlinear.com"
+ <mujiburrahimank@lvdocker7.lvsw.maxlinear.com>
+Date: Wed, 23 Sep 2026 23:44:35 -0700
+Subject: [PATCH] WLANRTSYS-104137 Hostapd Crash due to EAPOL TX-status
+ callback
+
+Root Cause : The hostapd crash is triggered by a late EAPOL TX-status callback
+after the STA has already been torn down. The failing path is the 802.1X
+TX-status handling, which can still reach the WPA state machine after teardown.
+
+sta->wpa_sm is cleared during station teardown, but the TX-status path was still
+assuming the pointer was valid. That allowed a stale callback to dereference or
+use a state machine that no longer belonged to the active authenticator.
+The deeper guard in src/ap/wpa_auth.c was also too permissive for stale callers.
+
+Resolution : The fix adds checks in both places below
+- src/ap/ieee802_1x.c now returns early if sta->wpa_sm is NULL or no longer matches
+the current hapd->wpa_auth.
+- src/ap/wpa_auth.c now returns early if sm->wpa_auth != wpa_auth. That blocks late
+TX-status events from reaching torn-down or detached WPA state and prevents the crash.
+
+System Impact :  station connect/disconnect
+---
+ src/ap/ieee802_1x.c | 2 ++
+ src/ap/wpa_auth.c   | 2 +-
+ 2 files changed, 3 insertions(+), 1 deletion(-)
+
+diff --git a/src/ap/ieee802_1x.c b/src/ap/ieee802_1x.c
+index d0d0e54f2..0a8e04a72 100644
+--- a/src/ap/ieee802_1x.c
++++ b/src/ap/ieee802_1x.c
+@@ -2833,6 +2833,8 @@ int ieee802_1x_eapol_tx_status(struct hostapd_data *hapd, struct sta_info *sta,
+ 
+ 	if (len < (int) sizeof(*xhdr))
+ 		return 0;
++	if (!sta->wpa_sm)
++		return 0;
+ 	wpa_printf(MSG_DEBUG, "IEEE 802.1X: " MACSTR
+ 		   " TX status - version=%d type=%d length=%d - ack=%d",
+ 		   MAC2STR(sta->addr), xhdr->version, xhdr->type,
+diff --git a/src/ap/wpa_auth.c b/src/ap/wpa_auth.c
+index ce75bbe81..7b474dc70 100644
+--- a/src/ap/wpa_auth.c
++++ b/src/ap/wpa_auth.c
+@@ -7140,7 +7140,7 @@ int wpa_auth_sta_set_vlan(struct wpa_state_machine *sm, int vlan_id)
+ void wpa_auth_eapol_key_tx_status(struct wpa_authenticator *wpa_auth,
+ 				  struct wpa_state_machine *sm, int ack)
+ {
+-	if (!wpa_auth || !sm)
++	if (!wpa_auth || !sm || sm->wpa_auth != wpa_auth)
+ 		return;
+ 	wpa_printf(MSG_DEBUG, "WPA: EAPOL-Key TX status for STA " MACSTR
+ 		   " ack=%d", MAC2STR(wpa_auth_get_spa(sm)), ack);
+-- 
+2.43.0
+

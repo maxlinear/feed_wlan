@@ -1,0 +1,139 @@
+From a823362e73d5cc544c238a629dc397231177baa8 Mon Sep 17 00:00:00 2001
+From: hmgokhale <hmgokhale@maxlinear.com>
+Date: Tue, 22 Sep 2026 03:02:17 -0700
+Subject: [PATCH] WLANRTSYS-104126 Revert to last known-good channel on DFS
+ CAC-start failure
+
+Signed-off-by: hmgokhale <hmgokhale@maxlinear.com>
+---
+ src/ap/dfs.c         | 28 ++++++++++++++++++++++++++++
+ src/ap/mxl_hostapd.c | 31 ++++++++++++++++++++++++++++++-
+ src/ap/mxl_hostapd.h |  9 +++++++++
+ 3 files changed, 67 insertions(+), 1 deletion(-)
+
+diff --git a/src/ap/dfs.c b/src/ap/dfs.c
+index 66f14ba43..6731724e3 100644
+--- a/src/ap/dfs.c
++++ b/src/ap/dfs.c
+@@ -1034,6 +1034,34 @@ int hostapd_handle_dfs(struct hostapd_iface *iface)
+ 
+ 	if (res) {
+ 		wpa_printf(MSG_ERROR, "DFS start_dfs_cac() failed, %d", res);
++#ifdef CONFIG_VENDOR_MXL
++		/* CAC never started, so this candidate (already written into
++		 * iface->conf by ACS) was never actually used. Revert to the
++		 * last confirmed-good channel if still usable (not radar/NOP
++		 * flagged); otherwise zero out, same as before ACS runs.
++		 */
++		bool reverted = false;
++
++		if (iface->mxl_iface.last_good_chandef.valid) {
++			mxl_hostapd_set_conf_from_freq_params(iface,
++				&iface->mxl_iface.last_good_chandef.freq_params);
++			start_chan_idx = dfs_get_start_chan_idx(iface, &start_chan_idx1);
++			n_chans = dfs_get_used_n_chans(iface, &n_chans1);
++			reverted = (start_chan_idx != -1) &&
++				(!dfs_check_chans_radar(iface, start_chan_idx, n_chans) ||
++				 dfs_check_chans_available(iface, start_chan_idx, n_chans));
++
++			if (!reverted)
++				wpa_printf(MSG_INFO,
++					   "DFS: last good channel %d is no longer usable (radar/NOP), not reverting to it",
++					   iface->mxl_iface.last_good_chandef.freq_params.channel);
++		}
++
++		if (!reverted) {
++			iface->freq = 0;
++			iface->conf->channel = 0;
++		}
++#endif /* CONFIG_VENDOR_MXL */
+ 		return -1;
+ 	}
+ 
+diff --git a/src/ap/mxl_hostapd.c b/src/ap/mxl_hostapd.c
+index 94dcbe1e9..57524ce91 100644
+--- a/src/ap/mxl_hostapd.c
++++ b/src/ap/mxl_hostapd.c
+@@ -3482,6 +3482,33 @@ void mxl_hostapd_set_conf_from_freq_params(struct hostapd_iface *iface, const st
+ 	hostapd_set_oper_chwidth(iface->conf, bw);
+ }
+ 
++/* Snapshot the confirmed operating channel on entering ENABLED, so a later
++ * DFS CAC-start failure can revert to it instead of clearing iface->conf.
++ * Skips channel 0 (nothing to remember yet).
++ */
++void mxl_hostapd_snapshot_last_good_chandef(struct hostapd_iface *iface)
++{
++	struct hostapd_hw_modes *cmode = iface->current_mode;
++
++	if (!iface->conf->channel)
++		return;
++
++	hostapd_set_freq_params(&iface->mxl_iface.last_good_chandef.freq_params,
++				iface->conf->hw_mode, iface->freq,
++				iface->conf->channel, iface->conf->enable_edmg,
++				iface->conf->edmg_channel, iface->conf->ieee80211n,
++				iface->conf->ieee80211ac, iface->conf->ieee80211ax,
++				iface->conf->ieee80211be,
++				iface->conf->secondary_channel,
++				hostapd_get_oper_chwidth(iface->conf),
++				hostapd_get_oper_centr_freq_seg0_idx(iface->conf),
++				hostapd_get_oper_centr_freq_seg1_idx(iface->conf),
++				cmode ? cmode->vht_capab : 0,
++				cmode ? &cmode->he_capab[IEEE80211_MODE_AP] : NULL,
++				cmode ? &cmode->eht_capab[IEEE80211_MODE_AP] : NULL);
++	iface->mxl_iface.last_good_chandef.valid = true;
++}
++
+ void mxl_hostapd_update_user_conf_cw(struct hostapd_iface *iface)
+ {
+ 	/* Align MXL Proprietary ch_width (4 - 320MHz) according to hostapd (9 - 320MHz) */
+@@ -3894,8 +3921,10 @@ void mxl_hostapd_set_state_pre(struct hostapd_iface *iface, enum hostapd_iface_s
+ 	(void)state;
+ #endif /* CONFIG_ACS */
+ 
+-	if (HAPD_IFACE_ENABLED == state)
++	if (HAPD_IFACE_ENABLED == state) {
+ 		iface->mxl_iface.sec_best_ch.zwdfs_is_primary_cac = false;
++		mxl_hostapd_snapshot_last_good_chandef(iface);
++	}
+ }
+ 
+ const char* mxl_hostapd_state_text_wrap(enum hostapd_iface_state state)
+diff --git a/src/ap/mxl_hostapd.h b/src/ap/mxl_hostapd.h
+index 0ae1a4a3b..b05d32781 100644
+--- a/src/ap/mxl_hostapd.h
++++ b/src/ap/mxl_hostapd.h
+@@ -107,6 +107,13 @@ struct mxl_dfs_revert_chandef {
+ 	u8 oper_centr_freq_seg1_idx;
+ };
+ 
++/* Last confirmed-good operating channel; used to recover on a DFS CAC-start
++ * failure instead of clearing iface->conf/freq. */
++struct mxl_last_good_chandef {
++	bool valid;
++	struct hostapd_freq_params freq_params;
++};
++
+ struct mxl_hostapd_iface {
+ 	u32 sta_aid_link[MXL_AID_WORDS];
+ 	s8 stas_free_reason; /* the reason for all stations remove */
+@@ -114,6 +121,7 @@ struct mxl_hostapd_iface {
+ 	unsigned int cac_required:1;
+ 	int in_scan;
+ 	struct mxl_dfs_revert_chandef dfs_revert_chandef;
++	struct mxl_last_good_chandef last_good_chandef;
+ 	struct acs_second_best_channel_params sec_best_ch;
+ 
+ #ifdef CONFIG_ACS
+@@ -387,6 +395,7 @@ void mxl_hostapd_sta_ext_capab_reset(struct hostapd_data *hapd);
+ void mxl_hostapd_sta_ext_capab_set(struct hostapd_data *hapd, struct sta_info *sta);
+ int mxl_switch_channel(struct hostapd_data *hapd, struct csa_settings *settings);
+ void mxl_hostapd_set_conf_from_freq_params(struct hostapd_iface *iface, const struct hostapd_freq_params *freq_params);
++void mxl_hostapd_snapshot_last_good_chandef(struct hostapd_iface *iface);
+ int mxl_check_linked_sta_assoc_ies(struct hostapd_data *hapd, struct sta_info *sta,
+ 				struct ieee802_11_elems *elems, int reassoc);
+ #ifdef CONFIG_IEEE80211BE_MXL_MLO
+-- 
+2.43.0
+

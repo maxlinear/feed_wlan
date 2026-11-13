@@ -1,0 +1,45 @@
+From 0063b42b56e295c10c73a72a26fe6545c0c73faa Mon Sep 17 00:00:00 2001
+From: "mujiburrahimank@maxlinear.com"
+ <mujiburrahimank@lvdocker7.lvsw.maxlinear.com>
+Date: Mon, 5 Oct 2026 06:31:23 -0700
+Subject: [PATCH] WLANRTSYS-104489 Manual Channel Change on Radio 6G Disables
+ iw dev and hostapd
+
+Root Cause : 6G interface is down when static channel is set and acs is enabled
+The interface failed to come up because the channel change operation failed after an
+exclusion list was received from the controller.
+
+During exclusion list processing, hostapd saves the current channel definition (chandef)
+onto a stack and restores it when channel exclusion conditions are cleared. While
+restoring the chandef, the secondary channel value was incorrectly changed from -1 to 255.
+
+Subsequently, a static channel configuration reused this corrupted secondary channel
+value (255) instead of a valid value (-1, 0, or 1), causing the interface to enter an
+invalid state and preventing the channel change from succeeding.
+
+Resolution : Updated the secondary channel variable type from uint8 to int in the data structure,
+ensuring negative values are preserved correctly during chandef save and restore operations.
+
+System Impact : 6GHz static channel setting
+
+Fixup : WLANRTSYS-50170 [MXL] Smart ACS implementation
+---
+ src/ap/mxl_acs.h | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/src/ap/mxl_acs.h b/src/ap/mxl_acs.h
+index 59b8c3cec..34618b709 100644
+--- a/src/ap/mxl_acs.h
++++ b/src/ap/mxl_acs.h
+@@ -180,7 +180,7 @@ int mxl_hostapd_check_and_abort_scan(struct hostapd_iface *iface);
+ 
+ typedef struct {
+ 	u8 pri;
+-	u8 sec;
++	int sec;
+ 	u8 chwidth;
+ 	u8 cent_freq;
+ 	int sel_cand;
+-- 
+2.43.0
+

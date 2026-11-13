@@ -1,0 +1,299 @@
+From eecf6f9ec20feb5ee49fcc88df56f6bcd0912adf Mon Sep 17 00:00:00 2001
+From: "mujiburrahimank@maxlinear.com"
+ <mujiburrahimank@lvdocker7.lvsw.maxlinear.com>
+Date: Wed, 19 Aug 2026 22:11:03 -0700
+Subject: [PATCH] WLANRTSYS-103600 fix ACS bandwidth selection and suppress
+ unnecessary switch
+
+Issue:
+When auto channel is enabled, ACS can drop from a valid 160 MHz candidate to a
+narrower bandwidth during group comparison. During ACS re-evaluation, hostapd
+can also initiate channel switch handling even when the current chandef is still
+valid, including exclusion-list updates where the current chandef is not part of
+the excluded set.
+
+RCA:
+The bandwidth comparison flow continued scanning lower groups when the next
+narrower group had no valid winner, which could bypass a valid wider-band
+candidate. ACS also lacked local checks to detect that the selected chandef
+already matched the current operating chandef, and did not short-circuit
+exclusion-update handling when the current chandef remained allowed.
+
+Fix:
+Keep the current valid bandwidth group when the next narrower group has no valid
+winner
+Add current-chandef detection in ACS
+Stay on the current channel during exclusion-list update when the current
+chandef is still valid and not excluded
+Skip CSA when ACS reselects the already active chandef
+Add targeted ACS skip diagnostics for exclusion and candidate rejection paths
+
+Fixup :  WLANRTSYS-50170 [MXL] Smart ACS implementation
+
+Impact:
+Preserves valid 160 MHz selection during ACS
+Avoids unnecessary channel switch / CSA handling when no effective chandef
+change is required
+Prevents exclusion-list recalculation from switching away when the current
+chandef is still allowed
+---
+ src/ap/mxl_acs.c | 142 +++++++++++++++++++++++++++++++++++++++++------
+ 1 file changed, 126 insertions(+), 16 deletions(-)
+
+diff --git a/src/ap/mxl_acs.c b/src/ap/mxl_acs.c
+index f207cca25..67c6631e4 100644
+--- a/src/ap/mxl_acs.c
++++ b/src/ap/mxl_acs.c
+@@ -1997,8 +1997,12 @@ static bool is_excluded_opclass_chan(struct hostapd_iface *iface, int channel, i
+     * must also be treated as excluded.
+     */
+    if ((eff_bw > 40 && list_is_5g) || (eff_bw > 20 && list_is_6g)) {
+-      if (is_in_exclude_list(mxl_conf, 20, channel))
++		if (is_in_exclude_list(mxl_conf, 20, channel)) {
++			wpa_printf(MSG_DEBUG,
++				"ACS: candidate primary channel %d width %d skipped by opclass exclusion list via primary 20 MHz entry",
++				channel, bandwidth);
+          return true;
++		}
+ 
+       /* Not excluded at 20 MHz; derive center channel and keep effective bw. */
+       if (list_is_5g) {
+@@ -2031,7 +2035,14 @@ static bool is_excluded_opclass_chan(struct hostapd_iface *iface, int channel, i
+          eff_chan = (eff_bw < 160) ? seg0 : seg1;
+       }
+    }
+-   return is_in_exclude_list(mxl_conf, eff_bw, eff_chan);
++	if (is_in_exclude_list(mxl_conf, eff_bw, eff_chan)) {
++		wpa_printf(MSG_DEBUG,
++			"ACS: candidate primary channel %d width %d skipped by opclass exclusion list via effective bw %d channel %d",
++			channel, bandwidth, eff_bw, eff_chan);
++		return true;
++	}
++
++	return false;
+ }
+ 
+ static int acs_is_subchannel_allowed(struct hostapd_iface *iface, int channel)
+@@ -2075,20 +2086,36 @@ static int acs_is_channel_disabled(struct hostapd_iface *iface, int start_freq,
+ 		struct hostapd_channel_data *chan = &mode->channels[j];
+ 
+ 		if (!mxl_conf->acs_chanlist_all_chans &&
+-		    check_chanlist && (chan->chan == primary_chan) && !mxl_is_in_chanlist(iface, chan))
++		    check_chanlist && (chan->chan == primary_chan) && !mxl_is_in_chanlist(iface, chan)) {
++			wpa_printf(MSG_DEBUG,
++			   "ACS: candidate primary channel %d width %d skipped because primary channel is not in chanlist",
++			   primary_chan, width);
+ 			return 1;
++		}
+ 
+ 		for (i = 0; i < (width / SINGLE_CHANNEL_WIDTH); i++) {
+ 			if (chan->freq == start_freq + SINGLE_CHANNEL_WIDTH * i) {
+-				if (chan->flag & HOSTAPD_CHAN_DISABLED)
++				if (chan->flag & HOSTAPD_CHAN_DISABLED) {
++					wpa_printf(MSG_DEBUG,
++					   "ACS: candidate primary channel %d width %d skipped because subchannel %d freq %d has HOSTAPD_CHAN_DISABLED flags=0x%x",
++					   primary_chan, width, chan->chan, chan->freq, chan->flag);
+ 					return 1;
++				}
+ 
+-				if (iface->conf->acs_exclude_dfs && (chan->flag & HOSTAPD_CHAN_RADAR))
++				if (iface->conf->acs_exclude_dfs && (chan->flag & HOSTAPD_CHAN_RADAR)) {
++					wpa_printf(MSG_DEBUG,
++					   "ACS: candidate primary channel %d width %d skipped because acs_exclude_dfs=1 and subchannel %d freq %d is radar/DFS",
++					   primary_chan, width, chan->chan, chan->freq);
+ 					return 1;
++				}
+ 
+ 				if (mxl_conf->acs_chanlist_all_chans &&
+-				    check_chanlist && !mxl_is_in_chanlist(iface, chan))
++				    check_chanlist && !mxl_is_in_chanlist(iface, chan)) {
++					wpa_printf(MSG_DEBUG,
++					   "ACS: candidate primary channel %d width %d skipped because subchannel %d freq %d is not in chanlist",
++					   primary_chan, width, chan->chan, chan->freq);
+ 					return 1;
++				}
+ 
+ 				if (acs_unii4_chan_disabled(iface, chan))
+ 					unii4_disabled = true;
+@@ -2100,13 +2127,21 @@ static int acs_is_channel_disabled(struct hostapd_iface *iface, int start_freq,
+ 					break;
+ 
+ 				case 80:
+-					if (chan->flag & HOSTAPD_CHAN_NO_80MHZ)
++					if (chan->flag & HOSTAPD_CHAN_NO_80MHZ) {
++						wpa_printf(MSG_DEBUG,
++						   "ACS: candidate primary channel %d width 80 skipped because subchannel %d freq %d has HOSTAPD_CHAN_NO_80MHZ flags=0x%x",
++						   primary_chan, chan->chan, chan->freq, chan->flag);
+ 						return 1;
++					}
+ 					break;
+ 
+ 				case 160:
+-					if (chan->flag & HOSTAPD_CHAN_NO_160MHZ)
++					if (chan->flag & HOSTAPD_CHAN_NO_160MHZ) {
++						wpa_printf(MSG_DEBUG,
++						   "ACS: candidate primary channel %d width 160 skipped because subchannel %d freq %d has HOSTAPD_CHAN_NO_160MHZ flags=0x%x",
++						   primary_chan, chan->chan, chan->freq, chan->flag);
+ 						return 1;
++					}
+ 					break;
+ 				}
+ 			}
+@@ -2115,8 +2150,12 @@ static int acs_is_channel_disabled(struct hostapd_iface *iface, int start_freq,
+ 
+ 	/* Special handling for 160MHz - allow it only in case Primary in lower 80 Mhz part */
+ 	if (unii4_disabled && (!iface->conf->acs_unii4 ||
+-	    ((UNII4_PARTIAL == iface->conf->acs_unii4) && !acs_is_unii4_160_prim_allowed_chan(primary_chan))))
++	    ((UNII4_PARTIAL == iface->conf->acs_unii4) && !acs_is_unii4_160_prim_allowed_chan(primary_chan)))) {
++		wpa_printf(MSG_DEBUG,
++		   "ACS: candidate primary channel %d width %d skipped because UNII-4 policy disallows this 160 MHz layout",
++		   primary_chan, width);
+ 		return 1;
++	}
+ 
+ 	return 0;
+ }
+@@ -2783,6 +2822,31 @@ static bool mxl_acs_set_new_chan_if_ok(struct hostapd_iface *iface, int min_rank
+ 	return true;
+ }
+ 
++static bool mxl_acs_selected_chandef_is_current(struct hostapd_iface *iface,
++						 int cand_idx,
++						 u16 punct_bitmap)
++{
++	struct acs_candidate_table *candidates = iface->mxl_iface.candidates;
++	int current_width;
++	int current_secondary;
++
++	if (!iface->conf->channel)
++		return false;
++
++	current_width = mxl_hostapd_get_num_width(hostapd_get_oper_chwidth(iface->conf),
++					 iface->conf->secondary_channel);
++	if (current_width < 0)
++		return false;
++
++	current_secondary = iface->conf->secondary_channel ?
++		iface->conf->channel + iface->conf->secondary_channel * 4 : 0;
++
++	return iface->conf->channel == candidates[cand_idx].primary &&
++		current_secondary == candidates[cand_idx].secondary &&
++		current_width == candidates[cand_idx].width &&
++		iface->conf->punct_bitmap == punct_bitmap;
++}
++
+ static bool mxl_acs_check_new_chan_is_ok(struct hostapd_iface *iface, int min_rank_cand_idx, int switch_reason, FILE *fp_hist)
+ {
+ 	struct acs_candidate_table *candidates = iface->mxl_iface.candidates;
+@@ -3657,6 +3721,8 @@ int mxl_acs_recalc_ranks_and_set_chan (struct hostapd_iface *iface, int switch_r
+ 	int i, prio;
+ 	int res = -1;
+ 	bool all_candidates_util_below_thresh = true;
++	bool current_chandef_available = false;
++	int current_chandef_cand_idx = -1;
+ 
+ 	fp = fopen(iface->conf->mxl_conf.acs_smart_info_file, "w");
+ 	if (!fp) {
+@@ -3870,8 +3936,13 @@ int mxl_acs_recalc_ranks_and_set_chan (struct hostapd_iface *iface, int switch_r
+ 			acs_calculate_rank_utilization(&candidates[i], rank_util_primary);
+ 
+ 			if (candidates[i].rank_util_primary <= ACS_RANK_UTIL_MIN) {
+-				if (candidates[i].exclude_reason != ACS_EXCLUDE_DISABLED)
++				if (candidates[i].exclude_reason != ACS_EXCLUDE_DISABLED) {
+ 					candidates[i].exclude_reason = ACS_EXCLUDE_LOW_PRIMARY_UTIL;
++					wpa_printf(MSG_DEBUG,
++					   "ACS: candidate idx %d primary %d width %d skipped because primary utilization %d is below minimum threshold %d",
++					   i, candidates[i].primary, candidates[i].width,
++					   candidates[i].rank_util_primary, ACS_RANK_UTIL_MIN);
++				}
+ 			}
+ 		} else {
+ 			candidates[i].rank = -1;
+@@ -3936,6 +4007,25 @@ int mxl_acs_recalc_ranks_and_set_chan (struct hostapd_iface *iface, int switch_r
+ 			cg[cg_idx].bw_rank_cand_idx = i;
+ 		}
+ 
++		if (switch_reason == SWR_EX_OP_UPDATE &&
++		    mxl_acs_selected_chandef_is_current(iface, i,
++						  iface->conf->punct_bitmap) &&
++		    candidates[i].exclude_reason != ACS_EXCLUDE_DISABLED) {
++			current_chandef_available = true;
++			current_chandef_cand_idx = i;
++		}
++
++	}
++
++	if (switch_reason == SWR_EX_OP_UPDATE && current_chandef_available) {
++		iface->mxl_iface.selected_candidate = current_chandef_cand_idx;
++		wpa_printf(MSG_INFO,
++			   "%s : ACS current chandef candidate idx %d is not disabled during exclusion update, staying on channel",
++			   iface->bss[0]->conf->iface, current_chandef_cand_idx);
++		fprintf(fp_hist,
++			"ACS: current chandef candidate idx %d not disabled during exclusion update, staying on channel\n",
++			current_chandef_cand_idx);
++		goto stay_on_chan;
+ 	}
+ 
+ 	if (!iface->mxl_iface.sec_best_ch.flag) {
+@@ -3993,9 +4083,12 @@ int mxl_acs_recalc_ranks_and_set_chan (struct hostapd_iface *iface, int switch_r
+ 			iface->mxl_iface.sec_best_ch.flag))
+ 		/* for the last category, there will be no rank to compare with */
+ 		{
+-			if ((-1 == bw_comp_util) || (-1 == cg[grp_map[prio + 1]].bw_comp_util))
++			if (-1 == bw_comp_util)
+ 				continue;
+ 
++			if (-1 == cg[grp_map[prio + 1]].bw_comp_util)
++				goto set_chan;
++
+ 			if (bw_comp_util < ACS_RANK_UTIL_MAX) {
+ 				if (bw_comp_util < cg[grp_map[prio + 1]].bw_comp_util / 2) {
+ 					wpa_printf(MSG_INFO, "ACS: Decreasing BW, from cand idx %d to %d",
+@@ -4009,6 +4102,7 @@ set_chan:
+ 		wpa_printf(MSG_DEBUG, "ACS: exit recalculate, selected prio %d min_rank_cand_idx %d", prio, min_rank_cand_idx);
+ 		iface->mxl_iface.sec_best_ch.first_rank_idx = min_rank_cand_idx;
+ 		res = mxl_acs_check_new_chan_is_ok(iface, min_rank_cand_idx, switch_reason, fp_hist);
++		u16 selected_punct_bitmap = iface->conf->punct_bitmap;
+ #ifdef CONFIG_AFC
+ 		/* In SP/ISP, we will rank the best candidate + valid punctured pattern
+ 		 * If rank of any punctured pattern + best candidate is higher than rank of original puncture pattern
+@@ -4017,15 +4111,31 @@ set_chan:
+ 		 */
+ 		if (res && iface->conf->mxl_conf.acs_6g_punct_mode && he_reg_is_sp(iface->conf->he_6ghz_reg_pwr_type) && is_6ghz_op_class(iface->conf->op_class))
+ 		{
+-			u16 bitmap = mxl_acs_rank_punct_pattern_best_candidate(iface, min_rank_cand_idx);
+-			if(bitmap == 0) {
++			selected_punct_bitmap = mxl_acs_rank_punct_pattern_best_candidate(iface, min_rank_cand_idx);
++			if(selected_punct_bitmap == 0) {
+ 				wpa_printf(MSG_INFO, "ACS + Punct : Selected candidate has best rank without any puncture pattern, NO PUNCTURING");
+ 			}
+ 			else {
+-				wpa_printf(MSG_INFO, "ACS + Punct: Selected candidate that has best rank with punture pattern 0x%04x", bitmap);
++				wpa_printf(MSG_INFO, "ACS + Punct: Selected candidate that has best rank with punture pattern 0x%04x", selected_punct_bitmap);
+ 			}
+-			mxl_hostapd_set_eht_punct_bitmap(iface->bss[0], bitmap);
+-			iface->conf->punct_bitmap = bitmap;
++		}
++#endif
++		if (res && mxl_acs_selected_chandef_is_current(iface, min_rank_cand_idx,
++						      selected_punct_bitmap)) {
++			iface->mxl_iface.selected_candidate = min_rank_cand_idx;
++			wpa_printf(MSG_INFO,
++				   "%s : ACS selected current chandef, skipping CSA",
++				   iface->bss[0]->conf->iface);
++			fprintf(fp_hist,
++				"ACS: selected current chandef, skipping CSA for candidate idx %d\n",
++				min_rank_cand_idx);
++			goto stay_on_chan;
++		}
++#ifdef CONFIG_AFC
++		if (res && iface->conf->mxl_conf.acs_6g_punct_mode && he_reg_is_sp(iface->conf->he_6ghz_reg_pwr_type) && is_6ghz_op_class(iface->conf->op_class))
++		{
++			mxl_hostapd_set_eht_punct_bitmap(iface->bss[0], selected_punct_bitmap);
++			iface->conf->punct_bitmap = selected_punct_bitmap;
+ 		}
+ #endif
+ 		if (res && mxl_acs_set_new_chan_if_ok(iface, min_rank_cand_idx)) {
+-- 
+2.43.0
+

@@ -1,0 +1,40 @@
+From 1872a6618455e6867aa468e373d06de881266eb1 Mon Sep 17 00:00:00 2001
+From: pvaish <pvaish@maxlinear.com>
+Date: Fri, 12 Jun 2026 03:34:56 -0700
+Subject: [PATCH] WLANRTSYS-101876 Removing the sta_info from the EPCS Response
+ to adjust to the correct length of the Action Frame.
+
+Signed-off-by: pvaish <pvaish@maxlinear.com>
+---
+ src/ap/mxl_mld.c | 8 +++++++-
+ 1 file changed, 7 insertions(+), 1 deletion(-)
+
+diff --git a/src/ap/mxl_mld.c b/src/ap/mxl_mld.c
+index c22222f1d..726a38da3 100644
+--- a/src/ap/mxl_mld.c
++++ b/src/ap/mxl_mld.c
+@@ -1361,6 +1361,9 @@ static size_t mxl_ml_build_sta_info(struct wpabuf *buf,
+ 							 struct hostapd_data *hapd,
+ 							 enum multilink_type ml_type)
+ {
++	if(ml_type == ML_EPCS)
++		return 0;
++
+ 	u8 *sta_info_len = NULL;
+ 	u64 tsf = 0;
+ 
+@@ -1725,7 +1728,10 @@ u8 * mxl_hostapd_eid_multilink_common(struct hostapd_data *hapd, u8 *eid,
+ 			link_info_len = wpabuf_put(buf, 1); /* Placeholder to update the length later */
+ 
+ 			/* STA control field */
+-			mxl_ml_build_sta_control_field(buf, lhapd, ml_type);
++			if(ml_type != ML_EPCS)
++				mxl_ml_build_sta_control_field(buf, lhapd, ml_type);
++			else
++				mxl_ml_build_sta_control_field(buf, hapd, ml_type);
+ 
+ 			/* STA Info */
+ 			sta_info_len = mxl_ml_build_sta_info(buf, lhapd, hapd, ml_type);
+-- 
+2.43.0
+

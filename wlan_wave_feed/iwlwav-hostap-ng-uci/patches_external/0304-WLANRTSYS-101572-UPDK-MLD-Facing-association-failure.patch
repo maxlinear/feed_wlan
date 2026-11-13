@@ -1,4 +1,4 @@
-From 60099b603a0930fa47d329f2dbd01b32a9e6b02c Mon Sep 17 00:00:00 2001
+From 33a196ece6ce42584c139be88068b2f5aa38e794 Mon Sep 17 00:00:00 2001
 From: Venkatasaiprudhvi Raj Sannidhi <vsannidhi@maxlinear.com>
 Date: Wed, 22 Apr 2026 02:50:33 -0700
 Subject: [PATCH] WLANRTSYS-101572 [UPDK][MLD] Facing association failure with

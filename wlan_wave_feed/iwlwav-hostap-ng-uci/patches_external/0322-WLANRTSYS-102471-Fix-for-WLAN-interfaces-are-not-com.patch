@@ -1,11 +1,10 @@
-From cb6d8831f0306a8b8f4f3bccff49bfc5bad889c8 Mon Sep 17 00:00:00 2001
+From 114b819bfded8ada8d50869cb4c1583614f8c722 Mon Sep 17 00:00:00 2001
 From: Sathyananda Reddy <kmsreddy@maxlinear.com>
-Date: Mon, 15 Jun 2026 22:38:48 -0700
-Subject: [PATCH] WLANRTSYS-102291 WLAN interfaces are not coming up
- intermittently after reboot
-
-Ignore stale DFS CAC completion events for non-operating channels
-when interface is already enabled to avoid invalid channel setup.
+Date: Mon, 15 Jun 2026 23:26:31 -0700
+Subject: [PATCH] WLANRTSYS-102471 Fix for WLAN interfaces are not coming up
+ intermittently after reboot Ignore stale DFS CAC completion events for
+ non-operating channels when interface is already enabled to avoid invalid
+ channel setup.
 
 Fixup : WLANRTSYS-50839 MXL DFS debug channel simulation
 ---
@@ -13,7 +12,7 @@ Fixup : WLANRTSYS-50839 MXL DFS debug channel simulation
  1 file changed, 18 insertions(+), 1 deletion(-)
 
 diff --git a/src/ap/dfs.c b/src/ap/dfs.c
-index 76e23667c..cafe34bf5 100644
+index 4609d8ae1..6b94afb7e 100644
 --- a/src/ap/dfs.c
 +++ b/src/ap/dfs.c
 @@ -1390,7 +1390,24 @@ int hostapd_dfs_complete_cac(struct hostapd_iface *iface, int success, int freq,

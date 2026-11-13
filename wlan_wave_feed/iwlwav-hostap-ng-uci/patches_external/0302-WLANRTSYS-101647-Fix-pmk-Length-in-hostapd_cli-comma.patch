@@ -1,7 +1,7 @@
-From b33dffad314ff9cf48e50c62bacd3aec605037dc Mon Sep 17 00:00:00 2001
+From 92046530fa5b13b97321a205546e53dcba7f696a Mon Sep 17 00:00:00 2001
 From: hmgokhale <hmgokhale@maxlinear.com>
 Date: Wed, 29 Apr 2026 02:22:36 -0700
-Subject: [PATCH] WLANRTSYS-101850 Fix pmk Length in hostapd_cli command
+Subject: [PATCH] WLANRTSYS-101647 Fix pmk Length in hostapd_cli command
 
 PMK_LEN is fixed 32 byte length but there is already entry->pmk_len
 as the AKM 24 may use 48 bytes of PMK (Suite-B-192)

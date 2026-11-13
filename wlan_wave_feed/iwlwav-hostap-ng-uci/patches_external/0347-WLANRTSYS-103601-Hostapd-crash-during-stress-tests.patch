@@ -1,0 +1,93 @@
+From d71d8c8d001a982e8e92ed1cbbdeeec160f79d4e Mon Sep 17 00:00:00 2001
+From: "mujiburrahimank@maxlinear.com"
+ <mujiburrahimank@lvdocker7.lvsw.maxlinear.com>
+Date: Tue, 1 Sep 2026 23:54:29 -0700
+Subject: [PATCH] WLANRTSYS-103601 : Hostapd crash during stress tests
+
+Issue:
+The ACS bgscan timer callback function is executed when iface or hapd is null which leads to segfault
+RCA:
+The ACS bgscan timer cancellation happens via iface_disable function flow where mostly every interface disablement hits but in this case the disable iface path is not hit instead deinit is happening which is the final exit point for any interface being teardown, So timer was not cancelled which led to firing of cb when interface is not there
+These analysis where made from the crash file provided there was no hostapd logs to validate this
+Fix:
+Cancel ACS bgscan timers from the authoritative hapd teardown path.
+Add stale-context guards and keep bgscan retry alive across transient iface states.
+
+Fixup :  WLANRTSYS-50170 [MXL] Smart ACS implementation
+---
+ hostapd/mxl_ctrl_iface.c |  3 ++-
+ src/ap/hostapd.c         |  3 +++
+ src/ap/mxl_acs.c         | 20 ++++++++++++++++++--
+ 3 files changed, 23 insertions(+), 3 deletions(-)
+
+diff --git a/hostapd/mxl_ctrl_iface.c b/hostapd/mxl_ctrl_iface.c
+index 46fa5aac0..9e33fffeb 100644
+--- a/hostapd/mxl_ctrl_iface.c
++++ b/hostapd/mxl_ctrl_iface.c
+@@ -4766,7 +4766,8 @@ static int mxl_hostapd_ctrl_iface_acs_ex_op_list(struct hostapd_data *hapd,
+ 	/* Skip recalc+switch if ACS is disabled (static channel) or channel is 0
+ 	 * (ACS just enabled via 'SET channel acs_smart' but no scan has run yet).
+ 	 * The exclusion list is already stored and will be applied when ACS starts. */
+-	if (!iface->conf->acs || iface->conf->channel == 0) {
++	if (!iface->conf->acs || iface->conf->channel == 0 ||
++		 mxl_is_iface_acs_bgscan(iface) || iface->state != HAPD_IFACE_ENABLED) {
+ 		wpa_printf(MSG_INFO, "ACS: exclusion list updated but skipping recalc and channel switch "
+ 				"(acs=%d channel=%d)", iface->conf->acs, iface->conf->channel);
+ 		ret = sprintf_s(reply, reply_len, "OK\n");
+diff --git a/src/ap/hostapd.c b/src/ap/hostapd.c
+index 50be70046..089d8bf73 100644
+--- a/src/ap/hostapd.c
++++ b/src/ap/hostapd.c
+@@ -646,6 +646,9 @@ void hostapd_free_hapd_data(struct hostapd_data *hapd)
+ 	wpabuf_free(hapd->p2p_probe_resp_ie);
+ 	hapd->p2p_probe_resp_ie = NULL;
+ #endif /* CONFIG_P2P */
++#ifdef CONFIG_VENDOR_MXL
++	mxl_acs_stop_bgscan_timer(hapd);
++#endif /*CONFIG_VENDOR_MXL*/
+ 
+ 	if (!hapd->started) {
+ 		wpa_printf(MSG_ERROR, "%s: Interface %s wasn't started",
+diff --git a/src/ap/mxl_acs.c b/src/ap/mxl_acs.c
+index 67c6631e4..9108edc1a 100644
+--- a/src/ap/mxl_acs.c
++++ b/src/ap/mxl_acs.c
+@@ -5550,7 +5550,15 @@ void mxl_acs_bgscan_timer_cb(void *eloop_data, void *user_ctx)
+ {
+ 	struct hostapd_data *hapd = (struct hostapd_data *) eloop_data;
+ 	int ret;
+-	u16 interval = hapd->iface->conf->mxl_conf.acs_bgscan_interval;
++	u16 interval;
++
++	if (!hapd || !hapd->iface || !hapd->iface->conf) {
++		wpa_printf(MSG_DEBUG, "%s: stale ACS bgscan timer context, dropping callback",
++				   __func__);
++		return;
++	}
++
++	interval = hapd->iface->conf->mxl_conf.acs_bgscan_interval;
+ 	interval *= 60;
+ 
+ 	wpa_printf(MSG_DEBUG, "%s : acs_bgscan Interval secs %d", hapd->conf->iface, interval);
+@@ -5631,9 +5639,17 @@ void mxl_acs_stop_bootup_non_dfs_timer(struct hostapd_data *hapd)
+ void mxl_acs_bootup_non_dfs_timer_cb(void *eloop_data, void *user_ctx)
+ {
+ 	struct hostapd_data *hapd = (struct hostapd_data *) eloop_data;
+-	struct hostapd_iface *iface = hapd->iface;
++	struct hostapd_iface *iface;
+ 	mxl_acs_chandef cur_chan;
+ 
++	if (!hapd || !hapd->iface || !hapd->iface->conf) {
++		wpa_printf(MSG_DEBUG, "%s: stale acs_bootup_non_dfs timer context, dropping callback",
++			   __func__);
++		return;
++	}
++
++	iface = hapd->iface;
++
+ 	if (!iface->conf->acs) {
+ 		wpa_printf(MSG_DEBUG, "%s: acs_bootup_non_dfs timer fired but ACS is disabled (static channel), skipping re-evaluation",
+ 			   hapd->conf->iface);
+-- 
+2.43.0
+

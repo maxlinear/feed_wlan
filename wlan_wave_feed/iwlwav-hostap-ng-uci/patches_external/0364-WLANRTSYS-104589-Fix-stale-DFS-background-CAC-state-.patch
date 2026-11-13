@@ -1,0 +1,45 @@
+From ea8b2090504a0fa486004982cfc38c419598d8f1 Mon Sep 17 00:00:00 2001
+From: hmgokhale <hmgokhale@maxlinear.com>
+Date: Fri, 16 Oct 2026 05:43:11 -0700
+Subject: [PATCH] WLANRTSYS-104589 Fix stale DFS/background-CAC state causing
+ CSA failures
+
+Signed-off-by: hmgokhale <hmgokhale@maxlinear.com>
+---
+ src/ap/drv_callbacks.c | 20 ++++++++++++++++++++
+ 1 file changed, 20 insertions(+)
+
+diff --git a/src/ap/drv_callbacks.c b/src/ap/drv_callbacks.c
+index b39e54a95..c1a236a96 100644
+--- a/src/ap/drv_callbacks.c
++++ b/src/ap/drv_callbacks.c
+@@ -1314,6 +1314,26 @@ void hostapd_event_ch_switch(struct hostapd_data *hapd, int freq, int ht,
+ 
+ 	/* Check if any of configured channels require DFS */
+ 	is_dfs0 = hostapd_is_dfs_required(hapd->iface);
++
++#ifdef CONFIG_VENDOR_MXL
++	/* Non-ETSI can't carry over CAC validity while off-channel - require a fresh CAC once we leave it, for every sub-channel of the departed span. */
++	if (finished && hapd->iface->dfs_domain != HOSTAPD_DFS_REGION_ETSI &&
++	    hapd->iface->freq && hapd->iface->freq != freq) {
++		int old_start_idx, old_start_idx1, old_n_chans, old_n_chans1, oi;
++
++		old_start_idx = dfs_get_start_chan_idx(hapd->iface, &old_start_idx1);
++		old_n_chans = dfs_get_used_n_chans(hapd->iface, &old_n_chans1);
++
++		for (oi = 0; old_start_idx != -1 && oi < old_n_chans; oi++) {
++			struct hostapd_channel_data *old_chan =
++				&hapd->iface->current_mode->channels[old_start_idx + oi];
++
++			if (old_chan->flag & HOSTAPD_CHAN_RADAR)
++				mxl_set_dfs_state_freq(hapd->iface, old_chan->freq, HOSTAPD_CHAN_DFS_USABLE);
++		}
++	}
++#endif /* CONFIG_VENDOR_MXL */
++
+ 	hapd->iface->freq = freq;
+ 
+ 	channel = hostapd_hw_get_channel(hapd, freq);
+-- 
+2.43.0
+

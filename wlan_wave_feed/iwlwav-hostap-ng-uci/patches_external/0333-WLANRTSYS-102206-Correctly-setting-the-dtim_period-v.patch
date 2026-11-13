@@ -1,7 +1,7 @@
-From aa7d102815d47b0b20cbb7fd477f2ebc8f745e3e Mon Sep 17 00:00:00 2001
+From 860b774c58319beb9781dcdac9ced3b7e3ec2d32 Mon Sep 17 00:00:00 2001
 From: pvaish <pvaish@maxlinear.com>
 Date: Tue, 21 Jul 2026 00:05:42 -0700
-Subject: [PATCH] WLANRTSYS-103058 Correctly setting the dtim_period value
+Subject: [PATCH] WLANRTSYS-102206 Correctly setting the dtim_period value
  received from the hostapd_cli SET command.
 
 Signed-off-by: pvaish <pvaish@maxlinear.com>
@@ -9,14 +9,13 @@ Signed-off-by: pvaish <pvaish@maxlinear.com>
  hostapd/ctrl_iface.c     |  9 +++++++++
  hostapd/mxl_ctrl_iface.c | 13 +++++++++++++
  hostapd/mxl_ctrl_iface.h |  1 +
- src/common/defs.h        |  1 +
- 4 files changed, 24 insertions(+)
+ 3 files changed, 23 insertions(+)
 
 diff --git a/hostapd/ctrl_iface.c b/hostapd/ctrl_iface.c
-index 79d14f2dc..bab30bed2 100644
+index 86fddfb1f..4313977f5 100644
 --- a/hostapd/ctrl_iface.c
 +++ b/hostapd/ctrl_iface.c
-@@ -1407,6 +1407,15 @@ static int hostapd_ctrl_iface_set(struct hostapd_data *hapd, char *cmd)
+@@ -1409,6 +1409,15 @@ static int hostapd_ctrl_iface_set(struct hostapd_data *hapd, char *cmd)
  		if (hapd->started && !hapd->conf->start_disabled &&
  		    ieee802_11_set_beacon(hapd) < 0)
  		    return -1;
@@ -33,7 +32,7 @@ index 79d14f2dc..bab30bed2 100644
  	} else if (os_strcasecmp(cmd, "setband") == 0) {
  		ret = hostapd_ctrl_iface_set_band(hapd, value);
 diff --git a/hostapd/mxl_ctrl_iface.c b/hostapd/mxl_ctrl_iface.c
-index e4fafefc9..f258015c7 100644
+index 7ab9664a5..f89fabb3e 100644
 --- a/hostapd/mxl_ctrl_iface.c
 +++ b/hostapd/mxl_ctrl_iface.c
 @@ -4410,6 +4410,19 @@ int mxl_hostapd_ctrl_iface_set_beacon(struct hostapd_data *hapd)
@@ -66,18 +65,6 @@ index 0d848a234..9cb06947d 100644
  int mxl_hostapd_ctrl_iface_get_dynamic_failsafe(struct hostapd_data *hapd, char *cmd, char *buf, size_t buflen, int *reply_len);
 +int mxl_hostapd_ctrl_iface_set_dtim_period(struct hostapd_data *hapd, int value);
  #endif /* MXL_CTRL_IFACE_H */
-diff --git a/src/common/defs.h b/src/common/defs.h
-index c8e229734..3bd245f3c 100644
---- a/src/common/defs.h
-+++ b/src/common/defs.h
-@@ -589,6 +589,7 @@ enum wpa_p2p_mode {
- #define MULTIBSS_REFERENCE_BSS_IDX	1
- #define SIX_GHZ_CAPABILITY_INVALID	0
- #define MIN_COLOCATED_RADIO_COUNT	2
-+#define MULTIBSS_NON_TX_DTIM_PERIOD 1
- 
- enum multibss_vap_mode {
- 	NON_MULTIBSS_VAP_MODE = 0,
 -- 
 2.43.0
 

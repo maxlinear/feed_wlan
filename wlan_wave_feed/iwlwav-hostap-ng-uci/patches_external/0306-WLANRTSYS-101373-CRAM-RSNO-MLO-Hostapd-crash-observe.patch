@@ -1,4 +1,4 @@
-From 219ce604d682156d2a09d6d4316c844c85f4fb07 Mon Sep 17 00:00:00 2001
+From 69a4c5c7ad64d6d86fd1b3f64ee9d5d0f3382c39 Mon Sep 17 00:00:00 2001
 From: Venkatasaiprudhvi Raj Sannidhi <vsannidhi@maxlinear.com>
 Date: Thu, 7 May 2026 01:55:30 -0700
 Subject: [PATCH] WLANRTSYS-101373 [CRAM][RSNO][MLO] Hostapd crash observed in
@@ -32,7 +32,7 @@ Signed-off-by: Venkatasaiprudhvi Raj Sannidhi <vsannidhi@maxlinear.com>
  3 files changed, 35 insertions(+), 3 deletions(-)
 
 diff --git a/src/ap/mxl_mld.c b/src/ap/mxl_mld.c
-index ac0758067..9106188d8 100644
+index 0af781989..3f8226d87 100644
 --- a/src/ap/mxl_mld.c
 +++ b/src/ap/mxl_mld.c
 @@ -2589,10 +2589,15 @@ static void mxl_mlo_sibling_links_delete(struct hostapd_data *hapd)

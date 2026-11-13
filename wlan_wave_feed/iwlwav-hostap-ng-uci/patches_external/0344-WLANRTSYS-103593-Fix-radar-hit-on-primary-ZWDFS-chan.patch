@@ -1,0 +1,188 @@
+From b941de17037d58dfca703172d851ab819e9c61f3 Mon Sep 17 00:00:00 2001
+From: hmgokhale <hmgokhale@maxlinear.com>
+Date: Sat, 15 Aug 2026 05:07:47 -0700
+Subject: [PATCH] WLANRTSYS-103593 Fix radar hit on primary ZWDFS channel
+ getting misrouted as second best channel path, leaving AP stuck on stale
+ channel
+
+Fixup :  WLANRTSYS-50170 [MXL] Smart ACS implementation
+
+Signed-off-by: hmgokhale <hmgokhale@maxlinear.com>
+(cherry picked from commit c919cf77569fc11e6a68592f8463f6013e83b95c)
+---
+ src/ap/mxl_acs.c        | 35 ++++++++++++++++++++++++++++++++---
+ src/ap/mxl_dfs_common.c | 28 ++++++++++++++++++++++++++++
+ src/ap/mxl_hostapd.c    |  3 +++
+ src/ap/mxl_hostapd.h    |  2 ++
+ src/ap/mxl_zwdfs.c      |  8 ++++++++
+ 5 files changed, 73 insertions(+), 3 deletions(-)
+
+diff --git a/src/ap/mxl_acs.c b/src/ap/mxl_acs.c
+index 3f5b97fee..008779325 100644
+--- a/src/ap/mxl_acs.c
++++ b/src/ap/mxl_acs.c
+@@ -4452,6 +4452,15 @@ void mxl_acs_update_radar(struct hostapd_iface *iface)
+ 	}
+ }
+ 
++/* No CAC needed, so no CAC-completion event will set ENABLED - do it here. */
++static void mxl_acs_radar_switch_finish_if_no_cac(struct hostapd_iface *iface)
++{
++	if (iface->state != HAPD_IFACE_ENABLED && !mxl_dfs_cac_required_for_current_chandef(iface)) {
++		hostapd_set_state(iface, HAPD_IFACE_ENABLED);
++		iface->cac_started = 0;
++	}
++}
++
+ void mxl_acs_radar_switch(struct hostapd_iface *iface)
+ {
+ 	int ret;
+@@ -4464,14 +4473,34 @@ void mxl_acs_radar_switch(struct hostapd_iface *iface)
+ 
+ 	mxl_hostapd_channel_switch_reason_set(iface, HAPD_CHAN_SWITCH_RADAR_DETECTED);
+ 
+-	if ((ret <= 0) || (mxl_acs_do_switch_channel(iface, 1) < 0)) {
+-		/* back out with channel switch */
++	if (ret <= 0) {
++		/* No usable candidate - nothing safe to fall back to, disable. */
+ 		acs_pop_chandef(iface, &cur_chan);
+ 		hostapd_disable_iface(iface);
+-		wpa_printf(MSG_ERROR, "Unable to switch channel on radar detection !");
++		wpa_printf(MSG_ERROR, "Unable to find a channel to switch to on radar detection !");
++		return;
+ 	} else {
+ 		mxl_acs_arm_csa_watchdog(iface, &cur_chan, true);
+ 	}
++
++	/* CAC the candidate (background if needed) or CSA to it - no disable/enable. */
++	int bg_cac_res = mxl_dfs_try_background_cac_if_required(iface);
++
++	if (bg_cac_res > 0) {
++		wpa_printf(MSG_INFO,
++			   "ACS radar switch: background CAC started for ch=%d freq=%d",
++			   iface->conf->channel, iface->freq);
++		return;
++	}
++
++	if (mxl_hostapd_dfs_switch_to_iface_chandef(iface) >= 0) {
++		mxl_acs_radar_switch_finish_if_no_cac(iface);
++		return;
++	}
++
++	acs_pop_chandef(iface, &cur_chan);
++	hostapd_disable_iface(iface);
++	wpa_printf(MSG_ERROR, "Unable to switch channel on radar detection !");
+ }
+ 
+ int mxl_hostapd_acs_get_candidates_rank_idx(struct hostapd_iface *iface,
+diff --git a/src/ap/mxl_dfs_common.c b/src/ap/mxl_dfs_common.c
+index 735ed9db8..1d2c13b6c 100644
+--- a/src/ap/mxl_dfs_common.c
++++ b/src/ap/mxl_dfs_common.c
+@@ -385,6 +385,21 @@ bool mxl_hostapd_handle_radar(struct hostapd_iface *iface, int cf1, int bw)
+ 		mxl_hostapd_add_dfs_history_entry(iface, cf1, bw, iface->mxl_iface.rbm, DFS_CHAN_SWITCH);
+ 	}
+ 
++#ifdef CONFIG_ACS
++	if (iface->mxl_iface.sec_best_ch.zwdfs_is_primary_cac) {
++		/* Radar hit our own target channel - re-rank via ACS, not failsafe. */
++		if (!iface->conf->mxl_conf.acs_init_done)
++			return false;
++
++		/* Restore COC params if there is a backup */
++		if (iface->coc_chan_restore.primary)
++			mxl_hostapd_coc_restore_chan_params(iface);
++
++		mxl_acs_radar_switch(iface);
++		return true;
++	}
++#endif /* CONFIG_ACS */
++
+ 	if (mxl_dfs_is_failsafe_enabled(iface))
+ 		return false;
+ 
+@@ -568,6 +583,12 @@ bool mxl_hostapd_handle_background_radar(struct hostapd_iface *iface, int freq,
+ 		/* Update radar flags on all candidates (marks radar-affected channels) */
+ 		mxl_acs_update_radar(iface);
+ 
++		if (iface->mxl_iface.sec_best_ch.zwdfs_is_primary_cac) {
++			/* This was CAC-ing the primary channel, not second-best - skip re-select. */
++			wpa_printf(MSG_INFO, "ZWDFS: primary channel CAC hit radar, not re-selecting second best");
++			return false;
++		}
++
+ 		/* Re-select second best channel - existing logic will skip radar-affected */
+ 		if (mxl_get_second_best_channel_from_acs_table(iface)) {
+ 			wpa_printf(MSG_INFO,
+@@ -791,8 +812,15 @@ bool mxl_switch_second_best_channel(struct hostapd_iface *iface, int chan_width)
+ 		wpa_printf(MSG_DEBUG, "%s ZWDFS: acs is disabled after zwdfs CAC on second best channel",  __func__);
+ 		return false;
+ 	}
++
+ #endif /* CONFIG_ACS */
+ 
++	if (iface->mxl_iface.sec_best_ch.zwdfs_is_primary_cac) {
++		/* ZWDFS is CAC-ing the primary channel, not a second-best candidate. */
++		wpa_printf(MSG_INFO, "%s ZWDFS: CAC-ing primary channel, not switching to second best", __func__);
++		return false;
++	}
++
+ 	if (iface->mxl_iface.sec_best_ch.sec_channel_cac) {
+ 		wpa_printf(MSG_DEBUG, "%s ZWDFS: second best channel CAC is not completed",  __func__);
+ 		return false;
+diff --git a/src/ap/mxl_hostapd.c b/src/ap/mxl_hostapd.c
+index 11ae9a8e1..94dcbe1e9 100644
+--- a/src/ap/mxl_hostapd.c
++++ b/src/ap/mxl_hostapd.c
+@@ -3893,6 +3893,9 @@ void mxl_hostapd_set_state_pre(struct hostapd_iface *iface, enum hostapd_iface_s
+ 	(void)iface;
+ 	(void)state;
+ #endif /* CONFIG_ACS */
++
++	if (HAPD_IFACE_ENABLED == state)
++		iface->mxl_iface.sec_best_ch.zwdfs_is_primary_cac = false;
+ }
+ 
+ const char* mxl_hostapd_state_text_wrap(enum hostapd_iface_state state)
+diff --git a/src/ap/mxl_hostapd.h b/src/ap/mxl_hostapd.h
+index 6f90e76ca..0ae1a4a3b 100644
+--- a/src/ap/mxl_hostapd.h
++++ b/src/ap/mxl_hostapd.h
+@@ -93,6 +93,8 @@ struct acs_second_best_channel_params {
+ 	u32 secondary;
+ 	int width;
+ 	bool sec_channel_cac;
++	/* True while ZWDFS is CAC-ing the primary channel, not a second-best candidate. */
++	bool zwdfs_is_primary_cac;
+ };
+ 
+ struct mxl_dfs_revert_chandef {
+diff --git a/src/ap/mxl_zwdfs.c b/src/ap/mxl_zwdfs.c
+index 9c771e787..6d36bd16b 100644
+--- a/src/ap/mxl_zwdfs.c
++++ b/src/ap/mxl_zwdfs.c
+@@ -762,6 +762,11 @@ fail:
+ int mxl_hostapd_handle_zwdfs_switch(struct hostapd_iface *iface, int success, int freq, int chan_width, int cf1, int cf2)
+ {
+ 	wpa_printf(MSG_DEBUG, "%s ZWDFS: Switching channel is triggered", __func__);
++	/* Only clear on real success - on failure leave it set, the next
++	 * candidate's CAC will re-set it anyway and this avoids clearing it
++	 * too early if abort and radar-detected arrive out of order. */
++	if (success)
++		iface->mxl_iface.sec_best_ch.zwdfs_is_primary_cac = false;
+ 	if (mxl_hostapd_is_zwdfs_iface(iface)) {
+ 		if (mxl_dfs_use_radar_background(iface)) {
+ 			if (mxl_hostapd_dfs_is_background_event(iface, freq, cf1)) {
+@@ -816,6 +821,9 @@ int mxl_acs_request_background_cac(struct hostapd_iface *iface)
+ 		return -1;
+ 	}
+ 
++	/* CAC-ing the primary channel here, not a second-best candidate. */
++	iface->mxl_iface.sec_best_ch.zwdfs_is_primary_cac = true;
++
+ 	return 1;
+ }
+ 
+-- 
+2.43.0
+

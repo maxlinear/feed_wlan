@@ -1,0 +1,41 @@
+From ca91c02ba37ecacfdc6579436fb6b68d296bfcc4 Mon Sep 17 00:00:00 2001
+From: hmgokhale <hmgokhale@maxlinear.com>
+Date: Wed, 22 Jul 2026 07:49:27 -0700
+Subject: [PATCH] WLANRTSYS-103203 Fix Interface down issue due to ZWDFS CAC
+ failure when it is disabled
+
+Signed-off-by: hmgokhale <hmgokhale@maxlinear.com>
+---
+ src/ap/mxl_acs.c        | 2 +-
+ src/ap/mxl_dfs_common.c | 2 +-
+ 2 files changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/src/ap/mxl_acs.c b/src/ap/mxl_acs.c
+index 68b22944f..10ad62141 100644
+--- a/src/ap/mxl_acs.c
++++ b/src/ap/mxl_acs.c
+@@ -2903,7 +2903,7 @@ int mxl_do_bg_cac_with_second_best_channel(struct hostapd_iface *iface)
+ 	wpa_printf(MSG_INFO, "second best freq : %d", iface->mxl_iface.sec_best_ch.freq);
+ 
+ 	/* check non DFS channel */
+-	if (!mxl_is_dfs_channel(iface->mxl_iface.sec_best_ch.primary, mxl_get_oper_width(iface->mxl_iface.sec_best_ch.width))) {
++	if (!WAVE_FREQ_IS_5G(iface->freq) || !mxl_is_dfs_channel(iface->mxl_iface.sec_best_ch.primary, mxl_get_oper_width(iface->mxl_iface.sec_best_ch.width))) {
+ 		iface->mxl_iface.sec_best_ch.freq = 5000 + (iface->mxl_iface.sec_best_ch.primary * 5);
+ 		wpa_printf(MSG_INFO, "non DFS channel for second best freq : %d", iface->mxl_iface.sec_best_ch.freq);
+ 		return -1;
+diff --git a/src/ap/mxl_dfs_common.c b/src/ap/mxl_dfs_common.c
+index e134f2422..dfc247309 100644
+--- a/src/ap/mxl_dfs_common.c
++++ b/src/ap/mxl_dfs_common.c
+@@ -811,7 +811,7 @@ bool mxl_switch_second_best_channel(struct hostapd_iface *iface, int chan_width)
+ 
+ 		wpa_printf(MSG_DEBUG, "Switch to second best channel freq: %d, width : %d, cf1 = %d", iface->freq, chwidth, cf_1);
+ 		/* check non DFS channel */
+-		if (!mxl_is_dfs_channel(iface->conf->channel, mxl_get_oper_width(iface->mxl_iface.sec_best_ch.width))) {
++		if (!WAVE_FREQ_IS_5G(iface->freq) || !mxl_is_dfs_channel(iface->conf->channel, mxl_get_oper_width(iface->mxl_iface.sec_best_ch.width))) {
+ 			int i;
+ 			int ret;
+ 			struct csa_settings settings = {0};
+-- 
+2.43.0
+

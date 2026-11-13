@@ -1,4 +1,4 @@
-From b9cef834065677c86429ea95d6632b620700cc61 Mon Sep 17 00:00:00 2001
+From 9d13bc7e21bba706a42ca477a0dbd0d98ee2a415 Mon Sep 17 00:00:00 2001
 From: Venkatasaiprudhvi Raj Sannidhi <vsannidhi@maxlinear.com>
 Date: Thu, 28 May 2026 03:24:31 -0700
 Subject: [PATCH] WLANRTSYS-102170 hostapd crashes when WLAN radio configs
@@ -34,10 +34,10 @@ Signed-off-by: Venkatasaiprudhvi Raj Sannidhi <vsannidhi@maxlinear.com>
  1 file changed, 16 insertions(+), 2 deletions(-)
 
 diff --git a/src/ap/mxl_hostapd.c b/src/ap/mxl_hostapd.c
-index e53aebadb..6c1e26707 100644
+index 26dc44d10..69c34c4bd 100644
 --- a/src/ap/mxl_hostapd.c
 +++ b/src/ap/mxl_hostapd.c
-@@ -3066,11 +3066,25 @@ void mxl_mlo_hostapd_cleanup_cca_params(struct hostapd_data *hapd)
+@@ -3067,11 +3067,25 @@ void mxl_mlo_hostapd_cleanup_cca_params(struct hostapd_data *hapd)
  
  void mxl_hostapd_deinit_mld_params(struct hostapd_data *hapd)
  {

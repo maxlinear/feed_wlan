@@ -1,0 +1,196 @@
+From 5445c0e78e606fb860abb6b7d18a81727f862b2e Mon Sep 17 00:00:00 2001
+From: hmgokhale <hmgokhale@maxlinear.com>
+Date: Wed, 8 Jul 2026 00:02:08 -0700
+Subject: [PATCH] WLANRTSYS-102890 Check for acs_bgscan status to check
+ interface state
+
+Fixup : WLANRTSYS-50170 MXL Smart ACS implementation
+
+Signed-off-by: hmgokhale <hmgokhale@maxlinear.com>
+---
+ src/ap/drv_callbacks.c  | 14 ++++++++++++++
+ src/ap/ieee802_11.c     |  9 +++++++++
+ src/ap/mxl_events.c     | 13 +++++++------
+ src/ap/mxl_ieee802_11.c | 11 +++++++++++
+ src/ap/mxl_ieee802_11.h |  2 ++
+ src/ap/mxl_wds.c        |  9 +++++----
+ 6 files changed, 48 insertions(+), 10 deletions(-)
+
+diff --git a/src/ap/drv_callbacks.c b/src/ap/drv_callbacks.c
+index 1ce86c1e4..dea494817 100644
+--- a/src/ap/drv_callbacks.c
++++ b/src/ap/drv_callbacks.c
+@@ -2781,10 +2781,17 @@ void hostapd_event_ltq_report_event(struct hostapd_data *hapd,
+ 	/* Discard event if interface didn't finished initialization.
+ 	 * This may happen when driver sends irrelevant events due to station mode actions
+ 	 */
++#ifdef CONFIG_VENDOR_MXL
++	if (iface->state != HAPD_IFACE_ENABLED && !mxl_is_iface_acs_bgscan(iface)) {
++		wpa_printf(MSG_ERROR, "discard driver event (%s) - interface not initialized yet", __FUNCTION__);
++		return;
++	}
++#else
+ 	if (iface->state != HAPD_IFACE_ENABLED) {
+ 		wpa_printf(MSG_DEBUG, "discard driver event (%s) - interface not initialized yet", __FUNCTION__);
+ 		return;
+ 	}
++#endif /* CONFIG_VENDOR_MXL */
+ 
+ 	switch(msgtype) {
+ 		case WLAN_FC_STYPE_AUTH:
+@@ -2820,10 +2827,17 @@ static void hostapd_event_ltq_unconnected_sta_rx(struct hostapd_data *hapd,
+ 	/* Discard event if interface didn't finished initialization.
+ 	 * This may happen when driver sends irrelevant events due to station mode actions
+ 	 */
++#ifdef CONFIG_VENDOR_MXL
++	if (hapd->iface->state != HAPD_IFACE_ENABLED && !mxl_is_iface_acs_bgscan(hapd->iface)) {
++		wpa_printf(MSG_ERROR, "discard driver event (%s) - interface not initialized yet", __FUNCTION__);
++		return;
++	}
++#else
+ 	if (hapd->iface->state != HAPD_IFACE_ENABLED) {
+ 		wpa_printf(MSG_DEBUG, "discard driver event (%s) - interface not initialized yet", __FUNCTION__);
+ 		return;
+ 	}
++#endif /* CONFIG_VENDOR_MXL */
+ 
+ 	ret = sprintf_s(buf, sizeof(buf), MACSTR, MAC2STR(unc_sta->addr));
+ 	if (ret <= 0) {
+diff --git a/src/ap/ieee802_11.c b/src/ap/ieee802_11.c
+index d99c5c202..86e83947a 100644
+--- a/src/ap/ieee802_11.c
++++ b/src/ap/ieee802_11.c
+@@ -7522,11 +7522,20 @@ int ieee802_11_mgmt(struct hostapd_data *hapd, const u8 *buf, size_t len,
+ 		return 0;
+ 	}
+ 
++#ifdef CONFIG_VENDOR_MXL
++	if (hapd->iface->state != HAPD_IFACE_ENABLED &&
++	    !mxl_is_iface_acs_bgscan(hapd->iface)) {
++		wpa_printf(MSG_ERROR, "MGMT: Ignore management frame while interface is not enabled (SA=" MACSTR " DA=" MACSTR " subtype=%u)",
++			   MAC2STR(mgmt->sa), MAC2STR(mgmt->da), stype);
++		return 1;
++	}
++#else
+ 	if (hapd->iface->state != HAPD_IFACE_ENABLED) {
+ 		wpa_printf(MSG_DEBUG, "MGMT: Ignore management frame while interface is not enabled (SA=" MACSTR " DA=" MACSTR " subtype=%u)",
+ 			   MAC2STR(mgmt->sa), MAC2STR(mgmt->da), stype);
+ 		return 1;
+ 	}
++#endif /* CONFIG_VENDOR_MXL */
+ 
+ 	if (stype == WLAN_FC_STYPE_PROBE_REQ) {
+ 		handle_probe_req(hapd, mgmt, len, ssi_signal);
+diff --git a/src/ap/mxl_events.c b/src/ap/mxl_events.c
+index 25f88e705..67b19abef 100644
+--- a/src/ap/mxl_events.c
++++ b/src/ap/mxl_events.c
+@@ -18,6 +18,7 @@
+ #include "mxl_hostapd.h"
+ #include "mxl_dfs_common.h"
+ #include "mxl_wds.h"
++#include "mxl_ieee802_11.h"
+ 
+ enum mxl_event_type {
+ 	EVENT_MXL_FLUSH_STATIONS_RX,
+@@ -107,8 +108,8 @@ static void mxl_event_flush_stations_rx(struct hostapd_data *hapd,
+ 	/* Discard event if interface didn't finished initialization.
+ 	 * This may happen when driver sends irrelevant events due to station mode actions
+ 	 */
+-	if (iface->state != HAPD_IFACE_ENABLED) {
+-		wpa_printf(MSG_DEBUG, "discard driver event (%s) - interface not initialized yet", __FUNCTION__);
++	if (iface->state != HAPD_IFACE_ENABLED && !mxl_is_iface_acs_bgscan(iface)) {
++		wpa_printf(MSG_ERROR, "discard driver event (%s) - interface not initialized yet", __FUNCTION__);
+ 	return;
+ 	}
+ 
+@@ -142,8 +143,8 @@ static void mxl_event_radar_detected(struct hostapd_data *hapd, const u8 *data,
+ 	/* Discard event if interface didn't finished initialization.
+ 	 * This may happen when driver sends irrelevant events due to station mode actions
+ 	 */
+-	if (hapd->iface->state != HAPD_IFACE_ENABLED) {
+-		wpa_printf(MSG_DEBUG, "discard driver event (%s) - interface not initialized yet", __FUNCTION__);
++	if (hapd->iface->state != HAPD_IFACE_ENABLED && !mxl_is_iface_acs_bgscan(hapd->iface)) {
++		wpa_printf(MSG_ERROR, "discard driver event (%s) - interface not initialized yet", __FUNCTION__);
+ 		return;
+ 	}
+ 
+@@ -176,8 +177,8 @@ static void mxl_event_ltq_softblock_drop(struct hostapd_data *hapd, const u8 *da
+ 		return;
+ 	}
+ 
+-	if (hapd->iface->state != HAPD_IFACE_ENABLED) {
+-		wpa_printf(MSG_DEBUG, "discard driver event (%s) - interface not initialized yet", __FUNCTION__);
++	if (hapd->iface->state != HAPD_IFACE_ENABLED && !mxl_is_iface_acs_bgscan(hapd->iface)) {
++		wpa_printf(MSG_ERROR, "discard driver event (%s) - interface not initialized yet", __FUNCTION__);
+ 		return;
+ 	}
+ 
+diff --git a/src/ap/mxl_ieee802_11.c b/src/ap/mxl_ieee802_11.c
+index a2a29e9c6..cbd41b7c0 100644
+--- a/src/ap/mxl_ieee802_11.c
++++ b/src/ap/mxl_ieee802_11.c
+@@ -1476,4 +1476,15 @@ int mxl_qos_add_pending_rule(struct hostapd_data *hapd, u8 sta_addr[ETH_ALEN], b
+ 	return rule;
+ }
+ #endif /* CONFIG_SCS_MXL  || CONFIG_MSCS_MXL */
++
++bool mxl_is_iface_acs_bgscan(struct hostapd_iface *iface)
++{
++#ifdef CONFIG_ACS
++	return iface->mxl_iface.acs_bgscan;
++#else
++	(void)iface;
++	return false;
++#endif /* CONFIG_ACS */
++}
++
+ #endif /* CONFIG_NATIVE_WINDOWS */
+diff --git a/src/ap/mxl_ieee802_11.h b/src/ap/mxl_ieee802_11.h
+index e2c46e8ff..d483cfad5 100644
+--- a/src/ap/mxl_ieee802_11.h
++++ b/src/ap/mxl_ieee802_11.h
+@@ -84,4 +84,6 @@ int mxl_qos_add_pending_rule(struct hostapd_data *hapd, u8 sta_addr[ETH_ALEN], b
+ #endif /* CONFIG_SCS_MXL  || CONFIG_MSCS_MXL */
+ 
+ void mxl_ap_free_sta(struct hostapd_data *hapd, struct sta_info *sta);
++struct hostapd_iface;
++bool mxl_is_iface_acs_bgscan(struct hostapd_iface *iface);
+ #endif /* MXL_IEEE802_11_H */
+diff --git a/src/ap/mxl_wds.c b/src/ap/mxl_wds.c
+index 2edb7881d..c9132651c 100644
+--- a/src/ap/mxl_wds.c
++++ b/src/ap/mxl_wds.c
+@@ -25,6 +25,7 @@
+ #include "../../hostapd/mxl_ctrl_iface.h"
+ #include "wpa_auth.h"
+ #include "mxl_wds.h"
++#include "mxl_ieee802_11.h"
+ 
+ #ifdef CONFIG_IEEE80211BE_MXL_MLO
+ static void mxl_ml_wds_update_handled_links(struct mxl_ml_wds_entry *wds_entry,
+@@ -379,8 +380,8 @@ void mxl_wds_event_connect(struct hostapd_data *hapd,
+ 	/* Discard event if interface didn't finished initialization.
+ 	 * This may happen when driver sends irrelevant events due to station mode actions
+ 	 */
+-	if (hapd->iface->state != HAPD_IFACE_ENABLED) {
+-	  wpa_printf(MSG_DEBUG, "discard driver event (%s) - interface not initialized yet", __FUNCTION__);
++	if (hapd->iface->state != HAPD_IFACE_ENABLED && !mxl_is_iface_acs_bgscan(hapd->iface)) {
++	  wpa_printf(MSG_ERROR, "discard driver event (%s) - interface not initialized yet", __FUNCTION__);
+ 	  return;
+ 	}
+ 
+@@ -497,8 +498,8 @@ void mxl_wds_event_disconnect(struct hostapd_data *hapd,
+ 	/* Discard event if interface didn't finished initialization.
+ 	 * This may happen when driver sends irrelevant events due to station mode actions
+ 	 */
+-	if (hapd->iface->state != HAPD_IFACE_ENABLED) {
+-	  wpa_printf(MSG_DEBUG, "discard driver event (%s) - interface not initialized yet", __FUNCTION__);
++	if (hapd->iface->state != HAPD_IFACE_ENABLED && !mxl_is_iface_acs_bgscan(hapd->iface)) {
++	  wpa_printf(MSG_ERROR, "discard driver event (%s) - interface not initialized yet", __FUNCTION__);
+ 	  return;
+ 	}
+ 
+-- 
+2.43.0
+

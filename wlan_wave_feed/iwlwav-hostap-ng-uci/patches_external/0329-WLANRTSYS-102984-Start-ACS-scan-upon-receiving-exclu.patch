@@ -1,0 +1,86 @@
+From 91fd83c7fe26d618d2d6407018142f261991e45f Mon Sep 17 00:00:00 2001
+From: hmgokhale <hmgokhale@maxlinear.com>
+Date: Wed, 15 Jul 2026 00:46:17 -0700
+Subject: [PATCH] WLANRTSYS-102984 Start ACS scan upon receiving exclusion chan
+ list when acs was reenabled
+
+Trigger ACS ranking and switch to new channel when Exclusion list is specified
+Check if acs is enabled before calling ACS recalc
+
+Signed-off-by: hmgokhale <hmgokhale@maxlinear.com>
+---
+ hostapd/mxl_ctrl_iface.c | 25 +++++++++++++++++++++++++
+ src/ap/mxl_acs.c         |  1 +
+ src/ap/mxl_acs.h         |  1 +
+ 3 files changed, 27 insertions(+)
+
+diff --git a/hostapd/mxl_ctrl_iface.c b/hostapd/mxl_ctrl_iface.c
+index bc38687b8..7ab9664a5 100644
+--- a/hostapd/mxl_ctrl_iface.c
++++ b/hostapd/mxl_ctrl_iface.c
+@@ -4683,6 +4683,7 @@ static int mxl_hostapd_ctrl_iface_acs_ex_op_list(struct hostapd_data *hapd,
+ {
+ 	int ret = -1;
+ 	char chlist[2048];
++	struct hostapd_iface *iface = hapd->iface;
+ 	struct mxl_hostapd_config *mxl_conf = &hapd->iface->conf->mxl_conf;
+ 	struct acs_exclude **op_list = &mxl_conf->acs_exclude_opclass_ch_list;
+ 	struct acs_exclude *list;
+@@ -4740,6 +4741,30 @@ static int mxl_hostapd_ctrl_iface_acs_ex_op_list(struct hostapd_data *hapd,
+ 	mxl_conf->acs_exclude_opclass_ch_count = count;
+ 	*op_list = list;
+ 
++	/* Skip recalc+switch if ACS is disabled (static channel) or channel is 0
++	 * (ACS just enabled via 'SET channel acs_smart' but no scan has run yet).
++	 * The exclusion list is already stored and will be applied when ACS starts. */
++	if (!iface->conf->acs || iface->conf->channel == 0) {
++		wpa_printf(MSG_INFO, "ACS: exclusion list updated but skipping recalc and channel switch "
++				"(acs=%d channel=%d)", iface->conf->acs, iface->conf->channel);
++		ret = sprintf_s(reply, reply_len, "OK\n");
++		return ret;
++	}
++
++	/* re-calc ranks and switch channel if needed */
++	mxl_acs_chandef cur_chan;
++	acs_push_chandef(iface, &cur_chan);
++
++	wpa_printf(MSG_INFO, "ACS recalculating ranks due to exclusion list update");
++	ret = mxl_acs_recalc_ranks_and_set_chan(iface, SWR_EX_OP_UPDATE);
++	if(ret > 0) {
++		if (mxl_acs_do_switch_channel(iface, 0) < 0) {
++			/* back out with channel switch */
++			acs_pop_chandef(iface, &cur_chan);
++		}
++	}
++
++
+ 	ret = sprintf_s(reply, reply_len, "OK\n");
+ 
+ 	return ret;
+diff --git a/src/ap/mxl_acs.c b/src/ap/mxl_acs.c
+index c9c01cfa8..de43ce482 100644
+--- a/src/ap/mxl_acs.c
++++ b/src/ap/mxl_acs.c
+@@ -2765,6 +2765,7 @@ const char *sw_reasons[] = {
+ 	"radar",
+ 	"background scan",
+ 	"periodic update",
++	"exclusion list update",
+ };
+ 
+ static bool mxl_acs_set_new_chan_if_ok(struct hostapd_iface *iface, int min_rank_cand_idx)
+diff --git a/src/ap/mxl_acs.h b/src/ap/mxl_acs.h
+index 9dc7eaefb..8e5c285f0 100644
+--- a/src/ap/mxl_acs.h
++++ b/src/ap/mxl_acs.h
+@@ -138,6 +138,7 @@ enum {
+ 	SWR_RADAR,
+ 	SWR_BG_SCAN,
+ 	SWR_UPDATE,
++	SWR_EX_OP_UPDATE,
+ 	SWR_LAST
+ };
+ 
+-- 
+2.43.0
+

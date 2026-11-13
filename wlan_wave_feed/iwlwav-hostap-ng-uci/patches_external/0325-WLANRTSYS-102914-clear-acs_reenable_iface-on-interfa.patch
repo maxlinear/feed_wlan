@@ -1,0 +1,26 @@
+From 8d4bf30d89821e32e7e60317a0dcbeb9970e6b3f Mon Sep 17 00:00:00 2001
+From: hmgokhale <hmgokhale@maxlinear.com>
+Date: Fri, 10 Jul 2026 05:57:50 -0700
+Subject: [PATCH] WLANRTSYS-102914 clear acs_reenable_iface on interface
+ disable
+
+Signed-off-by: hmgokhale <hmgokhale@maxlinear.com>
+---
+ src/ap/mxl_hostapd.c | 2 ++
+ 1 file changed, 2 insertions(+)
+
+diff --git a/src/ap/mxl_hostapd.c b/src/ap/mxl_hostapd.c
+index 53780697c..3b48d4d1a 100644
+--- a/src/ap/mxl_hostapd.c
++++ b/src/ap/mxl_hostapd.c
+@@ -3897,5 +3897,7 @@ int mxl_hostapd_restart_iface(struct hostapd_iface *iface)
+ void mxl_acs_clear_second_bg_cac_param(struct hostapd_iface *iface)
+ {
+ 	memset(&iface->mxl_iface.sec_best_ch, 0, sizeof(iface->mxl_iface.sec_best_ch));
++	/* clear acs_reenable_iface */
++	iface->mxl_iface.acs_reenable_iface = 0;
+ 	return;
+ }
+-- 
+2.43.0
+

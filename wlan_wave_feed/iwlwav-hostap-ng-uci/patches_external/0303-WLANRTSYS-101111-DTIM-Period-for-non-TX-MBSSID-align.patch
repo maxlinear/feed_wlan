@@ -1,0 +1,136 @@
+From 2d2dd55cb07aa3fdf929d7144df6fcf2449c5615 Mon Sep 17 00:00:00 2001
+From: Nikita Chernikov <nchernikov@maxlinear.com>
+Date: Tue, 28 Apr 2026 11:34:40 +0300
+Subject: [PATCH] WLANRTSYS-101111 DTIM Period for non-TX MBSSID alignment
+
+Fixup to: WLANRTSYS-87381 Porting MBSSID changes to wav700
+
+Signed-off-by: Nikita Chernikov <nchernikov@maxlinear.com>
+---
+ hostapd/mxl_config.c       | 37 +++++++++++++++++++++++++++++++++++++
+ src/ap/ap_config.c         | 15 ++-------------
+ src/ap/ieee802_11_shared.c |  4 ++--
+ src/ap/mxl_config.h        |  1 +
+ src/common/defs.h          |  1 +
+ 5 files changed, 43 insertions(+), 15 deletions(-)
+
+diff --git a/hostapd/mxl_config.c b/hostapd/mxl_config.c
+index 03e699a89..f8a7391cc 100644
+--- a/hostapd/mxl_config.c
++++ b/hostapd/mxl_config.c
+@@ -2369,6 +2369,43 @@ int mxl_hostapd_config_check(struct hostapd_config *conf, int full_config)
+ 	return 0;
+ }
+ 
++int mxl_hostapd_config_check_mbss(struct hostapd_config *conf)
++{
++	struct hostapd_bss_config *bss;
++	int i;
++
++	if (conf->multibss_enable) {
++		conf->mbssid_aid_offset = MULTIBSS_AID_OFFSET;
++		wpa_printf(MSG_DEBUG, "mbssid_aid_offset is set to (%d)", conf->mbssid_aid_offset);
++	} else if (is_6ghz_op_class(conf->op_class) &&
++			   (conf->num_bss >= MIN_NUM_BSS_IN_MBSSID_SET) &&
++			   (!conf->override_6g_mbssid_default_mode)) {
++				conf->multibss_enable = 1;
++				conf->mbssid_aid_offset = MULTIBSS_AID_OFFSET;
++	}
++
++	if (conf->multibss_enable && !conf->mxl_conf.max_bss) {
++		wpa_printf(MSG_ERROR, "max_bss is not provided");
++		return -1;
++	}
++
++	if (conf->multibss_enable) {
++		for (i = MASTER_VAP_BSS_IDX + 1; i < conf->num_bss; i++) {
++			bss = conf->bss[i];
++			if (mxl_hostapd_mbssid_is_tx_bss(bss->bss_idx))
++				continue;
++			/* non-transmitted BSS DTIM period is restricted to MULTIBSS_NON_TX_DTIM_PERIOD */
++			if (bss->dtim_period != MULTIBSS_NON_TX_DTIM_PERIOD) {
++				wpa_printf(MSG_ERROR, "Invalid DTIM period %d for non-transmitted BSS (idx %d)",
++					   bss->dtim_period, bss->bss_idx);
++				return -1;
++			}
++		}
++	}
++
++	return 0;
++}
++
+ int mxl_hostapd_config_check_bss(struct hostapd_bss_config *bss, struct hostapd_config *conf, int full_config)
+ {
+ #ifdef CONFIG_IEEE80211BE
+diff --git a/src/ap/ap_config.c b/src/ap/ap_config.c
+index 1cd61e503..eaa7d9e7d 100644
+--- a/src/ap/ap_config.c
++++ b/src/ap/ap_config.c
+@@ -1894,22 +1894,11 @@ int hostapd_config_check(struct hostapd_config *conf, int full_config)
+ 	}
+ 
+ #ifdef CONFIG_VENDOR_MXL
+-	if(mxl_hostapd_config_check(conf, full_config)) {
++	if (mxl_hostapd_config_check(conf, full_config)) {
+ 		return -1;
+ 	}
+ 
+-	if(conf->multibss_enable) {
+-		conf->mbssid_aid_offset = MULTIBSS_AID_OFFSET;
+-		wpa_printf(MSG_DEBUG, "mbssid_aid_offset is set to (%d)", conf->mbssid_aid_offset);
+-	} else if (is_6ghz_op_class(conf->op_class) &&
+-			   (conf->num_bss >= MIN_NUM_BSS_IN_MBSSID_SET) &&
+-			   (!conf->override_6g_mbssid_default_mode)) {
+-				conf->multibss_enable = 1;
+-				conf->mbssid_aid_offset = MULTIBSS_AID_OFFSET;
+-	}
+-
+-	if (conf->multibss_enable && !conf->mxl_conf.max_bss) {
+-		wpa_printf(MSG_ERROR, "max_bss is not provided");
++	if (mxl_hostapd_config_check_mbss(conf)) {
+ 		return -1;
+ 	}
+ 
+diff --git a/src/ap/ieee802_11_shared.c b/src/ap/ieee802_11_shared.c
+index 5b4fa666a..043a26549 100644
+--- a/src/ap/ieee802_11_shared.c
++++ b/src/ap/ieee802_11_shared.c
+@@ -1544,9 +1544,9 @@ static u8 * hostapd_eid_multiple_bssid_idx(struct hostapd_data *hapd, u8 *eid, u
+ 	else
+ 		*eid++ = 1;
+ 	*eid++ = idx;
+-	/* TODO: DTIM Period and DTIM Count need to be handled in FW */
++
+ 	if(is_beacon){
+-		*eid++ = 1;
++		*eid++ = hapd->conf->dtim_period;
+ 		*eid++ = 0;
+ 	}
+ 	return eid;
+diff --git a/src/ap/mxl_config.h b/src/ap/mxl_config.h
+index c496306fe..59bd1d711 100644
+--- a/src/ap/mxl_config.h
++++ b/src/ap/mxl_config.h
+@@ -553,6 +553,7 @@ void mxl_hostapd_config_defaults_bss(struct hostapd_bss_config *bss);
+ int mxl_hostapd_config_defaults(struct hostapd_config *conf);
+ void mxl_hostapd_config_free_bss(struct hostapd_bss_config *bss);
+ int mxl_hostapd_config_check(struct hostapd_config *conf, int full_config);
++int mxl_hostapd_config_check_mbss(struct hostapd_config *conf);
+ int mxl_hostapd_config_check_bss(struct hostapd_bss_config *bss, struct hostapd_config *conf, int full_config);
+ void mxl_hostapd_config_free(struct hostapd_config *conf);
+ int mxl_hostapd_config_check_bss_6g(struct hostapd_bss_config *bss);
+diff --git a/src/common/defs.h b/src/common/defs.h
+index c8e229734..3bd245f3c 100644
+--- a/src/common/defs.h
++++ b/src/common/defs.h
+@@ -589,6 +589,7 @@ enum wpa_p2p_mode {
+ #define MULTIBSS_REFERENCE_BSS_IDX	1
+ #define SIX_GHZ_CAPABILITY_INVALID	0
+ #define MIN_COLOCATED_RADIO_COUNT	2
++#define MULTIBSS_NON_TX_DTIM_PERIOD 1
+ 
+ enum multibss_vap_mode {
+ 	NON_MULTIBSS_VAP_MODE = 0,
+-- 
+2.43.0
+

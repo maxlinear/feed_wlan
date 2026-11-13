@@ -1,0 +1,45 @@
+From ece4c75e559d733e2fbfed1527dd37abdf2a4d2d Mon Sep 17 00:00:00 2001
+From: "mujiburrahimank@maxlinear.com"
+ <mujiburrahimank@lvdocker7.lvsw.maxlinear.com>
+Date: Wed, 23 Sep 2026 23:39:21 -0700
+Subject: [PATCH] WLANRTSYS-104136 : ACS AcsBgScanInterval is not working as
+ expected interval for 5G
+
+Issue : acs_bgscan_interval is not fired for 5G in certain cases when DFS channel is
+selected after initial bootup_timer_expiry
+
+RCA : bgscan timer initialization is not handled for 5G during DFS channel selection when
+bgcac happens for DFS channel
+
+Fix : acs bgscan timer is fired for DFS channel enabled in bgcac scenarios
+
+Fixup : WLANRTSYS-50170 [MXL] Smart ACS implementation
+---
+ src/ap/mxl_acs.c | 4 +++-
+ 1 file changed, 3 insertions(+), 1 deletion(-)
+
+diff --git a/src/ap/mxl_acs.c b/src/ap/mxl_acs.c
+index 396d23d4a..c75b2369a 100644
+--- a/src/ap/mxl_acs.c
++++ b/src/ap/mxl_acs.c
+@@ -5691,6 +5691,9 @@ void mxl_acs_bootup_non_dfs_timer_cb(void *eloop_data, void *user_ctx)
+ 	iface->mxl_iface.sec_best_ch.flag = false;
+ 	iface->mxl_iface.sec_best_ch.bg_cac = false;
+ 
++	/* Start the regular periodic bgACS timer with the user-configured interval */
++	mxl_acs_set_bgscan_int(hapd);
++
+ 	acs_push_chandef(iface, &cur_chan);
+ 	if (mxl_acs_recalc_ranks_and_set_chan(iface, SWR_INITIAL) > 0) {
+ 		int cac_res;
+@@ -5723,7 +5726,6 @@ void mxl_acs_bootup_non_dfs_timer_cb(void *eloop_data, void *user_ctx)
+ 			   hapd->conf->iface);
+ 	}
+ 
+-	mxl_acs_set_bgscan_int(hapd);
+ }
+ 
+ void mxl_acs_start_bootup_non_dfs_timer(struct hostapd_data *hapd)
+-- 
+2.43.0
+

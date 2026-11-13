@@ -1,0 +1,63 @@
+From b0cb92a70ba3309f7d9f25f6445a79c2d10e1004 Mon Sep 17 00:00:00 2001
+From: "mujiburrahimank@maxlinear.com"
+ <mujiburrahimank@lvdocker7.lvsw.maxlinear.com>
+Date: Tue, 22 Sep 2026 23:40:57 -0700
+Subject: [PATCH] WLANRTSYS-104134 ACS AcsBgScanInterval is not working as
+ expected interval for 5G - Internal for NOP/Scan case
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Root Cause : For 5G, AcsBgScanInterval behavior is not as expected in internal NOP/scan-related flow.
+After acs_bootup_non_dfs timer expiry or NOP recovery, if DFS channel is selected and CAC is running,
+a radar hit on the CAC-ing channel can disable the interface without switching to a safe channel.
+During radar detection on the CAC-ing target channel, no valid second-best channel is available at that point.
+The flow falls back to ACS_recalc, but ranking-threshold comparison can return “stay on channel.”
+Since this is a radar-triggered scenario, staying is not acceptable and interface disable occurs.
+
+Resolution : Update ACS_recalc handling so that when switch reason is RADAR or EXCLUSION_UPDATE, threshold gating is bypassed
+and channel switch is forced to a safe alternative. This avoids “stay on channel” for these critical reasons and
+prevents interface disable in this path.
+
+System Impact : ACS bgscan, Radar detection, Exclusion list update
+
+Fixup : WLANRTSYS-50170 MXL Smart ACS implementation
+---
+ src/ap/mxl_acs.c | 14 +++++++++++---
+ 1 file changed, 11 insertions(+), 3 deletions(-)
+
+diff --git a/src/ap/mxl_acs.c b/src/ap/mxl_acs.c
+index 5978437e0..7188a4ee5 100644
+--- a/src/ap/mxl_acs.c
++++ b/src/ap/mxl_acs.c
+@@ -2889,7 +2889,8 @@ static bool mxl_acs_check_new_chan_is_ok(struct hostapd_iface *iface, int min_ra
+ 	/* got previous, now check threshold */
+ 	if (((iface->mxl_iface.selected_candidate < 0) || /* if previously selected candidate is not known - switch */
+ 	    (switch_reason == SWR_RADAR) || (switch_reason == SWR_INITIAL) || /* in these cases, switch regardless of threshold */
+-	    (candidates[iface->mxl_iface.selected_candidate].rank == -1)) && !bg_scan) { /* If previously selected candidates rank is now invalid, switch regardless of threshold*/
++	    (candidates[iface->mxl_iface.selected_candidate].rank == -1)) && (!bg_scan ||
++		  (switch_reason != SWR_RADAR) || (switch_reason != SWR_EX_OP_UPDATE))) { /* If previously selected candidates rank is now invalid, switch regardless of threshold*/
+ 		wpa_printf(MSG_DEBUG, "ACS going from candidate regardless of threshold %d to %d", iface->mxl_iface.selected_candidate, min_rank_cand_idx);
+ 		wpa_printf(MSG_INFO, "%s : ACS switching channel regardless of threshold", iface->bss[0]->conf->iface);
+ 		acs_print_info_header(MSG_DEBUG);
+@@ -5687,8 +5688,15 @@ void mxl_acs_bootup_non_dfs_timer_cb(void *eloop_data, void *user_ctx)
+ 	}
+ 
+ 	if ((iface->state != HAPD_IFACE_ENABLED) && (iface->state != HAPD_IFACE_ACS_DONE)) {
+-		wpa_printf(MSG_DEBUG, "%s: acs_bootup_non_dfs timer fired but interface state %d is not ready, skipping re-evaluation",
+-			   hapd->conf->iface, iface->state);
++		/* Interface is transiently busy (e.g. mid ACS/HT_SCAN/DFS from some
++		 * unrelated concurrent operation) - this is a one-shot timer, so
++		 * just returning here would silently and permanently skip the
++		 * transition to periodic bgACS for the rest of this interface's
++		 * uptime. Retry shortly instead of giving up. */
++		wpa_printf(MSG_DEBUG, "%s: acs_bootup_non_dfs timer fired but interface state %d is not ready, retrying shortly",
++				 hapd->conf->iface, iface->state);
++		eloop_register_timeout(5, 0, mxl_acs_bootup_non_dfs_timer_cb, hapd, NULL);
++
+ 		return;
+ 	}
+ 
+-- 
+2.43.0
+
