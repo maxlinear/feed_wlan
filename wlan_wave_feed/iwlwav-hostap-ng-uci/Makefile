@@ -189,9 +189,6 @@ define Package/iwlwav-hostap-ng-uci/install
 	)
 	$(INSTALL_BIN) $(PKG_BUILD_DIR)/afc/afcd $(1)/usr/sbin
 	$(INSTALL_DIR) $(1)/etc/init.d/
-	$(if $(filter $(CONFIG_BUILD_SDK),"prplos"), \
-		$(INSTALL_BIN) ./files/afc_initd_prpl $(1)/etc/init.d/afc_initd; \
-	)
 	$(if $(filter $(CONFIG_BUILD_SDK),"ugw"), \
 		$(INSTALL_BIN) ./files/afc_initd $(1)/etc/init.d/afc_initd; \
 	)

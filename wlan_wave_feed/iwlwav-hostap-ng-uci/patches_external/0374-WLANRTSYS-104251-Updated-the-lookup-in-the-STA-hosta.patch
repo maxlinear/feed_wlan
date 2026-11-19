@@ -1,0 +1,209 @@
+From e263fce34c150b049a4882fe6ada4994cca47d00 Mon Sep 17 00:00:00 2001
+From: pvaish <pvaish@maxlinear.com>
+Date: Tue, 29 Sep 2026 06:28:14 -0700
+Subject: [PATCH] WLANRTSYS-104251 Updated the lookup in the STA hostapd_cli
+ command for the STA MLD MAC as well.
+
+Signed-off-by: pvaish <pvaish@maxlinear.com>
+---
+ hostapd/Makefile           |  1 +
+ src/ap/ctrl_iface_ap.c     | 15 +++++++
+ src/ap/mxl_ctrl_iface_ap.c | 81 ++++++++++++++++++++++++++++++++++++++
+ src/ap/mxl_ctrl_iface_ap.h | 29 ++++++++++++++
+ 4 files changed, 126 insertions(+)
+ create mode 100644 src/ap/mxl_ctrl_iface_ap.c
+ create mode 100644 src/ap/mxl_ctrl_iface_ap.h
+
+diff --git a/hostapd/Makefile b/hostapd/Makefile
+index ec2124654..e2a27831c 100644
+--- a/hostapd/Makefile
++++ b/hostapd/Makefile
+@@ -419,6 +419,7 @@ OBJS += ../src/ap/mxl_beacon.o
+ OBJS += ../src/ap/mxl_ieee802_11_shared.o
+ OBJS += ../src/ap/mxl_drv_callbacks.o
+ OBJS += ../src/ap/mxl_sta_info.o
++OBJS += ../src/ap/mxl_ctrl_iface_ap.o
+ OBJS += ../src/ap/mxl_utils.o
+ OBJS += ../src/ap/mxl_wmm.o
+ OBJS += ../src/ap/mxl_csa.o
+diff --git a/src/ap/ctrl_iface_ap.c b/src/ap/ctrl_iface_ap.c
+index ef3bf74a9..e41120356 100644
+--- a/src/ap/ctrl_iface_ap.c
++++ b/src/ap/ctrl_iface_ap.c
+@@ -28,6 +28,7 @@
+ #ifdef CONFIG_VENDOR_MXL
+ #include "mxl_ieee802_11.h"
+ #include "mxl_dfs_common.h"
++#include "mxl_ctrl_iface_ap.h"
+ #endif /* CONFIG_VENDOR_MXL */
+ //#include "../hostapd/ctrl_iface.h"
+ //#ifdef CONFIG_VENDOR_MXL
+@@ -251,8 +252,13 @@ static int hostapd_ctrl_iface_sta_mib(struct hostapd_data *hapd,
+ 		return 0;
+ 
+ 	len = 0;
++#ifdef CONFIG_IEEE80211BE_MXL_MLO
++	ret = os_snprintf(buf + len, buflen - len, MACSTR "\nflags=",
++			  MAC2STR(mxl_hostapd_ctrl_iface_sta_mib_addr(sta)));
++#else /* CONFIG_IEEE80211BE_MXL_MLO */
+ 	ret = os_snprintf(buf + len, buflen - len, MACSTR "\nflags=",
+ 			  MAC2STR(sta->addr));
++#endif /* CONFIG_IEEE80211BE_MXL_MLO */
+ 	if (os_snprintf_error(buflen - len, ret))
+ 		return len;
+ 	len += ret;
+@@ -489,6 +495,7 @@ static int hostapd_ctrl_iface_sta_mib(struct hostapd_data *hapd,
+ 	}
+ 
+ #ifdef CONFIG_IEEE80211BE
++#ifndef CONFIG_IEEE80211BE_MXL_MLO
+ 	if (sta->mld_info.mld_sta) {
+ 		u16 mld_sta_capa = sta->mld_info.common_info.mld_capa;
+ 		u8 max_simul_links = mld_sta_capa &
+@@ -510,6 +517,10 @@ static int hostapd_ctrl_iface_sta_mib(struct hostapd_data *hapd,
+ 		if (!os_snprintf_error(buflen - len, ret))
+ 			len += ret;
+ 	}
++#else /* CONFIG_IEEE80211BE_MXL_MLO */
++	len += mxl_hostapd_ctrl_iface_sta_mib_mld_info(sta, buf + len,
++						       buflen - len);
++#endif /* CONFIG_IEEE80211BE_MXL_MLO */
+ #endif /* CONFIG_IEEE80211BE */
+ 
+ 	return len;
+@@ -558,6 +569,10 @@ int hostapd_ctrl_iface_sta(struct hostapd_data *hapd, const char *txtaddr,
+ 	}
+ 
+ 	sta = ap_get_sta(hapd, addr);
++#ifdef CONFIG_IEEE80211BE_MXL_MLO
++	if (sta == NULL)
++		sta = mxl_hostapd_ctrl_iface_get_sta_by_mld_addr(hapd, addr);
++#endif /* CONFIG_IEEE80211BE_MXL_MLO */
+ 	if (sta == NULL)
+ 		return -1;
+ 
+diff --git a/src/ap/mxl_ctrl_iface_ap.c b/src/ap/mxl_ctrl_iface_ap.c
+new file mode 100644
+index 000000000..62f6ee305
+--- /dev/null
++++ b/src/ap/mxl_ctrl_iface_ap.c
+@@ -0,0 +1,81 @@
++/******************************************************************************
++
++         Copyright (c) 2020 - 2026, MaxLinear, Inc.
++         Copyright 2016 - 2020 Intel Corporation
++         Copyright 2015 - 2016 Lantiq Beteiligungs-GmbH & Co. KG
++         Copyright 2009 - 2014 Lantiq Deutschland GmbH
++         Copyright 2007 - 2008 Infineon Technologies AG
++
++  This software may be distributed under the terms of the BSD license.
++  See README for more details.
++
++*******************************************************************************/
++
++#include "utils/includes.h"
++
++#include "utils/common.h"
++#include "hostapd.h"
++#include "sta_info.h"
++#include "mxl_ctrl_iface_ap.h"
++
++#ifdef CONFIG_IEEE80211BE_MXL_MLO
++/* Address reported as the first line of the STA MIB: the non-AP MLD MAC for ML STAs */
++const u8 * mxl_hostapd_ctrl_iface_sta_mib_addr(const struct sta_info *sta)
++{
++	if (sta->mxl_sta_info.ext_flags & WLAN_STA_MULTILINK)
++		return sta->mxl_sta_info.non_ap_mld_mac;
++
++	return sta->addr;
++}
++
++/* Append the MLD peer addresses and max simultaneous links to the STA MIB */
++int mxl_hostapd_ctrl_iface_sta_mib_mld_info(struct sta_info *sta, char *buf,
++					    size_t buflen)
++{
++	u16 mld_sta_capa;
++	u8 max_simul_links;
++	struct sta_info *lsta;
++	int len = 0, ret, i = 0;
++
++	if (!sta->mxl_sta_info.ml_sta_info.is_ml)
++		return 0;
++
++	mld_sta_capa = sta->mxl_sta_info.sta_ml_capab.mld_capab_oper;
++	max_simul_links = mld_sta_capa & MLO_MAX_NUM_SIMUL_LINKS;
++
++	ret = os_snprintf(buf + len, buflen - len, "peer_addr[%d]=" MACSTR "\n",
++			  i++, MAC2STR(sta->addr));
++	if (!os_snprintf_error(buflen - len, ret))
++		len += ret;
++
++	mxl_mld_for_each_sibling_sta(lsta, sta) {
++		ret = os_snprintf(buf + len, buflen - len,
++				  "peer_addr[%d]=" MACSTR "\n",
++				  i++, MAC2STR(lsta->addr));
++		if (!os_snprintf_error(buflen - len, ret))
++			len += ret;
++	}
++
++	ret = os_snprintf(buf + len, buflen - len, "max_simul_links=%d\n",
++			  max_simul_links);
++	if (!os_snprintf_error(buflen - len, ret))
++		len += ret;
++
++	return len;
++}
++
++/* STAs are hashed by sta->addr only, so look up ML STAs by non-AP MLD MAC */
++struct sta_info * mxl_hostapd_ctrl_iface_get_sta_by_mld_addr(
++	struct hostapd_data *hapd, const u8 *addr)
++{
++	struct sta_info *sta;
++
++	for (sta = hapd->sta_list; sta; sta = sta->next) {
++		if (mxl_mlo_is_ml_sta(sta) &&
++		    !os_memcmp(sta->mxl_sta_info.non_ap_mld_mac, addr, ETH_ALEN))
++			return sta;
++	}
++
++	return NULL;
++}
++#endif /* CONFIG_IEEE80211BE_MXL_MLO */
+diff --git a/src/ap/mxl_ctrl_iface_ap.h b/src/ap/mxl_ctrl_iface_ap.h
+new file mode 100644
+index 000000000..765a5c7e0
+--- /dev/null
++++ b/src/ap/mxl_ctrl_iface_ap.h
+@@ -0,0 +1,29 @@
++/******************************************************************************
++
++         Copyright (c) 2020 - 2026, MaxLinear, Inc.
++         Copyright 2016 - 2020 Intel Corporation
++         Copyright 2015 - 2016 Lantiq Beteiligungs-GmbH & Co. KG
++         Copyright 2009 - 2014 Lantiq Deutschland GmbH
++         Copyright 2007 - 2008 Infineon Technologies AG
++
++  This software may be distributed under the terms of the BSD license.
++  See README for more details.
++
++*******************************************************************************/
++
++#ifndef MXL_CTRL_IFACE_AP_H
++#define MXL_CTRL_IFACE_AP_H
++
++#include "sta_info.h"
++
++struct hostapd_data;
++
++#ifdef CONFIG_IEEE80211BE_MXL_MLO
++const u8 * mxl_hostapd_ctrl_iface_sta_mib_addr(const struct sta_info *sta);
++int mxl_hostapd_ctrl_iface_sta_mib_mld_info(struct sta_info *sta, char *buf,
++					    size_t buflen);
++struct sta_info * mxl_hostapd_ctrl_iface_get_sta_by_mld_addr(
++	struct hostapd_data *hapd, const u8 *addr);
++#endif /* CONFIG_IEEE80211BE_MXL_MLO */
++
++#endif /* MXL_CTRL_IFACE_AP_H */
+-- 
+2.43.0
+
